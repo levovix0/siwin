@@ -16,10 +16,13 @@ test "window":
     r.clear color "202020"
     r.fillRect (100, 50), (400, 200), color "40FF40"
   
+  win.onDoubleClick = proc(e: ClickEvent) =
+    close win
+  
   var icon = newImage(32, 32)
   let r = render icon
   r.clear color 0
-  r.fillRect (8, 8), (24, 24), color "FFFFFF"
+  r.fillRect (8, 8), (24, 24), color "40FF40"
   win.icon = icon
   
   run win

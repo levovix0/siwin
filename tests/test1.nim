@@ -12,8 +12,7 @@ test "picture":
   let c = v[]
   c[0] = color 1
   check v[0, 0] == color 1
-  let p = v.renderObject
-  p[1, 1] = color 2
+  v[1, 1] = color 2
   check v[1, 1] == color 2
 
 test "render":

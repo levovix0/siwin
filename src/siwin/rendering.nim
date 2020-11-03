@@ -1,21 +1,19 @@
 import color, geometry, image
 
 type Renderer* = object
-  data*: RenderObject
+  data*: Picture
   area*: Rect2i
 
-proc render*(a: var SomeImage): Renderer =
+proc render*(a: Picture): Renderer =
   ## создаёт отрисовщик для изображения
-  result.data = a.renderObject
+  result.data = a
   result.area = rect(0.vec2, size= a.size - 1)
 
 proc size*(a: Renderer): Vec2i = a.data.size
 
-proc `[]`*(a: Renderer): ArrayPtr[Color] = a.data[]
 proc `[]`*(a: Renderer; x, y: int): var Color = a.data[x, y]
 proc `[]=`*(a: Renderer; x, y: int, c: Color) = a.data[x, y] = c
 
-#! возникают прблеммы с компиляцией, если использовать концепт. надеюсь поправят, а пока так
 proc `[]`*(a: Renderer, i: Vec2i): var Color = a[i.x, i.y]
 proc `[]=`*(a: Renderer, i: Vec2i, v: Color) = a[i.x, i.y] = v
 
@@ -58,7 +56,7 @@ proc fill*(a: Renderer, c: Color) =
     for (x, y) in a.area:
       a[x, y].blend = c
 
-proc image*(a: Renderer, b: SomeImage, r: Rect2i, srcp: Vec2i = (0, 0), transparent: bool = false) =
+proc image*(a: Renderer, b: Picture, r: Rect2i, srcp: Vec2i = (0, 0), transparent: bool = false) =
   ## рисует изображение
   ##* не масштабирует
   var (r, srcp) = (r, srcp)
@@ -83,5 +81,5 @@ proc image*(a: Renderer, b: SomeImage, r: Rect2i, srcp: Vec2i = (0, 0), transpar
     for p in 0.vec2..r.size:
       a[r.a + p] = b[srcp + p]
 
-proc image*(a: Renderer, b: SomeImage, pos: Vec2i, srcp: Vec2i = (0, 0), transparent: bool = false) =
+proc image*(a: Renderer, b: Picture, pos: Vec2i, srcp: Vec2i = (0, 0), transparent: bool = false) =
   a.image(b, pos..<(pos + b.size), srcp, transparent)

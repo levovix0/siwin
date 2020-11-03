@@ -71,6 +71,7 @@ when defined(linux):
     atoms[a.int] = a
     result = atoms[a.int].addr
 
+  # TODO
   type ShmImage* = object
     ## shared memory картинка. использовать для получания пикселей с Drawable объекта
     shminfo: XShmSegmentInfo
@@ -100,7 +101,8 @@ when defined(linux):
     shminfo.readOnly = 1
     m_data = ArrayPtr[Color](cast[ptr Color](shminfo.shmaddr))
 
-    xcheck shmctl(shminfo.shmid, 0, nil)
+    #?
+    xcheckStatus shmctl(shminfo.shmid, 0, nil)
 
     ximage = d.XShmCreateImage(
       d.XDefaultVisual(d.XDefaultScreen), d.XDefaultDepth(d.XDefaultScreen).cuint,
@@ -111,7 +113,7 @@ when defined(linux):
     ximage.width = w.cint
     ximage.height = h.cint
 
-    xcheckStatus d.XShmAttach(shminfo.addr)
+    xcheck d.XShmAttach(shminfo.addr)
     xcheck d.XSync(0)
 
   proc `=destroy`*(a: var ShmImage) =
@@ -122,13 +124,7 @@ when defined(linux):
 
   proc size*(a: ShmImage): Vec2i = vec2 a.ximage.width.int, a.ximage.height.int
   
-  proc `[]`*(a: ShmImage; x, y: int): var Color =
-    a.m_data[y * a.size.x + x]
-  proc `[]=`*(a: ShmImage; x, y: int, c: Color) = discard
-
-  #! возникают прблеммы с компиляцией, если использовать концепт. надеюсь поправят, а пока так
-  proc `[]`*(a: ShmImage, i: Vec2i): var Color = a[i.x, i.y]
-  proc `[]=`*(a: ShmImage, i: Vec2i, v: Color) = a[i.x, i.y] = v
+  converter toPicture*(a: ShmImage): Picture = Picture(data: a.m_data, size: a.size)
 
   proc data*(a: ShmImage): ArrayPtr[Color] = a.m_data
   proc `data=`*(a: ShmImage, b: Drawable) =
@@ -154,14 +150,7 @@ when defined(linux):
       shminfo.addr, w.cuint, h.cuint, d.DefaultDepth(d.XDefaultScreen).cuint)
     doassert pixmap != 0
   
-  proc `[]`*(a: ShmPixmap; x, y: int): var Color =
-    a.data[y * a.size.x + x]
-  proc `[]=`*(a: ShmPixmap; x, y: int, c: Color) =
-    a.data[y * a.size.x + x] = c
-
-  #! возникают прблеммы с компиляцией, если использовать концепт. надеюсь поправят, а пока так
-  proc `[]`*(a: ShmPixmap, i: Vec2i): var Color = a[i.x, i.y]
-  proc `[]=`*(a: ShmPixmap, i: Vec2i, v: Color) = a[i.x, i.y] = v
+  converter toPicture*(a: ShmPixmap): Picture = Picture(data: a.data, size: a.size)
 
   proc `=destroy`*(a: var ShmPixmap) =
     xcheckStatus d.XShmDetach(a.shminfo.addr)

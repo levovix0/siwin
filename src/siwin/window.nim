@@ -1,15 +1,39 @@
+import times
 import with
 import color, image, geometry
 import libx11 as x
 
 type
+  MouseButton* = enum
+    left right middle forward backward
+  Mouse* = tuple
+    position: Vec2i
+    pressed: array[left..backward, bool]
+    
+  Cursor* {.pure.} = enum
+    arrow sizeAll hand sizeHorisontal sizeVertical arrowUp
+
   Window* = object
     m_data: ArrayPtr[Color]
     m_size: Vec2i
 
-    onRender*: proc(e: RenderEvent)
-    onResize*: proc(e: ResizeEvent)
-    onClose*: proc(e: CloseEvent)
+    onClose*:       proc(e: CloseEvent)
+    
+    onRender*:      proc(e: RenderEvent)
+    onResize*:      proc(e: ResizeEvent)
+    onWindowMove*:  proc(e: ResizeEvent)
+
+    mouse*: Mouse # состояние мыши
+    onMouseMove*:   proc(e: MouseMoveEvent)
+    onMouseLeave*:  proc(e: MouseMoveEvent)
+    onMouseEnter*:  proc(e: MouseMoveEvent)
+    onMouseDown*:   proc(e: MouseButtonEvent)
+    onMouseUp*:     proc(e: MouseButtonEvent)
+    onClick*:       proc(e: ClickEvent)
+    onDoubleClick*: proc(e: ClickEvent)
+    onScroll*:      proc(e: ScrollEvent)
+    
+    onFocus*:       proc(e: FocusEvent)
 
     when defined(linux):
       screen: cint
@@ -23,6 +47,7 @@ type
       xinMethod: x.XIM
 
       xcursor: x.Cursor
+      clicking: array[left..backward, bool]
 
       m_isOpen: bool
       m_hasFocus: bool
@@ -31,16 +56,34 @@ type
       waitForDisplay: bool
 
       m_pos: Vec2i
-    
-  Cursor* {.pure.} = enum
-    arrow sizeAll hand sizeHorisontal sizeVertical arrowUp
+
+  CloseEvent* = tuple
 
   RenderEvent* = tuple
     data: ArrayPtr[Color]
     size: Vec2i
   ResizeEvent* = tuple
     oldSize, size: Vec2i
-  CloseEvent* = tuple
+  WindowMoveEvent* = tuple
+    olsPositin, position: Vec2i
+
+  MouseMoveEvent* = tuple
+    mouse: Mouse
+    oldPosition, position: Vec2i
+  MouseButtonEvent* = tuple
+    mouse: Mouse
+    button: MouseButton
+    pressed: bool
+  ClickEvent* = tuple
+    mouse: Mouse
+    button: MouseButton
+    doubleClick: bool
+  ScrollEvent* = tuple
+    mouse: Mouse
+    delta: float
+
+  FocusEvent* = tuple
+    focused: bool
   # TODO
 
 when defined(linux):
@@ -145,7 +188,7 @@ when defined(linux):
     e.xclient.format       = 32
     e.xclient.data.l[0]    = x.atom(WM_DELETE_WINDOW).clong
     e.xclient.data.l[1]    = CurrentTime
-    xcheckStatus d.XSendEvent(xwin, 0, NoEventMask, e.addr)
+    xcheck d.XSendEvent(xwin, 0, NoEventMask, e.addr)
 
   proc position*(a: var Window): Vec2i = with a:
     let (_, x, y, _, _, _, _) = xwin.getGeometry()
@@ -194,9 +237,9 @@ when defined(linux):
     xicon = newPixmap(img, a)
 
     var mask = newImage(img.size)
-    for i in 0.vec2~~(img.size - 1):
+    for i in 0.vec2..<img.size:
       mask[i] = if img[i].a > 127: color(0, 0, 0) else: color(255, 255, 255)
-    xiconMask = newPixmap(mask.picture, a)
+    xiconMask = newPixmap(mask, a)
 
     var wmh = XAllocWMHints()
     wmh.flags = IconPixmapHint or IconMaskHint
@@ -223,11 +266,33 @@ when defined(linux):
   
   proc run*(a: var Window) = with a:
     # TODO
-    template push_event(a: Window, event, args) =
-      if a.event != nil: a.event(args)
+    template push_event(event, args) =
+      when args is tuple: 
+        if a.event != nil: a.event(args)
+      else:
+        if a.event != nil: a.event((args,))
     
     var ev: XEvent
+
+    template button: MouseButton =
+      case ev.xbutton.button
+      of 1: MouseButton.left
+      of 2: MouseButton.middle
+      of 3: MouseButton.right
+      of 8: MouseButton.backward
+      of 9: MouseButton.forward
+      else: MouseButton.left
+    template scrollDelta: float =
+      case ev.xbutton.button
+      of 4: -1
+      of 5: 1
+      else: 0
+    template isScroll: bool = ev.xbutton.button.int in 4..7
+
+    var lastClickTime: times.Time
+    
     while m_isOpen:
+
       proc checkEvent(_: PDisplay, event: PXEvent, userData: XPointer): XBool {.cdecl.} =
         return if event.xany.window == (x.Window)(cast[int](userData)): 1 else: 0
       while d.XCheckIfEvent(ev.addr, checkEvent, cast[XPointer](xwin)) == 1:
@@ -236,7 +301,7 @@ when defined(linux):
           if ev.xexpose.width != m_size.x or ev.xexpose.height != m_size.y:
             let osize = m_size
             a.updateGeometry()
-            a.push_event on_resize, (osize, m_size)
+            push_event onResize, (osize, m_size)
           display a
         of ClientMessage:
           if ev.xclient.data.l[0] == (clong)x.atom(WM_DELETE_WINDOW, false):
@@ -244,11 +309,62 @@ when defined(linux):
             m_isFullscreen   = false;
             m_hasFocus       = false;
             waitForDisplay   = false;
-            a.push_event onClose, ()
+            push_event onClose, ()
+          
+        of ConfigureNotify:
+          if ev.xconfigure.width != m_size.x or ev.xconfigure.height != m_size.y:
+            let osize = m_size
+            a.updateGeometry()
+            push_event on_resize, (osize, m_size)
+          if ev.xconfigure.x.int != m_pos.x or ev.xconfigure.y.int != m_pos.y:
+            let oldPos = m_pos
+            m_pos = vec2i (ev.xconfigure.x, ev.xconfigure.y)
+            push_event onWindowMove, (oldPos, m_pos)
+
+        of MotionNotify:
+          let oldPos = mouse.position
+          mouse.position = vec2i (ev.xmotion.x, ev.xmotion.y)
+          for v in clicking.mitems: v = false
+          push_event onMouseMove, (mouse, oldPos, mouse.position)
+
+        of ButtonPress:
+          if not isScroll:
+            mouse.pressed[button] = true
+            clicking[button] = true
+            push_event onMouseDown, (mouse, button, true)
+          elif scrollDelta != 0: push_event onScroll, (mouse, scrollDelta)
+        of ButtonRelease:
+          if not isScroll:
+            let nows = getTime()
+            mouse.pressed[button] = false
+            
+            if clicking[button]:
+              if (nows - lastClickTime).inMilliseconds < 200: push_event onDoubleClick, (mouse, button, true)
+              else: push_event onClick, (mouse, button, false)
+
+            mouse.pressed[button] = false
+            lastClickTime = nows
+            push_event onMouseUp, (mouse, button, false)
+
+        of LeaveNotify:
+          push_event onMouseLeave, (mouse, mouse.position, vec2i (ev.xcrossing.x, ev.xcrossing.y))
+        of EnterNotify:
+          push_event onMouseEnter, (mouse, mouse.position, vec2i (ev.xcrossing.x, ev.xcrossing.y))
+
+        of FocusIn:
+          m_hasFocus = true
+          if xinContext != nil: XSetICFocus xinContext
+          push_event onFocus, (true)
+        of FocusOut:
+          m_hasFocus = false
+          if xinContext != nil: XSetICFocus xinContext
+          push_event onFocus, (false)
+
         else: discard
+
       if waitForDisplay:
         waitForDisplay = false
-        a.push_event on_render, (m_data, m_size)
+        push_event on_render, (m_data, m_size)
         a.displayImpl()
 
 else:
@@ -258,17 +374,4 @@ proc newWindow*(w: int = 1280, h: int = 720, title: string = ""): Window =
   result = newWindowImpl(w, h)
   result.title = title
 
-proc `icon=`*(a: var Window, i: SomeConstImage) = a.icon = i.picture
-
-proc picture*(a: var Window): Picture = Picture(size: a.m_size, data: a.m_data)
-
-proc `[]`*(a: Window): ArrayPtr[Color] =
-  a.m_data
-proc `[]`*(a: Window; x, y: int): Color =
-  a.m_data[y * a.m_size.x + x]
-proc `[]=`*(a: var Window; x, y: int, c: Color) =
-  a.m_data[y * a.m_size.x + x] = c
-
-#! возникают прблеммы с компиляцией, если использовать концепт. надеюсь поправят, а пока так
-proc `[]`*(a: Window, i: Vec2i): Color = a[i.x, i.y]
-proc `[]=`*(a: var Window, i: Vec2i, v: Color) = a[i.x, i.y] = v
+converter toPicture*(a: Window): Picture = Picture(size: a.m_size, data: a.m_data)
