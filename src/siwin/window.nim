@@ -1,4 +1,4 @@
-import times
+import times, os
 import with
 import color, image, geometry
 import libx11 as x
@@ -9,6 +9,17 @@ type
   Mouse* = tuple
     position: Vec2i
     pressed: array[left..backward, bool]
+  Key* {.pure.} = enum
+    unknown = -1
+    a = 0, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r, s, t, u, v, w, x, y, z,
+    n0, n1, n2, n3, n4, n5, n6, n7, n8, n9,
+    escape, lcontrol, lshift, lalt, lsystem, rcontrol, rshift, ralt, rsystem, menu, lbracket, rbracket,
+    semicolon, comma, dot, quote, slash, backslash, tilde, equal, minus, space, enter, backspace, tab,
+    pageUp, pageDown, End, home, insert, del, add, subtract, multiply, divide, left, right, up, down,
+    numpad0, numpad1, numpad2, numpad3, numpad4, numpad5, numpad6, numpad7, numpad8, numpad9,
+    f1, f2, f3, f4, f5, f6, f7, f8, f9, f10, f11, f12, f13, f14, f15, pause
+  Keyboard* = tuple
+    pressed: array[a..pause, bool]
     
   Cursor* {.pure.} = enum
     arrow sizeAll hand sizeHorisontal sizeVertical arrowUp
@@ -20,6 +31,8 @@ type
     onClose*:       proc(e: CloseEvent)
     
     onRender*:      proc(e: RenderEvent)
+    onFocus*:       proc(e: FocusEvent)
+    onTick*:        proc(e: TickEvent)
     onResize*:      proc(e: ResizeEvent)
     onWindowMove*:  proc(e: ResizeEvent)
 
@@ -32,8 +45,11 @@ type
     onClick*:       proc(e: ClickEvent)
     onDoubleClick*: proc(e: ClickEvent)
     onScroll*:      proc(e: ScrollEvent)
-    
-    onFocus*:       proc(e: FocusEvent)
+
+    keyboard*: Keyboard # состояние клавиатуры
+    onKeydown*:     proc(e: KeyEvent)
+    onKeyup*:       proc(e: KeyEvent)
+    onTextEnter*:   proc(e: TextEnterEvent)
 
     when defined(linux):
       screen: cint
@@ -84,7 +100,20 @@ type
 
   FocusEvent* = tuple
     focused: bool
-  # TODO
+
+  TickEvent* = tuple
+    mouse: Mouse
+    keyboard: Keyboard
+    deltaTime: Duration
+
+  KeyEvent* = tuple
+    keyboard: Keyboard
+    key: Key
+    pressed: bool
+    alt, control, shift, system: bool
+  TextEnterEvent* = tuple
+    keyboard: Keyboard
+    text: string # строка, т.к. введённый символ может быть закодирован в unicode
 
 when defined(linux):
   template d: x.PDisplay = x.display
@@ -189,6 +218,112 @@ when defined(linux):
     e.xclient.data.l[0]    = x.atom(WM_DELETE_WINDOW).clong
     e.xclient.data.l[1]    = CurrentTime
     xcheck d.XSendEvent(xwin, 0, NoEventMask, e.addr)
+  
+  proc xkeyToKey(sym: KeySym): Key =
+    case sym
+    of XK_Shift_L:      Key.lshift
+    of XK_Shift_R:      Key.rshift
+    of XK_Control_L:    Key.lcontrol
+    of XK_Control_R:    Key.rcontrol
+    of XK_Alt_L:        Key.lalt
+    of XK_Alt_R:        Key.ralt
+    of XK_Super_L:      Key.lsystem
+    of XK_Super_R:      Key.rsystem
+    of XK_Menu:         Key.menu
+    of XK_Escape:       Key.escape
+    of XK_semicolon:    Key.semicolon
+    of XK_slash:        Key.slash
+    of XK_equal:        Key.equal
+    of XK_minus:        Key.minus
+    of XK_bracketleft:  Key.lbracket
+    of XK_bracketright: Key.rbracket
+    of XK_comma:        Key.comma
+    of XK_period:       Key.dot
+    of XK_apostrophe:   Key.quote
+    of XK_backslash:    Key.backslash
+    of XK_grave:        Key.tilde
+    of XK_space:        Key.space
+    of XK_Return:       Key.enter
+    of XK_KP_Enter:     Key.enter
+    of XK_BackSpace:    Key.backspace
+    of XK_Tab:          Key.tab
+    of XK_Prior:        Key.page_up
+    of XK_Next:         Key.page_down
+    of XK_End:          Key.End
+    of XK_Home:         Key.home
+    of XK_Insert:       Key.insert
+    of XK_Delete:       Key.del
+    of XK_KP_Add:       Key.add
+    of XK_KP_Subtract:  Key.subtract
+    of XK_KP_Multiply:  Key.multiply
+    of XK_KP_Divide:    Key.divide
+    of XK_Pause:        Key.pause
+    of XK_F1:           Key.f1
+    of XK_F2:           Key.f2
+    of XK_F3:           Key.f3
+    of XK_F4:           Key.f4
+    of XK_F5:           Key.f5
+    of XK_F6:           Key.f6
+    of XK_F7:           Key.f7
+    of XK_F8:           Key.f8
+    of XK_F9:           Key.f9
+    of XK_F10:          Key.f10
+    of XK_F11:          Key.f11
+    of XK_F12:          Key.f12
+    of XK_F13:          Key.f13
+    of XK_F14:          Key.f14
+    of XK_F15:          Key.f15
+    of XK_Left:         Key.left
+    of XK_Right:        Key.right
+    of XK_Up:           Key.up
+    of XK_Down:         Key.down
+    of XK_KP_Insert:    Key.numpad0
+    of XK_KP_End:       Key.numpad1
+    of XK_KP_Down:      Key.numpad2
+    of XK_KP_Page_Down: Key.numpad3
+    of XK_KP_Left:      Key.numpad4
+    of XK_KP_Begin:     Key.numpad5
+    of XK_KP_Right:     Key.numpad6
+    of XK_KP_Home:      Key.numpad7
+    of XK_KP_Up:        Key.numpad8
+    of XK_KP_Page_Up:   Key.numpad9
+    of XK_a:            Key.a
+    of XK_b:            Key.b
+    of XK_c:            Key.c
+    of XK_d:            Key.d
+    of XK_e:            Key.r
+    of XK_f:            Key.f
+    of XK_g:            Key.g
+    of XK_h:            Key.h
+    of XK_i:            Key.i
+    of XK_j:            Key.j
+    of XK_k:            Key.k
+    of XK_l:            Key.l
+    of XK_m:            Key.m
+    of XK_n:            Key.n
+    of XK_o:            Key.o
+    of XK_p:            Key.p
+    of XK_q:            Key.q
+    of XK_r:            Key.r
+    of XK_s:            Key.s
+    of XK_t:            Key.t
+    of XK_u:            Key.u
+    of XK_v:            Key.v
+    of XK_w:            Key.w
+    of XK_x:            Key.x
+    of XK_y:            Key.y
+    of XK_z:            Key.z
+    of XK_0:            Key.n0
+    of XK_1:            Key.n1
+    of XK_2:            Key.n2
+    of XK_3:            Key.n3
+    of XK_4:            Key.n4
+    of XK_5:            Key.n5
+    of XK_6:            Key.n6
+    of XK_7:            Key.n7
+    of XK_8:            Key.n8
+    of XK_9:            Key.n9
+    else:               Key.unknown
 
   proc position*(a: var Window): Vec2i = with a:
     let (_, x, y, _, _, _, _) = xwin.getGeometry()
@@ -265,7 +400,6 @@ when defined(linux):
     xcheckStatus d.XPutImage(xwin, gc, ximg, 0, 0, 0, 0, m_size.x.cuint, m_size.y.cuint)
   
   proc run*(a: var Window) = with a:
-    # TODO
     template push_event(event, args) =
       when args is tuple: 
         if a.event != nil: a.event(args)
@@ -290,12 +424,16 @@ when defined(linux):
     template isScroll: bool = ev.xbutton.button.int in 4..7
 
     var lastClickTime: times.Time
+    var lastTickTime = getTime()
     
     while m_isOpen:
+      var catched = false
 
       proc checkEvent(_: PDisplay, event: PXEvent, userData: XPointer): XBool {.cdecl.} =
         return if event.xany.window == (x.Window)(cast[int](userData)): 1 else: 0
       while d.XCheckIfEvent(ev.addr, checkEvent, cast[XPointer](xwin)) == 1:
+        catched = true
+
         case ev.theType
         of Expose:
           if ev.xexpose.width != m_size.x or ev.xexpose.height != m_size.y:
@@ -359,13 +497,56 @@ when defined(linux):
           m_hasFocus = false
           if xinContext != nil: XSetICFocus xinContext
           push_event onFocus, (false)
+        
+        of KeyPress:
+          var key = Key.unknown
+          block:
+            var i = 0
+            while i < 4 and key == Key.unknown:
+              key = xkeyToKey(XLookupKeysym(ev.xkey.addr, i.cint))
+              inc i
+          if key != Key.unknown:
+            keyboard.pressed[key] = true
+            template mk(a): bool = (ev.xkey.state and a).bool
+            push_event onKeydown, (keyboard, key, true, mk Mod1Mask, mk ControlMask, mk ShiftMask, mk Mod4Mask)
+          
+          if xinContext != nil:
+            var status: Status
+            var buffer: array[16, char]
+            let length = Xutf8LookupString(xinContext, ev.xkey.addr, cast[cstring](buffer.addr), buffer.sizeof.cint, nil, status.addr)
+
+            proc toString(str: openArray[char]): string =
+              result = newStringOfCap(len(str))
+              for ch in str:
+                result.add ch
+
+            if length > 0:
+              push_event onTextEnter, (keyboard, buffer.toString())
+        
+        of KeyRelease:
+          var key = Key.unknown
+          block:
+            var i = 0
+            while i < 4 and key == Key.unknown:
+              key = xkeyToKey(XLookupKeysym(ev.xkey.addr, i.cint))
+              inc i
+          if key != Key.unknown:
+            keyboard.pressed[key] = false
+            template mk(a): bool = (ev.xkey.state and a).bool
+            push_event onKeyup, (keyboard, key, false, mk Mod1Mask, mk ControlMask, mk ShiftMask, mk Mod4Mask)
 
         else: discard
+
+      let nows = getTime()
+      push_event onTick, (mouse, keyboard, nows - lastTickTime)
+      lastTickTime = nows
 
       if waitForDisplay:
         waitForDisplay = false
         push_event on_render, (m_data, m_size)
         a.displayImpl()
+
+      if not catched: sleep(2) # не так быстро!
 
 else:
   proc newWindowImpl(w, h: int): Window = new result

@@ -1,9 +1,9 @@
 when defined(linux):
   import os, strutils, strformat, tables, macros
-  import x11/[xlib, x, xutil, xatom, xshm, cursorfont]
+  import x11/[xlib, x, xutil, xatom, xshm, cursorfont, keysym]
   import with
   import image, color, geometry
-  export xlib, x, xutil, xatom, xshm, cursorfont
+  export xlib, x, xutil, xatom, xshm, cursorfont, keysym
 
   type X11Error* = object of OSError
 

@@ -19,6 +19,17 @@ test "window":
   win.onDoubleClick = proc(e: ClickEvent) =
     close win
   
+  var x = 0
+  win.onTick = proc(e: TickEvent) =
+    inc x
+  
+  win.onKeyup = proc(e: KeyEvent) =
+    if e.key == Key.escape:
+      close win
+  
+  win.onTextEnter = proc(e: TextEnterEvent) =
+    echo e.text
+  
   var icon = newImage(32, 32)
   let r = render icon
   r.clear color 0
@@ -26,4 +37,5 @@ test "window":
   win.icon = icon
   
   run win
+  echo x
   check a == true
