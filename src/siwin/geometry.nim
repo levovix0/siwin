@@ -47,15 +47,18 @@ proc `//=`*[T: SomeInteger, B: SomeNumber](a: var Vec2[T], b: Vec2[B]) =
   a = a // b
 
 proc `<`*[T](a, b: Vec2[T]): bool  = a.x < b.x and a.y < b.y
-proc `!<`*[T](a, b: Vec2[T]): bool = a.x < b.x or  a.y < b.y
 proc `>`*[T](a, b: Vec2[T]): bool  = a.x > b.x and a.y > b.y
-proc `!>`*[T](a, b: Vec2[T]): bool = a.x > b.x or  a.y > b.y
 proc `<=`*[T](a, b: Vec2[T]): bool  = a.x <= b.x and a.y <= b.y
-proc `!<=`*[T](a, b: Vec2[T]): bool = a.x <= b.x or  a.y <= b.y
 proc `>=`*[T](a, b: Vec2[T]): bool  = a.x >= b.x and a.y >= b.y
-proc `!>=`*[T](a, b: Vec2[T]): bool = a.x >= b.x or  a.y >= b.y
+
+# не больше|меньше (или равно)
+proc `!<`*[T](a, b: Vec2[T]): bool = a.x > b.x or a.y > b.y
+proc `!>`*[T](a, b: Vec2[T]): bool = a.x < b.x or a.y < b.y
+proc `!<=`*[T](a, b: Vec2[T]): bool = a.x >= b.x or a.y >= b.y
+proc `!>=`*[T](a, b: Vec2[T]): bool = a.x <= b.x or a.y <= b.y
 
 proc S*[T](a: Vec2[T]): auto = a.x * a.y
+proc P*[T](a: Vec2[T]): auto = (a.x + a.y) * 2
 
 proc min*[T](a, b: Vec2[T]): Vec2[T] = (x: min(a.x, b.x), y: min(a.y, b.y))
 proc max*[T](a, b: Vec2[T]): Vec2[T] = (x: max(a.x, b.x), y: max(a.y, b.y))
@@ -67,6 +70,8 @@ iterator items*[T](interval: Interval[T]): T =
 proc rect*[T](a, b: Vec2[T]): Rect2[T] = (a: a, b: b)
 proc rect*[T](a, size: Vec2[T]): Rect2[T] = (a: a, b: a + size)
 proc rect*[T](x1, y1, x2, y2: T): Rect2[T] = (a: (x: x1, y: y1), b: (x: x2, y: y2))
+proc rect2i*[T](a: Rect2[T]): Rect2i = (a: a.a.vec2i, b: a.b.vec2i)
+proc rect2f*[T](a: Rect2[T]): Rect2f = (a: a.a.vec2f, b: a.b.vec2f)
 
 proc interval*[T](a, b: T): Interval[T] = (a: a, b: b)
 proc `~~`*[T](a, b: T): Interval[T] = (a: a, b: b)
@@ -84,11 +89,19 @@ proc h*[T](a: Rect2[T]): auto = a.b.y - a.a.y
 proc `w=`*[T](a: var Rect2[T], v: T): auto = a.b.x = a.a.x + v
 proc `h=`*[T](a: var Rect2[T], v: T): auto = a.b.y = a.a.y + v
 
+proc X*[T](a: Rect2[T]): Interval[T] = (a: a.a.x, b: a.b.x)
+proc Y*[T](a: Rect2[T]): Interval[T] = (a: a.a.y, b: a.b.y)
+proc `X=`*[T](a: var Rect2[T], v: Interval[T]) = a.a.x = v.a; a.b.x = v.b
+proc `Y=`*[T](a: var Rect2[T], v: Interval[T]) = a.a.y = v.a; a.b.y = v.b
+
 proc `..`*[T](a, b: Vec2[T]): Rect2[T] = (a: a, b: b)
 proc `~~<`*[T: SomeNumber](a, b: Vec2[T]): Rect2[T] = (a: a, b: b - 1)
 proc `>~~`*[T: SomeNumber](a, b: Vec2[T]): Rect2[T] = (a: a + 1, b: b)
 proc `..<`*[T: SomeNumber](a, b: Vec2[T]): Rect2[T] = a~~<b
 proc `>..`*[T: SomeNumber](a, b: Vec2[T]): Rect2[T] = a>~~b
+
+proc min*[T](a: Interval[T]): T = min(a.a, a.b)
+proc max*[T](a: Interval[T]): T = max(a.a, a.b)
 
 iterator `..`*[T](a, b: Vec2[T]): Vec2[T] =
   for v in (a~~b):
@@ -128,11 +141,6 @@ proc `:&`*[T](a: T, b: Vec2[T]): Vec2[T] = (x: max(a, b.x), y: max(a, b.y))
 proc `&`*[T](a, b: Interval[T]): Interval[T] =
   result.a = max(a.a, b.a)
   result.b = min(a.b, b.b)
-proc `&`*[T](a, b: Rect2[T]): Rect2[T] =
-  result.a.x = max(a.a.x, b.a.x)
-  result.a.y = max(a.a.y, b.a.y)
-  result.b.x = min(a.b.x, b.b.x)
-  result.b.y = min(a.b.y, b.b.y)
 proc `&:`*[T](a: Rect2[T], b: Vec2[T]): Rect2[T] =
   result = a
   result.b.x = min(a.b.x, b.x)
@@ -146,5 +154,9 @@ template `&=`*[T](a: var Interval[T], b: Interval[T]) = a = a & b
 template `&:=`*(a, b: typed) = a = a &: b
 template `:&=`*(a, b: typed) = a = a :& b
 
+proc contains*[T](b: Interval[T], a: T): bool =
+  a in b.a..b.b
 proc contains*[T](b: Rect2[T], a: Vec2[T]): bool =
   (a.x in b.a.x..b.b.x) and (a.y in b.a.y..b.b.y)
+proc contains*[T](b: Rect2[T], a: Rect2[T]): bool =
+  a.a in b and a.b in b

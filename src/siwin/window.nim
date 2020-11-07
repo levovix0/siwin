@@ -115,6 +115,10 @@ type
     keyboard: Keyboard
     text: string # строка, т.к. введённый символ может быть закодирован в unicode
 
+  Screen* = object
+
+var screen*: Screen
+
 when defined(linux):
   template d: x.PDisplay = x.display
 
@@ -548,11 +552,21 @@ when defined(linux):
 
       if not catched: sleep(2) # не так быстро!
 
+  #* Screen
+  proc size*(a: Screen): Vec2i =
+    connect()
+    let screen = d.XScreenOfDisplay(d.XDefaultScreen)
+    result = vec2i (screen.width, screen.height)
+    disconnect()
+
 else:
   proc newWindowImpl(w, h: int): Window = new result
 
 proc newWindow*(w: int = 1280, h: int = 720, title: string = ""): Window =
   result = newWindowImpl(w, h)
   result.title = title
+
+template w*(a: Screen): int = a.size.x
+template h*(a: Screen): int = a.size.y
 
 converter toPicture*(a: Window): Picture = Picture(size: a.m_size, data: a.m_data)
