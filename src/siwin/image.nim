@@ -1,3 +1,4 @@
+from imageman as imgm import nil
 import color, geometry
 
 type
@@ -33,6 +34,9 @@ iterator items*(a: Picture): var Color =
   for v in a.data.items(a.size.S):
     yield v
 
+proc w*(a: Picture): auto = a.size.x
+proc h*(a: Picture): auto = a.size.y
+
 #------------------------------------------------------------------------------
 
 converter toPicture*(a: Image): Picture = a.picture
@@ -45,3 +49,18 @@ proc newImage*(xy: Vec2i): Image = newImage(xy.x, xy.y)
 
 proc size*(a: Image): auto = a.picture.size
 proc data*(a: Image): auto = a.picture.data
+
+converter toColor*(a: imgm.ColorRGBAU): Color =
+  color imgm.r(a), imgm.g(a), imgm.b(a), imgm.a(a)
+converter toColorRGBAU*(a: Color): imgm.ColorRGBAU =
+  imgm.ColorRGBAU [a.r, a.g, a.b, a.a]
+
+proc toImage*(a: imgm.Image[imgm.ColorRGBAU]): Image =
+  result = newImage(a.width, a.height)
+  for i in 0..result.size.S:
+    result.data[i] = a.data[i].toColor
+
+proc toImagemanImage*(a: Image): imgm.Image[imgm.ColorRGBAU] =
+  result = imgm.initImage[imgm.ColorRGBAU](a.w, a.h)
+  for i in 0..a.size.S:
+    result.data[i] = a.data[i].toColorRGBAU

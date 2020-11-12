@@ -25,8 +25,10 @@ test "window":
     var r = render win
     r.clear color "202020"
     r.rect (200, 100), (300, 250), color "FF4040"
+    r.rect (-100, 100), (300, 250), color "FF4040"
     r.fillRect (100, 50), (400, 200), color "cc40FF40"
-    r.linef (10, 10), (pos.x, pos.y), color "4040FF"
+    r.line (10, 10), (pos.x, pos.y), color "4040FF"
+    r.fillTriangle ((100, 100), (150, 200), (80, 250)), color "FF40FF"
   
   win.onDoubleClick = proc(e: ClickEvent) =
     close win

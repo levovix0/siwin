@@ -1,3 +1,5 @@
+import math
+
 type
   Vec2*[T] = tuple
     x, y: T
@@ -10,6 +12,10 @@ type
   Rect2*[T] = Interval[Vec2[T]]
   Rect2i* = Rect2[int]
   Rect2f* = Rect2[float]
+
+  Triangle*[T] = (Vec2[T], Vec2[T], Vec2[T])
+  Trianglei* = Triangle[int]
+  Trianglef* = Triangle[float]
 
 proc vec2*[T](x: T, y: T): Vec2[T] = (x: x, y: y)
 proc vec2*[T: SomeNumber](xy: T): Vec2[T] = (x: xy, y: xy)
@@ -59,6 +65,7 @@ proc `!>=`*[T](a, b: Vec2[T]): bool = a.x <= b.x or a.y <= b.y
 
 proc S*[T](a: Vec2[T]): auto = a.x * a.y
 proc P*[T](a: Vec2[T]): auto = (a.x + a.y) * 2
+proc L*[T](a: Vec2[T]): auto = sqrt(a.x ^ 2, a.y ^ 2)
 
 proc min*[T](a, b: Vec2[T]): Vec2[T] = (x: min(a.x, b.x), y: min(a.y, b.y))
 proc max*[T](a, b: Vec2[T]): Vec2[T] = (x: max(a.x, b.x), y: max(a.y, b.y))
@@ -80,14 +87,14 @@ proc `>~~`*[T: SomeNumber](a, b: T): Interval[T] = (a: a + 1, b: b)
 
 proc size*[T](a: Interval[T]): auto = a.b - a.a
 proc position*[T](a: Rect2[T]): auto = a.a
-proc x*[T](a: Rect2[T]): auto = a.a.x
-proc y*[T](a: Rect2[T]): auto = a.a.y
-proc `x=`*[T](a: var Rect2[T], v: T): auto = a.a.x = v
-proc `y=`*[T](a: var Rect2[T], v: T): auto = a.a.y = v
-proc w*[T](a: Rect2[T]): auto = a.b.x - a.a.x
-proc h*[T](a: Rect2[T]): auto = a.b.y - a.a.y
-proc `w=`*[T](a: var Rect2[T], v: T): auto = a.b.x = a.a.x + v
-proc `h=`*[T](a: var Rect2[T], v: T): auto = a.b.y = a.a.y + v
+proc x*[T](a: Rect2[T]): T = a.a.x
+proc y*[T](a: Rect2[T]): T = a.a.y
+proc `x=`*[T](a: var Rect2[T], v: T) = a.a.x = v
+proc `y=`*[T](a: var Rect2[T], v: T) = a.a.y = v
+proc w*[T](a: Rect2[T]): T = a.b.x - a.a.x
+proc h*[T](a: Rect2[T]): T = a.b.y - a.a.y
+proc `w=`*[T](a: var Rect2[T], v: T) = a.b.x = a.a.x + v
+proc `h=`*[T](a: var Rect2[T], v: T) = a.b.y = a.a.y + v
 
 proc X*[T](a: Rect2[T]): Interval[T] = (a: a.a.x, b: a.b.x)
 proc Y*[T](a: Rect2[T]): Interval[T] = (a: a.a.y, b: a.b.y)
@@ -160,3 +167,82 @@ proc contains*[T](b: Rect2[T], a: Vec2[T]): bool =
   (a.x in b.a.x..b.b.x) and (a.y in b.a.y..b.b.y)
 proc contains*[T](b: Rect2[T], a: Rect2[T]): bool =
   a.a in b and a.b in b
+
+
+proc P*[T](a: Rect2[T]): T = (a.b - a.a).P
+  ## периметр прямоугольника
+
+proc S*[T](a: Rect2[T]): T = (a.b - a.a).S
+  ## площадь прямоугольника
+
+
+proc cutLine*[T](l: Rect2[T], a: Rect2[T]): Rect2[T] =
+  result = l
+  if result.w < 0: swap result.a, result.b
+  let dx = l.w / l.h # x = y * dx
+  let dy = l.h / l.w # y = x * dy
+  if result.x < a.x:
+    result.y = result.y + ((a.x - result.x).float * dy).round.int
+    result.x = a.x
+  if result.y < a.y:
+    result.x = result.x + ((a.y - result.y).float * dx).round.int
+    result.y = a.y
+  if result.b.x > a.b.x:
+    result.b.y = result.b.y + ((a.b.x - result.b.x).float * dy).round.int
+    result.b.x = a.b.x
+  if result.b.y > a.b.y:
+    result.b.x = result.b.x + ((a.b.y - result.b.y).float * dx).round.int
+    result.b.y = a.b.y
+  if result.b.y < a.y:
+    result.b.x = result.b.x + ((a.y - result.b.y).float * dx).round.int
+    result.b.y = a.y
+
+iterator linePixels*[T](a: Rect2[T]): Vec2[T] =
+  let dx = a.w / a.h # x = y * dx
+  let dy = a.h / a.w # y = x * dy
+  if abs(dx) >= abs(dy):
+    for i in 0..a.w:
+      yield (a.x + i, a.y + (i.float * dy).round.int)
+  else:
+    var a = a
+    if a.h < 0: swap a.a, a.b
+    for i in 0..a.h:
+      yield (a.x + (i.float * dx).round.int, a.y + i)
+
+proc P*[T](a: Triangle[T]): T = a[0] + a[1] + a[2]
+  ## периметр треугольника
+
+proc S*[T](a: Triangle[T]): T =
+  ## площадь треугольника
+  abs((vec2(a[1].x, a[2].y) - a[0]).S - (vec2(a[2].x, a[1].y) - a[0]).S)
+
+proc rect*[T](a: Triangle[T]): Rect2[T] =
+  ## габариты треугольника
+  (a: min(a[0], min(a[1], a[2])), b: max(a[0], max(a[1], a[2])))
+
+# proc contains*(b: Trianglef, a: Vec2f): bool =
+#   proc s(a: Trianglef): float =
+#     (vec2(a[1].x, a[2].y) - a[0]).S - (vec2(a[2].x, a[1].y) - a[0]).S
+#   let d1 = (a, b[0], b[1]).s
+#   let d2 = (a, b[1], b[2]).s
+#   let d3 = (a, b[2], b[0]).s
+
+#   return not ((d1 < 0 or d2 < 0 or d3 < 0) and (d1 > 0 or d2 > 0 or d3 > 0))
+
+proc contains*[T](x: Triangle[T], s: Vec2[T]): bool =
+  ## находится ли точка внутри треугольника
+  template a: auto = x[0]
+  template b: auto = x[1]
+  template c: auto = x[2]
+
+  let sa = s - a
+
+  let s_ab = (b.x-a.x)*sa.y - (b.y-a.y)*sa.x > 0
+
+  if (c.x-a.x)*sa.y - (c.y-a.y)*sa.x > 0 == s_ab: false
+  else: (c.x-b.x)*(s.y-b.y) - (c.y-b.y)*(s.x-b.x) > 0 == s_ab
+
+iterator items*[T](a: Triangle[T]): Vec2[T] =
+  for i in rect a:
+    if i in a:
+      yield i

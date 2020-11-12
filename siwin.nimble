@@ -11,3 +11,5 @@ when defined(windows):
   requires "winim"
 else:
   requires "x11"
+
+requires "imageman"
