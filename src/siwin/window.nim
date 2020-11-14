@@ -1,14 +1,14 @@
 import times, os
 import with
-import color, image, geometry
+import image
 import libx11 as x
 
 type
-  MouseButton* = enum
+  MouseButton* {.pure.} = enum
     left right middle forward backward
   Mouse* = tuple
-    position: Vec2i
-    pressed: array[left..backward, bool]
+    position: tuple[x, y: int]
+    pressed: array[MouseButton.left..MouseButton.backward, bool]
   Key* {.pure.} = enum
     unknown = -1
     a = 0, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r, s, t, u, v, w, x, y, z,
@@ -19,14 +19,14 @@ type
     numpad0, numpad1, numpad2, numpad3, numpad4, numpad5, numpad6, numpad7, numpad8, numpad9,
     f1, f2, f3, f4, f5, f6, f7, f8, f9, f10, f11, f12, f13, f14, f15, pause
   Keyboard* = tuple
-    pressed: array[a..pause, bool]
+    pressed: array[Key.a..Key.pause, bool]
     
   Cursor* {.pure.} = enum
     arrow sizeAll hand sizeHorisontal sizeVertical arrowUp
 
   Window* = object
     m_data: ArrayPtr[Color]
-    m_size: Vec2i
+    m_size: tuple[x, y: int]
 
     onClose*:       proc(e: CloseEvent)
     
@@ -63,7 +63,7 @@ type
       xinMethod: x.XIM
 
       xcursor: x.Cursor
-      clicking: array[left..backward, bool]
+      clicking: array[MouseButton.left..MouseButton.backward, bool]
 
       m_isOpen: bool
       m_hasFocus: bool
@@ -71,21 +71,21 @@ type
 
       waitForDisplay: bool
 
-      m_pos: Vec2i
+      m_pos: tuple[x, y: int]
 
   CloseEvent* = tuple
 
   RenderEvent* = tuple
     data: ArrayPtr[Color]
-    size: Vec2i
+    size: tuple[x, y: int]
   ResizeEvent* = tuple
-    oldSize, size: Vec2i
+    oldSize, size: tuple[x, y: int]
   WindowMoveEvent* = tuple
-    olsPositin, position: Vec2i
+    olsPositin, position: tuple[x, y: int]
 
   MouseMoveEvent* = tuple
     mouse: Mouse
-    oldPosition, position: Vec2i
+    oldPosition, position: tuple[x, y: int]
   MouseButtonEvent* = tuple
     mouse: Mouse
     button: MouseButton
@@ -329,15 +329,15 @@ when defined(linux):
     of XK_9:            Key.n9
     else:               Key.unknown
 
-  proc position*(a: var Window): Vec2i = with a:
+  proc position*(a: var Window): tuple[x, y: int] = with a:
     let (_, x, y, _, _, _, _) = xwin.getGeometry()
     m_pos = (x.int, y.int)
     return m_pos
-  proc `position=`*(a: var Window, p: Vec2i) = with a:
+  proc `position=`*(a: var Window, p: tuple[x, y: int]) = with a:
     xcheck d.XMoveWindow(xwin, p.x.cint, p.y.cint)
     m_pos = p
-  proc size*(a: Window): Vec2i = a.m_size
-  proc `size=`*(a: var Window, size: Vec2i) = with a:
+  proc size*(a: Window): tuple[x, y: int] = a.m_size
+  proc `size=`*(a: var Window, size: tuple[x, y: int]) = with a:
     xcheck d.XResizeWindow(xwin, size.x.cuint, size.y.cuint)
     a.updateGeometry()
 
@@ -375,9 +375,9 @@ when defined(linux):
 
     xicon = newPixmap(img, a)
 
-    var mask = newImage(img.size)
-    for i in 0.vec2..<img.size:
-      mask[i] = if img[i].a > 127: color(0, 0, 0) else: color(255, 255, 255)
+    var mask = newImage(img.size.x, img.size.y)
+    for i in 0..<(img.size.x * img.size.y):
+      mask.data[i] = if img.data[i].a > 127: color(0, 0, 0) else: color(255, 255, 255)
     xiconMask = newPixmap(mask, a)
 
     var wmh = XAllocWMHints()
@@ -460,12 +460,12 @@ when defined(linux):
             push_event on_resize, (osize, m_size)
           if ev.xconfigure.x.int != m_pos.x or ev.xconfigure.y.int != m_pos.y:
             let oldPos = m_pos
-            m_pos = vec2i (ev.xconfigure.x, ev.xconfigure.y)
+            m_pos = (ev.xconfigure.x.int, ev.xconfigure.y.int)
             push_event onWindowMove, (oldPos, m_pos)
 
         of MotionNotify:
           let oldPos = mouse.position
-          mouse.position = vec2i (ev.xmotion.x, ev.xmotion.y)
+          mouse.position = (ev.xmotion.x.int, ev.xmotion.y.int)
           for v in clicking.mitems: v = false
           push_event onMouseMove, (mouse, oldPos, mouse.position)
 
@@ -489,9 +489,9 @@ when defined(linux):
             push_event onMouseUp, (mouse, button, false)
 
         of LeaveNotify:
-          push_event onMouseLeave, (mouse, mouse.position, vec2i (ev.xcrossing.x, ev.xcrossing.y))
+          push_event onMouseLeave, (mouse, mouse.position, (ev.xcrossing.x.int, ev.xcrossing.y.int))
         of EnterNotify:
-          push_event onMouseEnter, (mouse, mouse.position, vec2i (ev.xcrossing.x, ev.xcrossing.y))
+          push_event onMouseEnter, (mouse, mouse.position, (ev.xcrossing.x.int, ev.xcrossing.y.int))
 
         of FocusIn:
           m_hasFocus = true
@@ -553,14 +553,16 @@ when defined(linux):
       if not catched: sleep(2) # не так быстро!
 
   #* Screen
-  proc size*(a: Screen): Vec2i =
+  proc size*(a: Screen): tuple[x, y: int] =
     connect()
     let screen = d.XScreenOfDisplay(d.XDefaultScreen)
-    result = vec2i (screen.width, screen.height)
+    result = (screen.width.int, screen.height.int)
     disconnect()
 
+elif defined(windows):
+  {.error: "OS Windows is not supported".}
 else:
-  proc newWindowImpl(w, h: int): Window = new result
+  {.error: "current OS is not supported".}
 
 proc newWindow*(w: int = 1280, h: int = 720, title: string = ""): Window =
   result = newWindowImpl(w, h)
