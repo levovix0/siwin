@@ -2,8 +2,6 @@ import siwin
 import unittest
 
 test "window":
-  when defined(boundChecks):
-    echo "xxxxx"
   var win = newWindow(title="Окошко")
   
   var a = false
@@ -42,7 +40,8 @@ test "window":
   
   var icon = newImage(32, 32)
   let r = render icon
-  r.clear color(32, 32, 32)
+  r.clear color(0xFFFFFF00)
+  # r.clear color(255, 255, 32)
   win.icon = icon
   
   run win

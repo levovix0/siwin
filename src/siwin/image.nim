@@ -12,6 +12,8 @@ proc toUint32*(c: Color): uint32 =
   cast[uint32](c)
 proc color*(a: uint32): Color =
   cast[Color](a)
+proc color*(a: int64): Color =
+  cast[Color](a)
 
 proc color*(r, g, b: SomeInteger, a: SomeInteger = 255): Color =
   (b: b.uint8, g: g.uint8, r: r.uint8, a: a.uint8)
