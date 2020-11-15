@@ -40,7 +40,8 @@ test "window":
   
   var icon = newImage(32, 32)
   let r = render icon
-  r.clear color(0xFFFFFF00)
+  r.clear color"FFFF20"
+  # r.clear color(0xFFFFFF20'u32)
   # r.clear color(255, 255, 32)
   win.icon = icon
   

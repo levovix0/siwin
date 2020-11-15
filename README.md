@@ -10,7 +10,7 @@ win.onKeyup = proc(e: KeyEvent) =
 
 win.onRender = proc(e: RenderEvent) =
   let r = render win
-  r.clear color(0xFF202020)
+  r.clear color"202020"
 
 run win
 ```
