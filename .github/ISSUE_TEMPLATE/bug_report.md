@@ -7,25 +7,19 @@ assignees: ''
 
 ---
 
-**Describe the bug**
-A clear and concise description of what the bug is.
+*bug description.*
 
-**To Reproduce**
-Steps or code to reproduce the behavior:
+*steps or code to reproduce the behavior*, e.g.:
 1. Go to '...'
 2. Click on '....'
 3. Scroll down to '....'
 4. See error
 
-**Expected behavior**
-A clear and concise description of what you expected to happen.
+*screenshots*
 
-**Screenshots**
-If applicable, add screenshots to help explain your problem.
+*what you expected to happen*
 
-**Desktop:**
- - OS: [e.g. Manjaro KDE Linux]
- - OS and components Version
+OS: *e.g. Manjaro KDE Linux*
+*OS and components version*
 
-**Additional context**
-Add any other context about the problem here.
+*any other context about the problem*
