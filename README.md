@@ -5,7 +5,7 @@ Nim Simple Window Maker
 var win = newWindow()
 
 win.onKeyup = proc(e: KeyEvent) =
-  if e.key == Key.escape:
+  if e.key == escape:
     close win
 
 win.onRender = proc(e: RenderEvent) =

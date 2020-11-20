@@ -41,10 +41,44 @@ test "window":
   var icon = newImage(32, 32)
   let r = render icon
   r.clear color"FFFF20"
-  # r.clear color(0xFFFFFF20'u32)
-  # r.clear color(255, 255, 32)
   win.icon = icon
   
   run win
   echo x
   check a == true
+
+
+test "macro":
+  var a = false
+  var g = 32
+  var x = 0
+
+  run newWindow(title="Окошко"):
+    create:
+      var icon = newImage(32, 32)
+      let r = render icon
+      r.clear color"FFFF20"
+      window.icon = icon
+
+      window.cursor = Cursor.arrowUp
+      # window.fullscreen = true
+    close: a = true
+    mouseMove:
+      if e.mouse.pressed[MouseButton.left]:
+        g = min(max(int(e.position.x / window.size.x * 255), 0), 255)
+        display window
+    render:
+      let r = render window
+      r.clear color(g, g, g)
+    doubleClick: close window
+    tick: inc x
+    keyup:
+      if e.key == escape:
+        close window
+      if e.key == f1:
+        window.fullscreen = not window.fullscreen
+    textEnter: echo e.text
+  
+  echo x
+  check a == true
+

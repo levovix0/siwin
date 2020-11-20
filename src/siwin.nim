@@ -1,3 +1,3 @@
-import siwin/[image, rendering, window]
-export image, rendering, window
+import siwin/[image, rendering, window, runmacro]
+export image, rendering, window, runmacro
 

@@ -34,7 +34,7 @@ type
     onFocus*:       proc(e: FocusEvent)
     onTick*:        proc(e: TickEvent)
     onResize*:      proc(e: ResizeEvent)
-    onWindowMove*:  proc(e: ResizeEvent)
+    onWindowMove*:  proc(e: WindowMoveEvent)
 
     mouse*: Mouse # состояние мыши
     onMouseMove*:   proc(e: MouseMoveEvent)
