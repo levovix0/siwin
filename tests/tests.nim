@@ -9,7 +9,6 @@ test "window":
     a = true
   
   win.cursor = Cursor.arrowUp
-  # win.fullscreen = true
 
   var g = 32
 
@@ -54,30 +53,29 @@ test "macro":
   var x = 0
 
   run newWindow(title="Окошко"):
-    create:
+    init:
       var icon = newImage(32, 32)
       let r = render icon
       r.clear color"FFFF20"
       window.icon = icon
 
       window.cursor = Cursor.arrowUp
-      # window.fullscreen = true
-    close: a = true
+
     mouseMove:
       if e.mouse.pressed[MouseButton.left]:
         g = min(max(int(e.position.x / window.size.x * 255), 0), 255)
         display window
+
     render:
       let r = render window
       r.clear color(g, g, g)
-    doubleClick: close window
-    tick: inc x
-    keyup:
-      if e.key == escape:
-        close window
-      if e.key == f1:
-        window.fullscreen = not window.fullscreen
-    textEnter: echo e.text
+
+    doubleClick:  close window
+    tick:         inc x
+    close:        a = true
+    keyup escape: close window
+    keyup f1:     window.fullscreen = not window.fullscreen
+    textEnter:    echo e.text
   
   echo x
   check a == true
