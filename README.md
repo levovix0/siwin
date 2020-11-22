@@ -2,17 +2,11 @@
 Nim Simple Window Maker
 
 ```nim
-var win = newWindow()
-
-win.onKeyup = proc(e: KeyEvent) =
-  if e.key == escape:
-    close win
-
-win.onRender = proc(e: RenderEvent) =
-  let r = render win
-  r.clear color"202020"
-
-run win
+run newWindow():
+  render:
+    let r = render win
+    r.clear color"202020"
+  keyup escape: close window
 ```
 
 just a base to create your own pixel-based graphics

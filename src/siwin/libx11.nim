@@ -44,7 +44,7 @@ when defined(linux):
     xcheckImpl(a, s)
 
   proc connect*(): PDisplay {.discardable.} =
-    ## disconnect to X11 server
+    ## connect to X11 server
     if display_rc == 0:
       display = XOpenDisplay(getEnv("DISPLAY").cstring)
       if display == nil: raise X11Error.newException("failed to open X11 display\nmake sure the DISPLAY environment variable is set correctly")

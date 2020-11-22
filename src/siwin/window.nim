@@ -1,7 +1,11 @@
 import times, os
 import with
 import image
-import libx11 as x
+when defined(linux):
+  import libx11 as x
+when defined(windows):
+  import libwinapi
+  type Color = image.Color
 
 type
   MouseButton* {.pure.} = enum
@@ -72,6 +76,13 @@ type
       waitForDisplay: bool
 
       m_pos: tuple[x, y: int]
+
+    elif defined(windows):
+      handle: HWND
+      wimage: HBITMAP
+      hdc: HDC
+
+      m_hasFocus: bool
 
   CloseEvent* = tuple
 
@@ -560,7 +571,73 @@ when defined(linux):
     disconnect()
 
 elif defined(windows):
-  {.error: "OS Windows is not supported".}
+  proc poolEvent(a: var Window, message: UINT, wParam: WPARAM, lParam: LPARAM): LRESULT
+
+  proc wndProc(handle: HWND, message: UINT, wParam: WPARAM, lParam: LPARAM): LRESULT {.stdcall.} =
+    let win = if handle != 0: cast[ptr Window](GetWindowLongPtr(handle, GWLP_USERDATA)) else: nil
+    if win != nil: return win[].poolEvent(message, wParam, lParam)
+
+    if message == WM_CLOSE: return 0
+    if (message == WM_SYSCOMMAND) and (wParam == SC_KEYMENU): return 0
+    return DefWindowProc(handle, message, wParam, lParam)
+
+  const wClassName = "win64app"
+  block winapiInit:
+    var wcex: WNDCLASSEX
+    wcex.cbSize        = WNDCLASSEX.sizeof.int32
+    wcex.style         = CS_HREDRAW or CS_VREDRAW or CS_DBLCLKS
+    wcex.lpfnWndProc   = wndProc
+    wcex.cbClsExtra    = 0
+    wcex.cbWndExtra    = 0
+    wcex.hInstance     = hInstance
+    wcex.hCursor       = LoadCursor(0, IDC_ARROW)
+    wcex.hbrBackground = 0
+    wcex.lpszMenuName  = nil
+    wcex.lpszClassName = wClassName
+    wcex.hIconSm       = 0
+    winassert RegisterClassEx(wcex) != 0
+  
+  proc trackMouseEvent(a: HWND, e: DWORD) =
+    var ev = TTRACKMOUSEEVENT(cbSize: TTRACKMOUSEEVENT.sizeof.DWORD, dwFlags: e, hwndTrack: a, dwHoverTime: 0)
+    TrackMouseEvent(ev.addr)
+  
+  proc size*(a: Window): tuple[x, y: int] = a.m_size
+  proc `size=`*(a: var Window, size: tuple[x, y: int]) = with a:
+    var rcClient, rcWind: RECT
+    GetClientRect(handle, &rcClient)
+    GetWindowRect(handle, &rcWind)
+    let borderx = (rcWind.right - rcWind.left) - rcClient.right
+    let bordery = (rcWind.bottom - rcWind.top) - rcClient.bottom
+    MoveWindow(handle, rcWind.left, rcWind.top, (size.x + borderx).int32, (size.y + bordery).int32, TRUE)
+
+    m_size = size
+  
+  proc `=destroy`*(a: var Window) = with a:
+    DeleteDC(hdc)
+    DeleteObject(wimage)
+
+  proc newWindowImpl(w, h: int): Window = with result:
+    handle = CreateWindow(wClassName, "", WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, 
+                          w.int32, h.int32, 0, 0, hInstance, nil)
+    winassert handle != 0
+    m_hasFocus = true
+    discard handle.SetWindowLongPtrW(GWLP_USERDATA, cast[LONG_PTR](result.addr))
+    handle.trackMouseEvent(TME_HOVER)
+    result.size = (w, h)
+
+    var bmi = BITMAPINFO(bmiHeader: BITMAPINFOHEADER(biSize: BITMAPINFOHEADER.sizeof.int32, biWidth: w.LONG, biHeight: -h.LONG,
+                         biPlanes: 1, biBitCount: 32, biCompression: BI_RGB, biSizeImage: 0, biXPelsPerMeter: 0, biYPelsPerMeter: 0, biClrUsed: 0, biClrImportant: 0));
+    wimage  = CreateDIBSection(0, bmi.addr, DIB_RGB_COLORS, cast[ptr pointer](m_data.addr), 0, 0)
+    hdc     = CreateCompatibleDC(0)
+    winassert wimage != 0
+    winassert hdc != 0
+    discard hdc.SelectObject(wimage)
+
+  proc `title=`*(a: Window, title: string) = with a:
+    handle.SetWindowText(title)
+
+  proc poolEvent(a: var Window, message: UINT, wParam: WPARAM, lParam: LPARAM): LRESULT = with a:
+    discard
 else:
   {.error: "current OS is not supported".}
 

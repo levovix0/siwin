@@ -9,3 +9,5 @@ requires "with"
 
 when defined(linux):
   requires "x11"
+when defined(windows):
+  requires "winim"
