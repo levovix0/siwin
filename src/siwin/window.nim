@@ -73,7 +73,7 @@ type
       m_hasFocus: bool
       m_isFullscreen: bool
 
-      waitForDisplay: bool
+      waitForReDraw: bool
 
       m_pos: tuple[x, y: int]
 
@@ -177,7 +177,7 @@ when defined(linux):
     m_hasFocus = true
     m_isFullscreen = false
 
-    waitForDisplay = true
+    waitForReDraw = true
   
   proc `title=`*(a: Window, title: string) = with a:
     let useUtf8 = x.atom(UTF8_STRING)
@@ -200,7 +200,7 @@ when defined(linux):
       w, h, 32, 0
     )
     doassert ximg != nil
-    waitForDisplay = true
+    waitForReDraw = true
   
   proc fullscreen*(a: Window): bool = a.m_isFullscreen
   proc `fullscreen =`*(a: var Window, v: bool) = with a:
@@ -410,7 +410,7 @@ when defined(linux):
     xcheck d.XSetWMHints(xwin, wmh)
     xcheck XFree(wmh)
 
-  proc display*(a: var Window) = a.waitForDisplay = true
+  proc redraw*(a: var Window) = a.waitForReDraw = true
   proc displayImpl(a: var Window) = with a:
     xcheckStatus d.XPutImage(xwin, gc, ximg, 0, 0, 0, 0, m_size.x.cuint, m_size.y.cuint)
   
@@ -455,13 +455,13 @@ when defined(linux):
             let osize = m_size
             a.updateGeometry()
             push_event onResize, (osize, m_size)
-          display a
+          redraw a
         of ClientMessage:
           if ev.xclient.data.l[0] == (clong)x.atom(WM_DELETE_WINDOW, false):
             m_isOpen         = false;
             m_isFullscreen   = false;
             m_hasFocus       = false;
-            waitForDisplay   = false;
+            waitForReDraw   = false;
             push_event onClose, ()
           
         of ConfigureNotify:
@@ -556,8 +556,8 @@ when defined(linux):
       push_event onTick, (mouse, keyboard, nows - lastTickTime)
       lastTickTime = nows
 
-      if waitForDisplay:
-        waitForDisplay = false
+      if waitForReDraw:
+        waitForReDraw = false
         push_event on_render, (m_data, m_size)
         a.displayImpl()
 

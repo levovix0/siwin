@@ -15,7 +15,7 @@ test "window":
   win.onMouseMove = proc(e: MouseMoveEvent) =
     if e.mouse.pressed[MouseButton.left]:
       g = min(max(int(e.position.x / win.size.x * 255), 0), 255)
-      display win
+      redraw win
 
   win.onRender = proc(e: RenderEvent) =
     let r = render win
@@ -51,6 +51,7 @@ test "macro":
   var a = false
   var g = 32
   var x = 0
+  let k = [Key.x, Key.y]
 
   run newWindow(title="Окошко"):
     init:
@@ -64,18 +65,22 @@ test "macro":
     mouseMove:
       if e.mouse.pressed[MouseButton.left]:
         g = min(max(int(e.position.x / window.size.x * 255), 0), 255)
-        display window
+        redraw window
 
     render:
       let r = render window
       r.clear color(g, g, g)
 
-    doubleClick:  close window
-    tick:         inc x
-    close:        a = true
-    keyup escape: close window
-    keyup f1:     window.fullscreen = not window.fullscreen
-    textEnter:    echo e.text
+    doubleClick:    close window
+    tick:           inc x
+    close:          a = true
+    keyup escape:   close window # equivalent `keyup: if e.key == escape:`
+    keyup f1, f2:   window.fullscreen = not window.fullscreen # equivalent `keyup [f1, f2]:`
+    pressing space: g = min(g + 5, 255); redraw window # equivalent `space.pressing:`
+    pressing any:   g = min(g + 1, 255); redraw window # equivalent `pressing:`
+    not pressing g: g = max(g - 1, 0); redraw window # equivalent `notPressing g:`
+    keyup (k):      close window # equivalent `keyup: if e.key in k:`
+    textEnter:      echo e.text
   
   echo x
   check a == true

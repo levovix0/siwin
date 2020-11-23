@@ -4,6 +4,8 @@ import window
 proc high(a: NimNode): int = a.len - 1
 
 proc runImpl(w: NimNode, a: NimNode): NimNode =
+  # TODO: `pressingKey as k:` -> `pressingKey: let k = e.keyboard.pressedKey`
+  # TODO: `pressingKey as k[]:` -> `pressingKey: let k = e.keyboard.pressedKeys`
   a.expectKind nnkStmtList
   result = nnkStmtList.newTree()
 
@@ -13,89 +15,160 @@ proc runImpl(w: NimNode, a: NimNode): NimNode =
     res[e].add body
 
   for b in a:
-    b.expectKind {nnkCall, nnkCommand}
+    b.expectKind {nnkCall, nnkCommand, nnkPrefix}
     
     var eventName = ""
     var pars: seq[NimNode]
 
-    case b[0].kind
-    of nnkIdent: eventName = b[0].strVal
-    of nnkDotExpr:
-      b[0][1].expectKind nnkIdent
-      eventName = b[0][1].strVal
-      pars.add b[0][0]
-    else: error(&"got {b[0].kind}, but expected ident or dotExpr", b[0])
+    if b.kind == nnkPrefix:
+      let b = b[1]
+      case b[0].kind
+      of nnkIdent: eventName = "not" & b[0].strVal
+      of nnkDotExpr:
+        b[0][1].expectKind nnkIdent
+        eventName = "not" & b[0][1].strVal
+        pars.add b[0][0]
+      else: error(&"got {b[0].kind}, but expected ident or dotExpr", b[0])
+      pars.add b[1..b.high]
+    else:
+      case b[0].kind
+      of nnkIdent: eventName = b[0].strVal
+      of nnkDotExpr:
+        b[0][1].expectKind nnkIdent
+        eventName = b[0][1].strVal
+        pars.add b[0][0]
+      else: error(&"got {b[0].kind}, but expected ident or dotExpr", b[0])
+      pars.add b[1..<b.high]
     
-    eventName = "on" & eventName
+    if eventName.startsWith("on"): eventName = "on" & eventName[2..eventName.high].capitalize
+    else: eventName = "on" & eventName.capitalize
     
-    pars.add b[1..<b.high]
     let body = b[b.high]
 
     case eventName[2..eventName.high].toLower
     of "keydown", "keyup":
-      if pars.len == 1:
+      if pars.len == 1 and pars[0] != ident"any":
         var k = pars[0]
         if k.kind == nnkIdent: k = quote do: Key.`k`
         eventName.resadd quote do:
-          if e.key == `k`:
+          when compiles(e.key == `k`):
+            if e.key == `k`:
+              `body`
+          elif compiles(e.key in `k`):
+            if e.key in `k`:
+              `body`
+          else:
+            if `k`(e.key):
+              `body`
+      elif pars.len > 1:
+        var kk = nnkBracket.newTree()
+        for v in pars:
+          var k = v
+          if k.kind == nnkIdent: k = quote do: Key.`k`
+          kk.add k
+        eventName.resadd quote do:
+          if e.key in `kk`:
             `body`
       else: eventName.resadd body
+
+    of "mousedown", "mouseup":
+      if pars.len == 1 and pars[0] != ident"any":
+        var k = pars[0]
+        if k.kind == nnkIdent: k = quote do: MouseButton.`k`
+        eventName.resadd quote do:
+          when compiles(e.button == `k`):
+            if e.button == `k`:
+              `body`
+          elif compiles(e.button in `k`):
+            if e.key in `k`:
+              `body`
+          else:
+            if `k`(e.button):
+              `body`
+      elif pars.len > 1:
+        var kk = nnkBracket.newTree()
+        for v in pars:
+          var k = v
+          if k.kind == nnkIdent: k = quote do: MouseButton.`k`
+          kk.add k
+        eventName.resadd quote do:
+          if e.button in `kk`:
+            `body`
+      else: eventName.resadd body
+
+    of "pressingkey", "keypressing", "pressing":
+      if pars.len == 1 and pars[0] != ident"any":
+        var k = pars[0]
+        if k.kind == nnkIdent: k = quote do: Key.`k`
+        "onTick".resadd quote do:
+          if e.keyboard.pressed[`k`]:
+            `body`
+      elif pars.len > 1:
+        var kk = nnkBracket.newTree()
+        for v in pars:
+          var k = v
+          if k.kind == nnkIdent: k = quote do: Key.`k`
+          kk.add k
+        "onTick".resadd quote do:
+          var prs = false
+          for k in `kk`:
+            if e.keyboard.pressed[`k`]: prs = true
+          if prs:
+            `body`
+      else:
+        "onTick".resadd quote do:
+          if true in e.keyboard.pressed:
+            `body`
+
+    of "notpressingkey", "notkeypressing", "notpressing":
+      if pars.len == 1 and pars[0] != ident"any":
+        var k = pars[0]
+        if k.kind == nnkIdent: k = quote do: Key.`k`
+        "onTick".resadd quote do:
+          if not e.keyboard.pressed[`k`]:
+            `body`
+      elif pars.len > 1:
+        var kk = nnkBracket.newTree()
+        for v in pars:
+          var k = v
+          if k.kind == nnkIdent: k = quote do: Key.`k`
+          kk.add k
+        "onTick".resadd quote do:
+          var prs = false
+          for k in `kk`:
+            if e.keyboard.pressed[`k`]: prs = true
+          if not prs:
+            `body`
+      else:
+        "onTick".resadd quote do:
+          if false in e.keyboard.pressed:
+            `body`
+
     else: eventName.resadd body
 
   for eventName, body in res:
     let eventNameIdent = ident eventName
 
+    template eproc(t: typedesc) {.dirty.} =
+      result.add quote do:
+        `w`.`eventNameIdent` = proc(e {.inject.}: t) =
+          `body`
+
     case eventName[2..eventName.high].toLower
-    of "close":
-      result.add quote do:
-        `w`.`eventNameIdent` = proc(e {.inject.}: CloseEvent) =
-          `body`
-    of "render":
-      result.add quote do:
-        `w`.`eventNameIdent` = proc(e {.inject.}: RenderEvent) =
-          `body`
-    of "focus":
-      result.add quote do:
-        `w`.`eventNameIdent` = proc(e {.inject.}: FocusEvent) =
-          `body`
-    of "tick":
-      result.add quote do:
-        `w`.`eventNameIdent` = proc(e {.inject.}: TickEvent) =
-          `body`
-    of "resize":
-      result.add quote do:
-        `w`.`eventNameIdent` = proc(e {.inject.}: ResizeEvent) =
-          `body`
-    of "windowmove":
-      result.add quote do:
-        `w`.`eventNameIdent` = proc(e {.inject.}: WindowMoveEvent) =
-          `body`
+    of "close":  eproc CloseEvent
+    of "render": eproc RenderEvent
+    of "focus":  eproc FocusEvent
+    of "tick":   eproc TickEvent
+    of "resize": eproc ResizeEvent
+    of "windowmove": eproc WindowMoveEvent
+    
+    of "mousemove", "mouseleave", "mouseenter": eproc MouseMoveEvent
+    of "mousedown", "mouseup": eproc MouseButtonEvent
+    of "click", "doubleclick": eproc ClickEvent
+    of "scroll": eproc ScrollEvent
 
-    of "mousemove", "mouseleave", "mouseenter":
-      result.add quote do:
-        `w`.`eventNameIdent` = proc(e {.inject.}: MouseMoveEvent) =
-          `body`
-    of "mousedown", "mouseup":
-      result.add quote do:
-        `w`.`eventNameIdent` = proc(e {.inject.}: MouseButtonEvent) =
-          `body`
-    of "click", "doubleclick":
-      result.add quote do:
-        `w`.`eventNameIdent` = proc(e {.inject.}: ClickEvent) =
-          `body`
-    of "scroll":
-      result.add quote do:
-        `w`.`eventNameIdent` = proc(e {.inject.}: ScrollEvent) =
-          `body`
-
-    of "keydown", "keyup":
-      result.add quote do:
-        `w`.`eventNameIdent` = proc(e {.inject.}: KeyEvent) =
-          `body`
-    of "textenter":
-      result.add quote do:
-        `w`.`eventNameIdent` = proc(e {.inject.}: TextEnterEvent) =
-          `body`
+    of "keydown", "keyup": eproc KeyEvent
+    of "textenter": eproc TextEnterEvent
 
     of "init":
       result.add quote do:
