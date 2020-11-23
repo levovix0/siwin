@@ -76,8 +76,10 @@ test "macro":
     close:          a = true
     keyup escape:   close window # equivalent `keyup: if e.key == escape:`
     keyup f1, f2:   window.fullscreen = not window.fullscreen # equivalent `keyup [f1, f2]:`
-    pressing space: g = min(g + 5, 255); redraw window # equivalent `space.pressing:`
+    space.pressing: g = min(g + 5, 255); redraw window # equivalent `pressing space:`
     pressing any:   g = min(g + 1, 255); redraw window # equivalent `pressing:`
+    pressing as x:  g = min(g + 1, 255); redraw window # equivalent `pressing: let x = ...;`
+    # render(opengl) as x: ...
     not pressing g: g = max(g - 1, 0); redraw window # equivalent `notPressing g:`
     keyup (k):      close window # equivalent `keyup: if e.key in k:`
     textEnter:      echo e.text

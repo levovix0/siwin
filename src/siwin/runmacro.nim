@@ -15,10 +15,11 @@ proc runImpl(w: NimNode, a: NimNode): NimNode =
     res[e].add body
 
   for b in a:
-    b.expectKind {nnkCall, nnkCommand, nnkPrefix}
+    b.expectKind {nnkCall, nnkCommand, nnkPrefix, nnkInfix}
     
     var eventName = ""
     var pars: seq[NimNode]
+    var asNode: NimNode # TODO
 
     if b.kind == nnkPrefix:
       let b = b[1]
@@ -31,6 +32,15 @@ proc runImpl(w: NimNode, a: NimNode): NimNode =
       else: error(&"got {b[0].kind}, but expected ident or dotExpr", b[0])
       pars.add b[1..b.high]
     else:
+      var b = b
+
+      if b.kind == nnkInfix:
+        if b[0] != ident"as": error(&"got {b[0].treeRepr}, but expected `as`, try to place brackets", b[0])
+        asNode = b[2]
+        var tmp = nnkCall.newTree(b[1])
+        for a in b[3..b.high]: tmp.add a
+        b = tmp
+
       case b[0].kind
       of nnkIdent: eventName = b[0].strVal
       of nnkDotExpr:
