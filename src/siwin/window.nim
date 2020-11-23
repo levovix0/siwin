@@ -26,7 +26,9 @@ type
     pressed: array[Key.a..Key.pause, bool]
     
   Cursor* {.pure.} = enum
-    arrow sizeAll hand sizeHorisontal sizeVertical arrowUp
+    arrow arrowUp
+    hand
+    sizeAll sizeHorisontal sizeVertical
 
   Window* = object
     m_data: ArrayPtr[Color]
@@ -67,6 +69,7 @@ type
       xinMethod: x.XIM
 
       xcursor: x.Cursor
+      curCursor: Cursor
       clicking: array[MouseButton.left..MouseButton.backward, bool]
 
       m_isOpen: bool
@@ -78,11 +81,17 @@ type
       m_pos: tuple[x, y: int]
 
     elif defined(windows):
-      handle: HWND
-      wimage: HBITMAP
+      handle: HWnd
+      wimage: HBitmap
       hdc: HDC
+      
+      wcursor: HCursor
+      curCursor: Cursor
+      wicon: HIcon
 
       m_hasFocus: bool
+      m_isOpen: bool
+      m_isFullscreen: bool
 
   CloseEvent* = tuple
 
@@ -130,7 +139,115 @@ type
 
 var screen*: Screen
 
+
+
 when defined(linux):
+  proc xkeyToKey(sym: KeySym): Key =
+    case sym
+    of XK_shiftL:       Key.lshift
+    of XK_shiftR:       Key.rshift
+    of XK_controlL:     Key.lcontrol
+    of XK_controlR:     Key.rcontrol
+    of XK_altL:         Key.lalt
+    of XK_altR:         Key.ralt
+    of XK_superL:       Key.lsystem
+    of XK_superR:       Key.rsystem
+    of XK_menu:         Key.menu
+    of XK_escape:       Key.escape
+    of XK_semicolon:    Key.semicolon
+    of XK_slash:        Key.slash
+    of XK_equal:        Key.equal
+    of XK_minus:        Key.minus
+    of XK_bracketleft:  Key.lbracket
+    of XK_bracketright: Key.rbracket
+    of XK_comma:        Key.comma
+    of XK_period:       Key.dot
+    of XK_apostrophe:   Key.quote
+    of XK_backslash:    Key.backslash
+    of XK_grave:        Key.tilde
+    of XK_space:        Key.space
+    of XK_return:       Key.enter
+    of XK_kpEnter:      Key.enter
+    of XK_backspace:    Key.backspace
+    of XK_tab:          Key.tab
+    of XK_prior:        Key.page_up
+    of XK_next:         Key.page_down
+    of XK_end:          Key.End
+    of XK_home:         Key.home
+    of XK_insert:       Key.insert
+    of XK_delete:       Key.del
+    of XK_kpAdd:        Key.add
+    of XK_kpSubtract:   Key.subtract
+    of XK_kpMultiply:   Key.multiply
+    of XK_kpDivide:     Key.divide
+    of XK_pause:        Key.pause
+    of XK_f1:           Key.f1
+    of XK_f2:           Key.f2
+    of XK_f3:           Key.f3
+    of XK_f4:           Key.f4
+    of XK_f5:           Key.f5
+    of XK_f6:           Key.f6
+    of XK_f7:           Key.f7
+    of XK_f8:           Key.f8
+    of XK_f9:           Key.f9
+    of XK_f10:          Key.f10
+    of XK_f11:          Key.f11
+    of XK_f12:          Key.f12
+    of XK_f13:          Key.f13
+    of XK_f14:          Key.f14
+    of XK_f15:          Key.f15
+    of XK_left:         Key.left
+    of XK_right:        Key.right
+    of XK_up:           Key.up
+    of XK_down:         Key.down
+    of XK_kpInsert:     Key.numpad0
+    of XK_kpEnd:        Key.numpad1
+    of XK_kpDown:       Key.numpad2
+    of XK_kpPagedown:   Key.numpad3
+    of XK_kpLeft:       Key.numpad4
+    of XK_kpBegin:      Key.numpad5
+    of XK_kpRight:      Key.numpad6
+    of XK_kpHome:       Key.numpad7
+    of XK_kpUp:         Key.numpad8
+    of XK_kpPageup:     Key.numpad9
+    of XK_a:            Key.a
+    of XK_b:            Key.b
+    of XK_c:            Key.c
+    of XK_d:            Key.d
+    of XK_e:            Key.r
+    of XK_f:            Key.f
+    of XK_g:            Key.g
+    of XK_h:            Key.h
+    of XK_i:            Key.i
+    of XK_j:            Key.j
+    of XK_k:            Key.k
+    of XK_l:            Key.l
+    of XK_m:            Key.m
+    of XK_n:            Key.n
+    of XK_o:            Key.o
+    of XK_p:            Key.p
+    of XK_q:            Key.q
+    of XK_r:            Key.r
+    of XK_s:            Key.s
+    of XK_t:            Key.t
+    of XK_u:            Key.u
+    of XK_v:            Key.v
+    of XK_w:            Key.w
+    of XK_x:            Key.x
+    of XK_y:            Key.y
+    of XK_z:            Key.z
+    of XK_0:            Key.n0
+    of XK_1:            Key.n1
+    of XK_2:            Key.n2
+    of XK_3:            Key.n3
+    of XK_4:            Key.n4
+    of XK_5:            Key.n5
+    of XK_6:            Key.n6
+    of XK_7:            Key.n7
+    of XK_8:            Key.n8
+    of XK_9:            Key.n9
+    else:               Key.unknown
+
   template d: x.PDisplay = x.display
 
   proc malloc(a: culong): pointer {.importc.}
@@ -178,6 +295,7 @@ when defined(linux):
     m_isFullscreen = false
 
     waitForReDraw = true
+    curCursor = arrow
   
   proc `title=`*(a: Window, title: string) = with a:
     let useUtf8 = x.atom(UTF8_STRING)
@@ -187,6 +305,15 @@ when defined(linux):
     d.Xutf8SetWMProperties(a.xwin, title, title, nil, 0, nil, nil, nil)
   
   proc opened*(a: Window): bool = a.m_isOpen
+  proc close*(a: Window) = with a:
+    var e: XEvent
+    e.xclient.theType      = ClientMessage
+    e.xclient.window       = xwin
+    e.xclient.message_type = x.atom(WM_PROTOCOLS)
+    e.xclient.format       = 32
+    e.xclient.data.l[0]    = x.atom(WM_DELETE_WINDOW).clong
+    e.xclient.data.l[1]    = CurrentTime
+    xcheck d.XSendEvent(xwin, 0, NoEventMask, e.addr)
 
   proc updateGeometry(a: var Window) = with a:
     let (_, x, y, w, h, _, _) = xwin.getGeometry()
@@ -203,7 +330,7 @@ when defined(linux):
     waitForReDraw = true
   
   proc fullscreen*(a: Window): bool = a.m_isFullscreen
-  proc `fullscreen =`*(a: var Window, v: bool) = with a:
+  proc `fullscreen=`*(a: var Window, v: bool) = with a:
     if a.fullscreen == v: return
 
     var xwa: x.XWindowAttributes
@@ -223,127 +350,10 @@ when defined(linux):
     xcheck d.XSendEvent(xwa.root, 0, SubstructureNotifyMask or SubstructureRedirectMask, e.addr)
   
     m_isFullscreen = v
-
-  proc close*(a: Window) = with a:
-    var e: XEvent
-    e.xclient.theType      = ClientMessage
-    e.xclient.window       = xwin
-    e.xclient.message_type = x.atom(WM_PROTOCOLS)
-    e.xclient.format       = 32
-    e.xclient.data.l[0]    = x.atom(WM_DELETE_WINDOW).clong
-    e.xclient.data.l[1]    = CurrentTime
-    xcheck d.XSendEvent(xwin, 0, NoEventMask, e.addr)
   
-  proc xkeyToKey(sym: KeySym): Key =
-    case sym
-    of XK_Shift_L:      Key.lshift
-    of XK_Shift_R:      Key.rshift
-    of XK_Control_L:    Key.lcontrol
-    of XK_Control_R:    Key.rcontrol
-    of XK_Alt_L:        Key.lalt
-    of XK_Alt_R:        Key.ralt
-    of XK_Super_L:      Key.lsystem
-    of XK_Super_R:      Key.rsystem
-    of XK_Menu:         Key.menu
-    of XK_Escape:       Key.escape
-    of XK_semicolon:    Key.semicolon
-    of XK_slash:        Key.slash
-    of XK_equal:        Key.equal
-    of XK_minus:        Key.minus
-    of XK_bracketleft:  Key.lbracket
-    of XK_bracketright: Key.rbracket
-    of XK_comma:        Key.comma
-    of XK_period:       Key.dot
-    of XK_apostrophe:   Key.quote
-    of XK_backslash:    Key.backslash
-    of XK_grave:        Key.tilde
-    of XK_space:        Key.space
-    of XK_Return:       Key.enter
-    of XK_KP_Enter:     Key.enter
-    of XK_BackSpace:    Key.backspace
-    of XK_Tab:          Key.tab
-    of XK_Prior:        Key.page_up
-    of XK_Next:         Key.page_down
-    of XK_End:          Key.End
-    of XK_Home:         Key.home
-    of XK_Insert:       Key.insert
-    of XK_Delete:       Key.del
-    of XK_KP_Add:       Key.add
-    of XK_KP_Subtract:  Key.subtract
-    of XK_KP_Multiply:  Key.multiply
-    of XK_KP_Divide:    Key.divide
-    of XK_Pause:        Key.pause
-    of XK_F1:           Key.f1
-    of XK_F2:           Key.f2
-    of XK_F3:           Key.f3
-    of XK_F4:           Key.f4
-    of XK_F5:           Key.f5
-    of XK_F6:           Key.f6
-    of XK_F7:           Key.f7
-    of XK_F8:           Key.f8
-    of XK_F9:           Key.f9
-    of XK_F10:          Key.f10
-    of XK_F11:          Key.f11
-    of XK_F12:          Key.f12
-    of XK_F13:          Key.f13
-    of XK_F14:          Key.f14
-    of XK_F15:          Key.f15
-    of XK_Left:         Key.left
-    of XK_Right:        Key.right
-    of XK_Up:           Key.up
-    of XK_Down:         Key.down
-    of XK_KP_Insert:    Key.numpad0
-    of XK_KP_End:       Key.numpad1
-    of XK_KP_Down:      Key.numpad2
-    of XK_KP_Page_Down: Key.numpad3
-    of XK_KP_Left:      Key.numpad4
-    of XK_KP_Begin:     Key.numpad5
-    of XK_KP_Right:     Key.numpad6
-    of XK_KP_Home:      Key.numpad7
-    of XK_KP_Up:        Key.numpad8
-    of XK_KP_Page_Up:   Key.numpad9
-    of XK_a:            Key.a
-    of XK_b:            Key.b
-    of XK_c:            Key.c
-    of XK_d:            Key.d
-    of XK_e:            Key.r
-    of XK_f:            Key.f
-    of XK_g:            Key.g
-    of XK_h:            Key.h
-    of XK_i:            Key.i
-    of XK_j:            Key.j
-    of XK_k:            Key.k
-    of XK_l:            Key.l
-    of XK_m:            Key.m
-    of XK_n:            Key.n
-    of XK_o:            Key.o
-    of XK_p:            Key.p
-    of XK_q:            Key.q
-    of XK_r:            Key.r
-    of XK_s:            Key.s
-    of XK_t:            Key.t
-    of XK_u:            Key.u
-    of XK_v:            Key.v
-    of XK_w:            Key.w
-    of XK_x:            Key.x
-    of XK_y:            Key.y
-    of XK_z:            Key.z
-    of XK_0:            Key.n0
-    of XK_1:            Key.n1
-    of XK_2:            Key.n2
-    of XK_3:            Key.n3
-    of XK_4:            Key.n4
-    of XK_5:            Key.n5
-    of XK_6:            Key.n6
-    of XK_7:            Key.n7
-    of XK_8:            Key.n8
-    of XK_9:            Key.n9
-    else:               Key.unknown
-
-  proc position*(a: var Window): tuple[x, y: int] = with a:
+  proc position*(a: Window): tuple[x, y: int] = with a:
     let (_, x, y, _, _, _, _) = xwin.getGeometry()
-    m_pos = (x.int, y.int)
-    return m_pos
+    return (x, y)
   proc `position=`*(a: var Window, p: tuple[x, y: int]) = with a:
     xcheck d.XMoveWindow(xwin, p.x.cint, p.y.cint)
     m_pos = p
@@ -353,6 +363,7 @@ when defined(linux):
     a.updateGeometry()
 
   proc `cursor=`*(a: var Window, kind: Cursor) = with a:
+    if kind == curCursor: return
     if xcursor != 0: xcheck d.XFreeCursor(xcursor)
     case kind
     of Cursor.arrow:          xcursor = d.XCreateFontCursor(XC_left_ptr)
@@ -363,6 +374,7 @@ when defined(linux):
     of Cursor.sizeHorisontal: xcursor = d.XCreateFontCursor(XC_sb_h_double_arrow)
     xcheck d.XDefineCursor(xwin, xcursor)
     xcheck d.XSync(0)
+    curCursor = kind
 
   proc newPixmap(img: Picture, a: Window): x.Pixmap = with a:
     var ddata = cast[ptr Color](malloc(culong Color.sizeof * img.size.x * img.size.y))
@@ -397,7 +409,6 @@ when defined(linux):
     wmh.icon_mask   = xiconMask
     xcheck d.XSetWMHints(xwin, wmh)
     xcheck XFree(wmh)
-  
   proc `icon=`*(a: var Window, _: nil.typeof) = with a:
     if xicon != 0: xcheck d.XFreePixmap(xicon)
     if xiconMask != 0: xcheck d.XFreePixmap(xiconMask)
@@ -552,6 +563,8 @@ when defined(linux):
 
         else: discard
 
+      if not catched: sleep(2) # не так быстро!
+
       let nows = getTime()
       push_event onTick, (mouse, keyboard, nows - lastTickTime)
       lastTickTime = nows
@@ -561,8 +574,6 @@ when defined(linux):
         push_event on_render, (m_data, m_size)
         a.displayImpl()
 
-      if not catched: sleep(2) # не так быстро!
-
   #* Screen
   proc size*(a: Screen): tuple[x, y: int] =
     connect()
@@ -570,10 +581,119 @@ when defined(linux):
     result = (screen.width.int, screen.height.int)
     disconnect()
 
-elif defined(windows):
-  proc poolEvent(a: var Window, message: UINT, wParam: WPARAM, lParam: LPARAM): LRESULT
 
-  proc wndProc(handle: HWND, message: UINT, wParam: WPARAM, lParam: LPARAM): LRESULT {.stdcall.} =
+
+elif defined(windows):
+  proc wkeyToKey(key: WParam, flags: LParam): Key =
+    case key
+    of VK_shift:
+      let lshift = MapVirtualKeyW(VK_shift, MAPVK_VK_TO_VSC)
+      let scancode = flags and ((0xFF shl 16) shr 16)
+      if scancode == lshift: Key.lshift else: Key.rshift
+    of VK_menu:
+      if (flags and KF_EXTENDED) != 0: Key.ralt else: Key.lalt
+    of VK_control:
+      if (flags and KF_EXTENDED) != 0: Key.rcontrol else: Key.lcontrol
+    of VK_lwin:         Key.lsystem
+    of VK_rwin:         Key.rsystem
+    of VK_apps:         Key.menu
+    of VK_escape:       Key.escape
+    of VK_oem1:         Key.semicolon
+    of VK_oem2:         Key.slash
+    of VK_oem_plus:     Key.equal
+    of VK_oem_minus:    Key.minus
+    of VK_oem4:         Key.lbracket
+    of VK_oem6:         Key.rbracket
+    of VK_oem_comma:    Key.comma
+    of VK_oem_period:   Key.dot
+    of VK_oem7:         Key.quote
+    of VK_oem5:         Key.backslash
+    of VK_oem3:         Key.tilde
+    of VK_space:        Key.space
+    of VK_return:       Key.enter
+    of VK_back:         Key.backspace
+    of VK_tab:          Key.tab
+    of VK_prior:        Key.page_up
+    of VK_next:         Key.page_down
+    of VK_end:          Key.End
+    of VK_home:         Key.home
+    of VK_insert:       Key.insert
+    of VK_delete:       Key.del
+    of VK_add:          Key.add
+    of VK_subtract:     Key.subtract
+    of VK_multiply:     Key.multiply
+    of VK_divide:       Key.divide
+    of VK_pause:        Key.pause
+    of VK_f1:           Key.f1
+    of VK_f2:           Key.f2
+    of VK_f3:           Key.f3
+    of VK_f4:           Key.f4
+    of VK_f5:           Key.f5
+    of VK_f6:           Key.f6
+    of VK_f7:           Key.f7
+    of VK_f8:           Key.f8
+    of VK_f9:           Key.f9
+    of VK_f10:          Key.f10
+    of VK_f11:          Key.f11
+    of VK_f12:          Key.f12
+    of VK_f13:          Key.f13
+    of VK_f14:          Key.f14
+    of VK_f15:          Key.f15
+    of VK_left:         Key.left
+    of VK_right:        Key.right
+    of VK_up:           Key.up
+    of VK_down:         Key.down
+    of VK_numpad0:      Key.numpad0
+    of VK_numpad1:      Key.numpad1
+    of VK_numpad2:      Key.numpad2
+    of VK_numpad3:      Key.numpad3
+    of VK_numpad4:      Key.numpad4
+    of VK_numpad5:      Key.numpad5
+    of VK_numpad6:      Key.numpad6
+    of VK_numpad7:      Key.numpad7
+    of VK_numpad8:      Key.numpad8
+    of VK_numpad9:      Key.numpad9
+    of 'A'.ord:         Key.a
+    of 'B'.ord:         Key.b
+    of 'C'.ord:         Key.c
+    of 'D'.ord:         Key.d
+    of 'E'.ord:         Key.r
+    of 'F'.ord:         Key.f
+    of 'G'.ord:         Key.g
+    of 'H'.ord:         Key.h
+    of 'I'.ord:         Key.i
+    of 'J'.ord:         Key.j
+    of 'K'.ord:         Key.k
+    of 'L'.ord:         Key.l
+    of 'M'.ord:         Key.m
+    of 'N'.ord:         Key.n
+    of 'O'.ord:         Key.o
+    of 'P'.ord:         Key.p
+    of 'Q'.ord:         Key.q
+    of 'R'.ord:         Key.r
+    of 'S'.ord:         Key.s
+    of 'T'.ord:         Key.t
+    of 'U'.ord:         Key.u
+    of 'V'.ord:         Key.v
+    of 'W'.ord:         Key.w
+    of 'X'.ord:         Key.x
+    of 'Y'.ord:         Key.y
+    of 'Z'.ord:         Key.z
+    of '0'.ord:         Key.n0
+    of '1'.ord:         Key.n1
+    of '2'.ord:         Key.n2
+    of '3'.ord:         Key.n3
+    of '4'.ord:         Key.n4
+    of '5'.ord:         Key.n5
+    of '6'.ord:         Key.n6
+    of '7'.ord:         Key.n7
+    of '8'.ord:         Key.n8
+    of '9'.ord:         Key.n9
+    else:               Key.unknown
+
+  proc poolEvent(a: var Window, message: Uint, wParam: WParam, lParam: LParam): LResult
+
+  proc wndProc(handle: HWnd, message: Uint, wParam: WParam, lParam: LParam): LResult {.stdcall.} =
     let win = if handle != 0: cast[ptr Window](GetWindowLongPtr(handle, GWLP_USERDATA)) else: nil
     if win != nil: return win[].poolEvent(message, wParam, lParam)
 
@@ -597,37 +717,36 @@ elif defined(windows):
     wcex.hIconSm       = 0
     winassert RegisterClassEx(wcex) != 0
   
-  proc trackMouseEvent(a: HWND, e: DWORD) =
-    var ev = TTRACKMOUSEEVENT(cbSize: TTRACKMOUSEEVENT.sizeof.DWORD, dwFlags: e, hwndTrack: a, dwHoverTime: 0)
-    TrackMouseEvent(ev.addr)
-  
   proc size*(a: Window): tuple[x, y: int] = a.m_size
   proc `size=`*(a: var Window, size: tuple[x, y: int]) = with a:
-    var rcClient, rcWind: RECT
-    GetClientRect(handle, &rcClient)
-    GetWindowRect(handle, &rcWind)
+    let rcClient = handle.clientRect
+    var rcWind = handle.windowRect
     let borderx = (rcWind.right - rcWind.left) - rcClient.right
     let bordery = (rcWind.bottom - rcWind.top) - rcClient.bottom
-    MoveWindow(handle, rcWind.left, rcWind.top, (size.x + borderx).int32, (size.y + bordery).int32, TRUE)
+    MoveWindow(handle, rcWind.left, rcWind.top, (size.x + borderx).int32, (size.y + bordery).int32, True)
 
     m_size = size
   
   proc `=destroy`*(a: var Window) = with a:
-    DeleteDC(hdc)
-    DeleteObject(wimage)
+    DeleteDC hdc
+    DeleteObject wimage
 
   proc newWindowImpl(w, h: int): Window = with result:
     handle = CreateWindow(wClassName, "", WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, 
                           w.int32, h.int32, 0, 0, hInstance, nil)
     winassert handle != 0
     m_hasFocus = true
+    m_isOpen = true
+    m_isFullscreen = false
+    curCursor = arrow
+    wcursor = LoadCursor(0, IDC_ARROW)
     discard handle.SetWindowLongPtrW(GWLP_USERDATA, cast[LONG_PTR](result.addr))
     handle.trackMouseEvent(TME_HOVER)
     result.size = (w, h)
 
     var bmi = BITMAPINFO(bmiHeader: BITMAPINFOHEADER(biSize: BITMAPINFOHEADER.sizeof.int32, biWidth: w.LONG, biHeight: -h.LONG,
                          biPlanes: 1, biBitCount: 32, biCompression: BI_RGB, biSizeImage: 0, biXPelsPerMeter: 0, biYPelsPerMeter: 0, biClrUsed: 0, biClrImportant: 0));
-    wimage  = CreateDIBSection(0, bmi.addr, DIB_RGB_COLORS, cast[ptr pointer](m_data.addr), 0, 0)
+    wimage  = CreateDIBSection(0, &bmi, DIB_RGB_COLORS, cast[ptr pointer](&m_data), 0, 0)
     hdc     = CreateCompatibleDC(0)
     winassert wimage != 0
     winassert hdc != 0
@@ -636,10 +755,105 @@ elif defined(windows):
   proc `title=`*(a: Window, title: string) = with a:
     handle.SetWindowText(title)
 
+  proc opened*(a: Window): bool = a.m_isOpen
+  proc close*(a: Window) = with a:
+    if m_isOpen: handle.SendMessage(WM_CLOSE, 0, 0)
+    
+  proc updateGeometry(a: var Window) = with a:
+    let rect = handle.clientRect
+    m_size = (rect.right.int, rect.bottom.int)
+
+    DeleteDC hdc
+    DeleteObject wimage
+
+    var bmi = BitmapInfo(bmiHeader: BitmapInfoHeader(biSize: BitmapInfoHeader.sizeof.int32, biWidth: m_size.x.LONG, biHeight: -m_size.y.LONG,
+                         biPlanes: 1, biBitCount: 32, biCompression: BI_RGB, biSizeImage: 0, biXPelsPerMeter: 0, biYPelsPerMeter: 0, biClrUsed: 0, biClrImportant: 0));
+    wimage  = CreateDIBSection(0, &bmi, DIB_RGB_COLORS, cast[ptr pointer](&m_data), 0, 0)
+    hdc     = CreateCompatibleDC(0)
+    winassert wimage != 0
+    winassert hdc != 0
+    let old = hdc.SelectObject(wimage)
+    if old != 0: discard DeleteObject old
+
+  proc fullscreen*(a: Window): bool = a.m_isFullscreen
+  proc `fullscreen=`*(a: var Window, v: bool) = with a:
+    if m_isFullscreen == v: return
+    if v:
+      discard handle.SetWindowLongPtr(GWL_STYLE, WS_VISIBLE)
+      discard handle.ShowWindow(SW_MAXIMIZE)
+    else:
+      discard handle.ShowWindow(SW_SHOWNORMAL)
+      discard handle.SetWindowLongPtr(GWL_STYLE, WS_VISIBLE or WS_OVERLAPPEDWINDOW)
+    
+  proc position*(a: Window): tuple[x, y: int] = with a:
+    let r = handle.clientRect
+    return (r.left.int, r.top.int)
+  proc `position=`*(a: var Window, v: tuple[x, y: int]) = with a:
+    handle.SetWindowPos(0, v.x.int32, v.y.int32, 0, 0, SWP_NOSIZE)
+    
+  proc `cursor=`*(a: var Window, kind: Cursor) = with a:
+    if kind == curCursor: return
+    var cu: HCursor = 0
+    case kind
+    of Cursor.arrow:          cu = LoadCursor(0, IDC_ARROW)
+    of Cursor.arrowUp:        cu = LoadCursor(0, IDC_SIZEALL)
+    of Cursor.hand:           cu = LoadCursor(0, IDC_HAND)
+    of Cursor.sizeAll:        cu = LoadCursor(0, IDC_SIZEWE)
+    of Cursor.sizeVertical:   cu = LoadCursor(0, IDC_SIZENS)
+    of Cursor.sizeHorisontal: cu = LoadCursor(0, IDC_UPARROW)
+    if cu != 0:
+      SetCursor cu
+      wcursor = cu
+    curCursor = kind
+  
+  proc `icon=`*(a: var Window, img: Picture) = with a:
+    if wicon != 0: DestroyIcon wicon
+    wicon = CreateIcon(hInstance, img.size.x.int32, img.size.y.int32, 1, 32, nil, cast[ptr Byte](img.data))
+    if wicon != 0:
+      handle.SendMessageW(WM_SETICON, ICON_BIG, wicon)
+      handle.SendMessageW(WM_SETICON, ICON_SMALL, wicon)
+  proc `icon=`*(a: var Window, _: nil.typeof) = with a:
+    if wicon != 0: DestroyIcon wicon
+    handle.SendMessageW(WM_SETICON, ICON_BIG, 0)
+    handle.SendMessageW(WM_SETICON, ICON_SMALL, 0)
+    
+  proc redraw*(a: var Window) = with a:
+    var cr = handle.clientRect
+    handle.InvalidateRect(&cr, false)
+  proc displayImpl(a: var Window) = with a:
+    var ps: PAINTSTRUCT
+    handle.BeginPaint(&ps)
+    let hhdc = handle.GetDC()
+    let rect = handle.clientRect
+
+    BitBlt(hhdc, 0, 0, rect.right, rect.bottom, hdc, 0, 0, SRCCOPY)
+    handle.ReleaseDC(hhdc)
+    handle.EndPaint(&ps)
+
+  proc run*(a: var Window) = with a:
+    var lastTickTime = getTime()
+    handle.ShowWindow(SW_SHOW)
+    handle.UpdateWindow()
+    var msg: Msg
+    while m_isOpen:
+      var catched = false
+      while PeekMessage(&msg, 0, 0, 0, PM_REMOVE):
+        catched = true
+        TranslateMessage(&msg)
+        DispatchMessage(&msg)
+
+      if not catched: sleep(2) # не так быстро!
+      
+      let nows = getTime()
+      if a.onTick != nil: onTick (mouse, keyboard, nows - lastTickTime)
+      lastTickTime = nows
+
   proc poolEvent(a: var Window, message: UINT, wParam: WPARAM, lParam: LPARAM): LRESULT = with a:
     discard
 else:
   {.error: "current OS is not supported".}
+
+
 
 proc newWindow*(w: int = 1280, h: int = 720, title: string = ""): Window =
   result = newWindowImpl(w, h)
