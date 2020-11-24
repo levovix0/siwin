@@ -3,8 +3,7 @@ Nim Simple Window Maker
 
 ```nim
 run newWindow():
-  render:
-    let r = render win
+  render as r:
     r.clear color"202020"
   keyup escape: close window
 ```

@@ -116,7 +116,7 @@ type
     doubleClick: bool
   ScrollEvent* = tuple
     mouse: Mouse
-    delta: float
+    delta: float ## 1: scroll down, -1: scroll up
 
   FocusEvent* = tuple
     focused: bool

@@ -4,22 +4,66 @@ import window
 proc high(a: NimNode): int = a.len - 1
 
 proc runImpl(w: NimNode, a: NimNode): NimNode =
-  # TODO: `pressingKey as k:` -> `pressingKey: let k = e.keyboard.pressedKey`
-  # TODO: `pressingKey as k[]:` -> `pressingKey: let k = e.keyboard.pressedKeys`
+  # TODO: `resize as (old, cur):` -> `resize: let old = e.oldSize; let cur = e.size`
   a.expectKind nnkStmtList
   result = nnkStmtList.newTree()
 
   var res: Table[string, NimNode]
   proc resadd(e: string, body: NimNode) =
     if e notin res: res[e] = nnkStmtList.newTree()
-    res[e].add body
+    res[e].add quote do:
+      block: `body`
 
   for b in a:
     b.expectKind {nnkCall, nnkCommand, nnkPrefix, nnkInfix}
     
     var eventName = ""
     var pars: seq[NimNode]
-    var asNode: NimNode # TODO
+    var asNode: NimNode
+    template resaddas(ename: string, a, arr, body: untyped) =
+      if asNode == nil:
+        ename.resadd quote do:
+          body
+      else:
+        case asNode.kind
+        of nnkIdent:
+          ename.resadd quote do:
+            let `asNode` {.inject.} = a
+            body
+        of nnkBracketExpr:
+          asNode = asNode[0]
+          asNode.expectKind nnkIdent
+          asNode.expectLen 1
+          ename.resadd quote do:
+            let `asNode` {.inject.} = arr
+            body
+        else: error(&"got {asNode.kind}, but expected ident or brackedExpr", asNode)
+    template resaddas(ename: string, a, body: untyped) =
+      if asNode == nil:
+        ename.resadd quote do:
+          body
+      else:
+        case asNode.kind
+        of nnkIdent:
+          ename.resadd quote do:
+            let `asNode` {.inject.} = a
+            body
+        else: error(&"got {asNode.kind}, but expected ident", asNode)
+    template resaddasdo(ename: string, noas: untyped, a: untyped, arr: untyped) =
+      if asNode == nil:
+        ename.resadd quote do:
+          noas
+      else:
+        case asNode.kind
+        of nnkIdent:
+          ename.resadd quote do:
+            a
+        of nnkBracketExpr:
+          asNode = asNode[0]
+          asNode.expectKind nnkIdent
+          ename.resadd quote do:
+            arr
+        else: error(&"got {asNode.kind}, but expected ident or brackedExpr", asNode)
 
     if b.kind == nnkPrefix:
       let b = b[1]
@@ -110,7 +154,7 @@ proc runImpl(w: NimNode, a: NimNode): NimNode =
       if pars.len == 1 and pars[0] != ident"any":
         var k = pars[0]
         if k.kind == nnkIdent: k = quote do: Key.`k`
-        "onTick".resadd quote do:
+        "onTick".resaddas `k`:
           if e.keyboard.pressed[`k`]:
             `body`
       elif pars.len > 1:
@@ -119,15 +163,39 @@ proc runImpl(w: NimNode, a: NimNode): NimNode =
           var k = v
           if k.kind == nnkIdent: k = quote do: Key.`k`
           kk.add k
-        "onTick".resadd quote do:
+        "onTick".resaddasdo do:
           var prs = false
           for k in `kk`:
-            if e.keyboard.pressed[`k`]: prs = true
+            if e.keyboard.pressed[k]: prs = true; break
           if prs:
             `body`
+        do:
+          var `asNode` {.inject.} = Key.unknown
+          for k in `kk`:
+            if e.keyboard.pressed[k]: `asNode` = k; break
+          if `asNode` != Key.unknown:
+            `body`
+        do:
+          var `asNode` {.inject.}: seq[Key]
+          for k in `kk`:
+            if e.keyboard.pressed[k]: `asNode`.add k
+          if `asNode`.len > 0:
+            `body`
       else:
-        "onTick".resadd quote do:
+        "onTick".resaddasdo do:
           if true in e.keyboard.pressed:
+            `body`
+        do:
+          var `asNode` {.inject.} = Key.unknown
+          for k, v in e.keyboard.pressed:
+            if v: `asNode` = k; break
+          if `asNode` != Key.unknown:
+            `body`
+        do:
+          var `asNode` {.inject.}: seq[Key]
+          for k, v in e.keyboard.pressed:
+            if v: `asNode`.add k
+          if `asNode`.len > 0:
             `body`
 
     of "notpressingkey", "notkeypressing", "notpressing":
@@ -153,6 +221,17 @@ proc runImpl(w: NimNode, a: NimNode): NimNode =
         "onTick".resadd quote do:
           if false in e.keyboard.pressed:
             `body`
+
+    of "textenter":
+      eventName.resaddas e.text, e.text.toRunes: `body`
+    of "render":
+      eventName.resaddas `w`.render: `body`
+    of "focus":
+      eventName.resaddas e.focused: `body`
+    of "scroll":
+      eventName.resaddas e.delta: `body`
+
+    # TODO: click, moves, resize, render(renderEngine)
 
     else: eventName.resadd body
 
