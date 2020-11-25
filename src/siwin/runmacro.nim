@@ -20,7 +20,7 @@ proc runImpl(w: NimNode, a: NimNode): NimNode =
     var eventName = ""
     var pars: seq[NimNode]
     var asNode: NimNode
-    template resaddas(ename: string, a, arr, body: untyped) =
+    template resaddastu(ename: string; a, tu, arr, body: untyped) =
       if asNode == nil:
         ename.resadd quote do:
           body
@@ -30,6 +30,13 @@ proc runImpl(w: NimNode, a: NimNode): NimNode =
           ename.resadd quote do:
             let `asNode` {.inject.} = a
             body
+        of nnkPar:
+          var r = nnkVarTuple.newTree
+          for c in asNode:
+            r.add nnkPragmaExpr.newTree(c, nnkPragma.newTree(ident"inject"))
+          r.add nnkEmpty.newNimNode
+          r.add quote do: tu
+          ename.resadd nnkStmtList.newTree(nnkLetSection.newTree(r), quote do: body)
         of nnkBracketExpr:
           asNode = asNode[0]
           asNode.expectKind nnkIdent
@@ -37,8 +44,9 @@ proc runImpl(w: NimNode, a: NimNode): NimNode =
           ename.resadd quote do:
             let `asNode` {.inject.} = arr
             body
-        else: error(&"got {asNode.kind}, but expected ident or brackedExpr", asNode)
-    template resaddas(ename: string, a, body: untyped) =
+        else: error(&"got {asNode.kind}, but expected ident, ident[] or tuple", asNode)
+    template resaddas(ename: string; a, arr, body: untyped) = ename.resaddastu a, a, arr, body
+    template resaddastu(ename: string; a, tu, body: untyped) =
       if asNode == nil:
         ename.resadd quote do:
           body
@@ -48,7 +56,15 @@ proc runImpl(w: NimNode, a: NimNode): NimNode =
           ename.resadd quote do:
             let `asNode` {.inject.} = a
             body
-        else: error(&"got {asNode.kind}, but expected ident", asNode)
+        of nnkPar:
+          var r = nnkVarTuple.newTree
+          for c in asNode:
+            r.add nnkPragmaExpr.newTree(c, nnkPragma.newTree(ident"inject"))
+          r.add nnkEmpty.newNimNode
+          r.add quote do: tu
+          ename.resadd nnkStmtList.newTree(nnkLetSection.newTree(r), quote do: body)
+        else: error(&"got {asNode.kind}, but expected ident or tuple", asNode)
+    template resaddas(ename: string; a, body: untyped) = ename.resaddastu a, a, body
     template resaddasdo(ename: string, noas: untyped, a: untyped, arr: untyped) =
       if asNode == nil:
         ename.resadd quote do:
@@ -58,12 +74,19 @@ proc runImpl(w: NimNode, a: NimNode): NimNode =
         of nnkIdent:
           ename.resadd quote do:
             a
+        of nnkPar:
+          var r = nnkVarTuple.newTree
+          for c in asNode:
+            r.add nnkPragmaExpr.newTree(c, nnkPragma.newTree(ident"inject"))
+          r.add nnkEmpty.newNimNode
+          r.add quote do: a
+          ename.resadd nnkStmtList.newTree(nnkLetSection.newTree(r), quote do: body)
         of nnkBracketExpr:
           asNode = asNode[0]
           asNode.expectKind nnkIdent
           ename.resadd quote do:
             arr
-        else: error(&"got {asNode.kind}, but expected ident or brackedExpr", asNode)
+        else: error(&"got {asNode.kind}, but expected ident, ident[] or tuple", asNode)
 
     if b.kind == nnkPrefix:
       let b = b[1]
@@ -231,7 +254,13 @@ proc runImpl(w: NimNode, a: NimNode): NimNode =
     of "scroll":
       eventName.resaddas e.delta: `body`
 
-    # TODO: click, moves, resize, render(renderEngine)
+    of "click":
+      eventName.resaddastu e.button, (btn: e.button, pos: e.position): `body`
+    of "mousemove", "mouseleave", "mouseenter", "windowmove":
+      eventName.resaddastu e.position, (old: e.oldPosition, cur: e.position): `body`
+    of "resize":
+      eventName.resaddastu e.size, (old: e.oldSize, cur: e.size): `body`
+    # TODO: render(renderEngine)
 
     else: eventName.resadd body
 

@@ -101,7 +101,7 @@ type
   ResizeEvent* = tuple
     oldSize, size: tuple[x, y: int]
   WindowMoveEvent* = tuple
-    olsPositin, position: tuple[x, y: int]
+    oldPosition, position: tuple[x, y: int]
 
   MouseMoveEvent* = tuple
     mouse: Mouse
@@ -113,6 +113,7 @@ type
   ClickEvent* = tuple
     mouse: Mouse
     button: MouseButton
+    position: tuple[x, y: int]
     doubleClick: bool
   ScrollEvent* = tuple
     mouse: Mouse
@@ -259,14 +260,16 @@ when defined(linux):
   proc `=destroy`(a: var Screen) =
     disconnect()
   {.experimental: "callOperator".}
-  proc `()`*(a: Screen, n: int): Screen = with result:
+  proc screen*(n: int): Screen = with result:
     connect()
     if n notin 0..<screenCount: raise IndexDefect.newException(&"screen {n} is not exist")
     id = n.cint
     xid = d.ScreenOfDisplay(id)
+
   proc defaultScreen*(): Screen = x.connected:
-    result = Screen()(d.DefaultScreen.int)
-  let screen*: Screen = defaultScreen()
+    result = screen(d.DefaultScreen.int)
+  proc screen*(): Screen = defaultScreen()
+
   proc n*(a: Screen): int = a.id.int
 
   proc size*(a: Screen): tuple[x, y: int] =
@@ -396,9 +399,9 @@ when defined(linux):
     if xwin != 0: xcheck d.XDestroyWindow(xwin)
     x.disconnect()
 
-  proc newWindowImpl(w, h: int): Window = with result:
+  proc newWindowImpl(w, h: int, scr: Screen): Window = with result:
     x.connect()
-    screen = d.DefaultScreen
+    screen = scr.id
     m_size = (w, h)
     xwin = d.XCreateSimpleWindow(d.DefaultRootWindow, 0, 0, w.cuint, h.cuint, 0, 0, d.BlackPixel(screen))
     doassert xwin != 0
@@ -636,8 +639,8 @@ when defined(linux):
             mouse.pressed[button] = false
             
             if clicking[button]:
-              if (nows - lastClickTime).inMilliseconds < 200: push_event onDoubleClick, (mouse, button, true)
-              else: push_event onClick, (mouse, button, false)
+              if (nows - lastClickTime).inMilliseconds < 200: push_event onDoubleClick, (mouse, button, mouse.position, true)
+              else: push_event onClick, (mouse, button, mouse.position, false)
 
             mouse.pressed[button] = false
             lastClickTime = nows
@@ -878,8 +881,8 @@ else:
 
 
 
-proc newWindow*(w: int = 1280, h: int = 720, title: string = ""): Window =
-  result = newWindowImpl(w, h)
+proc newWindow*(w: int = 1280, h: int = 720, title: string = "", screen = screen()): Window =
+  result = newWindowImpl(w, h, screen)
   result.title = title
 
 template w*(a: Screen): int = a.size.x

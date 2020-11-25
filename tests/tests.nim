@@ -62,9 +62,9 @@ test "macro":
 
       window.cursor = Cursor.arrowUp
 
-    mouseMove:
+    mouseMove as pos:
       if e.mouse.pressed[MouseButton.left]:
-        g = min(max(int(e.position.x / window.size.x * 255), 0), 255)
+        g = min(max(int(pos.x / window.size.x * 255), 0), 255)
         redraw window
 
     render as r:
@@ -83,13 +83,17 @@ test "macro":
     not pressing g:  g = max(g - 1, 0); redraw window   # equivalent `notPressing g:`
     keyup (k):       close window                       # equivalent `keyup: if e.key in k:`
     textEnter:       echo e.text
+
+    click as (_, pos): g = min(max(int(pos.x / window.size.x * 255), 0), 255)
   
   echo x
   check a == true
 
 test "screen":
   if screenCount == 1:
-    echo &"screen.size: {screen.size.x}x{screen.size.y}"
+    let size = screen().size
+    echo &"screen().size: {size.x}x{size.y}"
   else:
     for i in 0..<screenCount:
-      echo &"screen({i}).size: {screen(i).size.x}x{screen(i).size.y}"
+      let size = screen(i).size
+      echo &"screen({i}).size: {size.x}x{size.y}"
