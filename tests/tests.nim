@@ -1,4 +1,4 @@
-import siwin
+import siwin, strformat
 import unittest
 
 test "window":
@@ -86,3 +86,10 @@ test "macro":
   
   echo x
   check a == true
+
+test "screen":
+  if screenCount == 1:
+    echo &"screen.size: {screen.size.x}x{screen.size.y}"
+  else:
+    for i in 0..<screenCount:
+      echo &"screen({i}).size: {screen(i).size.x}x{screen(i).size.y}"

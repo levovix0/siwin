@@ -1,4 +1,4 @@
-import times, os
+import times, os, strformat
 import with
 import image
 when defined(linux):
@@ -136,9 +136,9 @@ type
     text: string # строка, т.к. введённый символ может быть закодирован в unicode
 
   Screen* = object
-
-var screen*: Screen
-
+    when defined(linux):
+      id: cint
+      xid: PScreen
 
 
 when defined(linux):
@@ -251,7 +251,140 @@ when defined(linux):
   template d: x.PDisplay = x.display
 
   proc malloc(a: culong): pointer {.importc.}
+
+  proc getScreenCount*(): int = x.connected:
+    result = display.ScreenCount.int
+  template screenCount*: int = getScreenCount()
+
+  proc `=destroy`(a: var Screen) =
+    disconnect()
+  {.experimental: "callOperator".}
+  proc `()`*(a: Screen, n: int): Screen = with result:
+    connect()
+    if n notin 0..<screenCount: raise IndexDefect.newException(&"screen {n} is not exist")
+    id = n.cint
+    xid = d.ScreenOfDisplay(id)
+  proc defaultScreen*(): Screen = x.connected:
+    result = Screen()(d.DefaultScreen.int)
+  let screen*: Screen = defaultScreen()
+  proc n*(a: Screen): int = a.id.int
+
+  proc size*(a: Screen): tuple[x, y: int] =
+    result = (a.xid.width.int, a.xid.height.int)
   
+  proc rootWindow(a: Screen): x.Window {.used.} = a.xid.root
+
+elif defined(windows):
+  proc wkeyToKey(key: WParam, flags: LParam): Key =
+    case key
+    of VK_shift:
+      let lshift = MapVirtualKeyW(VK_shift, MAPVK_VK_TO_VSC)
+      let scancode = flags and ((0xFF shl 16) shr 16)
+      if scancode == lshift: Key.lshift else: Key.rshift
+    of VK_menu:
+      if (flags and KF_EXTENDED) != 0: Key.ralt else: Key.lalt
+    of VK_control:
+      if (flags and KF_EXTENDED) != 0: Key.rcontrol else: Key.lcontrol
+    of VK_lwin:         Key.lsystem
+    of VK_rwin:         Key.rsystem
+    of VK_apps:         Key.menu
+    of VK_escape:       Key.escape
+    of VK_oem1:         Key.semicolon
+    of VK_oem2:         Key.slash
+    of VK_oem_plus:     Key.equal
+    of VK_oem_minus:    Key.minus
+    of VK_oem4:         Key.lbracket
+    of VK_oem6:         Key.rbracket
+    of VK_oem_comma:    Key.comma
+    of VK_oem_period:   Key.dot
+    of VK_oem7:         Key.quote
+    of VK_oem5:         Key.backslash
+    of VK_oem3:         Key.tilde
+    of VK_space:        Key.space
+    of VK_return:       Key.enter
+    of VK_back:         Key.backspace
+    of VK_tab:          Key.tab
+    of VK_prior:        Key.page_up
+    of VK_next:         Key.page_down
+    of VK_end:          Key.End
+    of VK_home:         Key.home
+    of VK_insert:       Key.insert
+    of VK_delete:       Key.del
+    of VK_add:          Key.add
+    of VK_subtract:     Key.subtract
+    of VK_multiply:     Key.multiply
+    of VK_divide:       Key.divide
+    of VK_pause:        Key.pause
+    of VK_f1:           Key.f1
+    of VK_f2:           Key.f2
+    of VK_f3:           Key.f3
+    of VK_f4:           Key.f4
+    of VK_f5:           Key.f5
+    of VK_f6:           Key.f6
+    of VK_f7:           Key.f7
+    of VK_f8:           Key.f8
+    of VK_f9:           Key.f9
+    of VK_f10:          Key.f10
+    of VK_f11:          Key.f11
+    of VK_f12:          Key.f12
+    of VK_f13:          Key.f13
+    of VK_f14:          Key.f14
+    of VK_f15:          Key.f15
+    of VK_left:         Key.left
+    of VK_right:        Key.right
+    of VK_up:           Key.up
+    of VK_down:         Key.down
+    of VK_numpad0:      Key.numpad0
+    of VK_numpad1:      Key.numpad1
+    of VK_numpad2:      Key.numpad2
+    of VK_numpad3:      Key.numpad3
+    of VK_numpad4:      Key.numpad4
+    of VK_numpad5:      Key.numpad5
+    of VK_numpad6:      Key.numpad6
+    of VK_numpad7:      Key.numpad7
+    of VK_numpad8:      Key.numpad8
+    of VK_numpad9:      Key.numpad9
+    of 'A'.ord:         Key.a
+    of 'B'.ord:         Key.b
+    of 'C'.ord:         Key.c
+    of 'D'.ord:         Key.d
+    of 'E'.ord:         Key.r
+    of 'F'.ord:         Key.f
+    of 'G'.ord:         Key.g
+    of 'H'.ord:         Key.h
+    of 'I'.ord:         Key.i
+    of 'J'.ord:         Key.j
+    of 'K'.ord:         Key.k
+    of 'L'.ord:         Key.l
+    of 'M'.ord:         Key.m
+    of 'N'.ord:         Key.n
+    of 'O'.ord:         Key.o
+    of 'P'.ord:         Key.p
+    of 'Q'.ord:         Key.q
+    of 'R'.ord:         Key.r
+    of 'S'.ord:         Key.s
+    of 'T'.ord:         Key.t
+    of 'U'.ord:         Key.u
+    of 'V'.ord:         Key.v
+    of 'W'.ord:         Key.w
+    of 'X'.ord:         Key.x
+    of 'Y'.ord:         Key.y
+    of 'Z'.ord:         Key.z
+    of '0'.ord:         Key.n0
+    of '1'.ord:         Key.n1
+    of '2'.ord:         Key.n2
+    of '3'.ord:         Key.n3
+    of '4'.ord:         Key.n4
+    of '5'.ord:         Key.n5
+    of '6'.ord:         Key.n6
+    of '7'.ord:         Key.n7
+    of '8'.ord:         Key.n8
+    of '9'.ord:         Key.n9
+    else:               Key.unknown
+
+
+
+when defined(linux):  
   proc `=destroy`*(a: var Window) = with a:
     if ximg != nil: xcheck XDestroyImage(ximg)
     if gc != nil: xcheck d.XFreeGC(gc)
@@ -353,7 +486,7 @@ when defined(linux):
   
   proc position*(a: Window): tuple[x, y: int] = with a:
     let (_, x, y, _, _, _, _) = xwin.getGeometry()
-    return (x, y)
+    return (x.int, y.int)
   proc `position=`*(a: var Window, p: tuple[x, y: int]) = with a:
     xcheck d.XMoveWindow(xwin, p.x.cint, p.y.cint)
     m_pos = p
@@ -573,124 +706,12 @@ when defined(linux):
         waitForReDraw = false
         push_event on_render, (m_data, m_size)
         a.displayImpl()
-
-  #* Screen
-  proc size*(a: Screen): tuple[x, y: int] =
-    connect()
-    let screen = d.XScreenOfDisplay(d.XDefaultScreen)
-    result = (screen.width.int, screen.height.int)
-    disconnect()
+  
+  proc systemHandle*(a: Window): x.Window = a.xwin
 
 
 
 elif defined(windows):
-  proc wkeyToKey(key: WParam, flags: LParam): Key =
-    case key
-    of VK_shift:
-      let lshift = MapVirtualKeyW(VK_shift, MAPVK_VK_TO_VSC)
-      let scancode = flags and ((0xFF shl 16) shr 16)
-      if scancode == lshift: Key.lshift else: Key.rshift
-    of VK_menu:
-      if (flags and KF_EXTENDED) != 0: Key.ralt else: Key.lalt
-    of VK_control:
-      if (flags and KF_EXTENDED) != 0: Key.rcontrol else: Key.lcontrol
-    of VK_lwin:         Key.lsystem
-    of VK_rwin:         Key.rsystem
-    of VK_apps:         Key.menu
-    of VK_escape:       Key.escape
-    of VK_oem1:         Key.semicolon
-    of VK_oem2:         Key.slash
-    of VK_oem_plus:     Key.equal
-    of VK_oem_minus:    Key.minus
-    of VK_oem4:         Key.lbracket
-    of VK_oem6:         Key.rbracket
-    of VK_oem_comma:    Key.comma
-    of VK_oem_period:   Key.dot
-    of VK_oem7:         Key.quote
-    of VK_oem5:         Key.backslash
-    of VK_oem3:         Key.tilde
-    of VK_space:        Key.space
-    of VK_return:       Key.enter
-    of VK_back:         Key.backspace
-    of VK_tab:          Key.tab
-    of VK_prior:        Key.page_up
-    of VK_next:         Key.page_down
-    of VK_end:          Key.End
-    of VK_home:         Key.home
-    of VK_insert:       Key.insert
-    of VK_delete:       Key.del
-    of VK_add:          Key.add
-    of VK_subtract:     Key.subtract
-    of VK_multiply:     Key.multiply
-    of VK_divide:       Key.divide
-    of VK_pause:        Key.pause
-    of VK_f1:           Key.f1
-    of VK_f2:           Key.f2
-    of VK_f3:           Key.f3
-    of VK_f4:           Key.f4
-    of VK_f5:           Key.f5
-    of VK_f6:           Key.f6
-    of VK_f7:           Key.f7
-    of VK_f8:           Key.f8
-    of VK_f9:           Key.f9
-    of VK_f10:          Key.f10
-    of VK_f11:          Key.f11
-    of VK_f12:          Key.f12
-    of VK_f13:          Key.f13
-    of VK_f14:          Key.f14
-    of VK_f15:          Key.f15
-    of VK_left:         Key.left
-    of VK_right:        Key.right
-    of VK_up:           Key.up
-    of VK_down:         Key.down
-    of VK_numpad0:      Key.numpad0
-    of VK_numpad1:      Key.numpad1
-    of VK_numpad2:      Key.numpad2
-    of VK_numpad3:      Key.numpad3
-    of VK_numpad4:      Key.numpad4
-    of VK_numpad5:      Key.numpad5
-    of VK_numpad6:      Key.numpad6
-    of VK_numpad7:      Key.numpad7
-    of VK_numpad8:      Key.numpad8
-    of VK_numpad9:      Key.numpad9
-    of 'A'.ord:         Key.a
-    of 'B'.ord:         Key.b
-    of 'C'.ord:         Key.c
-    of 'D'.ord:         Key.d
-    of 'E'.ord:         Key.r
-    of 'F'.ord:         Key.f
-    of 'G'.ord:         Key.g
-    of 'H'.ord:         Key.h
-    of 'I'.ord:         Key.i
-    of 'J'.ord:         Key.j
-    of 'K'.ord:         Key.k
-    of 'L'.ord:         Key.l
-    of 'M'.ord:         Key.m
-    of 'N'.ord:         Key.n
-    of 'O'.ord:         Key.o
-    of 'P'.ord:         Key.p
-    of 'Q'.ord:         Key.q
-    of 'R'.ord:         Key.r
-    of 'S'.ord:         Key.s
-    of 'T'.ord:         Key.t
-    of 'U'.ord:         Key.u
-    of 'V'.ord:         Key.v
-    of 'W'.ord:         Key.w
-    of 'X'.ord:         Key.x
-    of 'Y'.ord:         Key.y
-    of 'Z'.ord:         Key.z
-    of '0'.ord:         Key.n0
-    of '1'.ord:         Key.n1
-    of '2'.ord:         Key.n2
-    of '3'.ord:         Key.n3
-    of '4'.ord:         Key.n4
-    of '5'.ord:         Key.n5
-    of '6'.ord:         Key.n6
-    of '7'.ord:         Key.n7
-    of '8'.ord:         Key.n8
-    of '9'.ord:         Key.n9
-    else:               Key.unknown
-
   proc poolEvent(a: var Window, message: Uint, wParam: WParam, lParam: LParam): LResult
 
   proc wndProc(handle: HWnd, message: Uint, wParam: WParam, lParam: LParam): LResult {.stdcall.} =
@@ -850,6 +871,8 @@ elif defined(windows):
 
   proc poolEvent(a: var Window, message: UINT, wParam: WPARAM, lParam: LPARAM): LRESULT = with a:
     discard
+
+  proc systemHandle*(a: Window): HWnd = a.handle
 else:
   {.error: "current OS is not supported".}
 

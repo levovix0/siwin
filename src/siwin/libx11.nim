@@ -54,6 +54,11 @@ when defined(linux):
     inc display_rc
     return display
 
+  template connected*(body) =
+    connect()
+    body
+    disconnect()
+
   proc disconnect*() =
     ## disconnect from X11 server
     dec display_rc
