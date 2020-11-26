@@ -84,14 +84,17 @@ type
       handle: HWnd
       wimage: HBitmap
       hdc: HDC
+      wicon: HIcon
       
       wcursor: HCursor
       curCursor: Cursor
-      wicon: HIcon
+      clicking: array[MouseButton.left..MouseButton.backward, bool]
 
       m_hasFocus: bool
       m_isOpen: bool
       m_isFullscreen: bool
+
+      firstPaint: bool
 
   CloseEvent* = tuple
 
@@ -255,14 +258,13 @@ when defined(linux):
 
   proc getScreenCount*(): int = x.connected:
     result = display.ScreenCount.int
-  template screenCount*: int = getScreenCount()
 
   proc `=destroy`(a: var Screen) =
     disconnect()
   {.experimental: "callOperator".}
   proc screen*(n: int): Screen = with result:
     connect()
-    if n notin 0..<screenCount: raise IndexDefect.newException(&"screen {n} is not exist")
+    if n notin 0..<getScreenCount(): raise IndexDefect.newException(&"screen {n} is not exist")
     id = n.cint
     xid = d.ScreenOfDisplay(id)
 
@@ -385,9 +387,22 @@ elif defined(windows):
     of '9'.ord:         Key.n9
     else:               Key.unknown
 
+  #TODO: многоэкранность
+  proc getScreenCount*(): int = 1
+
+  proc screen*(n: int = 0): Screen = discard
+  proc defaultScreen*(): Screen = screen()
+  proc n*(a: Screen): int = 0
+
+  proc size*(a: Screen): tuple[x, y: int] =
+    result.x = GetSystemMetrics(SM_CXSCREEN).int
+    result.y = GetSystemMetrics(SM_CYSCREEN).int
+
+template screenCount*: int = getScreenCount()
 
 
-when defined(linux):  
+
+when defined(linux):
   proc `=destroy`*(a: var Window) = with a:
     if ximg != nil: xcheck XDestroyImage(ximg)
     if gc != nil: xcheck d.XFreeGC(gc)
@@ -562,7 +577,7 @@ when defined(linux):
     xcheckStatus d.XPutImage(xwin, gc, ximg, 0, 0, 0, 0, m_size.x.cuint, m_size.y.cuint)
   
   proc run*(a: var Window) = with a:
-    template push_event(event, args) =
+    template pushEvent(event, args) =
       when args is tuple: 
         if a.event != nil: a.event(args)
       else:
@@ -601,7 +616,7 @@ when defined(linux):
           if ev.xexpose.width != m_size.x or ev.xexpose.height != m_size.y:
             let osize = m_size
             a.updateGeometry()
-            push_event onResize, (osize, m_size)
+            pushEvent onResize, (osize, m_size)
           redraw a
         of ClientMessage:
           if ev.xclient.data.l[0] == (clong)x.atom(WM_DELETE_WINDOW, false):
@@ -609,56 +624,56 @@ when defined(linux):
             m_isFullscreen   = false;
             m_hasFocus       = false;
             waitForReDraw   = false;
-            push_event onClose, ()
+            pushEvent onClose, ()
           
         of ConfigureNotify:
           if ev.xconfigure.width != m_size.x or ev.xconfigure.height != m_size.y:
             let osize = m_size
             a.updateGeometry()
-            push_event on_resize, (osize, m_size)
+            pushEvent on_resize, (osize, m_size)
           if ev.xconfigure.x.int != m_pos.x or ev.xconfigure.y.int != m_pos.y:
             let oldPos = m_pos
             m_pos = (ev.xconfigure.x.int, ev.xconfigure.y.int)
-            push_event onWindowMove, (oldPos, m_pos)
+            pushEvent onWindowMove, (oldPos, m_pos)
 
         of MotionNotify:
           let oldPos = mouse.position
           mouse.position = (ev.xmotion.x.int, ev.xmotion.y.int)
           for v in clicking.mitems: v = false
-          push_event onMouseMove, (mouse, oldPos, mouse.position)
+          pushEvent onMouseMove, (mouse, oldPos, mouse.position)
 
         of ButtonPress:
           if not isScroll:
             mouse.pressed[button] = true
             clicking[button] = true
-            push_event onMouseDown, (mouse, button, true)
-          elif scrollDelta != 0: push_event onScroll, (mouse, scrollDelta)
+            pushEvent onMouseDown, (mouse, button, true)
+          elif scrollDelta != 0: pushEvent onScroll, (mouse, scrollDelta)
         of ButtonRelease:
           if not isScroll:
             let nows = getTime()
             mouse.pressed[button] = false
             
             if clicking[button]:
-              if (nows - lastClickTime).inMilliseconds < 200: push_event onDoubleClick, (mouse, button, mouse.position, true)
-              else: push_event onClick, (mouse, button, mouse.position, false)
+              if (nows - lastClickTime).inMilliseconds < 200: pushEvent onDoubleClick, (mouse, button, mouse.position, true)
+              else: pushEvent onClick, (mouse, button, mouse.position, false)
 
             mouse.pressed[button] = false
             lastClickTime = nows
-            push_event onMouseUp, (mouse, button, false)
+            pushEvent onMouseUp, (mouse, button, false)
 
         of LeaveNotify:
-          push_event onMouseLeave, (mouse, mouse.position, (ev.xcrossing.x.int, ev.xcrossing.y.int))
+          pushEvent onMouseLeave, (mouse, mouse.position, (ev.xcrossing.x.int, ev.xcrossing.y.int))
         of EnterNotify:
-          push_event onMouseEnter, (mouse, mouse.position, (ev.xcrossing.x.int, ev.xcrossing.y.int))
+          pushEvent onMouseEnter, (mouse, mouse.position, (ev.xcrossing.x.int, ev.xcrossing.y.int))
 
         of FocusIn:
           m_hasFocus = true
           if xinContext != nil: XSetICFocus xinContext
-          push_event onFocus, (true)
+          pushEvent onFocus, (true)
         of FocusOut:
           m_hasFocus = false
           if xinContext != nil: XSetICFocus xinContext
-          push_event onFocus, (false)
+          pushEvent onFocus, (false)
         
         of KeyPress:
           var key = Key.unknown
@@ -670,7 +685,7 @@ when defined(linux):
           if key != Key.unknown:
             keyboard.pressed[key] = true
             template mk(a): bool = (ev.xkey.state and a).bool
-            push_event onKeydown, (keyboard, key, true, mk Mod1Mask, mk ControlMask, mk ShiftMask, mk Mod4Mask)
+            pushEvent onKeydown, (keyboard, key, true, mk Mod1Mask, mk ControlMask, mk ShiftMask, mk Mod4Mask)
           
           if xinContext != nil:
             var status: Status
@@ -683,7 +698,7 @@ when defined(linux):
                 result.add ch
 
             if length > 0:
-              push_event onTextEnter, (keyboard, buffer.toString())
+              pushEvent onTextEnter, (keyboard, buffer.toString())
         
         of KeyRelease:
           var key = Key.unknown
@@ -695,19 +710,19 @@ when defined(linux):
           if key != Key.unknown:
             keyboard.pressed[key] = false
             template mk(a): bool = (ev.xkey.state and a).bool
-            push_event onKeyup, (keyboard, key, false, mk Mod1Mask, mk ControlMask, mk ShiftMask, mk Mod4Mask)
+            pushEvent onKeyup, (keyboard, key, false, mk Mod1Mask, mk ControlMask, mk ShiftMask, mk Mod4Mask)
 
         else: discard
 
       if not catched: sleep(2) # не так быстро!
 
       let nows = getTime()
-      push_event onTick, (mouse, keyboard, nows - lastTickTime)
+      pushEvent onTick, (mouse, keyboard, nows - lastTickTime)
       lastTickTime = nows
 
       if waitForReDraw:
         waitForReDraw = false
-        push_event on_render, (m_data, m_size)
+        pushEvent on_render, (m_data, m_size)
         a.displayImpl()
   
   proc systemHandle*(a: Window): x.Window = a.xwin
@@ -755,13 +770,14 @@ elif defined(windows):
     DeleteDC hdc
     DeleteObject wimage
 
-  proc newWindowImpl(w, h: int): Window = with result:
+  proc newWindowImpl(w, h: int, screen: Screen): Window = with result:
     handle = CreateWindow(wClassName, "", WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, 
                           w.int32, h.int32, 0, 0, hInstance, nil)
     winassert handle != 0
     m_hasFocus = true
     m_isOpen = true
     m_isFullscreen = false
+    firstPaint = true
     curCursor = arrow
     wcursor = LoadCursor(0, IDC_ARROW)
     discard handle.SetWindowLongPtrW(GWLP_USERDATA, cast[LONG_PTR](result.addr))
@@ -819,12 +835,12 @@ elif defined(windows):
     if kind == curCursor: return
     var cu: HCursor = 0
     case kind
-    of Cursor.arrow:          cu = LoadCursor(0, IDC_ARROW)
-    of Cursor.arrowUp:        cu = LoadCursor(0, IDC_SIZEALL)
-    of Cursor.hand:           cu = LoadCursor(0, IDC_HAND)
-    of Cursor.sizeAll:        cu = LoadCursor(0, IDC_SIZEWE)
-    of Cursor.sizeVertical:   cu = LoadCursor(0, IDC_SIZENS)
-    of Cursor.sizeHorisontal: cu = LoadCursor(0, IDC_UPARROW)
+    of Cursor.arrow:          cu = LoadCursor(0, IDC_arrow)
+    of Cursor.arrowUp:        cu = LoadCursor(0, IDC_upArrow)
+    of Cursor.hand:           cu = LoadCursor(0, IDC_hand)
+    of Cursor.sizeAll:        cu = LoadCursor(0, IDC_sizeAll)
+    of Cursor.sizeVertical:   cu = LoadCursor(0, IDC_sizens)
+    of Cursor.sizeHorisontal: cu = LoadCursor(0, IDC_sizewe)
     if cu != 0:
       SetCursor cu
       wcursor = cu
@@ -872,8 +888,107 @@ elif defined(windows):
       if a.onTick != nil: onTick (mouse, keyboard, nows - lastTickTime)
       lastTickTime = nows
 
-  proc poolEvent(a: var Window, message: UINT, wParam: WPARAM, lParam: LPARAM): LRESULT = with a:
-    discard
+  proc poolEvent(a: var Window, message: Uint, wParam: WParam, lParam: LParam): LResult = with a:
+    template pushEvent(event, args) =
+      when args is tuple: 
+        if a.event != nil: a.event(args)
+      else:
+        if a.event != nil: a.event((args,))
+
+    template button: MouseButton =
+      case message
+      of WM_lbuttonDown, WM_lbuttonUp, WM_lbuttonDblclk: MouseButton.left
+      of WM_rbuttonDown, WM_rbuttonUp, WM_rbuttonDblclk: MouseButton.right
+      of WM_mbuttonDown, WM_mbuttonUp, WM_mbuttonDblclk: MouseButton.middle
+      of WM_xbuttonDown, WM_xbuttonUp, WM_xbuttonDblclk:
+        let button = wParam.GetXButtonWParam()
+        if button == MK_xbutton1: MouseButton.backward elif button == MK_xbutton2: MouseButton.forward else: MouseButton.left
+      else: MouseButton.left
+
+    result = 0
+
+    case message
+    of WM_paint:
+      let rect = handle.clientRect
+      if rect.right != m_size.x or rect.bottom != m_size.y or firstPaint:
+        let osize = m_size
+        a.updateGeometry()
+        pushEvent onResize, (osize, m_size)
+        firstPaint = false
+      pushEvent onRender, (m_data, m_size)
+      a.displayImpl()
+    
+    of WM_destroy:
+      pushEvent onClose, ()
+      m_isOpen = false
+      PostQuitMessage(0)
+    
+    of WM_mouseMove:
+      let opos = mouse.position
+      mouse.position = (lParam.GetX_LParam, lParam.GetY_LParam)
+      for v in clicking.mitems: v = false
+      pushEvent onMouseMove, (mouse, opos, mouse.position)
+    
+    of WM_mouseLeave:
+      let npos = (lParam.GetX_LParam, lParam.GetY_LParam)
+      pushEvent onMouseLeave, (mouse, mouse.position, npos)
+      handle.trackMouseEvent(TME_hover)
+    
+    of WM_mouseHover:
+      let npos = (lParam.GetX_LParam, lParam.GetY_LParam)
+      pushEvent onMouseEnter, (mouse, mouse.position, npos)
+      handle.trackMouseEvent(TME_leave)
+    
+    of WM_mouseWheel:
+      let delta = if wParam.GetWheelDeltaWParam > 0: -1.0 else: 1.0
+      pushEvent onScroll, (mouse, delta)
+    
+    of WM_setFocus:
+      m_hasFocus = true
+      pushEvent onFocus, (m_hasFocus)
+    
+    of WM_killFocus:
+      m_hasFocus = false
+      pushEvent onFocus, (m_hasFocus)
+    
+    of WM_lbuttonDown, WM_rbuttonDown, WM_mbuttonDown, WM_xbuttonDown:
+      handle.SetCapture()
+      mouse.pressed[button] = true
+      clicking[button] = true
+      pushEvent onMouseDown, (mouse, button, true)
+    
+    of WM_lbuttonUp, WM_rbuttonUp, WM_mbuttonUp, WM_xbuttonUp:
+      ReleaseCapture()
+      mouse.pressed[button] = false
+      if clicking[button]: pushEvent onClick, (mouse, button, mouse.position, false)
+      clicking[button] = false
+      pushEvent onMouseDown, (mouse, button, false)
+    
+    of WM_lbuttonDblclk, WM_rbuttonDblclk, WM_mbuttonDblclk, WM_xbuttonDblclk:
+      pushEvent onDoubleClick, (mouse, button, mouse.position, true)
+
+    of WM_keydown, WM_syskeydown:
+      let key = wkeyToKey(wParam, lParam)
+      keyboard.pressed[key] = true
+      template kstate(vk): bool = HIWord(GetKeyState(vk)) != 0
+      pushEvent onKeydown, (keyboard, key, true, kstate VK_menu, kstate VK_control, kstate VK_shift, kstate(VK_lwin) or kstate(VK_rwin))
+    
+    of WM_keyup, WM_syskeyup:
+      let key = wkeyToKey(wParam, lParam)
+      keyboard.pressed[key] = false
+      template kstate(vk): bool = HIWord(GetKeyState(vk)) != 0
+      pushEvent onKeyup, (keyboard, key, false, kstate VK_menu, kstate VK_control, kstate VK_shift, kstate(VK_lwin) or kstate(VK_rwin))
+
+    of WM_char:
+      pushEvent onTextEnter, (keyboard, $wParam.WChar)
+    
+    of WM_setCursor:
+      if lParam.LOWord == HTClient:
+        SetCursor wcursor
+        return 1
+      return handle.DefWindowProc(message, wParam, lParam)
+
+    else: return handle.DefWindowProc(message, wParam, lParam)
 
   proc systemHandle*(a: Window): HWnd = a.handle
 else:
