@@ -4,7 +4,8 @@ import window
 proc high(a: NimNode): int = a.len - 1
 
 proc runImpl(w: NimNode, a: NimNode): NimNode =
-  # TODO: `resize as (old, cur):` -> `resize: let old = e.oldSize; let cur = e.size`
+  # TODO: `render(siwingl) as r:` -> `init: initSiwinglRender(window); render: let r = siwinglRender(window.toPicture());`
+  # TODO: `render as r:`, `render(user) as r:` -> `render: let r = render(window);`
   a.expectKind nnkStmtList
   result = nnkStmtList.newTree()
 
@@ -104,7 +105,7 @@ proc runImpl(w: NimNode, a: NimNode): NimNode =
       if b.kind == nnkInfix:
         if b[0] != ident"as": error(&"got {b[0].treeRepr}, but expected `as`, try to place brackets", b[0])
         asNode = b[2]
-        var tmp = nnkCall.newTree(b[1])
+        var tmp = if b[1].kind == nnkIdent: nnkCall.newTree(b[1]) else: b[1]
         for a in b[3..b.high]: tmp.add a
         b = tmp
 
@@ -237,7 +238,7 @@ proc runImpl(w: NimNode, a: NimNode): NimNode =
         "onTick".resadd quote do:
           var prs = false
           for k in `kk`:
-            if e.keyboard.pressed[`k`]: prs = true
+            if e.keyboard.pressed[k]: prs = true
           if not prs:
             `body`
       else:
@@ -245,17 +246,34 @@ proc runImpl(w: NimNode, a: NimNode): NimNode =
           if false in e.keyboard.pressed:
             `body`
 
+    of "click":
+      if pars.len == 1 and pars[0] != ident"any":
+        var k = pars[0]
+        if k.kind == nnkIdent: k = quote do: MouseButton.`k`
+        eventName.resaddas e.position:
+          if e.button == `k`:
+            `body`
+      if pars.len > 1:
+        var kk = nnkBracket.newTree()
+        for v in pars:
+          var k = v
+          if k.kind == nnkIdent: k = quote do: MouseButton.`k`
+          kk.add k
+        eventName.resaddas e.position:
+          if e.button in `kk`:
+            `body`
+      else:
+        eventName.resaddastu e.button, (btn: e.button, pos: e.position): `body`
+
     of "textenter":
       eventName.resaddas e.text, e.text.toRunes: `body`
     of "render":
       eventName.resaddas `w`.render: `body`
     of "focus":
       eventName.resaddas e.focused: `body`
+
     of "scroll":
       eventName.resaddas e.delta: `body`
-
-    of "click":
-      eventName.resaddastu e.button, (btn: e.button, pos: e.position): `body`
     of "mousemove", "mouseleave", "mouseenter", "windowmove":
       eventName.resaddastu e.position, (old: e.oldPosition, cur: e.position): `body`
     of "resize":

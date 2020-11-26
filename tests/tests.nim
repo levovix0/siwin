@@ -84,7 +84,7 @@ test "macro":
     keyup (k):       close window                       # equivalent `keyup: if e.key in k:`
     textEnter:       echo e.text
 
-    click as (_, pos): g = min(max(int(pos.x / window.size.x * 255), 0), 255)
+    click(left, right) as (x, _): g = min(max(int(x / window.size.x * 255), 0), 255)
   
   echo x
   check a == true
