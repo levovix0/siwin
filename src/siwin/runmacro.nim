@@ -4,8 +4,6 @@ import window
 proc high(a: NimNode): int = a.len - 1
 
 proc runImpl(w: NimNode, a: NimNode): NimNode =
-  # TODO: `render(siwingl) as r:` -> `init: initSiwinglRender(window); render: let r = siwinglRender(window.toPicture());`
-  # TODO: `render as r:`, `render(user) as r:` -> `render: let r = render(window);`
   a.expectKind nnkStmtList
   result = nnkStmtList.newTree()
 
@@ -268,7 +266,16 @@ proc runImpl(w: NimNode, a: NimNode): NimNode =
     of "textenter":
       eventName.resaddas e.text, e.text.toRunes: `body`
     of "render":
-      eventName.resaddas `w`.render: `body`
+      if pars.len == 1 and pars[0] != ident"user":
+        let ci = nnkCall.newTree(ident("init" & pars[0].strVal.capitalize & "Render"), w)
+        let c = nnkCall.newTree(ident(pars[0].strVal & "Render"), quote do: `w`.toPicture())
+        "onInit".resadd quote do:
+          when compiles(`ci`):
+            `ci`
+        eventName.resaddas `c`: `body`
+      elif pars.len > 1: error(&"got {pars.len} parametrs, but expected one of (), (renderEngine)", pars[1])
+      else:
+        eventName.resaddas `w`.render: `body`
     of "focus":
       eventName.resaddas e.focused: `body`
 
@@ -278,7 +285,6 @@ proc runImpl(w: NimNode, a: NimNode): NimNode =
       eventName.resaddastu e.position, (old: e.oldPosition, cur: e.position): `body`
     of "resize":
       eventName.resaddastu e.size, (old: e.oldSize, cur: e.size): `body`
-    # TODO: render(renderEngine)
 
     else: eventName.resadd body
 
@@ -315,6 +321,9 @@ proc runImpl(w: NimNode, a: NimNode): NimNode =
     run `w`
 
 macro run*(w: var Window, a: untyped) =
+  ## run window macro
+  ## 
+  ## to add a new render engine, add `init_RENDERNAME_Render(Window) -> void` and `RENDERNAME_Render(Picture) -> RENDERINTERFACE` procs
   runImpl w, a
 
 template run*(w: Window, a: untyped) =
