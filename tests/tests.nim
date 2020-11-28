@@ -73,15 +73,15 @@ test "macro":
     doubleClick:     close window
     tick:            inc x
     close:           a = true
-    keyup escape:    close window                       # equivalent `keyup: if e.key == escape:`
-    keyup f1, f2:    window.fullscreen = not window.fullscreen # equivalent `keyup [f1, f2]:`
-    space.pressing:  g = min(g + 5, 255); redraw window # equivalent `pressing space:`
-    pressing any:    g = min(g + 1, 255); redraw window # equivalent `pressing:`
-    # pressing as x: ...                                # equivalent `pressing: let x = magicGetPressedKey();`
-    pressing as x[]: echo x                             # equivalent `pressing: let x = magicGetAllPressedKeys();`
+    keyup escape:    close window                       #= `keyup: if e.key == escape:`
+    keyup f1, f2:    window.fullscreen = not window.fullscreen #= `keyup [f1, f2]:`
+    space.pressing:  g = min(g + 5, 255); redraw window #= `pressing space:`
+    pressing any:    g = min(g + 1, 255); redraw window #= `pressing:`
+    # pressing as x: ...                                #= `pressing: let x = magicGetPressedKey();`
+    pressing as x[]: echo x                             #= `pressing: let x = magicGetAllPressedKeys();`
     # render(opengl) as x: ...
-    not pressing g:  g = max(g - 1, 0); redraw window   # equivalent `notPressing g:`
-    keyup (k):       close window                       # equivalent `keyup: if e.key in k:`
+    not pressing g:  g = max(g - 1, 0); redraw window   #= `notPressing g:`
+    keyup (k):       close window                       #= `keyup: if e.key in k:`
     textEnter:       echo e.text
 
     click(left, right) as (x, _): g = min(max(int(x / window.size.x * 255), 0), 255)
