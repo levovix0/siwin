@@ -489,17 +489,18 @@ when defined(linux):
     
     var e: XEvent
     e.xclient.theType      = ClientMessage
-    e.xclient.message_type = x.atom(NET_WM_STATE, true)
+    e.xclient.message_type = atom(NET_WM_STATE, true)
     e.xclient.display      = d
     e.xclient.window       = xwin
     e.xclient.format       = 32
     e.xclient.data.l[0]    = 2 #* 2 - переключить, 1 - добавить, 0 - убрать
-    e.xclient.data.l[1]    = x.atom(NET_WM_STATE_FULLSCREEN).clong
+    e.xclient.data.l[1]    = atom(NET_WM_STATE_FULLSCREEN).clong
     e.xclient.data.l[2]    = 0
     e.xclient.data.l[3]    = 0
     e.xclient.data.l[4]    = 0
     xcheck d.XSendEvent(xwa.root, 0, SubstructureNotifyMask or SubstructureRedirectMask, e.addr)
-  
+    #! синхронизация не моментальная, поправить
+
     m_isFullscreen = v
   
   proc position*(a: Window): tuple[x, y: int] = with a:
@@ -999,6 +1000,8 @@ else:
 proc newWindow*(w: int = 1280, h: int = 720, title: string = "", screen = screen()): Window =
   result = newWindowImpl(w, h, screen)
   result.title = title
+proc newWindow*(size: tuple[x, y: int], title: string = "", screen = screen()): Window =
+  newWindow(size.x, size.y, title, screen)
 
 template w*(a: Screen): int = a.size.x
 template h*(a: Screen): int = a.size.y

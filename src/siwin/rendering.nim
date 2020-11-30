@@ -14,12 +14,12 @@ proc size*(a: Renderer): tuple[x, y: int] = a.data.size
 
 proc `[]`*(a: Renderer; x, y: int): var Color =
   when not defined(release): # bound check
-    if x notin a.area.a.x..a.area.b.x or x notin a.area.a.y..a.area.b.y:
+    if x notin a.area.a.x..a.area.b.x or y notin a.area.a.y..a.area.b.y:
       raise IndexDefect.newException(&"index is out of bounds, (x: {x}, y: {y}) notin {a.area}")
   a.data[x, y]
 proc `[]=`*(a: Renderer; x, y: int, c: Color) =
   when not defined(release): # bound check
-    if x notin a.area.a.x..a.area.b.x or x notin a.area.a.y..a.area.b.y:
+    if x notin a.area.a.x..a.area.b.x or y notin a.area.a.y..a.area.b.y:
       raise IndexDefect.newException(&"index is out of bounds, (x: {x}, y: {y}) notin {a.area}")
   a.data[x, y] = c
 
