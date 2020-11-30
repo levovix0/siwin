@@ -52,6 +52,7 @@ test "macro":
   var g = 32
   var x = 0
   let k = [Key.x, Key.y]
+  var t = true
 
   run newWindow(title="Окошко"):
     init:
@@ -71,9 +72,9 @@ test "macro":
       r.clear color(g, g, g)
 
     doubleClick:     close window
-    tick:            inc x
+    tick:            inc x; check t
     close:           a = true
-    keyup escape:    close window                       #= `keyup: if e.key == escape:`
+    keyup escape:    close window; t = false            #= `keyup: if e.key == escape:`
     keyup f1, f2:    window.fullscreen = not window.fullscreen #= `keyup [f1, f2]:`
     space.pressing:  g = min(g + 5, 255); redraw window #= `pressing space:`
     pressing any:    g = min(g + 1, 255); redraw window #= `pressing:`
@@ -104,6 +105,8 @@ test "readme render example":
       r.clear color"202020"
       for i in r.area.a.x..r.area.b.x:
         r[i, i mod window.size.y] = color"ffffff"
+    keyup escape:
+      close window
 
 test "readme manage window example":
   var win = newWindow()
@@ -114,6 +117,8 @@ test "readme manage window example":
     if e.key == Key.f1:
       win.fullscreen = not win.fullscreen
       win.position = (screen().size.x div 2, screen().size.y div 2)
+    elif e.key == Key.escape:
+      close win
   win.onRender = proc(e: RenderEvent) =
     let r = render win
     r.clear color"202020"

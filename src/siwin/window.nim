@@ -456,7 +456,8 @@ when defined(linux):
     d.Xutf8SetWMProperties(a.xwin, title, title, nil, 0, nil, nil, nil)
   
   proc opened*(a: Window): bool = a.m_isOpen
-  proc close*(a: Window) = with a:
+  proc close*(a: var Window) = with a:
+    if not m_isOpen: return
     var e: XEvent
     e.xclient.theType      = ClientMessage
     e.xclient.window       = xwin
@@ -465,6 +466,7 @@ when defined(linux):
     e.xclient.data.l[0]    = x.atom(WM_DELETE_WINDOW).clong
     e.xclient.data.l[1]    = CurrentTime
     xcheck d.XSendEvent(xwin, 0, NoEventMask, e.addr)
+    m_isOpen = false
 
   proc updateGeometry(a: var Window) = with a:
     let (_, x, y, w, h, _, _) = xwin.getGeometry()
@@ -621,11 +623,7 @@ when defined(linux):
           redraw a
         of ClientMessage:
           if ev.xclient.data.l[0] == (clong)x.atom(WM_DELETE_WINDOW, false):
-            m_isOpen         = false;
-            m_isFullscreen   = false;
-            m_hasFocus       = false;
-            waitForReDraw   = false;
-            pushEvent onClose, ()
+            m_isOpen = false;
           
         of ConfigureNotify:
           if ev.xconfigure.width != m_size.x or ev.xconfigure.height != m_size.y:
@@ -714,6 +712,9 @@ when defined(linux):
             pushEvent onKeyup, (keyboard, key, false, mk Mod1Mask, mk ControlMask, mk ShiftMask, mk Mod4Mask)
 
         else: discard
+      
+        if not m_isOpen: break
+      if not m_isOpen: break
 
       if not catched: sleep(2) # не так быстро!
 
@@ -725,6 +726,8 @@ when defined(linux):
         waitForReDraw = false
         pushEvent on_render, (m_data, m_size)
         a.displayImpl()
+
+    pushEvent onClose, ()
   
   proc systemHandle*(a: Window): x.Window = a.xwin
 
@@ -797,7 +800,7 @@ elif defined(windows):
     handle.SetWindowText(title)
 
   proc opened*(a: Window): bool = a.m_isOpen
-  proc close*(a: Window) = with a:
+  proc close*(a: var Window) = with a:
     if m_isOpen: handle.SendMessage(WM_CLOSE, 0, 0)
     
   proc updateGeometry(a: var Window) = with a:
@@ -882,6 +885,9 @@ elif defined(windows):
         catched = true
         TranslateMessage(&msg)
         DispatchMessage(&msg)
+
+        if not m_isOpen: break
+      if not m_isOpen: break
 
       if not catched: sleep(2) # не так быстро!
       
