@@ -94,6 +94,6 @@ when defined(linux):
     atoms[a.int] = a
     result = atoms[a.int].addr
   
-  proc getGeometry*(a: Window): tuple[root: Window; x, y: cint; w, h: cuint, borderW: cuint, depth: cuint] = with result:
+  proc geometry*(a: Window): tuple[root: Window; x, y: cint; w, h: cuint, borderW: cuint, depth: cuint] = with result:
     ## get X11 window geometry
     xcheck display.XGetGeometry(a, root.addr, x.addr, y.addr, w.addr, h.addr, borderW.addr, depth.addr)

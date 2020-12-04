@@ -1,6 +1,6 @@
 import times, os, strformat
 import with
-import image
+import image, utils
 when defined(linux):
   import libx11 as x
 when defined(windows):
@@ -143,7 +143,6 @@ type
     when defined(linux):
       id: cint
       xid: PScreen
-
 
 when defined(linux):
   proc xkeyToKey(sym: KeySym): Key =
@@ -456,7 +455,7 @@ when defined(linux):
     d.Xutf8SetWMProperties(a.xwin, title, title, nil, 0, nil, nil, nil)
   
   proc opened*(a: Window): bool = a.m_isOpen
-  proc close*(a: var Window) = with a:
+  proc close*(a: var Window) {.lazy.} = with a:
     if not m_isOpen: return
     var e: XEvent
     e.xclient.theType      = ClientMessage
@@ -468,8 +467,10 @@ when defined(linux):
     xcheck d.XSendEvent(xwin, 0, NoEventMask, e.addr)
     m_isOpen = false
 
+  proc redraw*(a: var Window) {.lazy.} = a.waitForReDraw = true
+
   proc updateGeometry(a: var Window) = with a:
-    let (_, x, y, w, h, _, _) = xwin.getGeometry()
+    let (_, x, y, w, h, _, _) = xwin.geometry
     m_pos = (x.int, y.int)
     m_size = (w.int, h.int)
 
@@ -483,9 +484,7 @@ when defined(linux):
     waitForReDraw = true
   
   proc fullscreen*(a: Window): bool = a.m_isFullscreen
-  proc `fullscreen=`*(a: var Window, v: bool) = with a:
-    if a.fullscreen == v: return
-
+  proc `fullscreen=`*(a: var Window, v: bool) {.lazy.} = with a:
     var xwa: x.XWindowAttributes
     xcheck d.XGetWindowAttributes(xwin, xwa.addr)
     
@@ -501,12 +500,11 @@ when defined(linux):
     e.xclient.data.l[3]    = 0
     e.xclient.data.l[4]    = 0
     xcheck d.XSendEvent(xwa.root, 0, SubstructureNotifyMask or SubstructureRedirectMask, e.addr)
-    #! синхронизация не моментальная, поправить
 
     m_isFullscreen = v
   
   proc position*(a: Window): tuple[x, y: int] = with a:
-    let (_, x, y, _, _, _, _) = xwin.getGeometry()
+    let (_, x, y, _, _, _, _) = xwin.geometry
     return (x.int, y.int)
   proc `position=`*(a: var Window, p: tuple[x, y: int]) = with a:
     xcheck d.XMoveWindow(xwin, p.x.cint, p.y.cint)
@@ -575,7 +573,6 @@ when defined(linux):
     xcheck d.XSetWMHints(xwin, wmh)
     xcheck XFree(wmh)
 
-  proc redraw*(a: var Window) = a.waitForReDraw = true
   proc displayImpl(a: var Window) = with a:
     xcheckStatus d.XPutImage(xwin, gc, ximg, 0, 0, 0, 0, m_size.x.cuint, m_size.y.cuint)
   
@@ -610,7 +607,7 @@ when defined(linux):
       var catched = false
 
       proc checkEvent(_: PDisplay, event: PXEvent, userData: XPointer): XBool {.cdecl.} =
-        return if event.xany.window == (x.Window)(cast[int](userData)): 1 else: 0
+        if event.xany.window == (x.Window)(cast[int](userData)): 1 else: 0
       while d.XCheckIfEvent(ev.addr, checkEvent, cast[XPointer](xwin)) == 1:
         catched = true
 
@@ -800,8 +797,12 @@ elif defined(windows):
     handle.SetWindowText(title)
 
   proc opened*(a: Window): bool = a.m_isOpen
-  proc close*(a: var Window) = with a:
+  proc close*(a: var Window) {.lazy.} = with a:
     if m_isOpen: handle.SendMessage(WM_CLOSE, 0, 0)
+    
+  proc redraw*(a: var Window) {.lazy.} = with a:
+    var cr = handle.clientRect
+    handle.InvalidateRect(&cr, false)
     
   proc updateGeometry(a: var Window) = with a:
     let rect = handle.clientRect
@@ -820,7 +821,7 @@ elif defined(windows):
     if old != 0: discard DeleteObject old
 
   proc fullscreen*(a: Window): bool = a.m_isFullscreen
-  proc `fullscreen=`*(a: var Window, v: bool) = with a:
+  proc `fullscreen=`*(a: var Window, v: bool) {.lazy.} = with a:
     if m_isFullscreen == v: return
     if v:
       discard handle.SetWindowLongPtr(GWL_STYLE, WS_VISIBLE)
@@ -860,10 +861,6 @@ elif defined(windows):
     if wicon != 0: DestroyIcon wicon
     handle.SendMessageW(WM_SETICON, ICON_BIG, 0)
     handle.SendMessageW(WM_SETICON, ICON_SMALL, 0)
-    
-  proc redraw*(a: var Window) = with a:
-    var cr = handle.clientRect
-    handle.InvalidateRect(&cr, false)
   proc displayImpl(a: var Window) = with a:
     var ps: PAINTSTRUCT
     handle.BeginPaint(&ps)

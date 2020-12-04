@@ -267,6 +267,7 @@ proc runImpl(w: NimNode, a: NimNode): NimNode =
       eventName.resaddas e.text, e.text.toRunes: `body`
     of "render":
       if pars.len == 1 and pars[0] != ident"user":
+        pars[0].expectKind nnkIdent
         let ci = nnkCall.newTree(ident("init" & pars[0].strVal.capitalize & "Render"), w)
         let c = nnkCall.newTree(ident(pars[0].strVal & "Render"), quote do: `w`.toPicture())
         "onInit".resadd quote do:
