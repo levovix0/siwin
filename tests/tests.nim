@@ -124,3 +124,6 @@ test "readme manage window example":
     let r = render win
     r.clear color"202020"
   run win  
+
+test "clipboard":
+  echo $clipboard   #= `clipboard.text`

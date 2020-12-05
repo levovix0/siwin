@@ -394,8 +394,8 @@ elif defined(windows):
   proc n*(a: Screen): int = 0
 
   proc size*(a: Screen): tuple[x, y: int] =
-    result.x = GetSystemMetrics(SM_CXSCREEN).int
-    result.y = GetSystemMetrics(SM_CYSCREEN).int
+    result.x = GetSystemMetrics(SmCxScreen).int
+    result.y = GetSystemMetrics(SmCyScreen).int
 
 template screenCount*: int = getScreenCount()
 
@@ -426,7 +426,7 @@ when defined(linux):
     xcheck d.XMapWindow xwin
     gc = d.XCreateGC(xwin, x.GCForeground or x.GCBackground, gcv.addr)
 
-    xcheck d.XSetWMProtocols(xwin, x.patom(x.WM_DELETE_WINDOW), 1)
+    xcheck d.XSetWMProtocols(xwin, x.patom(WM_DELETE_WINDOW), 1)
 
     xinMethod = d.XOpenIM(nil, nil, nil)
     if xinMethod != nil:
@@ -518,12 +518,12 @@ when defined(linux):
     if kind == curCursor: return
     if xcursor != 0: xcheck d.XFreeCursor(xcursor)
     case kind
-    of Cursor.arrow:          xcursor = d.XCreateFontCursor(XC_left_ptr)
-    of Cursor.arrowUp:        xcursor = d.XCreateFontCursor(XC_center_ptr)
-    of Cursor.hand:           xcursor = d.XCreateFontCursor(XC_hand1)
-    of Cursor.sizeAll:        xcursor = d.XCreateFontCursor(XC_fleur)
-    of Cursor.sizeVertical:   xcursor = d.XCreateFontCursor(XC_sb_v_double_arrow)
-    of Cursor.sizeHorisontal: xcursor = d.XCreateFontCursor(XC_sb_h_double_arrow)
+    of Cursor.arrow:          xcursor = d.XCreateFontCursor(XcLeftPtr)
+    of Cursor.arrowUp:        xcursor = d.XCreateFontCursor(XcCenterPtr)
+    of Cursor.hand:           xcursor = d.XCreateFontCursor(XcHand1)
+    of Cursor.sizeAll:        xcursor = d.XCreateFontCursor(XcFleur)
+    of Cursor.sizeVertical:   xcursor = d.XCreateFontCursor(XcSb_v_doubleArrow)
+    of Cursor.sizeHorisontal: xcursor = d.XCreateFontCursor(XcSb_h_doubleArrow)
     xcheck d.XDefineCursor(xwin, xcursor)
     xcheck d.XSync(0)
     curCursor = kind
@@ -619,7 +619,7 @@ when defined(linux):
             pushEvent onResize, (osize, m_size)
           redraw a
         of ClientMessage:
-          if ev.xclient.data.l[0] == (clong)x.atom(WM_DELETE_WINDOW, false):
+          if ev.xclient.data.l[0] == (clong)x.atom(WmDeleteWindow, false):
             m_isOpen = false;
           
         of ConfigureNotify:
@@ -734,18 +734,18 @@ elif defined(windows):
   proc poolEvent(a: var Window, message: Uint, wParam: WParam, lParam: LParam): LResult
 
   proc wndProc(handle: HWnd, message: Uint, wParam: WParam, lParam: LParam): LResult {.stdcall.} =
-    let win = if handle != 0: cast[ptr Window](GetWindowLongPtr(handle, GWLP_USERDATA)) else: nil
+    let win = if handle != 0: cast[ptr Window](GetWindowLongPtr(handle, GwlpUserData)) else: nil
     if win != nil: return win[].poolEvent(message, wParam, lParam)
 
-    if message == WM_CLOSE: return 0
-    if (message == WM_SYSCOMMAND) and (wParam == SC_KEYMENU): return 0
+    if message == WmClose: return 0
+    if (message == WmSysCommand) and (wParam == ScKeyMenu): return 0
     return DefWindowProc(handle, message, wParam, lParam)
 
   const wClassName = "win64app"
   block winapiInit:
-    var wcex: WNDCLASSEX
-    wcex.cbSize        = WNDCLASSEX.sizeof.int32
-    wcex.style         = CS_HREDRAW or CS_VREDRAW or CS_DBLCLKS
+    var wcex: WndClasseX
+    wcex.cbSize        = WndClasseX.sizeof.int32
+    wcex.style         = CsHRedraw or CsVRedraw or CsDblClks
     wcex.lpfnWndProc   = wndProc
     wcex.cbClsExtra    = 0
     wcex.cbWndExtra    = 0
@@ -772,7 +772,7 @@ elif defined(windows):
     DeleteObject wimage
 
   proc newWindowImpl(w, h: int, screen: Screen): Window = with result:
-    handle = CreateWindow(wClassName, "", WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, 
+    handle = CreateWindow(wClassName, "", WsOverlappedWindow, CwUseDefault, CwUseDefault, 
                           w.int32, h.int32, 0, 0, hInstance, nil)
     winassert handle != 0
     m_hasFocus = true
@@ -780,14 +780,14 @@ elif defined(windows):
     m_isFullscreen = false
     firstPaint = true
     curCursor = arrow
-    wcursor = LoadCursor(0, IDC_ARROW)
-    discard handle.SetWindowLongPtrW(GWLP_USERDATA, cast[LONG_PTR](result.addr))
-    handle.trackMouseEvent(TME_HOVER)
+    wcursor = LoadCursor(0, IdcArrow)
+    discard handle.SetWindowLongPtrW(GwlpUserData, cast[LongPtr](result.addr))
+    handle.trackMouseEvent(TmeHover)
     result.size = (w, h)
 
-    var bmi = BITMAPINFO(bmiHeader: BITMAPINFOHEADER(biSize: BITMAPINFOHEADER.sizeof.int32, biWidth: w.LONG, biHeight: -h.LONG,
+    var bmi = BitmapInfo(bmiHeader: BitmapInfoHeader(biSize: BitmapInfoHeader.sizeof.int32, biWidth: w.Long, biHeight: -h.Long,
                          biPlanes: 1, biBitCount: 32, biCompression: BI_RGB, biSizeImage: 0, biXPelsPerMeter: 0, biYPelsPerMeter: 0, biClrUsed: 0, biClrImportant: 0));
-    wimage  = CreateDIBSection(0, &bmi, DIB_RGB_COLORS, cast[ptr pointer](&m_data), 0, 0)
+    wimage  = CreateDibSection(0, &bmi, DibRgbColors, cast[ptr pointer](&m_data), 0, 0)
     hdc     = CreateCompatibleDC(0)
     winassert wimage != 0
     winassert hdc != 0
@@ -811,9 +811,9 @@ elif defined(windows):
     DeleteDC hdc
     DeleteObject wimage
 
-    var bmi = BitmapInfo(bmiHeader: BitmapInfoHeader(biSize: BitmapInfoHeader.sizeof.int32, biWidth: m_size.x.LONG, biHeight: -m_size.y.LONG,
-                         biPlanes: 1, biBitCount: 32, biCompression: BI_RGB, biSizeImage: 0, biXPelsPerMeter: 0, biYPelsPerMeter: 0, biClrUsed: 0, biClrImportant: 0));
-    wimage  = CreateDIBSection(0, &bmi, DIB_RGB_COLORS, cast[ptr pointer](&m_data), 0, 0)
+    var bmi = BitmapInfo(bmiHeader: BitmapInfoHeader(biSize: BitmapInfoHeader.sizeof.int32, biWidth: m_size.x.Long, biHeight: -m_size.y.Long,
+                         biPlanes: 1, biBitCount: 32, biCompression: BiRgb, biSizeImage: 0, biXPelsPerMeter: 0, biYPelsPerMeter: 0, biClrUsed: 0, biClrImportant: 0));
+    wimage  = CreateDibSection(0, &bmi, DIB_RGB_COLORS, cast[ptr pointer](&m_data), 0, 0)
     hdc     = CreateCompatibleDC(0)
     winassert wimage != 0
     winassert hdc != 0
@@ -824,28 +824,28 @@ elif defined(windows):
   proc `fullscreen=`*(a: var Window, v: bool) {.lazy.} = with a:
     if m_isFullscreen == v: return
     if v:
-      discard handle.SetWindowLongPtr(GWL_STYLE, WS_VISIBLE)
-      discard handle.ShowWindow(SW_MAXIMIZE)
+      discard handle.SetWindowLongPtr(GwlStyle, WsVisible)
+      discard handle.ShowWindow(SwMaximize)
     else:
-      discard handle.ShowWindow(SW_SHOWNORMAL)
-      discard handle.SetWindowLongPtr(GWL_STYLE, WS_VISIBLE or WS_OVERLAPPEDWINDOW)
+      discard handle.ShowWindow(SwShowNormal)
+      discard handle.SetWindowLongPtr(GwlStyle, WsVisible or WsOverlappedWindow)
     
   proc position*(a: Window): tuple[x, y: int] = with a:
     let r = handle.clientRect
     return (r.left.int, r.top.int)
   proc `position=`*(a: var Window, v: tuple[x, y: int]) = with a:
-    handle.SetWindowPos(0, v.x.int32, v.y.int32, 0, 0, SWP_NOSIZE)
+    handle.SetWindowPos(0, v.x.int32, v.y.int32, 0, 0, SwpNoSize)
     
   proc `cursor=`*(a: var Window, kind: Cursor) = with a:
     if kind == curCursor: return
     var cu: HCursor = 0
     case kind
-    of Cursor.arrow:          cu = LoadCursor(0, IDC_arrow)
-    of Cursor.arrowUp:        cu = LoadCursor(0, IDC_upArrow)
-    of Cursor.hand:           cu = LoadCursor(0, IDC_hand)
-    of Cursor.sizeAll:        cu = LoadCursor(0, IDC_sizeAll)
-    of Cursor.sizeVertical:   cu = LoadCursor(0, IDC_sizens)
-    of Cursor.sizeHorisontal: cu = LoadCursor(0, IDC_sizewe)
+    of Cursor.arrow:          cu = LoadCursor(0, IdcArrow)
+    of Cursor.arrowUp:        cu = LoadCursor(0, IdcUpArrow)
+    of Cursor.hand:           cu = LoadCursor(0, IdcHand)
+    of Cursor.sizeAll:        cu = LoadCursor(0, IdcSizeAll)
+    of Cursor.sizeVertical:   cu = LoadCursor(0, IdcSizens)
+    of Cursor.sizeHorisontal: cu = LoadCursor(0, IdcSizewe)
     if cu != 0:
       SetCursor cu
       wcursor = cu
@@ -855,19 +855,19 @@ elif defined(windows):
     if wicon != 0: DestroyIcon wicon
     wicon = CreateIcon(hInstance, img.size.x.int32, img.size.y.int32, 1, 32, nil, cast[ptr Byte](img.data))
     if wicon != 0:
-      handle.SendMessageW(WM_SETICON, ICON_BIG, wicon)
-      handle.SendMessageW(WM_SETICON, ICON_SMALL, wicon)
+      handle.SendMessageW(WmSetIcon, IconBig, wicon)
+      handle.SendMessageW(WmSetIcon, IconSmall, wicon)
   proc `icon=`*(a: var Window, _: nil.typeof) = with a:
     if wicon != 0: DestroyIcon wicon
-    handle.SendMessageW(WM_SETICON, ICON_BIG, 0)
-    handle.SendMessageW(WM_SETICON, ICON_SMALL, 0)
+    handle.SendMessageW(WmSetIcon, IconBig, 0)
+    handle.SendMessageW(WmSetIcon, IconSmall, 0)
   proc displayImpl(a: var Window) = with a:
-    var ps: PAINTSTRUCT
+    var ps: PaintStruct
     handle.BeginPaint(&ps)
     let hhdc = handle.GetDC()
     let rect = handle.clientRect
 
-    BitBlt(hhdc, 0, 0, rect.right, rect.bottom, hdc, 0, 0, SRCCOPY)
+    BitBlt(hhdc, 0, 0, rect.right, rect.bottom, hdc, 0, 0, SrcCopy)
     handle.ReleaseDC(hhdc)
     handle.EndPaint(&ps)
 
@@ -878,7 +878,7 @@ elif defined(windows):
     var msg: Msg
     while m_isOpen:
       var catched = false
-      while PeekMessage(&msg, 0, 0, 0, PM_REMOVE):
+      while PeekMessage(&msg, 0, 0, 0, PmRemove):
         catched = true
         TranslateMessage(&msg)
         DispatchMessage(&msg)
@@ -906,13 +906,13 @@ elif defined(windows):
       of WM_mbuttonDown, WM_mbuttonUp, WM_mbuttonDblclk: MouseButton.middle
       of WM_xbuttonDown, WM_xbuttonUp, WM_xbuttonDblclk:
         let button = wParam.GetXButtonWParam()
-        if button == MK_xbutton1: MouseButton.backward elif button == MK_xbutton2: MouseButton.forward else: MouseButton.left
+        if button == MkXButton1: MouseButton.backward elif button == MkXButton2: MouseButton.forward else: MouseButton.left
       else: MouseButton.left
 
     result = 0
 
     case message
-    of WM_paint:
+    of WmPaint:
       let rect = handle.clientRect
       if rect.right != m_size.x or rect.bottom != m_size.y or firstPaint:
         let osize = m_size
@@ -922,71 +922,71 @@ elif defined(windows):
       pushEvent onRender, (m_data, m_size)
       a.displayImpl()
     
-    of WM_destroy:
+    of WmDestroy:
       pushEvent onClose, ()
       m_isOpen = false
       PostQuitMessage(0)
     
-    of WM_mouseMove:
+    of WmMouseMove:
       let opos = mouse.position
       mouse.position = (lParam.GetX_LParam, lParam.GetY_LParam)
       for v in clicking.mitems: v = false
       pushEvent onMouseMove, (mouse, opos, mouse.position)
     
-    of WM_mouseLeave:
+    of WmMouseLeave:
       let npos = (lParam.GetX_LParam, lParam.GetY_LParam)
       pushEvent onMouseLeave, (mouse, mouse.position, npos)
       handle.trackMouseEvent(TME_hover)
     
-    of WM_mouseHover:
+    of WmMouseHover:
       let npos = (lParam.GetX_LParam, lParam.GetY_LParam)
       pushEvent onMouseEnter, (mouse, mouse.position, npos)
       handle.trackMouseEvent(TME_leave)
     
-    of WM_mouseWheel:
+    of WmMouseWheel:
       let delta = if wParam.GetWheelDeltaWParam > 0: -1.0 else: 1.0
       pushEvent onScroll, (mouse, delta)
     
-    of WM_setFocus:
+    of WmSetFocus:
       m_hasFocus = true
       pushEvent onFocus, (m_hasFocus)
     
-    of WM_killFocus:
+    of WmKillFocus:
       m_hasFocus = false
       pushEvent onFocus, (m_hasFocus)
     
-    of WM_lbuttonDown, WM_rbuttonDown, WM_mbuttonDown, WM_xbuttonDown:
+    of WmLButtonDown, WmRButtonDown, WmMButtonDown, WmXButtonDown:
       handle.SetCapture()
       mouse.pressed[button] = true
       clicking[button] = true
       pushEvent onMouseDown, (mouse, button, true)
     
-    of WM_lbuttonUp, WM_rbuttonUp, WM_mbuttonUp, WM_xbuttonUp:
+    of WmLButtonUp, WmRButtonUp, WmMButtonUp, WmXButtonUp:
       ReleaseCapture()
       mouse.pressed[button] = false
       if clicking[button]: pushEvent onClick, (mouse, button, mouse.position, false)
       clicking[button] = false
       pushEvent onMouseDown, (mouse, button, false)
     
-    of WM_lbuttonDblclk, WM_rbuttonDblclk, WM_mbuttonDblclk, WM_xbuttonDblclk:
+    of WmLButtonDblclk, WmRButtonDblclk, WmMButtonDblclk, WmXButtonDblclk:
       pushEvent onDoubleClick, (mouse, button, mouse.position, true)
 
-    of WM_keydown, WM_syskeydown:
+    of WmKeyDown, WmSysKeyDown:
       let key = wkeyToKey(wParam, lParam)
       keyboard.pressed[key] = true
       template kstate(vk): bool = HIWord(GetKeyState(vk)) != 0
-      pushEvent onKeydown, (keyboard, key, true, kstate VK_menu, kstate VK_control, kstate VK_shift, kstate(VK_lwin) or kstate(VK_rwin))
+      pushEvent onKeydown, (keyboard, key, true, kstate VkMenu, kstate VkControl, kstate VkShift, kstate(VkLWin) or kstate(VkRWin))
     
-    of WM_keyup, WM_syskeyup:
+    of WmKeyUp, WmSysKeyUp:
       let key = wkeyToKey(wParam, lParam)
       keyboard.pressed[key] = false
       template kstate(vk): bool = HIWord(GetKeyState(vk)) != 0
-      pushEvent onKeyup, (keyboard, key, false, kstate VK_menu, kstate VK_control, kstate VK_shift, kstate(VK_lwin) or kstate(VK_rwin))
+      pushEvent onKeyup, (keyboard, key, false, kstate VkMenu, kstate VkControl, kstate VkShift, kstate(VkLWin) or kstate(VkRWin))
 
-    of WM_char:
+    of WmChar:
       pushEvent onTextEnter, (keyboard, $wParam.WChar)
     
-    of WM_setCursor:
+    of WmSetCursor:
       if lParam.LOWord == HTClient:
         SetCursor wcursor
         return 1

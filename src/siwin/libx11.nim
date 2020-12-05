@@ -42,6 +42,22 @@ when defined(linux):
   template xcheck*(a: cint) =
     let s = astToStr(a)
     xcheckImpl(a, s)
+  
+  type AtomKind* {.pure.} = enum
+    WM_DELETE_WINDOW
+    WM_PROTOCOLS
+    UTF8_STRING
+    CLIPBOARD
+    TARGETS
+    TEXT
+    INCR
+    NET_WM_STATE_FULLSCREEN
+    NET_WM_STATE
+    NET_WM_NAME
+    NET_WM_ICON_NAME
+  
+  var atoms: Table[AtomKind, Atom]
+  var satoms: Table[string, Atom]
 
   proc connect*(): PDisplay {.discardable.} =
     ## connect to X11 server
@@ -49,7 +65,7 @@ when defined(linux):
       display = XOpenDisplay(getEnv("DISPLAY").cstring)
       if display == nil: raise X11Error.newException("failed to open X11 display\nmake sure the DISPLAY environment variable is set correctly")
       
-      if display.XShmQueryExtension() == 0: raise X11Error.newException("can't load shm extention")
+      #! if display.XShmQueryExtension() == 0: raise X11Error.newException("can't load shm extention")
     
     inc display_rc
     return display
@@ -59,40 +75,45 @@ when defined(linux):
     body
     disconnect()
 
+  proc isConnected*: bool = display_rc != 0
   proc disconnect*() =
     ## disconnect from X11 server
     dec display_rc
     if display_rc < 0: raise LibraryError.newException("display wasn't open before close")
-    if display_rc == 0: discard XCloseDisplay display
-  
-  type AtomKind* = enum
-    WM_DELETE_WINDOW
-    WM_PROTOCOLS
-    UTF8_STRING
-    NET_WM_STATE_FULLSCREEN
-    NET_WM_STATE
-    NET_WM_NAME
-    NET_WM_ICON_NAME
-  
-  var atoms: Table[int, Atom]
+    if display_rc == 0:
+      discard XCloseDisplay display
+      clear atoms
+
 
   proc atomImpl(a: AtomKind, onlyIfExist: bool): Atom =
+    doassert isConnected()
     let s = if ($a).startsWith("NET_"): &"_{$a}" else: $a
-    connect()
     result = display.XInternAtom(s, if onlyIfExist: 1 else: 0)
-    disconnect()
+  proc atomImpl(a: string, onlyIfExist: bool): Atom =
+    doassert isConnected()
+    result = display.XInternAtom(a, if onlyIfExist: 1 else: 0)
 
   proc atom*(a: AtomKind, onlyIfExist: bool = false): Atom =
     ## get X11 atom
-    if atoms.hasKey(a.int): return atoms[a.int]
+    if atoms.hasKey(a): return atoms[a]
     result = atomImpl(a, onlyIfExist)
-    atoms[a.int] = result
+    atoms[a] = result
   proc patom*(a: AtomKind, onlyIfExist: bool = false): PAtom =
     ## get pointer to X11 atom
-    if atoms.hasKey(a.int): return atoms[a.int].addr
-    let a = atomImpl(a, onlyIfExist)
-    atoms[a.int] = a
-    result = atoms[a.int].addr
+    if atoms.hasKey(a): return atoms[a].addr
+    atoms[a] = atomImpl(a, onlyIfExist)
+    result = atoms[a].addr
+  
+  proc atom*(a: string, onlyIfExist: bool = false): Atom =
+    ## get pointer to custom X11 atom
+    if satoms.hasKey(a): return satoms[a]
+    result = atomImpl(a, onlyIfExist)
+    satoms[a] = result
+  proc patom*(a: string, onlyIfExist: bool = false): PAtom =
+    ## get pointer to custom X11 atom
+    if satoms.hasKey(a): return satoms[a].addr
+    satoms[a] = atomImpl(a, onlyIfExist)
+    result = satoms[a].addr
   
   proc geometry*(a: Window): tuple[root: Window; x, y: cint; w, h: cuint, borderW: cuint, depth: cuint] = with result:
     ## get X11 window geometry
