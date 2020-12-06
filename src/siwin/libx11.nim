@@ -118,3 +118,5 @@ when defined(linux):
   proc geometry*(a: Window): tuple[root: Window; x, y: cint; w, h: cuint, borderW: cuint, depth: cuint] = with result:
     ## get X11 window geometry
     xcheck display.XGetGeometry(a, root.addr, x.addr, y.addr, w.addr, h.addr, borderW.addr, depth.addr)
+
+  var clipboardProcessEvents*: proc() = proc() = discard

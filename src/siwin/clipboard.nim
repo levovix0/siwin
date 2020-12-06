@@ -19,17 +19,11 @@ when defined(linux):
         xcheck display.XDestroyWindow(xwin)
         discard XFlush display
       disconnect()
+      clipboardProcessEvents = proc() = discard
 
 var clipboard* = Clipboard()
 
 when defined(linux):
-  proc initClipboard(a: var Clipboard) = with a:
-    if not inited:
-      connect()
-      xwin = XCreateSimpleWindow(display, display.DefaultRootWindow, 0, 0, 1, 1, 0, 0, 0) ## невидимое окно. костыли!
-      xcheck display.XSelectInput(xwin, SelectionNotify or SelectionRequest or SelectionClear)
-      inited = true
-
   proc processEvents(a: var Clipboard, responsed: var bool): string = with a:
     var ev: XEvent
     proc checkEvent(_: PDisplay, event: PXEvent, userData: XPointer): XBool {.cdecl.} =
@@ -62,12 +56,54 @@ when defined(linux):
         responsed = true
       
       of SelectionRequest: # получен запрос содержимого буфера обмена
-        discard
+        template e: untyped = ev.xselectionRequest
+
+        var resp: XSelectionEvent
+        resp.theType   = SelectionNotify
+        resp.requestor = e.requestor
+        resp.selection = e.selection
+        resp.property  = e.property
+        resp.time      = e.time
+
+        if e.selection == atom AtomKind.Clipboard:
+          if e.target == atom Targets:
+            # запрос запросов, которые мы можем обработать
+            var targets = @[atom Targets, atom Text, XaString]
+            if atom(Utf8String) != None: targets.add atom(Utf8String)
+            discard display.XChangeProperty(e.requestor, e.property, XaAtom, 32, PropModeReplace, cast[PCUChar](targets[0].addr), targets.len.cint)
+            resp.target = atom Targets
+            xcheck display.XSendEvent(e.requestor, 1, NoEventMask, cast[PXEvent](resp.addr))
+            continue
+
+          elif e.target in [XaString, atom(Text)] or (atom(Utf8String) != None and e.target == atom(Utf8String)):
+            # запрос строки буфера обмена
+            resp.target = if e.target == atom(Utf8String): atom(Utf8String) else: XaString
+            discard display.XChangeProperty(
+              e.requestor, e.property, resp.target,
+              8, PropModeReplace, cast[PCUChar](if content.len > 0: content[0].addr else: nil), content.len.cint
+            )
+            xcheck display.XSendEvent(e.requestor, 1, NoEventMask, cast[PXEvent](resp.addr))
+            continue
+        
+        # рассказать, что нам не удалось обработать запрос
+        resp.target = e.target
+        resp.property = None
+        xcheck display.XSendEvent(e.requestor, 1, NoEventMask, cast[PXEvent](resp.addr))
 
       else: discard
 
+  proc initClipboard() = with clipboard:
+    if not inited:
+      connect()
+      xwin = XCreateSimpleWindow(display, display.DefaultRootWindow, 0, 0, 1, 1, 0, 0, 0) ## невидимое окно. костыли!
+      xcheck display.XSelectInput(xwin, SelectionNotify or SelectionRequest or SelectionClear)
+      inited = true
+      clipboardProcessEvents = proc() =
+        var rsp: bool
+        discard clipboard.processEvents(rsp)
+
   proc text*(a: var Clipboard): string = with a:
-    initClipboard a
+    initClipboard()
     if display.XGetSelectionOwner(atom(AtomKind.Clipboard)) == None:
       content = ""
       return ""
@@ -83,13 +119,16 @@ when defined(linux):
 
     # ждать ответа не более секунды
     while not rsp and getTime() - beginTime < initDuration(seconds=1):
-      content = a.processEvents(rsp)
-    
-    return content
+      result = a.processEvents(rsp)
 
   proc `text=`*(a: var Clipboard, s: string) = with a:
-    initClipboard a
-    discard
+    initClipboard()
+    
+    content = s
+    discard display.XSetSelectionOwner(atom(AtomKind.Clipboard), xwin, CurrentTime)
+
+    if display.XGetSelectionOwner(atom(AtomKind.Clipboard)) != xwin:
+      raise X11Error.newException("can't set selection owner.")
 
 template `$`*(a: var Clipboard): string = a.text
-template `$=`*(a: var Clipboard, s: string): string = a.text = s
+template `$=`*(a: var Clipboard, s: string) = a.text = s

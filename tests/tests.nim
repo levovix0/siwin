@@ -85,6 +85,9 @@ test "macro":
     keyup (k):       close window                       #= `keyup: if e.key in k:`
     textEnter:       echo e.text
 
+    keyup p:         echo $clipboard
+    keyup c:         clipboard $= "coppied from siwin"
+
     click(left, right) as (x, _): g = min(max(int(x / window.size.x * 255), 0), 255)
   
   echo x

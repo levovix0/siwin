@@ -723,6 +723,8 @@ when defined(linux):
         waitForReDraw = false
         pushEvent on_render, (m_data, m_size)
         a.displayImpl()
+      
+      clipboardProcessEvents()
 
     pushEvent onClose, ()
   
