@@ -3,6 +3,43 @@ import window
 
 proc high(a: NimNode): int = a.len - 1
 
+proc toNimCorrect(a: string): string =
+  let r = a.toRunes
+  if r.len < 1: return
+  result = $r[0]
+  result.add toLower $r[1..r.high]
+
+proc kindStrings(a: typedesc): seq[string] {.compileTime.} =
+  let b = a.getTypeImpl
+  b.expectKind nnkEnumTy
+  for c in b:
+    if c.kind == nnkSym: result.add c.strVal.toNimCorrect
+
+const keyKindStrings = Key.kindStrings
+const mouseButtonKindStrings = MouseButton.kindStrings
+
+proc ofEnum(a: NimNode, b: typedesc): NimNode =
+  template possible: seq[string] =
+    when b is typedesc[Key]: keyKindStrings
+    elif b is typedesc[MouseButton]: mouseButtonKindStrings
+    else: b.kindStrings
+
+  if a.kind == nnkIdent and a.strVal.toNimCorrect in possible:
+    nnkDotExpr.newTree(quote do: `b`, a)
+  else:
+    a
+
+proc control*(a: Key): bool = a in [Key.lcontrol, Key.rcontrol]
+proc control*(a: array[Key.a..Key.pause, bool]): bool = a[lcontrol] or a[rcontrol]
+template ctrl*(a: Key): bool = a.control
+template ctrl*(a: array[Key.a..Key.pause, bool]): bool = a.control
+
+proc shift*(a: Key): bool = a in [Key.lshift, Key.rshift]
+proc shift*(a: array[Key.a..Key.pause, bool]): bool = a[lshift] or a[rshift]
+
+proc alt*(a: Key): bool = a in [Key.lalt, Key.ralt]
+proc alt*(a: array[Key.a..Key.pause, bool]): bool = a[lalt] or a[ralt]
+
 proc runImpl(w: NimNode, a: NimNode): NimNode =
   a.expectKind nnkStmtList
   result = nnkStmtList.newTree()
@@ -121,36 +158,71 @@ proc runImpl(w: NimNode, a: NimNode): NimNode =
     
     let body = b[b.high]
 
+    proc parseKeyCombination(a: NimNode, enm: typedesc = Key): tuple[k: NimNode, cond: NimNode] =
+      if a.kind == nnkInfix and a[0] == ident"+":
+        result.k = a[2].ofEnum(enm)
+        let
+          b = a[1].parseKeyCombination(enm)
+          ck = b.k.ofEnum(enm)
+          c2 = b.cond
+          e = ident"e"
+        result.cond = quote do:
+          when compiles(`ck`(`e`.keyboard.pressed)):
+            `ck`(`e`.keyboard.pressed) and `c2`
+          elif compiles(`ck`(Key.a)):
+            var c = false
+            for k in Key.a..Key.pause:
+              c = c or (`e`.keyboard.pressed[k] and `ck`(k))
+            c and `c2`
+          else:
+            `e`.keyboard.pressed[`ck`] and `c2`
+      else:
+        result.k = a.ofEnum(enm)
+        result.cond = newLit true
+
     case eventName[2..eventName.high].toLower
     of "keydown", "keyup":
       if pars.len == 1 and pars[0] != ident"any":
-        var k = pars[0]
-        if k.kind == nnkIdent: k = quote do: Key.`k`
+        var (k, c) = pars[0].parseKeyCombination
         eventName.resadd quote do:
           when compiles(e.key == `k`):
-            if e.key == `k`:
+            if `c` and e.key == `k`:
               `body`
           elif compiles(e.key in `k`):
-            if e.key in `k`:
+            if `c` and (e.key in `k`):
               `body`
           else:
-            if `k`(e.key):
+            if `c` and `k`(e.key):
               `body`
       elif pars.len > 1:
-        var kk = nnkBracket.newTree()
+        var kk: seq[NimNode]
+        var cc: seq[NimNode]
+        var cs = false
         for v in pars:
-          var k = v
-          if k.kind == nnkIdent: k = quote do: Key.`k`
+          var (k, c) = v.parseKeyCombination
           kk.add k
-        eventName.resadd quote do:
-          if e.key in `kk`:
-            `body`
+          cc.add c
+          cs = cs or c != newLit true
+        if not cs:
+          var karr = nnkBracket.newTree
+          for a in kk: karr.add a
+          eventName.resadd quote do:
+            if e.key in `karr`:
+              `body`
+        else:
+          var cond = newLit true
+          for i in 0..kk.high:
+            let kn = kk[i]
+            let cn = cc[i]
+            cond = quote do: `cond` or (`cn` and e.key == `kn`)
+          eventName.resadd quote do:
+            if `cond`:
+              `body`
       else: eventName.resadd body
 
     of "mousedown", "mouseup":
       if pars.len == 1 and pars[0] != ident"any":
-        var k = pars[0]
-        if k.kind == nnkIdent: k = quote do: MouseButton.`k`
+        var k = pars[0].ofEnum(MouseButton)
         eventName.resadd quote do:
           when compiles(e.button == `k`):
             if e.button == `k`:
@@ -164,9 +236,7 @@ proc runImpl(w: NimNode, a: NimNode): NimNode =
       elif pars.len > 1:
         var kk = nnkBracket.newTree()
         for v in pars:
-          var k = v
-          if k.kind == nnkIdent: k = quote do: MouseButton.`k`
-          kk.add k
+          kk.add v.ofEnum(MouseButton)
         eventName.resadd quote do:
           if e.button in `kk`:
             `body`
@@ -174,17 +244,14 @@ proc runImpl(w: NimNode, a: NimNode): NimNode =
 
     of "pressingkey", "keypressing", "pressing":
       if pars.len == 1 and pars[0] != ident"any":
-        var k = pars[0]
-        if k.kind == nnkIdent: k = quote do: Key.`k`
+        var k = pars[0].ofEnum(Key)
         "onTick".resaddas `k`:
           if e.keyboard.pressed[`k`]:
             `body`
       elif pars.len > 1:
         var kk = nnkBracket.newTree()
         for v in pars:
-          var k = v
-          if k.kind == nnkIdent: k = quote do: Key.`k`
-          kk.add k
+          kk.add v.ofEnum(Key)
         "onTick".resaddasdo do:
           var prs = false
           for k in `kk`:
@@ -222,17 +289,14 @@ proc runImpl(w: NimNode, a: NimNode): NimNode =
 
     of "notpressingkey", "notkeypressing", "notpressing":
       if pars.len == 1 and pars[0] != ident"any":
-        var k = pars[0]
-        if k.kind == nnkIdent: k = quote do: Key.`k`
+        var k = pars[0].ofEnum(Key)
         "onTick".resadd quote do:
           if not e.keyboard.pressed[`k`]:
             `body`
       elif pars.len > 1:
         var kk = nnkBracket.newTree()
         for v in pars:
-          var k = v
-          if k.kind == nnkIdent: k = quote do: Key.`k`
-          kk.add k
+          kk.add v.ofEnum(Key)
         "onTick".resadd quote do:
           var prs = false
           for k in `kk`:
@@ -246,17 +310,14 @@ proc runImpl(w: NimNode, a: NimNode): NimNode =
 
     of "click":
       if pars.len == 1 and pars[0] != ident"any":
-        var k = pars[0]
-        if k.kind == nnkIdent: k = quote do: MouseButton.`k`
+        var k = pars[0].ofEnum(MouseButton)
         eventName.resaddas e.position:
           if e.button == `k`:
             `body`
       if pars.len > 1:
         var kk = nnkBracket.newTree()
         for v in pars:
-          var k = v
-          if k.kind == nnkIdent: k = quote do: MouseButton.`k`
-          kk.add k
+          kk.add v.ofEnum(MouseButton)
         eventName.resaddas e.position:
           if e.button in `kk`:
             `body`

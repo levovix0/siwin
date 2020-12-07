@@ -5,6 +5,7 @@ Nim Simple Window Maker
 * window creation and management
 * `run` event loop creation macro
 * (indirect) access to window pixels
+* clipboard
 * OS Linux support (using X11)
 * OS Windows support
 
@@ -40,4 +41,13 @@ win.onRender = proc(e: RenderEvent) =
   let r = render win
   r.clear color"202020"
 run win  
+```
+
+clipboard:
+```nim
+run newWindow():
+  keyup control+c: clipboard.text = "coppied from siwin window!"
+  keyup control+v: echo clipboard.text
+  keyup shift+c: clipboard $= "other text coppied from siwin window!"
+  keyup shift+v: echo $clipboard
 ```
