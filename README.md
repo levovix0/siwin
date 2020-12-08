@@ -46,8 +46,8 @@ run win
 clipboard:
 ```nim
 run newWindow():
-  keyup control+c: clipboard.text = "coppied from siwin window!"
-  keyup control+v: echo clipboard.text
-  keyup shift+c: clipboard $= "other text coppied from siwin window!"
-  keyup shift+v: echo $clipboard
+  keydown control+c:    clipboard.text = "coppied from siwin window!"
+  keydown control+v:    echo clipboard.text
+  keydown ctrl+shift+c: clipboard $= "other text coppied from siwin window!"
+  keydown ctrl+shift+v: echo $clipboard
 ```

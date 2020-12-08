@@ -1,5 +1,5 @@
-import siwin, strformat
-import unittest
+import siwin
+import unittest, strformat
 
 test "window":
   var win = newWindow(title="Окошко")
@@ -29,7 +29,7 @@ test "window":
     inc x
   
   win.onKeyup = proc(e: KeyEvent) =
-    if e.key == escape:
+    if e.key == Key.escape:
       close win
     if e.key == f1:
       win.fullscreen = not win.fullscreen
@@ -85,8 +85,8 @@ test "macro":
     keyup (k):       close window                       #= `keyup: if e.key in k:`
     textEnter:       echo e.text
 
-    keyup ctrl+c:    clipboard $= "coppied from siwin"  #= `keyup c: if e.keyboard.pressed[control]:`
-    keyup ctrl+v:    echo $clipboard
+    keydown ctrl+c:  clipboard $= "coppied from siwin"  #= `keydown c: if e.keyboard.pressed[control] and magicOtherKeysIsNotPressed():`
+    keydown ctrl+v:  echo $clipboard
 
     click(left, right) as (x, _): g = min(max(int(x / window.size.x * 255), 0), 255)
   

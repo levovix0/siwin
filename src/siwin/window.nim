@@ -420,8 +420,8 @@ when defined(linux):
     xwin = d.XCreateSimpleWindow(d.DefaultRootWindow, 0, 0, w.cuint, h.cuint, 0, 0, d.BlackPixel(screen))
     doassert xwin != 0
     xcheck d.XSelectInput(xwin, 
-      x.ExposureMask or x.KeyPressMask or x.KeyReleaseMask or x.PointerMotionMask or x.ButtonPressMask or
-      x.ButtonReleaseMask or x.StructureNotifyMask or x.EnterWindowMask or x.LeaveWindowMask
+      ExposureMask or KeyPressMask or KeyReleaseMask or PointerMotionMask or ButtonPressMask or
+      ButtonReleaseMask or StructureNotifyMask or EnterWindowMask or LeaveWindowMask or FocusChangeMask
     )
     xcheck d.XMapWindow xwin
     gc = d.XCreateGC(xwin, x.GCForeground or x.GCBackground, gcv.addr)
@@ -668,7 +668,13 @@ when defined(linux):
           pushEvent onFocus, (true)
         of FocusOut:
           m_hasFocus = false
-          if xinContext != nil: XSetICFocus xinContext
+          if xinContext != nil: XUnsetICFocus xinContext
+          
+          for key, k in keyboard.pressed.mpairs:
+            if k:
+              template mk(a): bool = (ev.xkey.state and a).bool
+              pushEvent onKeyup, (keyboard, key, false, mk Mod1Mask, mk ControlMask, mk ShiftMask, mk Mod4Mask)
+              k = false
           pushEvent onFocus, (false)
         
         of KeyPress:
@@ -683,7 +689,7 @@ when defined(linux):
             template mk(a): bool = (ev.xkey.state and a).bool
             pushEvent onKeydown, (keyboard, key, true, mk Mod1Mask, mk ControlMask, mk ShiftMask, mk Mod4Mask)
           
-          if xinContext != nil:
+          if xinContext != nil and not keyboard.pressed[lcontrol] and not keyboard.pressed[rcontrol] and not keyboard.pressed[lalt] and not keyboard.pressed[ralt]:
             var status: Status
             var buffer: array[16, char]
             let length = Xutf8LookupString(xinContext, ev.xkey.addr, cast[cstring](buffer.addr), buffer.sizeof.cint, nil, status.addr)
@@ -694,7 +700,9 @@ when defined(linux):
                 result.add ch
 
             if length > 0:
-              pushEvent onTextEnter, (keyboard, buffer.toString())
+              let s = buffer[0..<length].toString()
+              if s notin ["\u001B"]:
+                pushEvent onTextEnter, (keyboard, s)
         
         of KeyRelease:
           var key = Key.unknown

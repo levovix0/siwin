@@ -1,4 +1,4 @@
-import macros, strformat, strutils, unicode, tables
+import macros, strformat, strutils, unicode, tables, sequtils, algorithm
 import window
 
 proc high(a: NimNode): int = a.len - 1
@@ -29,16 +29,66 @@ proc ofEnum(a: NimNode, b: typedesc): NimNode =
   else:
     a
 
-proc control*(a: Key): bool = a in [Key.lcontrol, Key.rcontrol]
-proc control*(a: array[Key.a..Key.pause, bool]): bool = a[lcontrol] or a[rcontrol]
-template ctrl*(a: Key): bool = a.control
-template ctrl*(a: array[Key.a..Key.pause, bool]): bool = a.control
+proc newLit*(a: openArray[Key]): NimNode {.compileTime.} =
+  result = nnkBracket.newTree
+  for v in a: result.add newLit(v)
 
-proc shift*(a: Key): bool = a in [Key.lshift, Key.rshift]
-proc shift*(a: array[Key.a..Key.pause, bool]): bool = a[lshift] or a[rshift]
+var keyNameBindings* {.compileTime.}: Table[string, seq[Key]]
 
-proc alt*(a: Key): bool = a in [Key.lalt, Key.ralt]
-proc alt*(a: array[Key.a..Key.pause, bool]): bool = a[lalt] or a[ralt]
+macro makeKeyNameBinding*(name: untyped, match: static[openArray[Key]]): untyped =
+  name.expectKind nnkIdent
+  let matchLit = newLit match
+  keyNameBindings[name.strVal.toNimCorrect] = match.toSeq
+
+  result = quote do:
+    proc `name`*(a: Key): bool = a in `matchLit`
+    proc `name`*(a: array[Key.a..Key.pause, bool]): bool =
+      for k in `matchLit`:
+        result = result or a[k]
+
+# TODO: комбинации типа none+key
+
+makeKeyNameBinding control, [lcontrol, rcontrol]
+makeKeyNameBinding ctrl,    [lcontrol, rcontrol]
+
+makeKeyNameBinding shift,   [lshift, rshift]
+
+makeKeyNameBinding alt,     [lalt, ralt]
+
+makeKeyNameBinding system,  [lsystem, lsystem]
+makeKeyNameBinding meta,    [lsystem, lsystem]
+makeKeyNameBinding super,   [lsystem, lsystem]
+makeKeyNameBinding windows, [lsystem, lsystem]
+makeKeyNameBinding win,     [lsystem, lsystem]
+
+proc genPressedKeyCheck(a: NimNode): NimNode = quote do:
+  when compiles(`a`(e.keyboard.pressed)) and `a`(e.keyboard.pressed) is bool:
+    `a`(e.keyboard.pressed)
+  else:
+    e.keyboard.pressed[`a`]
+
+proc contains*(a: array[Key.a..Key.pause, bool], b: openArray[Key]): bool =
+  for k in b:
+    if a[k]:
+      result = true
+      return
+
+proc nameToKeys(a: string): seq[Key] {.compileTime.} =
+  let a = a.toNimCorrect
+  if keyNameBindings.hasKey a: keyNameBindings[a]
+  else: @[parseEnum[Key](a)]
+
+proc genExPressedKeySeq(a: seq[NimNode]): seq[Key] {.compileTime.} =
+  for k in Key.a..Key.pause:
+    result.add k
+  var r: seq[Key]
+  for b in a:
+    b.expectKind nnkIdent
+    r.add nameToKeys(b.strVal)
+  sort r
+  r = r.deduplicate(true)
+  for v in r.reversed:
+    result.delete v.ord
 
 proc runImpl(w: NimNode, a: NimNode): NimNode =
   a.expectKind nnkStmtList
@@ -126,14 +176,17 @@ proc runImpl(w: NimNode, a: NimNode): NimNode =
 
     if b.kind == nnkPrefix:
       let b = b[1]
-      case b[0].kind
-      of nnkIdent: eventName = "not" & b[0].strVal
-      of nnkDotExpr:
-        b[0][1].expectKind nnkIdent
-        eventName = "not" & b[0][1].strVal
-        pars.add b[0][0]
-      else: error(&"got {b[0].kind}, but expected ident or dotExpr", b[0])
-      pars.add b[1..b.high]
+      if b.kind == nnkIdent:
+        eventName = "not" & b.strVal
+      else:
+        case b[0].kind
+        of nnkIdent: eventName = "not" & b[0].strVal
+        of nnkDotExpr:
+          b[0][1].expectKind nnkIdent
+          eventName = "not" & b[0][1].strVal
+          pars.add b[0][0]
+        else: error(&"got {b[0].kind}, but expected ident or dotExpr", b[0])
+        pars.add b[1..b.high]
     else:
       var b = b
 
@@ -158,27 +211,26 @@ proc runImpl(w: NimNode, a: NimNode): NimNode =
     
     let body = b[b.high]
 
-    proc parseKeyCombination(a: NimNode, enm: typedesc = Key): tuple[k: NimNode, cond: NimNode] =
+    proc lookKeyCombination(a: NimNode, enm: typedesc = Key): tuple[k: NimNode, c: seq[NimNode]] =
       if a.kind == nnkInfix and a[0] == ident"+":
-        result.k = a[2].ofEnum(enm)
-        let
-          b = a[1].parseKeyCombination(enm)
-          ck = b.k.ofEnum(enm)
-          c2 = b.cond
-          e = ident"e"
-        result.cond = quote do:
-          when compiles(`ck`(`e`.keyboard.pressed)):
-            `ck`(`e`.keyboard.pressed) and `c2`
-          elif compiles(`ck`(Key.a)):
-            var c = false
-            for k in Key.a..Key.pause:
-              c = c or (`e`.keyboard.pressed[k] and `ck`(k))
-            c and `c2`
-          else:
-            `e`.keyboard.pressed[`ck`] and `c2`
+        let (lk, lc) = a[1].lookKeyCombination(enm)
+        result.k = a[2]
+        if lc.len != 0: result.c.add lc
+        result.c.add lk
       else:
-        result.k = a.ofEnum(enm)
-        result.cond = newLit true
+        result.k = a
+    proc parseKeyCombination(a: NimNode, enm: typedesc = Key): tuple[k: NimNode, cond: NimNode] =
+      let (lk, lc) = a.lookKeyCombination(enm)
+      result.k = lk.ofEnum(Key)
+      if lc.len > 0:
+        let ex = genExPressedKeySeq(lc & lk).newLit
+        let e = ident"e"
+        result.cond = quote do: `ex` notin `e`.keyboard.pressed
+        for c in lc:
+          let rc = result.cond
+          let rk = genPressedKeyCheck c.ofEnum(Key)
+          result.cond = quote do: `rk` and `rc`
+      else: result.cond = newLit true
 
     case eventName[2..eventName.high].toLower
     of "keydown", "keyup":
@@ -186,13 +238,13 @@ proc runImpl(w: NimNode, a: NimNode): NimNode =
         var (k, c) = pars[0].parseKeyCombination
         eventName.resadd quote do:
           when compiles(e.key == `k`):
-            if `c` and e.key == `k`:
+            if e.key == `k` and `c`:
               `body`
           elif compiles(e.key in `k`):
-            if `c` and (e.key in `k`):
+            if (e.key in `k`) and `c`:
               `body`
           else:
-            if `c` and `k`(e.key):
+            if `k`(e.key) and `c`:
               `body`
       elif pars.len > 1:
         var kk: seq[NimNode]
@@ -305,7 +357,7 @@ proc runImpl(w: NimNode, a: NimNode): NimNode =
             `body`
       else:
         "onTick".resadd quote do:
-          if false in e.keyboard.pressed:
+          if true notin e.keyboard.pressed:
             `body`
 
     of "click":
