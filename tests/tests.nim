@@ -88,6 +88,9 @@ test "macro":
     keydown ctrl+c:  clipboard $= "coppied from siwin"  #= `keydown c: if e.keyboard.pressed[control] and magicOtherKeysIsNotPressed():`
     keydown ctrl+v:  echo $clipboard
 
+    keydown _+w:     echo "no, press ctrl+w to close window" #= keydown w: if magicOtherKeysIsNotPressed():
+    keydown ctrl+w:  close window
+
     click(left, right) as (x, _): g = min(max(int(x / window.size.x * 255), 0), 255)
   
   echo x

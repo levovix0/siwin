@@ -46,8 +46,6 @@ macro makeKeyNameBinding*(name: untyped, match: static[openArray[Key]]): untyped
       for k in `matchLit`:
         result = result or a[k]
 
-# TODO: комбинации типа none+key
-
 makeKeyNameBinding control, [lcontrol, rcontrol]
 makeKeyNameBinding ctrl,    [lcontrol, rcontrol]
 
@@ -222,7 +220,11 @@ proc runImpl(w: NimNode, a: NimNode): NimNode =
     proc parseKeyCombination(a: NimNode, enm: typedesc = Key): tuple[k: NimNode, cond: NimNode] =
       let (lk, lc) = a.lookKeyCombination(enm)
       result.k = lk.ofEnum(Key)
-      if lc.len > 0:
+      if lc == [ident"_"]:
+        let ex = genExPressedKeySeq(@[lk]).newLit
+        let e = ident"e"
+        result.cond = quote do: `ex` notin `e`.keyboard.pressed
+      elif lc.len > 0:
         let ex = genExPressedKeySeq(lc & lk).newLit
         let e = ident"e"
         result.cond = quote do: `ex` notin `e`.keyboard.pressed
