@@ -69,8 +69,10 @@ converter toPicture*(a: Image): Picture = a.picture
 
 proc `=destroy`*(a: var Image) =
   dealloc(cast[pointer](a.picture.data))
-proc newImage*(x, y: int): Image =
-  Image(picture: Picture(size: (x: x, y: y), data: allocArray[Color](x * y)))
+proc newImage*(w, h: int): Image =
+  Image(picture: Picture(size: (x: w, y: h), data: allocArray[Color](w * h)))
 
 func size*(a: Image): auto = a.picture.size
 func data*(a: Image): auto = a.picture.data
+func `size=`*(a: var Image, v: tuple[x, y: int]) = a.picture.size = v
+func `data=`*(a: var Image, v: ArrayPtr[Color]) = a.picture.data = v
