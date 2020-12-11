@@ -123,8 +123,7 @@ test "readme manage window example":
   win.onKeyup = proc(e: KeyEvent) =
     if e.key == Key.f1:
       win.fullscreen = not win.fullscreen
-      ## cause `fullscreen=` is lazy, we cannot get correct size of window here
-      win.position = (screen().size.x div 2, screen().size.y div 2)
+      win.position = (screen().size.x div 2 - win.size.x div 2, screen().size.y div 2 - win.size.y div 2)
     elif e.key == Key.escape:
       close win
   win.onRender = proc(e: RenderEvent) =

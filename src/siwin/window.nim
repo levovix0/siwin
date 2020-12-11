@@ -80,6 +80,7 @@ type
       waitForReDraw: bool
 
       m_pos: tuple[x, y: int]
+      m_savedSize: tuple[x, y: int]
 
     elif defined(windows):
       handle: HWnd
@@ -429,6 +430,7 @@ when defined(linux):
     if fullscreen:
       let atoms = [atom NetWmStateFullscreen, None]
       xcheck d.XChangeProperty(xwin, atom NetWmState, XaAtom, 32, PropModeReplace, cast[PCUchar](atoms.unsafeAddr), 1)
+      m_savedSize = m_size
       m_size = window.screen().size
 
     xcheck d.XMapWindow xwin
@@ -447,6 +449,12 @@ when defined(linux):
 
     waitForReDraw = true
     curCursor = arrow
+
+  template pushEvent(a: Window, event, args) =
+    when args is tuple: 
+      if a.event != nil: a.event(args)
+    else:
+      if a.event != nil: a.event((args,))
   
   proc initRender*(w: var Window) = with w:
     if m_usingPictureForRender: return
@@ -458,7 +466,6 @@ when defined(linux):
       m_size.x.cuint, m_size.y.cuint, 32, 0
     )
     doassert ximg != nil
-
 
   proc `title=`*(a: Window, title: string) = with a:
     let useUtf8 = atom(Utf8String)
@@ -482,8 +489,9 @@ when defined(linux):
 
   proc redraw*(a: var Window) {.lazy.} = a.waitForReDraw = true
 
-  proc updateGeometry(a: var Window) = with a:
-    let (_, x, y, w, h, _, _) = xwin.geometry
+  proc updateGeometry(a: var Window, size: tuple[x, y: int]) = with a:
+    let (_, x, y, _, _, _, _) = xwin.geometry
+    let (w, h) = size
     m_pos = (x.int, y.int)
     m_size = (w.int, h.int)
 
@@ -492,15 +500,21 @@ when defined(linux):
       m_data = ArrayPtr[Color](cast[ptr Color](malloc(culong Color.sizeof * w.int * h.int)))
       ximg = d.XCreateImage(
         d.DefaultVisual(screen), d.DefaultDepth(screen).cuint, ZPixmap, 0, cast[cstring](cast[ptr Color](m_data)),
-        w, h, 32, 0
+        w.cuint, h.cuint, 32, 0
       )
       doassert ximg != nil
     waitForReDraw = true
+  proc updateGeometry(a: var Window) = with a:
+    let (_, _, _, w, h, _, _) = xwin.geometry
+    a.updateGeometry (w.int, h.int)
   
   proc fullscreen*(a: Window): bool = a.m_isFullscreen
-  proc `fullscreen=`*(a: var Window, v: bool) {.lazy.} = with a:
+  proc `fullscreen=`*(a: var Window, v: bool) = with a:
+    # TODO: обновлять реальное состояние fullscreen, т.к. siwin не единственный кто может его изменить
     if m_isFullscreen == v: return
     m_isFullscreen = v
+    if v:
+      m_savedSize = m_size
     
     var xwa: x.XWindowAttributes
     xcheck d.XGetWindowAttributes(xwin, xwa.addr)
@@ -517,6 +531,22 @@ when defined(linux):
     e.xclient.data.l[3]    = 0
     e.xclient.data.l[4]    = 0
     xcheck d.XSendEvent(xwa.root, 0, SubstructureNotifyMask or SubstructureRedirectMask, e.addr)
+    
+    # TODO: сделать fullscreen= не ленивым
+    # пробуем угадать новый размер окна
+    if not v:
+      if m_size != m_savedSize:
+        let osize = m_size
+        a.updateGeometry(m_savedSize)
+        a.pushEvent onResize, (osize, m_size)
+        redraw a
+    else:
+      let scsize = window.screen(screen).size
+      if m_size != scsize:
+        let osize = m_size
+        a.updateGeometry(scsize)
+        a.pushEvent onResize, (osize, m_size)
+        redraw a
   
   proc position*(a: Window): tuple[x, y: int] = with a:
     let (_, x, y, _, _, _, _) = xwin.geometry
@@ -593,11 +623,7 @@ when defined(linux):
       xcheckStatus d.XPutImage(xwin, gc, ximg, 0, 0, 0, 0, m_size.x.cuint, m_size.y.cuint)
   
   proc run*(a: var Window) = with a:
-    template pushEvent(event, args) =
-      when args is tuple: 
-        if a.event != nil: a.event(args)
-      else:
-        if a.event != nil: a.event((args,))
+    template pushEvent(event, args) = a.pushEvent(event, args)
     
     var ev: XEvent
 
@@ -798,7 +824,7 @@ elif defined(windows):
     DeleteObject wimage
 
   proc fullscreen*(a: Window): bool = a.m_isFullscreen
-  proc `fullscreen=`*(a: var Window, v: bool) {.lazy.} = with a:
+  proc `fullscreen=`*(a: var Window, v: bool) = with a:
     if m_isFullscreen == v: return
     if v:
       discard handle.SetWindowLongPtr(GwlStyle, WsVisible)
