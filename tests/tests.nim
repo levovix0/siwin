@@ -115,10 +115,9 @@ test "readme render example":
       close window
 
 test "readme manage window example":
-  var win = newWindow()
+  var win = newWindow(fullscreen=true)
   win.title = "manage example"
   win.size = (800, 600)
-  win.fullscreen = true
   win.onKeyup = proc(e: KeyEvent) =
     if e.key == Key.f1:
       win.fullscreen = not win.fullscreen

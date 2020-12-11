@@ -413,7 +413,7 @@ when defined(linux):
     if xwin != 0: xcheck d.XDestroyWindow(xwin)
     x.disconnect()
 
-  proc newWindowImpl(w, h: int, scr: Screen): Window = with result:
+  proc newWindowImpl(w, h: int, scr: Screen, fullscreen: bool): Window = with result:
     x.connect()
     screen = scr.id
     m_size = (w, h)
@@ -423,6 +423,13 @@ when defined(linux):
       ExposureMask or KeyPressMask or KeyReleaseMask or PointerMotionMask or ButtonPressMask or
       ButtonReleaseMask or StructureNotifyMask or EnterWindowMask or LeaveWindowMask or FocusChangeMask
     )
+    
+    m_isFullscreen = fullscreen
+    if fullscreen:
+      let atoms = [atom(NetWmStateFullscreen), None]
+      xcheck d.XChangeProperty(xwin, atom(NetWmState), XaAtom, 32, PropModeReplace, cast[PCUchar](atoms.unsafeAddr), 1)
+      m_size = window.screen().size
+
     xcheck d.XMapWindow xwin
     gc = d.XCreateGC(xwin, x.GCForeground or x.GCBackground, gcv.addr)
 
@@ -442,7 +449,6 @@ when defined(linux):
 
     m_isOpen = true
     m_hasFocus = true
-    m_isFullscreen = false
 
     waitForReDraw = true
     curCursor = arrow
@@ -485,6 +491,7 @@ when defined(linux):
   
   proc fullscreen*(a: Window): bool = a.m_isFullscreen
   proc `fullscreen=`*(a: var Window, v: bool) {.lazy.} = with a:
+    if m_isFullscreen == v: return
     var xwa: x.XWindowAttributes
     xcheck d.XGetWindowAttributes(xwin, xwa.addr)
     
@@ -781,7 +788,17 @@ elif defined(windows):
     DeleteDC hdc
     DeleteObject wimage
 
-  proc newWindowImpl(w, h: int, screen: Screen): Window = with result:
+  proc fullscreen*(a: Window): bool = a.m_isFullscreen
+  proc `fullscreen=`*(a: var Window, v: bool) {.lazy.} = with a:
+    if m_isFullscreen == v: return
+    if v:
+      discard handle.SetWindowLongPtr(GwlStyle, WsVisible)
+      discard handle.ShowWindow(SwMaximize)
+    else:
+      discard handle.ShowWindow(SwShowNormal)
+      discard handle.SetWindowLongPtr(GwlStyle, WsVisible or WsOverlappedWindow)
+
+  proc newWindowImpl(w, h: int, screen: Screen, fullscreen: bool): Window = with result:
     handle = CreateWindow(wClassName, "", WsOverlappedWindow, CwUseDefault, CwUseDefault, 
                           w.int32, h.int32, 0, 0, hInstance, nil)
     winassert handle != 0
@@ -802,6 +819,8 @@ elif defined(windows):
     winassert wimage != 0
     winassert hdc != 0
     discard hdc.SelectObject(wimage)
+
+    result.fullscreen = fullscreen
 
   proc `title=`*(a: Window, title: string) = with a:
     handle.SetWindowText(title)
@@ -829,16 +848,6 @@ elif defined(windows):
     winassert hdc != 0
     let old = hdc.SelectObject(wimage)
     if old != 0: discard DeleteObject old
-
-  proc fullscreen*(a: Window): bool = a.m_isFullscreen
-  proc `fullscreen=`*(a: var Window, v: bool) {.lazy.} = with a:
-    if m_isFullscreen == v: return
-    if v:
-      discard handle.SetWindowLongPtr(GwlStyle, WsVisible)
-      discard handle.ShowWindow(SwMaximize)
-    else:
-      discard handle.ShowWindow(SwShowNormal)
-      discard handle.SetWindowLongPtr(GwlStyle, WsVisible or WsOverlappedWindow)
     
   proc position*(a: Window): tuple[x, y: int] = with a:
     let r = handle.clientRect
@@ -1010,11 +1019,11 @@ else:
 
 
 
-proc newWindow*(w: int = 1280, h: int = 720, title: string = "", screen = screen()): Window =
-  result = newWindowImpl(w, h, screen)
+proc newWindow*(w: int = 1280, h: int = 720, title: string = "", screen = screen(), fullscreen: bool = false): Window =
+  result = newWindowImpl(w, h, screen, fullscreen)
   result.title = title
-proc newWindow*(size: tuple[x, y: int], title: string = "", screen = screen()): Window =
-  newWindow(size.x, size.y, title, screen)
+proc newWindow*(size: tuple[x, y: int], title: string = "", screen = screen(), fullscreen: bool = false): Window =
+  newWindow(size.x, size.y, title, screen, fullscreen)
 
 template w*(a: Screen): int = a.size.x
 template h*(a: Screen): int = a.size.y

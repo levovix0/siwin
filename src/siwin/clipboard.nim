@@ -13,13 +13,17 @@ type Clipboard = object
     inited: bool
 
 when defined(linux):
-  proc `=destroy`(a: var Clipboard) = with a:
+  proc close*(a: var Clipboard) = with a:
     if inited:
+      inited = false
       if xwin != 0:
         xcheck display.XDestroyWindow(xwin)
         discard XFlush display
       disconnect()
       clipboardProcessEvents = proc() = discard
+
+  proc `=destroy`(a: var Clipboard) =
+    close a
 
 var clipboard* = Clipboard()
 
