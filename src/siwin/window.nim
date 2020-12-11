@@ -426,14 +426,14 @@ when defined(linux):
     
     m_isFullscreen = fullscreen
     if fullscreen:
-      let atoms = [atom(NetWmStateFullscreen), None]
-      xcheck d.XChangeProperty(xwin, atom(NetWmState), XaAtom, 32, PropModeReplace, cast[PCUchar](atoms.unsafeAddr), 1)
+      let atoms = [atom NetWmStateFullscreen, None]
+      xcheck d.XChangeProperty(xwin, atom NetWmState, XaAtom, 32, PropModeReplace, cast[PCUchar](atoms.unsafeAddr), 1)
       m_size = window.screen().size
 
     xcheck d.XMapWindow xwin
     gc = d.XCreateGC(xwin, x.GCForeground or x.GCBackground, gcv.addr)
 
-    xcheck d.XSetWMProtocols(xwin, x.patom(WM_DELETE_WINDOW), 1)
+    xcheck d.XSetWMProtocols(xwin, patom WmDeleteWindow, 1)
 
     xinMethod = d.XOpenIM(nil, nil, nil)
     if xinMethod != nil:
@@ -492,23 +492,23 @@ when defined(linux):
   proc fullscreen*(a: Window): bool = a.m_isFullscreen
   proc `fullscreen=`*(a: var Window, v: bool) {.lazy.} = with a:
     if m_isFullscreen == v: return
+    m_isFullscreen = v
+    
     var xwa: x.XWindowAttributes
     xcheck d.XGetWindowAttributes(xwin, xwa.addr)
-    
+
     var e: XEvent
     e.xclient.theType      = ClientMessage
-    e.xclient.message_type = atom(NET_WM_STATE, true)
+    e.xclient.message_type = atom(NetWmState, true)
     e.xclient.display      = d
     e.xclient.window       = xwin
     e.xclient.format       = 32
-    e.xclient.data.l[0]    = 2 #* 2 - переключить, 1 - добавить, 0 - убрать
-    e.xclient.data.l[1]    = atom(NET_WM_STATE_FULLSCREEN).clong
+    e.xclient.data.l[0]    = 2 # 2 - переключить, 1 - добавить, 0 - убрать
+    e.xclient.data.l[1]    = atom(NetWmStateFullscreen).clong
     e.xclient.data.l[2]    = 0
     e.xclient.data.l[3]    = 0
     e.xclient.data.l[4]    = 0
     xcheck d.XSendEvent(xwa.root, 0, SubstructureNotifyMask or SubstructureRedirectMask, e.addr)
-
-    m_isFullscreen = v
   
   proc position*(a: Window): tuple[x, y: int] = with a:
     let (_, x, y, _, _, _, _) = xwin.geometry
