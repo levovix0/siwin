@@ -3,6 +3,7 @@ import unittest, strformat
 
 test "window":
   var win = newWindow(title="Окошко")
+  win.initRender()
   
   var a = false
   win.onClose = proc(e: CloseEvent) =
@@ -116,6 +117,7 @@ test "readme render example":
 
 test "readme manage window example":
   var win = newWindow(fullscreen=true)
+  win.initRender()
   win.title = "manage example"
   win.size = (800, 600)
   win.onKeyup = proc(e: KeyEvent) =

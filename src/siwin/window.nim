@@ -75,6 +75,7 @@ type
       m_isOpen: bool
       m_hasFocus: bool
       m_isFullscreen: bool
+      m_usingPictureForRender: bool
 
       waitForReDraw: bool
 
@@ -440,12 +441,6 @@ when defined(linux):
       xinContext = xinMethod.XCreateIC(
         x.XNClientWindow, xwin, x.XNFocusWindow, xwin, x.XNInputStyle, x.XIMPreeditNothing or x.XIMStatusNothing, nil
       )
-    
-    m_data = ArrayPtr[Color](cast[ptr Color](malloc(culong Color.sizeof * w * h)))
-    ximg = d.XCreateImage(d.DefaultVisual(screen), d.DefaultDepth(screen).cuint, ZPixmap, 0, cast[cstring](cast[ptr Color](m_data)),
-      w.cuint, h.cuint, 32, 0
-    )
-    doassert ximg != nil
 
     m_isOpen = true
     m_hasFocus = true
@@ -453,10 +448,22 @@ when defined(linux):
     waitForReDraw = true
     curCursor = arrow
   
+  proc initRender*(w: var Window) = with w:
+    if m_usingPictureForRender: return
+    m_usingPictureForRender = true
+
+    m_data = ArrayPtr[Color](cast[ptr Color](malloc(culong Color.sizeof * m_size.x * m_size.y)))
+    ximg = d.XCreateImage(
+      d.DefaultVisual(screen), d.DefaultDepth(screen).cuint, ZPixmap, 0, cast[cstring](cast[ptr Color](m_data)),
+      m_size.x.cuint, m_size.y.cuint, 32, 0
+    )
+    doassert ximg != nil
+
+
   proc `title=`*(a: Window, title: string) = with a:
-    let useUtf8 = x.atom(UTF8_STRING)
-    xcheck d.XChangeProperty(xwin, x.atom(NET_WM_NAME), useUtf8, 8, PropModeReplace, title, title.len.cint)
-    xcheck d.XChangeProperty(xwin, x.atom(NET_WM_ICON_NAME), useUtf8, 8, PropModeReplace, title, title.len.cint)
+    let useUtf8 = atom(Utf8String)
+    xcheck d.XChangeProperty(xwin, atom(NetWmName), useUtf8, 8, PropModeReplace, title, title.len.cint)
+    xcheck d.XChangeProperty(xwin, atom(NetWmIconName), useUtf8, 8, PropModeReplace, title, title.len.cint)
 
     d.Xutf8SetWMProperties(a.xwin, title, title, nil, 0, nil, nil, nil)
   
@@ -480,13 +487,14 @@ when defined(linux):
     m_pos = (x.int, y.int)
     m_size = (w.int, h.int)
 
-    xcheck XDestroyImage ximg
-    m_data = ArrayPtr[Color](cast[ptr Color](malloc(culong Color.sizeof * w.int * h.int)))
-    ximg = d.XCreateImage(
-      d.DefaultVisual(screen), d.DefaultDepth(screen).cuint, ZPixmap, 0, cast[cstring](cast[ptr Color](m_data)),
-      w, h, 32, 0
-    )
-    doassert ximg != nil
+    if m_usingPictureForRender:
+      xcheck XDestroyImage ximg
+      m_data = ArrayPtr[Color](cast[ptr Color](malloc(culong Color.sizeof * w.int * h.int)))
+      ximg = d.XCreateImage(
+        d.DefaultVisual(screen), d.DefaultDepth(screen).cuint, ZPixmap, 0, cast[cstring](cast[ptr Color](m_data)),
+        w, h, 32, 0
+      )
+      doassert ximg != nil
     waitForReDraw = true
   
   proc fullscreen*(a: Window): bool = a.m_isFullscreen
@@ -581,7 +589,8 @@ when defined(linux):
     xcheck XFree(wmh)
 
   proc displayImpl(a: var Window) = with a:
-    xcheckStatus d.XPutImage(xwin, gc, ximg, 0, 0, 0, 0, m_size.x.cuint, m_size.y.cuint)
+    if m_usingPictureForRender:
+      xcheckStatus d.XPutImage(xwin, gc, ximg, 0, 0, 0, 0, m_size.x.cuint, m_size.y.cuint)
   
   proc run*(a: var Window) = with a:
     template pushEvent(event, args) =
@@ -1028,4 +1037,6 @@ proc newWindow*(size: tuple[x, y: int], title: string = "", screen = screen(), f
 template w*(a: Screen): int = a.size.x
 template h*(a: Screen): int = a.size.y
 
-converter toPicture*(a: Window): Picture = Picture(size: a.m_size, data: a.m_data)
+converter toPicture*(a: Window): Picture =
+  if not a.m_usingPictureForRender: raise NilAccessDefect.newException("can't access picture of window, that isn't render using picture")
+  Picture(size: a.m_size, data: a.m_data)

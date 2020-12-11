@@ -392,6 +392,8 @@ proc runImpl(w: NimNode, a: NimNode): NimNode =
       elif pars.len > 1: error(&"got {pars.len} parametrs, but expected one of (), (renderEngine)", pars[1])
       else:
         eventName.resaddas `w`.render: `body`
+        "onInit".resadd quote do:
+          initRender(`w`)
     of "focus":
       eventName.resaddas e.focused: `body`
 

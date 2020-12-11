@@ -4,7 +4,7 @@ Nim Simple Window Maker
 # Features
 * window creation and management
 * `run` event loop creation macro
-* (indirect) access to window pixels
+* render in window using picture (access pixels)
 * clipboard
 * OS Linux support (using X11)
 * OS Windows support
@@ -30,6 +30,7 @@ run newWindow(w=screen().size.x, title="render example"):
 manage window:
 ```nim
 var win = newWindow()
+win.initRender() # needs to render in window using picture
 win.title = "manage example"
 win.size = (800, 600)
 win.fullscreen = true
