@@ -1061,7 +1061,7 @@ elif defined(windows):
       pushEvent onKeyup, (keyboard, key, false, mk VkMenu, mk VkControl, mk VkShift, mk(VkLWin) or mk(VkRWin))
 
     of WmChar:
-      pushEvent onTextEnter, (keyboard, $wParam.WChar)
+      pushEvent onTextEnter, (keyboard, %$[wParam.WChar])
     
     of WmSetCursor:
       if lParam.LOWord == HTClient:
