@@ -453,7 +453,7 @@ proc runImpl(w: NimNode, a: NimNode): NimNode =
 macro run*(w: var Window, a: untyped) =
   ## run window macro
   ## 
-  ## to add a new render engine, add `init_RENDERNAME_Render(Window) -> void` and `RENDERNAME_Render(Picture) -> RENDERINTERFACE` procs
+  ## to add a new render engine, add `init_RENDERNAME_Render(var Window) -> void` and `RENDERNAME_Render(Picture) -> RENDERINTERFACE` procs
   runImpl w, a
 
 template run*(w: Window, a: untyped) =
