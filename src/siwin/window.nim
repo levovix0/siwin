@@ -98,8 +98,6 @@ type
       m_isFullscreen: bool
       m_usingPictureForRender: bool
 
-      firstPaint: bool
-
   CloseEvent* = tuple
 
   RenderEvent* = tuple
@@ -554,10 +552,12 @@ when defined(linux):
     let (_, x, y, _, _, _, _) = xwin.geometry
     return (x.int, y.int)
   proc `position=`*(a: var Window, p: tuple[x, y: int]) = with a:
+    if m_isFullscreen: return
     xcheck d.XMoveWindow(xwin, p.x.cint, p.y.cint)
     m_pos = p
   proc size*(a: Window): tuple[x, y: int] = a.m_size
   proc `size=`*(a: var Window, size: tuple[x, y: int]) = with a:
+    # a.fullscreen = false
     xcheck d.XResizeWindow(xwin, size.x.cuint, size.y.cuint)
     a.updateGeometry()
 
@@ -811,37 +811,65 @@ elif defined(windows):
     wcex.hIconSm       = 0
     winassert RegisterClassEx(wcex) != 0
   
-  proc size*(a: Window): tuple[x, y: int] = a.m_size
-  proc `size=`*(a: var Window, size: tuple[x, y: int]) = with a:
-    let rcClient = handle.clientRect
-    var rcWind = handle.windowRect
-    let borderx = (rcWind.right - rcWind.left) - rcClient.right
-    let bordery = (rcWind.bottom - rcWind.top) - rcClient.bottom
-    MoveWindow(handle, rcWind.left, rcWind.top, (size.x + borderx).int32, (size.y + bordery).int32, True)
-
-    m_size = size
-  
   proc `=destroy`*(a: var Window) = with a:
     DeleteDC hdc
     DeleteObject wimage
 
+  template pushEvent(a: Window, event, args) =
+    when args is tuple: 
+      if a.event != nil: a.event(args)
+    else:
+      if a.event != nil: a.event((args,))
+
+  proc updateSize(a: var Window) = with a:
+    let rect = handle.clientRect
+    let osize = m_size
+    m_size = (rect.right.int, rect.bottom.int)
+    if osize == m_size: return
+
+    if m_usingPictureForRender:
+      DeleteDC hdc
+      DeleteObject wimage
+
+      var bmi = BitmapInfo(bmiHeader: BitmapInfoHeader(biSize: BitmapInfoHeader.sizeof.int32, biWidth: m_size.x.Long, biHeight: -m_size.y.Long,
+                           biPlanes: 1, biBitCount: 32, biCompression: BiRgb, biSizeImage: 0, biXPelsPerMeter: 0, biYPelsPerMeter: 0, biClrUsed: 0, biClrImportant: 0));
+      wimage  = CreateDibSection(0, &bmi, DibRgbColors, cast[ptr pointer](&m_data), 0, 0)
+      hdc     = CreateCompatibleDC(0)
+      winassert wimage != 0
+      winassert hdc != 0
+      let old = hdc.SelectObject(wimage)
+      if old != 0: discard DeleteObject old
+    
+    a.pushEvent onResize, (osize, m_size)
+    
   proc fullscreen*(a: Window): bool = a.m_isFullscreen
   proc `fullscreen=`*(a: var Window, v: bool) = with a:
     if m_isFullscreen == v: return
+    m_isFullscreen = v
     if v:
       discard handle.SetWindowLongPtr(GwlStyle, WsVisible)
       discard handle.ShowWindow(SwMaximize)
     else:
       discard handle.ShowWindow(SwShowNormal)
       discard handle.SetWindowLongPtr(GwlStyle, WsVisible or WsOverlappedWindow)
+    a.updateSize()
 
+  proc size*(a: Window): tuple[x, y: int] = a.m_size
+  proc `size=`*(a: var Window, size: tuple[x, y: int]) = with a:
+    # a.fullscreen = false
+    let rcClient = handle.clientRect
+    var rcWind = handle.windowRect
+    let borderx = (rcWind.right - rcWind.left) - rcClient.right
+    let bordery = (rcWind.bottom - rcWind.top) - rcClient.bottom
+    MoveWindow(handle, rcWind.left, rcWind.top, (size.x + borderx).int32, (size.y + bordery).int32, True)
+    a.updateSize()
+  
   proc newWindowImpl(w, h: int, screen: Screen, fullscreen: bool): Window = with result:
     handle = CreateWindow(wClassName, "", WsOverlappedWindow, CwUseDefault, CwUseDefault, 
                           w.int32, h.int32, 0, 0, hInstance, nil)
     winassert handle != 0
     m_hasFocus = true
     m_isOpen = true
-    firstPaint = true
     curCursor = arrow
     wcursor = LoadCursor(0, IdcArrow)
     discard handle.SetWindowLongPtrW(GwlpUserData, cast[LongPtr](result.addr))
@@ -873,27 +901,11 @@ elif defined(windows):
     var cr = handle.clientRect
     handle.InvalidateRect(&cr, false)
     
-  proc updateGeometry(a: var Window) = with a:
-    let rect = handle.clientRect
-    m_size = (rect.right.int, rect.bottom.int)
-
-    if m_usingPictureForRender:
-      DeleteDC hdc
-      DeleteObject wimage
-
-      var bmi = BitmapInfo(bmiHeader: BitmapInfoHeader(biSize: BitmapInfoHeader.sizeof.int32, biWidth: m_size.x.Long, biHeight: -m_size.y.Long,
-                           biPlanes: 1, biBitCount: 32, biCompression: BiRgb, biSizeImage: 0, biXPelsPerMeter: 0, biYPelsPerMeter: 0, biClrUsed: 0, biClrImportant: 0));
-      wimage  = CreateDibSection(0, &bmi, DibRgbColors, cast[ptr pointer](&m_data), 0, 0)
-      hdc     = CreateCompatibleDC(0)
-      winassert wimage != 0
-      winassert hdc != 0
-      let old = hdc.SelectObject(wimage)
-      if old != 0: discard DeleteObject old
-    
   proc position*(a: Window): tuple[x, y: int] = with a:
     let r = handle.clientRect
     return (r.left.int, r.top.int)
   proc `position=`*(a: var Window, v: tuple[x, y: int]) = with a:
+    if m_isFullscreen: return
     handle.SetWindowPos(0, v.x.int32, v.y.int32, 0, 0, SwpNoSize)
     
   proc `cursor=`*(a: var Window, kind: Cursor) = with a:
@@ -955,10 +967,7 @@ elif defined(windows):
 
   proc poolEvent(a: var Window, message: Uint, wParam: WParam, lParam: LParam): LResult = with a:
     template pushEvent(event, args) =
-      when args is tuple: 
-        if a.event != nil: a.event(args)
-      else:
-        if a.event != nil: a.event((args,))
+      a.pushEvent(event, args)
 
     template button: MouseButton =
       case message
@@ -975,11 +984,8 @@ elif defined(windows):
     case message
     of WmPaint:
       let rect = handle.clientRect
-      if rect.right != m_size.x or rect.bottom != m_size.y or firstPaint:
-        let osize = m_size
-        a.updateGeometry()
-        pushEvent onResize, (osize, m_size)
-        firstPaint = false
+      if rect.right != m_size.x or rect.bottom != m_size.y:
+        a.updateSize()
       pushEvent onRender, (m_data, m_size)
       a.displayImpl()
     
