@@ -713,13 +713,13 @@ when defined(linux):
         of FocusOut:
           m_hasFocus = false
           if xinContext != nil: XUnsetICFocus xinContext
-          
-          for key, k in keyboard.pressed.mpairs:
+          pushEvent onFocus, (false)
+
+          for key, k in keyboard.pressed.mpairs: # отпустить все клавиши
             if k:
               template mk(a): bool = (ev.xkey.state and a).bool
               pushEvent onKeyup, (keyboard, key, false, mk Mod1Mask, mk ControlMask, mk ShiftMask, mk Mod4Mask)
               k = false
-          pushEvent onFocus, (false)
         
         of KeyPress:
           var key = Key.unknown
@@ -1015,6 +1015,11 @@ elif defined(windows):
     of WmKillFocus:
       m_hasFocus = false
       pushEvent onFocus, (m_hasFocus)
+      for key, k in keyboard.pressed.mpairs: # отпустить все клавиши
+        if k:
+          template mk(vk): bool = HIWord(GetKeyState(vk)) != 0
+          pushEvent onKeyup, (keyboard, key, false, mk VkMenu, mk VkControl, mk VkShift, mk(VkLWin) or mk(VkRWin))
+          k = false
     
     of WmLButtonDown, WmRButtonDown, WmMButtonDown, WmXButtonDown:
       handle.SetCapture()
@@ -1035,14 +1040,14 @@ elif defined(windows):
     of WmKeyDown, WmSysKeyDown:
       let key = wkeyToKey(wParam, lParam)
       keyboard.pressed[key] = true
-      template kstate(vk): bool = HIWord(GetKeyState(vk)) != 0
-      pushEvent onKeydown, (keyboard, key, true, kstate VkMenu, kstate VkControl, kstate VkShift, kstate(VkLWin) or kstate(VkRWin))
+      template mk(vk): bool = HIWord(GetKeyState(vk)) != 0
+      pushEvent onKeydown, (keyboard, key, true, mk VkMenu, mk VkControl, mk VkShift, mk(VkLWin) or mk(VkRWin))
     
     of WmKeyUp, WmSysKeyUp:
       let key = wkeyToKey(wParam, lParam)
       keyboard.pressed[key] = false
-      template kstate(vk): bool = HIWord(GetKeyState(vk)) != 0
-      pushEvent onKeyup, (keyboard, key, false, kstate VkMenu, kstate VkControl, kstate VkShift, kstate(VkLWin) or kstate(VkRWin))
+      template mk(vk): bool = HIWord(GetKeyState(vk)) != 0
+      pushEvent onKeyup, (keyboard, key, false, mk VkMenu, mk VkControl, mk VkShift, mk(VkLWin) or mk(VkRWin))
 
     of WmChar:
       pushEvent onTextEnter, (keyboard, $wParam.WChar)
