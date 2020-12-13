@@ -140,7 +140,6 @@ when defined(linux):
 
 elif defined(windows):
   proc text*(a: var Clipboard): string =
-    winassert IsClipboardFormatAvailable(CfUnicodeText)
     winassert OpenClipboard(0)
 
     let hcpb = GetClipboardData(CfUnicodeText)
@@ -157,12 +156,13 @@ elif defined(windows):
     winassert EmptyClipboard()
     
     let ws = +$s
-    let hstr = GlobalAlloc(GMemMoveable, ws.len)
+    let ts = (ws.len + 1) * WChar.sizeof
+    let hstr = GlobalAlloc(GMemMoveable, ts)
     if hstr == 0:
       CloseClipboard()
       raise WinapiError.newException("failed to alloc string")
 
-    copyMem(GlobalLock hstr, ws.winstrConverterWStringToLPWSTR, ws.len)
+    copyMem(GlobalLock hstr, ws.winstrConverterWStringToLPWSTR, ts)
     GlobalUnlock hstr
     SetClipboardData(CfUnicodeText, hstr)
     CloseClipboard()
