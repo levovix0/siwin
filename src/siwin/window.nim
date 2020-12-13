@@ -38,10 +38,12 @@ type
     onClose*:       proc(e: CloseEvent)
     
     onRender*:      proc(e: RenderEvent)
-    onFocus*:       proc(e: FocusEvent)
     onTick*:        proc(e: TickEvent)
     onResize*:      proc(e: ResizeEvent)
     onWindowMove*:  proc(e: WindowMoveEvent)
+
+    onFocusChanged*:      proc(e: FocusEvent)
+    onFullscreenChanged*: proc(e: StateChangedEvent)
 
     mouse*: Mouse # состояние мыши
     onMouseMove*:   proc(e: MouseMoveEvent)
@@ -126,6 +128,8 @@ type
 
   FocusEvent* = tuple
     focused: bool
+  StateChangedEvent* = tuple
+    state: bool
 
   TickEvent* = tuple
     mouse: Mouse
@@ -709,11 +713,11 @@ when defined(linux):
         of FocusIn:
           m_hasFocus = true
           if xinContext != nil: XSetICFocus xinContext
-          pushEvent onFocus, (true)
+          pushEvent onFocusChanged, (true)
         of FocusOut:
           m_hasFocus = false
           if xinContext != nil: XUnsetICFocus xinContext
-          pushEvent onFocus, (false)
+          pushEvent onFocusChanged, (false)
 
           for key, k in keyboard.pressed.mpairs: # отпустить все клавиши
             if k:
@@ -853,10 +857,11 @@ elif defined(windows):
       discard handle.ShowWindow(SwShowNormal)
       discard handle.SetWindowLongPtr(GwlStyle, WsVisible or WsOverlappedWindow)
     a.updateSize()
+    a.pushEvent onFullscreenChanged, (v)
 
   proc size*(a: Window): tuple[x, y: int] = a.m_size
   proc `size=`*(a: var Window, size: tuple[x, y: int]) = with a:
-    # a.fullscreen = false
+    a.fullscreen = false
     let rcClient = handle.clientRect
     var rcWind = handle.windowRect
     let borderx = (rcWind.right - rcWind.left) - rcClient.right
@@ -1016,11 +1021,11 @@ elif defined(windows):
     
     of WmSetFocus:
       m_hasFocus = true
-      pushEvent onFocus, (m_hasFocus)
+      pushEvent onFocusChanged, (m_hasFocus)
     
     of WmKillFocus:
       m_hasFocus = false
-      pushEvent onFocus, (m_hasFocus)
+      pushEvent onFocusChanged, (m_hasFocus)
       for key, k in keyboard.pressed.mpairs: # отпустить все клавиши
         if k:
           template mk(vk): bool = HIWord(GetKeyState(vk)) != 0

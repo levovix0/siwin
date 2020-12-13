@@ -92,6 +92,9 @@ test "macro":
     keydown _+w:     echo "no, press ctrl+w to close window" #= keydown w: if magicOtherKeysIsNotPressed():
     keydown ctrl+w:  close window
 
+    fullscreen true:  g = 255
+    fullscreen false: g = 0
+
     click(left, right) as (x, _): g = min(max(int(x / window.size.x * 255), 0), 255)
   
   echo x
@@ -121,7 +124,6 @@ test "readme manage window example":
   win.onKeyup = proc(e: KeyEvent) =
     if e.key == Key.f1:
       win.fullscreen = not win.fullscreen
-      win.position = (screen().size.x div 2 - win.size.x div 2, screen().size.y div 2 - win.size.y div 2)
     elif e.key == Key.f2:
       win.size = (1280, 720)
     elif e.key == Key.escape:
@@ -129,7 +131,9 @@ test "readme manage window example":
   win.onRender = proc(e: RenderEvent) =
     let r = render win
     r.clear color"202020"
-  run win  
+  win.onFullscreenChanged = proc(e: StateChangedEvent) =
+    win.position = (screen().size.x div 2 - win.size.x div 2, screen().size.y div 2 - win.size.y div 2)
+  run win
 
 test "clipboard":
   echo $clipboard   #= `clipboard.text`

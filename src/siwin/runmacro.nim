@@ -396,6 +396,16 @@ proc runImpl(w: NimNode, a: NimNode): NimNode =
           initRender(`w`)
     of "focus":
       eventName.resaddas e.focused: `body`
+    of "fullscreen", "fullscreenchanged":
+      if pars.len == 1:
+        let c = pars[0]
+        "onFullscreenChanged".resaddas e.state:
+          if e.state == `c`:
+            `body`
+      elif pars.len > 1:
+        error(&"got {pars.len} parametrs, but expected one of (), (state)", pars[1])
+      else:
+        "onFullscreenChanged".resaddas e.state: `body`
 
     of "scroll":
       eventName.resaddas e.delta: `body`
@@ -417,10 +427,12 @@ proc runImpl(w: NimNode, a: NimNode): NimNode =
     case eventName[2..eventName.high].toLower
     of "close":  eproc CloseEvent
     of "render": eproc RenderEvent
-    of "focus":  eproc FocusEvent
     of "tick":   eproc TickEvent
     of "resize": eproc ResizeEvent
     of "windowmove": eproc WindowMoveEvent
+    
+    of "focus":  eproc FocusEvent
+    of "fullscreenchanged": eproc StateChangedEvent
     
     of "mousemove", "mouseleave", "mouseenter": eproc MouseMoveEvent
     of "mousedown", "mouseup": eproc MouseButtonEvent

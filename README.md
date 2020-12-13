@@ -29,19 +29,21 @@ run newWindow(w=screen().size.x, title="render example"):
 
 manage window:
 ```nim
-var win = newWindow()
-win.initRender() # needs to render in window using picture
-win.title = "manage example"
-win.size = (800, 600)
-win.fullscreen = true
+var win = newWindow(w=800, h=600, title="manage example", fullscreen=true)
+win.initRender()
 win.onKeyup = proc(e: KeyEvent) =
   if e.key == Key.f1:
     win.fullscreen = not win.fullscreen
-    win.position = (screen().size.x div 2 - win.size.x div 2, screen().size.y div 2 - win.size.y div 2)
+  elif e.key == Key.f2:
+    win.size = (1280, 720)
+  elif e.key == Key.escape:
+    close win
 win.onRender = proc(e: RenderEvent) =
   let r = render win
   r.clear color"202020"
-run win  
+win.onFullscreenChanged = proc(e: StateChangedEvent) =
+  win.position = (screen().size.x div 2 - win.size.x div 2, screen().size.y div 2 - win.size.y div 2)
+run win
 ```
 
 clipboard:
