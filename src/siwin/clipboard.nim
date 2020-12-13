@@ -1,8 +1,7 @@
-import with
-
 when defined(linux):
-  import libx11 as x
   import times
+  import with
+  import libx11 as x
 when defined(windows):
   import libwinapi
 
@@ -16,6 +15,8 @@ when defined(linux):
   proc close*(a: var Clipboard) = with a:
     if inited:
       inited = false
+      content = ""
+      # TODO: unset selection owner
       if xwin != 0:
         xcheck display.XDestroyWindow(xwin)
         discard XFlush display
@@ -24,6 +25,9 @@ when defined(linux):
 
   proc `=destroy`(a: var Clipboard) =
     close a
+
+elif defined(windows):
+  proc close*(a: var Clipboard) = discard
 
 var clipboard* = Clipboard()
 
@@ -133,6 +137,35 @@ when defined(linux):
 
     if display.XGetSelectionOwner(atom(AtomKind.Clipboard)) != xwin:
       raise X11Error.newException("can't set selection owner.")
+
+elif defined(windows):
+  proc text*(a: var Clipboard): string =
+    winassert IsClipboardFormatAvailable(CfUnicodeText)
+    winassert OpenClipboard(0)
+
+    let hcpb = GetClipboardData(CfUnicodeText)
+    if hcpb == 0:
+      CloseClipboard()
+      raise WinapiError.newException("failed to get handle of clipboard")
+    
+    result = $cast[PWChar](GlobalLock hcpb)
+    GlobalUnlock hcpb
+    discard CloseClipboard()
+
+  proc `text=`*(a: var Clipboard, s: string) =
+    winassert OpenClipboard(0)
+    winassert EmptyClipboard()
+    
+    let ws = +$s
+    let hstr = GlobalAlloc(GMemMoveable, ws.len)
+    if hstr == 0:
+      CloseClipboard()
+      raise WinapiError.newException("failed to alloc string")
+
+    copyMem(GlobalLock hstr, ws.winstrConverterWStringToLPWSTR, ws.len)
+    GlobalUnlock hstr
+    SetClipboardData(CfUnicodeText, hstr)
+    CloseClipboard()
 
 template `$`*(a: var Clipboard): string = a.text
 template `$=`*(a: var Clipboard, s: string) = a.text = s

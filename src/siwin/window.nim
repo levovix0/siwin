@@ -1,7 +1,8 @@
-import times, os, strformat
+import times, os
 import with
 import image, utils
 when defined(linux):
+  import strformat
   import libx11 as x
 when defined(windows):
   import libwinapi
@@ -95,6 +96,7 @@ type
       m_hasFocus: bool
       m_isOpen: bool
       m_isFullscreen: bool
+      m_usingPictureForRender: bool
 
       firstPaint: bool
 
@@ -839,7 +841,6 @@ elif defined(windows):
     winassert handle != 0
     m_hasFocus = true
     m_isOpen = true
-    m_isFullscreen = false
     firstPaint = true
     curCursor = arrow
     wcursor = LoadCursor(0, IdcArrow)
@@ -847,15 +848,19 @@ elif defined(windows):
     handle.trackMouseEvent(TmeHover)
     result.size = (w, h)
 
-    var bmi = BitmapInfo(bmiHeader: BitmapInfoHeader(biSize: BitmapInfoHeader.sizeof.int32, biWidth: w.Long, biHeight: -h.Long,
+    result.fullscreen = fullscreen
+
+  proc initRender*(w: var Window) = with w:
+    if m_usingPictureForRender: return
+    m_usingPictureForRender = true
+
+    var bmi = BitmapInfo(bmiHeader: BitmapInfoHeader(biSize: BitmapInfoHeader.sizeof.int32, biWidth: m_size.x.Long, biHeight: -m_size.y.Long,
                          biPlanes: 1, biBitCount: 32, biCompression: BI_RGB, biSizeImage: 0, biXPelsPerMeter: 0, biYPelsPerMeter: 0, biClrUsed: 0, biClrImportant: 0));
     wimage  = CreateDibSection(0, &bmi, DibRgbColors, cast[ptr pointer](&m_data), 0, 0)
     hdc     = CreateCompatibleDC(0)
     winassert wimage != 0
     winassert hdc != 0
     discard hdc.SelectObject(wimage)
-
-    result.fullscreen = fullscreen
 
   proc `title=`*(a: Window, title: string) = with a:
     handle.SetWindowText(title)
@@ -872,17 +877,18 @@ elif defined(windows):
     let rect = handle.clientRect
     m_size = (rect.right.int, rect.bottom.int)
 
-    DeleteDC hdc
-    DeleteObject wimage
+    if m_usingPictureForRender:
+      DeleteDC hdc
+      DeleteObject wimage
 
-    var bmi = BitmapInfo(bmiHeader: BitmapInfoHeader(biSize: BitmapInfoHeader.sizeof.int32, biWidth: m_size.x.Long, biHeight: -m_size.y.Long,
-                         biPlanes: 1, biBitCount: 32, biCompression: BiRgb, biSizeImage: 0, biXPelsPerMeter: 0, biYPelsPerMeter: 0, biClrUsed: 0, biClrImportant: 0));
-    wimage  = CreateDibSection(0, &bmi, DIB_RGB_COLORS, cast[ptr pointer](&m_data), 0, 0)
-    hdc     = CreateCompatibleDC(0)
-    winassert wimage != 0
-    winassert hdc != 0
-    let old = hdc.SelectObject(wimage)
-    if old != 0: discard DeleteObject old
+      var bmi = BitmapInfo(bmiHeader: BitmapInfoHeader(biSize: BitmapInfoHeader.sizeof.int32, biWidth: m_size.x.Long, biHeight: -m_size.y.Long,
+                           biPlanes: 1, biBitCount: 32, biCompression: BiRgb, biSizeImage: 0, biXPelsPerMeter: 0, biYPelsPerMeter: 0, biClrUsed: 0, biClrImportant: 0));
+      wimage  = CreateDibSection(0, &bmi, DibRgbColors, cast[ptr pointer](&m_data), 0, 0)
+      hdc     = CreateCompatibleDC(0)
+      winassert wimage != 0
+      winassert hdc != 0
+      let old = hdc.SelectObject(wimage)
+      if old != 0: discard DeleteObject old
     
   proc position*(a: Window): tuple[x, y: int] = with a:
     let r = handle.clientRect
@@ -918,11 +924,12 @@ elif defined(windows):
   proc displayImpl(a: var Window) = with a:
     var ps: PaintStruct
     handle.BeginPaint(&ps)
-    let hhdc = handle.GetDC()
-    let rect = handle.clientRect
+    if m_usingPictureForRender:
+      let hhdc = handle.GetDC()
+      let rect = handle.clientRect
 
-    BitBlt(hhdc, 0, 0, rect.right, rect.bottom, hdc, 0, 0, SrcCopy)
-    handle.ReleaseDC(hhdc)
+      BitBlt(hhdc, 0, 0, rect.right, rect.bottom, hdc, 0, 0, SrcCopy)
+      handle.ReleaseDC(hhdc)
     handle.EndPaint(&ps)
 
   proc run*(a: var Window) = with a:
