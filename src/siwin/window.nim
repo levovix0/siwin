@@ -808,7 +808,7 @@ elif defined(windows):
     wcex.cbClsExtra    = 0
     wcex.cbWndExtra    = 0
     wcex.hInstance     = hInstance
-    wcex.hCursor       = LoadCursor(0, IDC_ARROW)
+    wcex.hCursor       = LoadCursor(0, IdcArrow)
     wcex.hbrBackground = 0
     wcex.lpszMenuName  = nil
     wcex.lpszClassName = wClassName
@@ -835,12 +835,15 @@ elif defined(windows):
       DeleteDC hdc
       DeleteObject wimage
 
-      var bmi = BitmapInfo(bmiHeader: BitmapInfoHeader(biSize: BitmapInfoHeader.sizeof.int32, biWidth: m_size.x.Long, biHeight: -m_size.y.Long,
-                           biPlanes: 1, biBitCount: 32, biCompression: BiRgb, biSizeImage: 0, biXPelsPerMeter: 0, biYPelsPerMeter: 0, biClrUsed: 0, biClrImportant: 0));
-      wimage  = CreateDibSection(0, &bmi, DibRgbColors, cast[ptr pointer](&m_data), 0, 0)
-      hdc     = CreateCompatibleDC(0)
-      winassert wimage != 0
-      winassert hdc != 0
+      if m_size.x * m_size.y > 0:
+        var bmi = BitmapInfo(bmiHeader: BitmapInfoHeader(biSize: BitmapInfoHeader.sizeof.int32, biWidth: m_size.x.Long, biHeight: -m_size.y.Long,
+                             biPlanes: 1, biBitCount: 32, biCompression: BiRgb, biSizeImage: 0, biXPelsPerMeter: 0, biYPelsPerMeter: 0, biClrUsed: 0, biClrImportant: 0));
+        wimage  = CreateDibSection(0, &bmi, DibRgbColors, cast[ptr pointer](&m_data), 0, 0)
+        hdc     = CreateCompatibleDC(0)
+        winassert wimage != 0
+        winassert hdc != 0
+      else:
+        m_data = nil
       let old = hdc.SelectObject(wimage)
       if old != 0: discard DeleteObject old
     
@@ -887,12 +890,15 @@ elif defined(windows):
     if m_usingPictureForRender: return
     m_usingPictureForRender = true
 
-    var bmi = BitmapInfo(bmiHeader: BitmapInfoHeader(biSize: BitmapInfoHeader.sizeof.int32, biWidth: m_size.x.Long, biHeight: -m_size.y.Long,
-                         biPlanes: 1, biBitCount: 32, biCompression: BI_RGB, biSizeImage: 0, biXPelsPerMeter: 0, biYPelsPerMeter: 0, biClrUsed: 0, biClrImportant: 0));
-    wimage  = CreateDibSection(0, &bmi, DibRgbColors, cast[ptr pointer](&m_data), 0, 0)
-    hdc     = CreateCompatibleDC(0)
-    winassert wimage != 0
-    winassert hdc != 0
+    if m_size.x * m_size.y > 0:
+      var bmi = BitmapInfo(bmiHeader: BitmapInfoHeader(biSize: BitmapInfoHeader.sizeof.int32, biWidth: m_size.x.Long, biHeight: -m_size.y.Long,
+                           biPlanes: 1, biBitCount: 32, biCompression: BI_RGB, biSizeImage: 0, biXPelsPerMeter: 0, biYPelsPerMeter: 0, biClrUsed: 0, biClrImportant: 0));
+      wimage  = CreateDibSection(0, &bmi, DibRgbColors, cast[ptr pointer](&m_data), 0, 0)
+      hdc     = CreateCompatibleDC(0)
+      winassert wimage != 0
+      winassert hdc != 0
+    else:
+      m_data = nil
     discard hdc.SelectObject(wimage)
 
   proc `title=`*(a: Window, title: string) = with a:
@@ -900,7 +906,7 @@ elif defined(windows):
 
   proc opened*(a: Window): bool = a.m_isOpen
   proc close*(a: var Window) {.lazy.} = with a:
-    if m_isOpen: handle.SendMessage(WM_CLOSE, 0, 0)
+    if m_isOpen: handle.SendMessage(WmClose, 0, 0)
     
   proc redraw*(a: var Window) {.lazy.} = with a:
     var cr = handle.clientRect
@@ -941,7 +947,7 @@ elif defined(windows):
   proc displayImpl(a: var Window) = with a:
     var ps: PaintStruct
     handle.BeginPaint(&ps)
-    if m_usingPictureForRender:
+    if m_usingPictureForRender and m_size.x * m_size.y > 0:
       let hhdc = handle.GetDC()
       let rect = handle.clientRect
 
@@ -991,7 +997,8 @@ elif defined(windows):
       let rect = handle.clientRect
       if rect.right != m_size.x or rect.bottom != m_size.y:
         a.updateSize()
-      pushEvent onRender, (m_data, m_size)
+      if m_size.x * m_size.y > 0:
+        pushEvent onRender, (m_data, m_size)
       a.displayImpl()
     
     of WmDestroy:
@@ -1008,12 +1015,12 @@ elif defined(windows):
     of WmMouseLeave:
       let npos = (lParam.GetX_LParam, lParam.GetY_LParam)
       pushEvent onMouseLeave, (mouse, mouse.position, npos)
-      handle.trackMouseEvent(TME_hover)
+      handle.trackMouseEvent(TmeHover)
     
     of WmMouseHover:
       let npos = (lParam.GetX_LParam, lParam.GetY_LParam)
       pushEvent onMouseEnter, (mouse, mouse.position, npos)
-      handle.trackMouseEvent(TME_leave)
+      handle.trackMouseEvent(TmeLeave)
     
     of WmMouseWheel:
       let delta = if wParam.GetWheelDeltaWParam > 0: -1.0 else: 1.0
@@ -1064,7 +1071,7 @@ elif defined(windows):
       pushEvent onTextEnter, (keyboard, %$[wParam.WChar])
     
     of WmSetCursor:
-      if lParam.LOWord == HTClient:
+      if lParam.LoWord == HtClient:
         SetCursor wcursor
         return 1
       return handle.DefWindowProc(message, wParam, lParam)
@@ -1087,5 +1094,5 @@ template w*(a: Screen): int = a.size.x
 template h*(a: Screen): int = a.size.y
 
 converter toPicture*(a: Window): Picture =
-  if not a.m_usingPictureForRender: raise NilAccessDefect.newException("can't access picture of window, that isn't render using picture")
+  if not a.m_usingPictureForRender: raise NilAccessDefect.newException("failed access picture of window, that isn't render using picture")
   Picture(size: a.m_size, data: a.m_data)

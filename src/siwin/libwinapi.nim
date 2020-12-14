@@ -6,7 +6,9 @@ when defined(windows):
 
   template winassert*(a: bool) =
     try: doassert a
-    except AssertionDefect: raise WinapiError.newException getCurrentExceptionMsg()
+    except AssertionDefect:
+      let s = astToStr(a)
+      raise WinapiError.newException &"assertion failed: `{s}`"
 
   var hInstance* = GetModuleHandle(nil)
   
