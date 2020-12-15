@@ -2,7 +2,7 @@ import times, os
 import with
 import image, utils
 when defined(linux):
-  import strformat
+  import strformat, options
   import libx11 as x
 when defined(windows):
   import libwinapi
@@ -83,7 +83,7 @@ type
       waitForReDraw: bool
 
       m_pos: tuple[x, y: int]
-      m_savedSize: tuple[x, y: int]
+      requesedSize: Option[tuple[x, y: int]]
 
     elif defined(windows):
       handle: HWnd
@@ -434,7 +434,6 @@ when defined(linux):
     if fullscreen:
       let atoms = [atom NetWmStateFullscreen, None]
       xcheck d.XChangeProperty(xwin, atom NetWmState, XaAtom, 32, PropModeReplace, cast[PCUchar](atoms.unsafeAddr), 1)
-      m_savedSize = m_size
       m_size = window.screen().size
 
     xcheck d.XMapWindow xwin
@@ -493,10 +492,8 @@ when defined(linux):
 
   proc redraw*(a: var Window) {.lazy.} = a.waitForReDraw = true
 
-  proc updateGeometry(a: var Window, size: tuple[x, y: int]) = with a:
-    let (_, x, y, _, _, _, _) = xwin.geometry
-    let (w, h) = size
-    m_pos = (x.int, y.int)
+  proc updateSize(a: var Window) = with a:
+    let (_, _, _, w, h, _, _) = xwin.geometry
     m_size = (w.int, h.int)
 
     if m_usingPictureForRender:
@@ -508,17 +505,10 @@ when defined(linux):
       )
       doassert ximg != nil
     waitForReDraw = true
-  proc updateGeometry(a: var Window) = with a:
-    let (_, _, _, w, h, _, _) = xwin.geometry
-    a.updateGeometry (w.int, h.int)
   
   proc fullscreen*(a: Window): bool = a.m_isFullscreen
-  proc `fullscreen=`*(a: var Window, v: bool) = with a:
-    # TODO: обновлять реальное состояние fullscreen, т.к. siwin не единственный кто может его изменить
+  proc `fullscreen=`*(a: var Window, v: bool) {.lazy.} = with a:
     if m_isFullscreen == v: return
-    m_isFullscreen = v
-    if v:
-      m_savedSize = m_size
     
     var xwa: x.XWindowAttributes
     xcheck d.XGetWindowAttributes(xwin, xwa.addr)
@@ -535,22 +525,6 @@ when defined(linux):
     e.xclient.data.l[3]    = 0
     e.xclient.data.l[4]    = 0
     xcheck d.XSendEvent(xwa.root, 0, SubstructureNotifyMask or SubstructureRedirectMask, e.addr)
-    
-    # TODO: сделать fullscreen= не ленивым
-    # пробуем угадать новый размер окна
-    if not v:
-      if m_size != m_savedSize:
-        let osize = m_size
-        a.updateGeometry(m_savedSize)
-        a.pushEvent onResize, (osize, m_size)
-        redraw a
-    else:
-      let scsize = window.screen(screen).size
-      if m_size != scsize:
-        let osize = m_size
-        a.updateGeometry(scsize)
-        a.pushEvent onResize, (osize, m_size)
-        redraw a
   
   proc position*(a: Window): tuple[x, y: int] = with a:
     let (_, x, y, _, _, _, _) = xwin.geometry
@@ -561,9 +535,12 @@ when defined(linux):
     m_pos = p
   proc size*(a: Window): tuple[x, y: int] = a.m_size
   proc `size=`*(a: var Window, size: tuple[x, y: int]) = with a:
-    # a.fullscreen = false
-    xcheck d.XResizeWindow(xwin, size.x.cuint, size.y.cuint)
-    a.updateGeometry()
+    if not a.fullscreen:
+      xcheck d.XResizeWindow(xwin, size.x.cuint, size.y.cuint)
+      a.updateSize()
+    else:
+      a.fullscreen = false
+      requesedSize = some size
 
   proc `cursor=`*(a: var Window, kind: Cursor) = with a:
     if kind == curCursor: return
@@ -663,7 +640,7 @@ when defined(linux):
         of Expose:
           if ev.xexpose.width != m_size.x or ev.xexpose.height != m_size.y:
             let osize = m_size
-            a.updateGeometry()
+            a.updateSize()
             pushEvent onResize, (osize, m_size)
           redraw a
         of ClientMessage:
@@ -673,12 +650,23 @@ when defined(linux):
         of ConfigureNotify:
           if ev.xconfigure.width != m_size.x or ev.xconfigure.height != m_size.y:
             let osize = m_size
-            a.updateGeometry()
+            a.updateSize()
             pushEvent on_resize, (osize, m_size)
           if ev.xconfigure.x.int != m_pos.x or ev.xconfigure.y.int != m_pos.y:
             let oldPos = m_pos
             m_pos = (ev.xconfigure.x.int, ev.xconfigure.y.int)
             pushEvent onWindowMove, (oldPos, m_pos)
+          
+          let wmState = xwin.property(NetWmState)
+          if atom(NetWmStateFullscreen) in wmState and not m_isFullscreen:
+            m_isFullscreen = true
+            pushEvent onFullscreenChanged, (true)
+          elif atom(NetWmStateFullscreen) notin wmState and m_isFullscreen:
+            m_isFullscreen = false
+            pushEvent onFullscreenChanged, (false)
+            if isSome a.requesedSize:
+              a.size = get a.requesedSize
+              a.requesedSize = none tuple[x, y: int]
 
         of MotionNotify:
           let oldPos = mouse.position
@@ -957,7 +945,7 @@ elif defined(windows):
 
   proc run*(a: var Window) = with a:
     var lastTickTime = getTime()
-    handle.ShowWindow(SW_SHOW)
+    handle.ShowWindow(SwShow)
     handle.UpdateWindow()
     var msg: Msg
     while m_isOpen:

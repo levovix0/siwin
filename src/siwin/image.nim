@@ -39,9 +39,9 @@ func color*(hex: string): Color {.compileTime.} =
   else: raise ValueError.newException "incorrect number of digits"
 
 proc `[]`*[T](a: ArrayPtr[T], i: int): var T =
-  cast[ptr Color](cast[int](a) + i * T.sizeof)[]
+  cast[ptr T](cast[int](a) + i * T.sizeof)[]
 proc `[]=`*[T](a: ArrayPtr[T], i: int, v: T) =
-  cast[ptr Color](cast[int](a) + i * T.sizeof)[] = v
+  cast[ptr T](cast[int](a) + i * T.sizeof)[] = v
 
 iterator items*[T](a: ArrayPtr[T], len: int): var T =
   for i in 0..<len:

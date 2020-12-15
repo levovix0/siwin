@@ -119,4 +119,32 @@ when defined(linux):
     ## get X11 window geometry
     xcheck display.XGetGeometry(a, root.addr, x.addr, y.addr, w.addr, h.addr, borderW.addr, depth.addr)
 
+  proc property*[T](a: Window, name: Atom, t: typedesc[T]): T =
+    ## get X11 window property
+    var
+      kind: Atom
+      format: cint
+      n: culong
+      remainingBytes: culong
+    when T is seq[Atom]:
+      var dataPtr: ArrayPtr[Atom]
+      template ckind: bool = kind == XaAtom
+    elif T is string:
+      var dataPtr: cstring
+      template ckind: bool = kind != atom(INCR)
+    
+    if display.XGetWindowProperty(
+      a, name, 0, clong.high, 0, AnyPropertyType,
+      kind.addr, format.addr, n.addr, remainingBytes.addr, cast[PPCUchar](dataPtr.addr)
+    ) == Success and ckind:
+      when T is seq[Atom]:
+        for i in 0..<n.int:
+          result.add dataPtr[i]
+      elif T is string:
+        return $dataPtr
+  
+  template property*(a: Window, atm: static[AtomKind]): auto =
+    when atm == NetWmState: a.property(atom AtomKind.NetWmState, seq[Atom])
+    else: {.error: "unknown property".}
+
   var clipboardProcessEvents*: proc() = proc() = discard

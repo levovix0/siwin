@@ -95,7 +95,7 @@ test "macro":
     fullscreen true:  g = 255
     fullscreen false: g = 0
 
-    click(left, right) as (x, _): g = min(max(int(x / window.size.x * 255), 0), 255)
+    click(left, right) as (x, _): g = min(max(int(x / window.size.x * 255), 0), 255); redraw window
   
   echo x
   check a == true
