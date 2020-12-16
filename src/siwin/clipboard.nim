@@ -16,10 +16,12 @@ when defined(linux):
     if inited:
       inited = false
       content = ""
-      # TODO: unset selection owner
-      if xwin != 0:
-        xcheck display.XDestroyWindow(xwin)
-        discard XFlush display
+      
+      if display.XGetSelectionOwner(atom(AtomKind.Clipboard)) == xwin:
+        discard display.XSetSelectionOwner(atom(AtomKind.Clipboard), None, CurrentTime)
+      xcheck display.XDestroyWindow(xwin)
+      discard XFlush display
+      
       disconnect()
       clipboardProcessEvents = proc() = discard
 
@@ -136,7 +138,7 @@ when defined(linux):
     discard display.XSetSelectionOwner(atom(AtomKind.Clipboard), xwin, CurrentTime)
 
     if display.XGetSelectionOwner(atom(AtomKind.Clipboard)) != xwin:
-      raise X11Error.newException("can't set selection owner.")
+      raise X11Error.newException("failed to set selection owner")
 
 elif defined(windows):
   proc text*(a: var Clipboard): string =
@@ -162,7 +164,7 @@ elif defined(windows):
       CloseClipboard()
       raise WinapiError.newException("failed to alloc string")
 
-    copyMem(GlobalLock hstr, ws.winstrConverterWStringToLPWSTR, ts)
+    copyMem(GlobalLock hstr, ws.winstrConverterWStringToLPWstr, ts)
     GlobalUnlock hstr
     SetClipboardData(CfUnicodeText, hstr)
     CloseClipboard()

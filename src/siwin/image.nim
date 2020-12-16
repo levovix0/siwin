@@ -10,6 +10,8 @@ type
   Image* = object
     picture*: Picture
 
+
+
 func color*(r, g, b: SomeInteger, a: SomeInteger = 255): Color =
   (b: b.uint8, g: g.uint8, r: r.uint8, a: a.uint8)
 func color*(r, g, b: float, a: float = 1.0): Color =
@@ -36,7 +38,9 @@ func color*(hex: string): Color {.compileTime.} =
     var c: uint32
     discard parseHex(hex, c)
     return color c
-  else: raise ValueError.newException "incorrect number of digits"
+  else: raise ValueError.newException "parse #" & hex & ": incorrect number of digits"
+
+
 
 proc `[]`*[T](a: ArrayPtr[T], i: int): var T =
   cast[ptr T](cast[int](a) + i * T.sizeof)[]
@@ -49,7 +53,7 @@ iterator items*[T](a: ArrayPtr[T], len: int): var T =
 
 proc allocArray*[T](len: int): ArrayPtr[T] = ArrayPtr[T](cast[ptr T](alloc(len * T.sizeof)))
 
-#------------------------------------------------------------------------------
+
 
 func `[]`*(a: Picture; x, y: int): var Color = a.data[y * a.size.x + x]
 func `[]=`*(a: Picture; x, y: int, c: Color) = a.data[y * a.size.x + x] = c
@@ -63,7 +67,7 @@ func w*(a: Picture): auto = a.size.x
 func h*(a: Picture): auto = a.size.y
   ## height of picture
 
-#------------------------------------------------------------------------------
+
 
 converter toPicture*(a: Image): Picture = a.picture
 

@@ -266,7 +266,6 @@ when defined(linux):
 
   proc `=destroy`(a: var Screen) =
     disconnect()
-  {.experimental: "callOperator".}
   proc screen*(n: int): Screen = with result:
     connect()
     if n notin 0..<getScreenCount(): raise IndexDefect.newException(&"screen {n} is not exist")
@@ -460,6 +459,7 @@ when defined(linux):
       if a.event != nil: a.event((args,))
   
   proc initRender*(w: var Window) = with w:
+    ## set that window render using picture
     if m_usingPictureForRender: return
     m_usingPictureForRender = true
 
@@ -471,6 +471,7 @@ when defined(linux):
     doassert ximg != nil
 
   proc `title=`*(a: Window, title: string) = with a:
+    ## set window title
     let useUtf8 = atom(Utf8String)
     xcheck d.XChangeProperty(xwin, atom(NetWmName), useUtf8, 8, PropModeReplace, title, title.len.cint)
     xcheck d.XChangeProperty(xwin, atom(NetWmIconName), useUtf8, 8, PropModeReplace, title, title.len.cint)
@@ -479,6 +480,8 @@ when defined(linux):
   
   proc opened*(a: Window): bool = a.m_isOpen
   proc close*(a: var Window) {.lazy.} = with a:
+    ## close request
+    ##* this proc is lazy
     if not m_isOpen: return
     var e: XEvent
     e.xclient.theType      = ClientMessage
@@ -491,6 +494,8 @@ when defined(linux):
     m_isOpen = false
 
   proc redraw*(a: var Window) {.lazy.} = a.waitForReDraw = true
+    ## render request
+    ##* this proc is lazy
 
   proc updateSize(a: var Window) = with a:
     let (_, _, _, w, h, _, _) = xwin.geometry
@@ -507,7 +512,11 @@ when defined(linux):
     waitForReDraw = true
   
   proc fullscreen*(a: Window): bool = a.m_isFullscreen
+    ## get real fullscreen state of window
   proc `fullscreen=`*(a: var Window, v: bool) {.lazy.} = with a:
+    ## set fullscreen
+    ##* this proc is lazy, don't try get size of window after it
+    ## track when the fullscreen state will be applied in the onFullscreenChanged event
     if m_isFullscreen == v: return
     
     var xwa: x.XWindowAttributes
@@ -527,14 +536,21 @@ when defined(linux):
     xcheck d.XSendEvent(xwa.root, 0, SubstructureNotifyMask or SubstructureRedirectMask, e.addr)
   
   proc position*(a: Window): tuple[x, y: int] = with a:
+    ## get position of window
     let (_, x, y, _, _, _, _) = xwin.geometry
     return (x.int, y.int)
   proc `position=`*(a: var Window, p: tuple[x, y: int]) = with a:
+    ## move window
+    ## do nothing if window is fullscreen
     if m_isFullscreen: return
     xcheck d.XMoveWindow(xwin, p.x.cint, p.y.cint)
     m_pos = p
+  
   proc size*(a: Window): tuple[x, y: int] = a.m_size
+    ## get size of window
   proc `size=`*(a: var Window, size: tuple[x, y: int]) = with a:
+    ## resize window
+    ## if window is fullscreen, 
     if not a.fullscreen:
       xcheck d.XResizeWindow(xwin, size.x.cuint, size.y.cuint)
       a.updateSize()
@@ -543,6 +559,7 @@ when defined(linux):
       requesedSize = some size
 
   proc `cursor=`*(a: var Window, kind: Cursor) = with a:
+    ## set cursor font, used when mouse hover window
     if kind == curCursor: return
     if xcursor != 0: xcheck d.XFreeCursor(xcursor)
     case kind
@@ -573,6 +590,7 @@ when defined(linux):
     xcheck d.XFreeGC(gc2)
 
   proc `icon=`*(a: var Window, img: Picture) = with a:
+    ## set window icon
     if xicon != 0: xcheck d.XFreePixmap(xicon)
     if xiconMask != 0: xcheck d.XFreePixmap(xiconMask)
 
@@ -590,6 +608,7 @@ when defined(linux):
     xcheck d.XSetWMHints(xwin, wmh)
     xcheck XFree(wmh)
   proc `icon=`*(a: var Window, _: nil.typeof) = with a:
+    ## clear window icon
     if xicon != 0: xcheck d.XFreePixmap(xicon)
     if xiconMask != 0: xcheck d.XFreePixmap(xiconMask)
     xicon = 0
@@ -606,6 +625,7 @@ when defined(linux):
       xcheckStatus d.XPutImage(xwin, gc, ximg, 0, 0, 0, 0, m_size.x.cuint, m_size.y.cuint)
   
   proc run*(a: var Window) = with a:
+    ## run main loop of window
     template pushEvent(event, args) = a.pushEvent(event, args)
     
     var ev: XEvent
@@ -773,6 +793,8 @@ when defined(linux):
     pushEvent onClose, ()
   
   proc systemHandle*(a: Window): x.Window = a.xwin
+    ## get system handle of window
+    ##* result depends on OS or platmofm
 
 
 
@@ -944,6 +966,7 @@ elif defined(windows):
     handle.EndPaint(&ps)
 
   proc run*(a: var Window) = with a:
+    ## run main loop of window
     var lastTickTime = getTime()
     handle.ShowWindow(SwShow)
     handle.UpdateWindow()
@@ -1067,6 +1090,8 @@ elif defined(windows):
     else: return handle.DefWindowProc(message, wParam, lParam)
 
   proc systemHandle*(a: Window): HWnd = a.handle
+    ## get system handle of window
+    ##* result depends on OS or platmofm
 else:
   {.error: "current OS is not supported".}
 
@@ -1079,7 +1104,9 @@ proc newWindow*(size: tuple[x, y: int], title: string = "", screen = screen(), f
   newWindow(size.x, size.y, title, screen, fullscreen)
 
 template w*(a: Screen): int = a.size.x
+  ## width of screen
 template h*(a: Screen): int = a.size.y
+  ## height of screen
 
 converter toPicture*(a: Window): Picture =
   if not a.m_usingPictureForRender: raise NilAccessDefect.newException("failed access picture of window, that isn't render using picture")
