@@ -1,5 +1,5 @@
 when defined(windows):
-  import winim, strformat
+  import winim
   export winim
 
   type WinapiError* = object of OSError
@@ -8,7 +8,7 @@ when defined(windows):
     try: doassert a
     except AssertionDefect:
       let s = astToStr(a)
-      raise WinapiError.newException fmt"assertion failed: `{s}`"
+      raise WinapiError.newException "assertion failed: `" & s & "`"
 
   var hInstance* = GetModuleHandle(nil)
   
