@@ -4,11 +4,12 @@ when defined(windows):
 
   type WinapiError* = object of OSError
 
-  template winassert*(a: bool) =
+  template winassertImpl*(a: untyped, s: string) =
     try: doassert a
     except AssertionDefect:
-      let s = astToStr(a)
       raise WinapiError.newException "assertion failed: `" & s & "`"
+  template winassert*(a: bool) =
+    winassertImpl(a, astToStr(a))
 
   var hInstance* = GetModuleHandle(nil)
   

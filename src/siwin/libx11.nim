@@ -37,11 +37,9 @@ when defined(linux):
     let r = a.bool
     if r == false: raise X11Error.newException("error after " & s)
   template xcheckStatus*(a: Status) =
-    let s = astToStr(a)
-    xcheckStatusImpl(a, s)
+    xcheckStatusImpl(a, astToStr(a))
   template xcheck*(a: cint) =
-    let s = astToStr(a)
-    xcheckImpl(a, s)
+    xcheckImpl(a, astToStr(a))
   
   type AtomKind* {.pure.} = enum
     WM_DELETE_WINDOW
