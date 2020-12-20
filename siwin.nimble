@@ -4,7 +4,7 @@ description   = "Nim Simple Window Maker"
 license       = "MIT"
 srcDir        = "src"
 
-requires "nim >= 1.2.6"
+requires "nim >= 1.4"
 requires "with"
 
 when defined linux:

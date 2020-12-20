@@ -1,4 +1,4 @@
-import siwin
+import siwin, siwin/additional/opengl
 import unittest, strformat
 
 test "window":
@@ -69,8 +69,8 @@ test "macro":
         g = min(max(int(pos.x / window.size.x * 255), 0), 255)
         redraw window
 
-    render as r:
-      r.clear color(g, g, g)
+    render(opengl) as r:
+      ## do nothing
 
     doubleClick:     close window
     tick:            inc x; check t

@@ -384,7 +384,7 @@ proc runImpl(w: NimNode, a: NimNode): NimNode =
       if pars.len == 1 and pars[0] != ident"user":
         pars[0].expectKind nnkIdent
         let ci = nnkCall.newTree(ident("init" & pars[0].strVal.capitalize & "Render"), w)
-        let c = nnkCall.newTree(ident(pars[0].strVal & "Render"), quote do: `w`.toPicture())
+        let c = nnkCall.newTree(ident(pars[0].strVal & "Render"), w)
         "onInit".resadd quote do:
           when compiles(`ci`):
             `ci`
@@ -453,7 +453,7 @@ proc runImpl(w: NimNode, a: NimNode): NimNode =
 macro run*(w: var Window, a: untyped) =
   ## run window macro
   ## 
-  ## to add a new render engine, add `init_RENDERNAME_Render(var Window) -> void` and `RENDERNAME_Render(Picture) -> RENDERINTERFACE` procs
+  ## to add a new render engine, add `init_RENDERNAME_Render(var Window) -> void` and `RENDERNAME_Render(Picture|Window) -> RENDERINTERFACE` procs
   runImpl w, a
 
 template run*(w: Window, a: untyped) =
