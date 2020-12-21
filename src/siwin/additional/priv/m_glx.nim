@@ -1,4 +1,4 @@
-import macros, unicode, strutils
+import macros, unicode, strutils, sequtils
 import ../../libx11
 
 const dllname = 
@@ -73,12 +73,15 @@ template glxAssertImpl*(a: untyped, s: string) =
   except AssertionDefect: raise GlxError.newException "assertion failed: `" & s & "`"
 template glxAssert*(a: bool) = glxAssertImpl(a, astToStr(a))
 
+proc `==`*(a: GlxContext, b: typeof nil): bool = a.pointer == nil
+
 proc glxQueryVersion(dpy: PDisplay, maj, min: var cint): GlxBool {.glx: "queryVersion".}
 proc glxQueryExtension*(dpy: PDisplay, errorb, event: var cint): GlxBool {.glx: "queryExtension".}
 proc glxGetConfig*(dpy: PDisplay, visual: PXVisualInfo, attrib: cint, value: var cint): cint {.glx: "getConfig".}
 proc glxChooseVisual(dpy: PDisplay, screen: cint, attribList: ptr int32): PXVisualInfo {.glx: "chooseVisual".}
 
-proc glxChooseVisual*(screen: int, attr: array[5, int32]): PXVisualInfo =
+proc glxChooseVisual*(screen: int, attr: openArray[int32]): PXVisualInfo =
+  let attr = attr.toSeq & 0
   result = display.glxChooseVisual(screen.cint, attr[0].unsafeAddr)
   glxAssert result != nil
 
@@ -89,7 +92,7 @@ proc glxVersion*: tuple[maj, min: int] =
 
 proc glxCreateContext(dpy: PDisplay, vis: PXVisualInfo, shareList: GlxContext, direct: GlxBool): GlxContext {.glx: "createContext".}
 proc glxDestroyContext(dpy: PDisplay, ctx: GlxContext) {.glx: "destroyContext".}
-proc glxMakeCurrent(dpy: PDisplay, drawable: Drawable, ctx: GlxContext): GlxBool {.glx: "makeCurrent".}
+proc glxMakeCurrent*(dpy: PDisplay, drawable: Drawable, ctx: GlxContext): GlxBool {.glx: "makeCurrent".}
 proc glxCopyContext(dpy: PDisplay, src, dst: GlxContext, mask: int32) {.glx: "copyContext".}
 proc glxIsDirect(dpy: PDisplay, ctx: GlxContext): GlxBool {.glx: "isDirect".}
 

@@ -55,7 +55,7 @@ test "macro":
   let k = [Key.x, Key.y]
   var t = true
 
-  run newWindow(title="Окошко"):
+  run newWindow(title="Окошко", visualMode=openglVisualMode):
     init:
       var icon = newImage(32, 32)
       let r = render icon
@@ -70,7 +70,7 @@ test "macro":
         redraw window
 
     render(opengl) as r:
-      ## do nothing
+      openglPostRender(window)
 
     doubleClick:     close window
     tick:            inc x; check t
@@ -99,6 +99,7 @@ test "macro":
   
   echo x
   check a == true
+  closeOpenglRender()
 
 test "screen":
   if screenCount == 1:

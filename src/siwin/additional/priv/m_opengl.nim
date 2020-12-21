@@ -12,12 +12,26 @@ when defined(linux):
 type OpenGLRenderer* = object
 
 when defined(linux):
+  proc getOpenglVisualMode*: VisualMode =
+    x.connect()
+    result.vi = glxChooseVisual(0, [GlxRgba, GlxDepthSize, 24, GlxDoublebuffer])
+    x.disconnect()
+  template openglVisualMode*: VisualMode = getOpenglVisualMode()
+
   proc initOpenglRender*(w: var Window) = with w:
-    let vi = glxChooseVisual(0, [GlxRgba, GlxDepthSize, 24, GlxDoublebuffer, 0])
+    let vi = openglVisualMode.vi
     let ctx = newGlxContext(vi)
+    glxAssert ctx != nil
+    ctx.target = w.systemHandle
+    
+  proc openglRender*(a: Window): OpenGLRenderer =
     discard
-  proc openglRender*(a: Window): OpenGLRenderer = with a:
-    discard
+
+  proc openglPostRender*(a: Window) =
+    d.glxSwapBuffers(a.systemHandle)
+  
+  proc closeOpenglRender*() =
+    glxAssert d.glxMakeCurrent(0, nil.GlxContext)
 
 when defined(windows):
   proc initOpenglRender*(w: var Window) = with w:

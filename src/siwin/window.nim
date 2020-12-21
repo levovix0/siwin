@@ -99,6 +99,10 @@ type
       m_isOpen: bool
       m_isFullscreen: bool
       m_usingPictureForRender: bool
+  
+  VisualMode* = object
+    when defined(linux):
+      vi*: PXVisualInfo
 
   CloseEvent* = tuple
 
@@ -407,6 +411,8 @@ template screenCount*: int = getScreenCount()
 
 
 when defined(linux):
+  const defaultVisualMode = VisualMode(vi: nil)
+
   proc `=destroy`*(a: var Window) = with a:
     if ximg != nil: xcheck XDestroyImage(ximg)
     if gc != nil: xcheck d.XFreeGC(gc)
@@ -418,12 +424,21 @@ when defined(linux):
     if xwin != 0: xcheck d.XDestroyWindow(xwin)
     x.disconnect()
 
-  proc newWindowImpl(w, h: int, scr: Screen, fullscreen: bool): Window = with result:
+  proc newWindowImpl(w, h: int, scr: Screen, fullscreen: bool, visualMode: VisualMode): Window = with result:
     x.connect()
     screen = scr.id
     m_size = (w, h)
-    xwin = d.XCreateSimpleWindow(d.DefaultRootWindow, 0, 0, w.cuint, h.cuint, 0, 0, d.BlackPixel(screen))
+    let root = d.DefaultRootWindow
+
+    if visualMode.vi == nil:
+      xwin = d.XCreateSimpleWindow(root, 0, 0, w.cuint, h.cuint, 0, 0, d.BlackPixel(screen))
+    else:
+      let cmap = d.XCreateColormap(root, visualMode.vi.visual, AllocNone)
+      var swa: XSetWindowAttributes
+      swa.colormap = cmap
+      xwin = d.XCreateWindow(root, 0, 0, w.cuint, h.cuint, 0, visualMode.vi.depth, InputOutput, visualMode.vi.visual, CwColormap or CwEventMask, swa.addr)
     doassert xwin != 0
+
     xcheck d.XSelectInput(xwin, 
       ExposureMask or KeyPressMask or KeyReleaseMask or PointerMotionMask or ButtonPressMask or
       ButtonReleaseMask or StructureNotifyMask or EnterWindowMask or LeaveWindowMask or FocusChangeMask
@@ -824,6 +839,8 @@ elif defined(windows):
     wcex.lpszClassName = wClassName
     wcex.hIconSm       = 0
     winassert RegisterClassEx(wcex) != 0
+
+  const defaultVisualMode = VisualMode()
   
   proc `=destroy`*(a: var Window) = with a:
     DeleteDC hdc
@@ -882,7 +899,7 @@ elif defined(windows):
     MoveWindow(handle, rcWind.left, rcWind.top, (size.x + borderx).int32, (size.y + bordery).int32, True)
     a.updateSize()
   
-  proc newWindowImpl(w, h: int, screen: Screen, fullscreen: bool): Window = with result:
+  proc newWindowImpl(w, h: int, screen: Screen, fullscreen: bool, visualMode: VisualMode): Window = with result:
     handle = CreateWindow(wClassName, "", WsOverlappedWindow, CwUseDefault, CwUseDefault, 
                           w.int32, h.int32, 0, 0, hInstance, nil)
     winassert handle != 0
@@ -1097,11 +1114,11 @@ else:
 
 
 
-proc newWindow*(w: int = 1280, h: int = 720, title: string = "", screen = screen(), fullscreen: bool = false): Window =
-  result = newWindowImpl(w, h, screen, fullscreen)
+proc newWindow*(w: int = 1280, h: int = 720, title: string = "", screen = screen(), fullscreen: bool = false, visualMode: VisualMode = defaultVisualMode): Window =
+  result = newWindowImpl(w, h, screen, fullscreen, visualMode)
   result.title = title
-proc newWindow*(size: tuple[x, y: int], title: string = "", screen = screen(), fullscreen: bool = false): Window =
-  newWindow(size.x, size.y, title, screen, fullscreen)
+proc newWindow*(size: tuple[x, y: int], title: string = "", screen = screen(), fullscreen: bool = false, visualMode: VisualMode = defaultVisualMode): Window =
+  newWindow(size.x, size.y, title, screen, fullscreen, visualMode)
 
 template w*(a: Screen): int = a.size.x
   ## width of screen
