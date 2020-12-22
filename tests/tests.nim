@@ -69,8 +69,8 @@ test "macro":
         g = min(max(int(pos.x / window.size.x * 255), 0), 255)
         redraw window
 
-    render(opengl) as r:
-      openglPostRender(window)
+    render as r:
+      r.clear color(g, g, g)
 
     doubleClick:     close window
     tick:            inc x; check t
@@ -99,7 +99,6 @@ test "macro":
   
   echo x
   check a == true
-  closeOpenglRender()
 
 test "screen":
   if screenCount == 1:

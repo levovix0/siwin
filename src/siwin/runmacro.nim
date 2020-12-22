@@ -59,6 +59,8 @@ makeKeyNameBinding super,   [lsystem, lsystem]
 makeKeyNameBinding windows, [lsystem, lsystem]
 makeKeyNameBinding win,     [lsystem, lsystem]
 
+makeKeyNameBinding esc,     [Key.escape]
+
 proc genPressedKeyCheck(a: NimNode): NimNode = quote do:
   when compiles(`a`(e.keyboard.pressed)) and `a`(e.keyboard.pressed) is bool:
     `a`(e.keyboard.pressed)

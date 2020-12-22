@@ -8,6 +8,46 @@ when defined(windows):
   import libwinapi
   type Color = image.Color
 
+
+
+
+publicInterface:
+  Window:
+    newWindow(w, h: int, title: string, Screen)
+    newWindow(size: Vec2, title: string, Screen)
+
+    close()
+    opened -> bool
+
+    onEvent => proc(Event)
+    run()
+    redraw()
+
+    fullscreen => bool
+    size => Vec2
+    position => Vec2
+
+    cursor = Cursor
+    icon = Picture|nil
+  
+  MouseButton enum
+  Mouse:
+    position -> Vec2
+    pressed[MouseButton] -> bool
+  Cursor enum
+  
+  Key enum
+  Keyboard:
+    pressed[Key] -> bool
+
+  Screen:
+    screen(void|int)
+
+    size -> Vec2
+
+
+
+
 type
   MouseButton* {.pure.} = enum
     left right middle forward backward
@@ -1125,6 +1165,6 @@ template w*(a: Screen): int = a.size.x
 template h*(a: Screen): int = a.size.y
   ## height of screen
 
-converter toPicture*(a: Window): Picture =
+converter getPicture*(a: Window): Picture =
   if not a.m_usingPictureForRender: raise NilAccessDefect.newException("failed access picture of window, that isn't render using picture")
   Picture(size: a.m_size, data: a.m_data)

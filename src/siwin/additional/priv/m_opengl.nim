@@ -10,6 +10,8 @@ when defined(linux):
   template d*: x.PDisplay = x.display
 
 type OpenGLRenderer* = object
+  when defined(linux):
+    handle: x.Window
 
 when defined(linux):
   proc getOpenglVisualMode*: VisualMode =
@@ -23,12 +25,12 @@ when defined(linux):
     let ctx = newGlxContext(vi)
     glxAssert ctx != nil
     ctx.target = w.systemHandle
+
+  proc `=destroy`*(a: var OpenGLRenderer) =
+    d.glxSwapBuffers(a.handle)
     
   proc openglRender*(a: Window): OpenGLRenderer =
-    discard
-
-  proc openglPostRender*(a: Window) =
-    d.glxSwapBuffers(a.systemHandle)
+    result.handle = a.systemHandle
   
   proc closeOpenglRender*() =
     glxAssert d.glxMakeCurrent(0, nil.GlxContext)
