@@ -19,7 +19,7 @@ test "no render window":
   run win
   check a == true
 
-test "window":
+test "picture window":
   var win = newPictureWindow(title="Окошко")
   
   var a = false

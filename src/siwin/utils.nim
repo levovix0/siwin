@@ -1,9 +1,13 @@
+import typetraits
 
 type
   ArrayPtr*[T] = distinct ptr T
 
+
+
 template lazy* {.pragma.}
 macro publicInterface*(a) = discard
+
 
 proc dataAddr*[T: string|seq|array|openarray|cstring|ArrayPtr](a: T): auto =
   ## same as C++ `data` that works with std::string, std::vector etc
@@ -15,7 +19,7 @@ proc dataAddr*[T: string|seq|array|openarray|cstring|ArrayPtr](a: T): auto =
     when a.len > 0: a.unsafeAddr
     else: nil
   elif T is ArrayPtr:
-    a.distinctBase
+    (T.distinctBase) a
   elif T is cstring:
     cast[pointer](a)
   else: {.error.}
@@ -36,3 +40,8 @@ proc toSeq*[T](a: ArrayPtr[T], n: Natural): seq[T] =
   result = newSeqOfCap[T](n)
   for v in a.items(n):
     result.add v
+
+converter toPointer*(a: ArrayPtr): pointer = a.pointer
+
+
+#TODO: продвинутый макрос `with`, основанный на zevv/with

@@ -4,6 +4,7 @@ import x11/x except Window, Pixmap, Cursor
 export xlib, xutil, xatom, xshm, cursorfont, keysym
 export x except Window, Pixmap, Cursor
 import utils
+from image import Color
 
 type
   X11ValueError* = object of CatchableError
@@ -12,6 +13,14 @@ type
   Window* = distinct x.Window
   Pixmap* = distinct x.Pixmap
   Cursor* = distinct x.Cursor
+
+  GraphicsContext* = object
+    gc*: GC
+    gcv*: XGCValues
+    target*: Drawable
+  
+  WmHints* = object
+    wmh*: PXWmHints
 
   AtomKind* {.pure.} = enum
     WM_DELETE_WINDOW
@@ -57,7 +66,7 @@ proc atom*(a: AtomKind, onlyIfExist: bool = false): Atom =
 
 converter toXID*(a: Window|Pixmap|Cursor): XID = a.XID
 converter toPXID*(a: ptr Window|Pixmap|Cursor): PXID = cast[PXID](a)
-
+converter toPXWmHints*(a: WmHints): PXWmHints = a.wmh
 
 
 proc cmalloc(size: culong): pointer {.importc: "malloc".}
@@ -65,8 +74,27 @@ proc malloc*[T](): ptr T = cast[ptr T](cmalloc(culong T.sizeof))
 proc malloc*[T](len: int): ArrayPtr[T] = cast[ArrayPtr[T]](cmalloc(culong T.sizeof * len))
 
 
+proc destroy*(a: Window)    = discard display.XDestroyWindow(a)
+proc destroy*(a: Pixmap)    = discard display.XFreePixmap(a)
+proc destroy*(a: Cursor)    = discard display.XFreeCursor(a)
+proc destroy*(a: GC)        = discard display.XFreeGC(a)
+proc destroy*(a: PXImage)   = discard XDestroyImage(a)
+proc destroy*(a: XIC)       = XDestroyIC(a)
+proc destroy*(a: PXWmHints) = discard XFree(a)
+proc close*(a: XIM)         = discard XCloseIM(a)
+
+
+proc `=destroy`(a: var GraphicsContext) =
+  if a.gc != nil: destroy a.gc
+proc `=destroy`(a: var WmHints) =
+  destroy a.wmh
+
 
 proc syncX*() = discard display.XSync(0)
+
+proc newSimpleWindow*(parent: Window, x, y: int, w, h: int, borderW: int, border: culong, background: culong): Window =
+  result = Window display.XCreateSimpleWindow(parent, x.cint, y.cint, w.cuint, h.cuint, borderW.cuint, border, background)
+  doassert result != 0
 
 proc geometry*(a: Window): tuple[root: Window; x, y: int; w, h: int; borderW: int, depth: int] =
   var
@@ -88,6 +116,7 @@ proc root*(a: Window): Window =
 proc map*(a: Window) =
   discard display.XMapWindow(a)
 
+
 proc wmProtocols*(a: Window): seq[Atom] =
   var
     protocols: ArrayPtr[Atom]
@@ -100,48 +129,43 @@ proc `wmProtocols=`*(a: Window, v: openarray[Atom]) =
 proc `wmProtocols=`*(a: Window, v: openarray[AtomKind]) =
   a.wmProtocols = v.map(a => atom a)
 
-proc destroy*(a: Window) =
-  discard display.XDestroyWindow(a)
-proc destroy*(a: Pixmap) =
-  discard display.XFreePixmap(a)
-proc destroy*(a: Cursor) =
-  discard display.XFreeCursor(a)
-proc destroy*(a: GC) =
-  discard display.XFreeGC(a)
-proc destroy*(a: PXImage) =
-  discard XDestroyImage(a)
-proc destroy*(a: XIC) =
-  XDestroyIC(a)
-proc close*(a: XIM) =
-  discard XCloseIM(a)
+proc newWmHints*(flags: clong = 0, icon: Pixmap = 0.Pixmap, iconMask: Pixmap = 0.Pixmap): WmHints =
+  result.wmh = XAllocWMHints()
+  result.wmh.flags = flags
+  result.wmh.iconPixmap = icon
+  result.wmh.iconMask = iconMask
+proc newWmHints*(icon: Pixmap, iconMask: Pixmap): WmHints =
+  newWmHints(IconPixmapHint or IconMaskHint, icon=icon, iconMask=iconMask)
+
+proc `wmHints=`*(a: Window, hints: PXWmHints) =
+  discard display.XSetWMHints(a, hints)
 
 proc `input=`*(a: Window, v: openarray[int]) =
   var inputs = 0
   for inp in v: inputs = inputs or inp
   discard display.XSelectInput(a, inputs)
 
-proc newSimpleWindow*(parent: Window, x, y: int, w, h: int, borderW: int, border: culong, background: culong): Window =
-  result = Window display.XCreateSimpleWindow(parent, x.cint, y.cint, w.cuint, h.cuint, borderW.cuint, border, background)
-  doassert result != 0
 
-proc blackPixel*(a: cint): culong =
-  display.BlackPixel(a)
-proc whitePixel*(a: cint): culong =
-  display.WhitePixel(a)
-
-proc property*(a: Window, name: Atom): tuple[data: seq[byte], kind: Atom] =
+proc property*(a: Window, name: Atom, t: typedesc = typedesc[byte]): tuple[data: seq[t], kind: Atom] =
   var
     format: cint
     n: culong
     remainingBytes: culong
-    data: ArrayPtr[byte]
+    data: ArrayPtr[t]
   if display.XGetWindowProperty(
     a, name, 0, clong.high, 0, AnyPropertyType,
     result.kind.addr, format.addr, n.addr, remainingBytes.addr, cast[PPCUchar](data.addr)
   ) != Success:
     raise X11Defect.newException("failed to get property " & $name)
-  result.data = data.toSeq(n.int)
-  discard XFree cast[pointer](data)
+  result.data = data.toSeq(n.int * (format div (8 * t.sizeof)))
+  discard XFree data
+proc property*(a: Window, name: AtomKind, t: typedesc = typedesc[byte]): tuple[data: seq[t], kind: Atom] =
+  a.property(atom name, t)
+
+proc netWmState*(a: Window): seq[Atom] =
+  let v = a.property(NetWmState, Atom)
+  if v.kind != XaAtom: raise X11Defect.newException("failed to get netWmState (got incorrect property kind)")
+  result = v.data
 
 proc `netWmState=`*(a: Window, v: openarray[Atom]) =
   discard display.XChangeProperty(a, atom NetWmState, XaAtom, 32, PropModeReplace, cast[PCUchar](v.dataAddr), v.len.cint)
@@ -153,9 +177,58 @@ proc `netWmName=`*(a: Window, v: string) =
 proc `netWmIconName=`*(a: Window, v: string) =
   discard display.XChangeProperty(a, atom NetWmIconName, atom Utf8String, 8, PropModeReplace, cast[PCUchar](v.dataAddr), v.len.cint)
 
+
+proc `position=`*(a: Window, position: tuple[x, y: int]) =
+  discard display.XMoveWindow(a, position.x.cint, position.y.cint)
+proc `size=`*(a: Window, size: tuple[x, y: int]) =
+  discard display.XResizeWindow(a, size.x.cuint, size.y.cuint)
+
+
+proc cursorFromFont*(a: cuint): Cursor =
+  Cursor display.XCreateFontCursor(a)
+
+proc `cursor=`*(a: Window, c: Cursor) =
+  discard display.XDefineCursor(a, c.toXID)
+
+
+proc rootWindow*(screen: cint): Window = Window display.RootWindow(screen)
+proc defaultDepth*(screen: cint): cuint = cuint display.DefaultDepth(screen)
+proc defaultVisual*(screen: cint): PVisual = display.DefaultVisual(screen)
+proc blackPixel*(screen: cint): culong = display.BlackPixel(screen)
+proc whitePixel*(screen: cint): culong = display.WhitePixel(screen)
+
+
+proc newPixmap*(w, h: int, window: Window, depth: cuint): Pixmap =
+  Pixmap display.XCreatePixmap(window, w.cuint, h.cuint, depth)
+proc newPixmap*(size: tuple[x, y: int], window: Window, depth: cuint): Pixmap =
+  newPixmap(size.x, size.y, window, depth)
+
+
+proc newXImage*(size: tuple[x, y: int], data: ArrayPtr[Color], visual: PVisual, depth: cuint, format: cint = ZPixmap, offset: cint = 0, bitpad: cint = 32, bytesPerLine: cint = 0): PXImage =
+  result = display.XCreateImage(visual, depth, format, offset, cast[cstring](data), size.x.cuint, size.y.cuint, bitpad, bytesPerLine)
+  if result == nil: raise X11Defect.newException("failed to create XImage")
+proc newXImage*(size: tuple[x, y: int], visual: PVisual, depth: cuint, format: cint = ZPixmap, offset: cint = 0, bitpad: cint = 32, bytesPerLine: cint = 0): PXImage =
+  let data = malloc[Color](size.x * size.y)
+  newXImage(size, data, visual, depth, format, offset, bitpad, bytesPerLine)
+
+proc size*(a: PXImage): tuple[x, y: int] =
+  (int a.width, int a.height)
+
+
+proc newGC*(a: Drawable, mask: culong = GcForeground or GcBackground): GraphicsContext =
+  if a == 0: raise X11ValueError.newException("nil target")
+  result.target = a
+  result.gc = display.XCreateGC(a, mask, result.gcv.addr)
+  if result.gc == nil: raise X11Defect.newException("failed to create gc")
+
+proc put*(a: GraphicsContext, image: PXImage, size: tuple[x, y: int], srcPos: tuple[x, y: int] = (0, 0), destPos: tuple[x, y: int] = (0, 0)) =
+  discard display.XPutImage(a.target, a.gc, image, cint srcPos.x, cint srcPos.y, cint destPos.x, cint destPos.y, cuint size.x, cuint size.y)
+proc put*(a: GraphicsContext, image: PXImage, srcPos: tuple[x, y: int] = (0, 0), destPos: tuple[x, y: int] = (0, 0)) =
+  a.put(image, image.size, srcPos, destPos)
+
+
 proc send*(a: Window, e: XEvent, mask: clong = NoEventMask) =
   discard display.XSendEvent(a, 0, mask, e.unsafeAddr)
-
 
 proc newClientMessage*[T](window: Window, messageKind: Atom, data: openarray[T], serial: int = 0, sendEvent: bool = false): XEvent =
   result.theType = ClientMessage
@@ -174,17 +247,6 @@ proc newClientMessage*[T](window: Window, messageKind: Atom, data: openarray[T],
   result.xclient.sendEvent = sendEvent.XBool
 proc newClientMessage*[T](window: Window, messageKind: AtomKind, data: openarray[T], serial: int = 0, sendEvent: bool = false): XEvent =
   newClientMessage(window, atom messageKind, data, serial, sendEvent)
-
-proc `position=`*(a: Window, position: tuple[x, y: int]) =
-  discard display.XMoveWindow(a, position.x.cint, position.y.cint)
-proc `size=`*(a: Window, size: tuple[x, y: int]) =
-  discard display.XResizeWindow(a, size.x.cuint, size.y.cuint)
-
-proc cursorFromFont*(a: cuint): Cursor =
-  Cursor display.XCreateFontCursor(a)
-
-proc `cursor=`*(a: Window, c: Cursor) =
-  discard display.XDefineCursor(a, c.toXID)
 
 
 

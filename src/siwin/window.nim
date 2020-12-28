@@ -116,10 +116,10 @@ type
     when defined(linux):
       xscr: cint
       xwin: x.Window
-      xicon: x.Pixmap
-      xiconMask: x.Pixmap
-      xinContext: x.XIC
-      xinMethod: x.XIM
+      xicon: Pixmap
+      xiconMask: Pixmap
+      xinContext: XIC
+      xinMethod: XIM
 
       xcursor: x.Cursor
       curCursor: Cursor
@@ -140,9 +140,8 @@ type
     onRender*: proc(e: PictureRenderEvent)
 
     when defined(linux):
-      gc: x.GC
-      gcv: x.XGCValues
-      ximg: x.PXImage
+      gc: GraphicsContext
+      ximg: PXImage
 
       m_data: ArrayPtr[Color]
       waitForReDraw: bool
@@ -472,7 +471,6 @@ when defined(linux):
 
   proc `=destroy`*(a: var PictureWindow) = with a:
     destroy ximg
-    destroy gc
     `=destroy` a.Window
 
   proc newNoRenderWindowImpl(w, h: int; screen: Screen, fullscreen: bool): Window = with result:
@@ -533,14 +531,10 @@ when defined(linux):
     m_hasFocus = true
     curCursor = arrow
     waitForReDraw = true
-    gc = d.XCreateGC(xwin, x.GCForeground or x.GCBackground, gcv.addr)
-    doassert gc != nil
+    gc = xwin.newGC(GCForeground or GCBackground)
 
     m_data = malloc[Color](m_size.x * m_size.y)
-    ximg = d.XCreateImage(
-      d.DefaultVisual(xscr), d.DefaultDepth(xscr).cuint, ZPixmap, 0, cast[cstring](cast[ptr Color](m_data)),
-      m_size.x.cuint, m_size.y.cuint, 32, 0
-    )
+    ximg = newXImage(m_size, m_data, xscr.defaultVisual, xscr.defaultDepth)
     doassert ximg != nil
 
   template pushEvent(a: Window, event, args) =
@@ -571,11 +565,7 @@ when defined(linux):
     updateSize a.Window
     destroy ximg
     m_data = malloc[Color](m_size.x * m_size.y)
-    ximg = d.XCreateImage(
-      d.DefaultVisual(xscr), d.DefaultDepth(xscr).cuint, ZPixmap, 0, cast[cstring](m_data),
-      m_size.x.cuint, m_size.y.cuint, 32, 0
-    )
-    doassert ximg != nil
+    ximg = newXImage(m_size, m_data, xscr.defaultVisual, xscr.defaultDepth)
     waitForReDraw = true
   
   proc fullscreen*(a: Window): bool = a.m_isFullscreen
@@ -628,24 +618,17 @@ when defined(linux):
 
   proc newPixmap(img: Picture, a: Window): Pixmap = with a:
     var ddata = malloc[Color](img.size.x * img.size.y)
-    copyMem(ddata.pointer, img.data.pointer, Color.sizeof * img.size.x * img.size.y)
-    result = Pixmap d.XCreatePixmap(xwin, img.size.x.cuint, img.size.y.cuint, d.DefaultDepth(xscr).cuint)
+    copyMem(ddata, img.data, Color.sizeof * img.size.x * img.size.y)
+    let image = newXImage(img.size, ddata, xscr.defaultVisual, xscr.defaultDepth)
     
-    var gcv2: XGCValues
-    let gc2 = d.XCreateGC(xwin, x.GCForeground or x.GCBackground, gcv2.addr)
-
-    let image = d.XCreateImage(
-      d.DefaultVisual(xscr), d.DefaultDepth(xscr).cuint, ZPixmap, 0, cast[cstring](ddata),
-      img.size.x.cuint, img.size.y.cuint, 32, 0
-    )
-    xcheckStatus d.XPutImage(result, gc2, image, 0, 0, 0, 0, img.size.x.cuint, img.size.y.cuint)
-    xcheck XDestroyImage(image)
-    xcheck d.XFreeGC(gc2)
+    result = newPixmap(img.size, xwin, xscr.defaultDepth)
+    result.newGC.put image
+    destroy image
 
   proc `icon=`*(a: var Window, img: Picture) = with a:
     ## set window icon
-    if xicon != 0: xcheck d.XFreePixmap(xicon)
-    if xiconMask != 0: xcheck d.XFreePixmap(xiconMask)
+    if xicon != 0: destroy xicon
+    if xiconMask != 0: destroy xiconMask
 
     xicon = newPixmap(img, a)
 
@@ -654,26 +637,15 @@ when defined(linux):
       mask.data[i] = if img.data[i].a > 127: color(0, 0, 0) else: color(255, 255, 255)
     xiconMask = newPixmap(mask, a)
 
-    var wmh = XAllocWMHints()
-    wmh.flags = IconPixmapHint or IconMaskHint
-    wmh.icon_pixmap = xicon
-    wmh.icon_mask   = xiconMask
-    xcheck d.XSetWMHints(xwin, wmh)
-    xcheck XFree(wmh)
+    xwin.wmHints = newWmHints(xicon, xiconMask)
   proc `icon=`*(a: var Window, _: nil.typeof) = with a:
     ## clear window icon
-    if xicon != 0: xcheck d.XFreePixmap(xicon)
-    if xiconMask != 0: xcheck d.XFreePixmap(xiconMask)
-    xicon = 0
-    xiconMask = 0
-    var wmh = XAllocWMHints()
-    wmh.flags = IconPixmapHint or IconMaskHint
-    wmh.icon_pixmap = xicon
-    wmh.icon_mask   = xiconMask
-    xcheck d.XSetWMHints(xwin, wmh)
-    xcheck XFree(wmh)
+    if xicon != 0: destroy xicon
+    if xiconMask != 0: destroy xiconMask
+    xicon = 0.Pixmap
+    xiconMask = 0.Pixmap
+    xwin.wmHints = newWmHints(xicon, xiconMask)
 
-  # proc runImpl(a: var SomeWindow) = withWindow a:
   proc run*(a: var SomeWindow) = withWindow a:
     ## run main loop of window
     template pushEvent(event, args) = a.pushEvent(event, args)
@@ -702,7 +674,7 @@ when defined(linux):
       var catched = false
 
       proc checkEvent(_: PDisplay, event: PXEvent, userData: XPointer): XBool {.cdecl.} =
-        if event.xany.window == (x.Window)(cast[int](userData)): 1 else: 0
+        if cast[int](event.xany.window) == cast[int](userData): 1 else: 0
       while d.XCheckIfEvent(ev.addr, checkEvent, cast[XPointer](xwin)) == 1:
         catched = true
 
@@ -728,8 +700,7 @@ when defined(linux):
             m_pos = (ev.xconfigure.x.int, ev.xconfigure.y.int)
             pushEvent onWindowMove, (oldPos, m_pos)
           
-          # let wmState = xwin.property(NetWmState)
-          let wmState = xwin.property(atom AtomKind.NetWmState, seq[Atom])
+          let wmState = xwin.netWmState
           if atom(NetWmStateFullscreen) in wmState and not m_isFullscreen:
             m_isFullscreen = true
             pushEvent onFullscreenChanged, (true)
@@ -839,16 +810,11 @@ when defined(linux):
         if waitForReDraw:
           waitForReDraw = false
           pushEvent on_render, (m_data, m_size)
-          xcheckStatus d.XPutImage(xwin, gc, ximg, 0, 0, 0, 0, m_size.x.cuint, m_size.y.cuint)
+          gc.put ximg
       
       clipboardProcessEvents()
 
     pushEvent onClose, ()
-  
-  # proc run*(a: var Window) =
-  #   runImpl a
-  # proc run*(a: var PictureWindow) =
-  #   runImpl a
   
   proc systemHandle*(a: Window): x.Window = a.xwin
     ## get system handle of window
