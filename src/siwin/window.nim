@@ -16,19 +16,28 @@ publicInterface:
     newWindow(w, h: int, title: string, Screen)
     newWindow(size: Vec2, title: string, Screen)
 
-    close()
+    close() {.lazy.}
     opened -> bool
 
     onEvent => proc(Event)
-    run()
-    redraw()
 
-    fullscreen => bool
+    fullscreen => bool {.lazy.}
     size => Vec2
     position => Vec2
 
     cursor = Cursor
     icon = Picture|nil
+  
+  OpenglWindow of Window:
+    onRender => proc(OpneglRenderer)
+    redraw() {.lazy.}
+
+  PictureWindow of Window:
+    onRender => proc(Renderer)
+    getPicture -> Picture
+    redraw() {.lazy.}
+
+  run SomeWindow
   
   MouseButton enum
   Mouse:
@@ -61,7 +70,7 @@ type
     escape, lcontrol, lshift, lalt, lsystem, rcontrol, rshift, ralt, rsystem, menu, lbracket, rbracket,
     semicolon, comma, dot, quote, slash, backslash, tilde, equal, minus, space, enter, backspace, tab,
     pageUp, pageDown, End, home, insert, del, add, subtract, multiply, divide, left, right, up, down,
-    numpad0, numpad1, numpad2, numpad3, numpad4, numpad5, numpad6, numpad7, numpad8, numpad9,
+    npad0, npad1, npad2, npad3, npad4, npad5, npad6, npad7, npad8, npad9,
     f1, f2, f3, f4, f5, f6, f7, f8, f9, f10, f11, f12, f13, f14, f15, pause
   Keyboard* = tuple
     pressed: array[Key.a..Key.pause, bool]
@@ -71,13 +80,9 @@ type
     hand
     sizeAll sizeHorisontal sizeVertical
 
-  Window* = object
-    m_data: ArrayPtr[Color]
-    m_size: tuple[x, y: int]
-
+  Window* {.inheritable.} = object
     onClose*:       proc(e: CloseEvent)
     
-    onRender*:      proc(e: RenderEvent)
     onTick*:        proc(e: TickEvent)
     onResize*:      proc(e: ResizeEvent)
     onWindowMove*:  proc(e: WindowMoveEvent)
@@ -85,7 +90,7 @@ type
     onFocusChanged*:      proc(e: FocusEvent)
     onFullscreenChanged*: proc(e: StateChangedEvent)
 
-    mouse*: Mouse # состояние мыши
+    mouse*: Mouse
     onMouseMove*:   proc(e: MouseMoveEvent)
     onMouseLeave*:  proc(e: MouseMoveEvent)
     onMouseEnter*:  proc(e: MouseMoveEvent)
@@ -95,17 +100,22 @@ type
     onDoubleClick*: proc(e: ClickEvent)
     onScroll*:      proc(e: ScrollEvent)
 
-    keyboard*: Keyboard # состояние клавиатуры
+    keyboard*: Keyboard
     onKeydown*:     proc(e: KeyEvent)
     onKeyup*:       proc(e: KeyEvent)
     onTextEnter*:   proc(e: TextEnterEvent)
 
+    m_size: tuple[x, y: int]
+      
+    m_isOpen: bool
+    m_hasFocus: bool
+    m_isFullscreen: bool
+
+    clicking: array[MouseButton.left..MouseButton.backward, bool]
+
     when defined(linux):
-      screen: cint
+      xscr: cint
       xwin: x.Window
-      gc: x.GC
-      gcv: x.XGCValues
-      ximg: x.PXImage
       xicon: x.Pixmap
       xiconMask: x.Pixmap
       xinContext: x.XIC
@@ -113,14 +123,6 @@ type
 
       xcursor: x.Cursor
       curCursor: Cursor
-      clicking: array[MouseButton.left..MouseButton.backward, bool]
-
-      m_isOpen: bool
-      m_hasFocus: bool
-      m_isFullscreen: bool
-      m_usingPictureForRender: bool
-
-      waitForReDraw: bool
 
       m_pos: tuple[x, y: int]
       requesedSize: Option[tuple[x, y: int]]
@@ -133,20 +135,28 @@ type
       
       wcursor: HCursor
       curCursor: Cursor
-      clicking: array[MouseButton.left..MouseButton.backward, bool]
-
-      m_hasFocus: bool
-      m_isOpen: bool
-      m_isFullscreen: bool
-      m_usingPictureForRender: bool
   
-  VisualMode* = object
+  PictureWindow* = object of Window
+    onRender*: proc(e: PictureRenderEvent)
+
     when defined(linux):
-      vi*: PXVisualInfo
+      gc: x.GC
+      gcv: x.XGCValues
+      ximg: x.PXImage
+
+      m_data: ArrayPtr[Color]
+      waitForReDraw: bool
+
+    elif defined(windows):
+      wimage: HBitmap
+      hdc: HDC
+
+  SomeWindow = Window|PictureWindow
+
 
   CloseEvent* = tuple
 
-  RenderEvent* = tuple
+  PictureRenderEvent* = tuple
     data: ArrayPtr[Color]
     size: tuple[x, y: int]
   ResizeEvent* = tuple
@@ -197,127 +207,120 @@ type
 when defined(linux):
   proc xkeyToKey(sym: KeySym): Key =
     case sym
-    of XK_shiftL:       Key.lshift
-    of XK_shiftR:       Key.rshift
-    of XK_controlL:     Key.lcontrol
-    of XK_controlR:     Key.rcontrol
-    of XK_altL:         Key.lalt
-    of XK_altR:         Key.ralt
-    of XK_superL:       Key.lsystem
-    of XK_superR:       Key.rsystem
-    of XK_menu:         Key.menu
-    of XK_escape:       Key.escape
-    of XK_semicolon:    Key.semicolon
-    of XK_slash:        Key.slash
-    of XK_equal:        Key.equal
-    of XK_minus:        Key.minus
-    of XK_bracketleft:  Key.lbracket
-    of XK_bracketright: Key.rbracket
-    of XK_comma:        Key.comma
-    of XK_period:       Key.dot
-    of XK_apostrophe:   Key.quote
-    of XK_backslash:    Key.backslash
-    of XK_grave:        Key.tilde
-    of XK_space:        Key.space
-    of XK_return:       Key.enter
-    of XK_kpEnter:      Key.enter
-    of XK_backspace:    Key.backspace
-    of XK_tab:          Key.tab
-    of XK_prior:        Key.page_up
-    of XK_next:         Key.page_down
-    of XK_end:          Key.End
-    of XK_home:         Key.home
-    of XK_insert:       Key.insert
-    of XK_delete:       Key.del
-    of XK_kpAdd:        Key.add
-    of XK_kpSubtract:   Key.subtract
-    of XK_kpMultiply:   Key.multiply
-    of XK_kpDivide:     Key.divide
-    of XK_pause:        Key.pause
-    of XK_f1:           Key.f1
-    of XK_f2:           Key.f2
-    of XK_f3:           Key.f3
-    of XK_f4:           Key.f4
-    of XK_f5:           Key.f5
-    of XK_f6:           Key.f6
-    of XK_f7:           Key.f7
-    of XK_f8:           Key.f8
-    of XK_f9:           Key.f9
-    of XK_f10:          Key.f10
-    of XK_f11:          Key.f11
-    of XK_f12:          Key.f12
-    of XK_f13:          Key.f13
-    of XK_f14:          Key.f14
-    of XK_f15:          Key.f15
-    of XK_left:         Key.left
-    of XK_right:        Key.right
-    of XK_up:           Key.up
-    of XK_down:         Key.down
-    of XK_kpInsert:     Key.numpad0
-    of XK_kpEnd:        Key.numpad1
-    of XK_kpDown:       Key.numpad2
-    of XK_kpPagedown:   Key.numpad3
-    of XK_kpLeft:       Key.numpad4
-    of XK_kpBegin:      Key.numpad5
-    of XK_kpRight:      Key.numpad6
-    of XK_kpHome:       Key.numpad7
-    of XK_kpUp:         Key.numpad8
-    of XK_kpPageup:     Key.numpad9
-    of XK_a:            Key.a
-    of XK_b:            Key.b
-    of XK_c:            Key.c
-    of XK_d:            Key.d
-    of XK_e:            Key.r
-    of XK_f:            Key.f
-    of XK_g:            Key.g
-    of XK_h:            Key.h
-    of XK_i:            Key.i
-    of XK_j:            Key.j
-    of XK_k:            Key.k
-    of XK_l:            Key.l
-    of XK_m:            Key.m
-    of XK_n:            Key.n
-    of XK_o:            Key.o
-    of XK_p:            Key.p
-    of XK_q:            Key.q
-    of XK_r:            Key.r
-    of XK_s:            Key.s
-    of XK_t:            Key.t
-    of XK_u:            Key.u
-    of XK_v:            Key.v
-    of XK_w:            Key.w
-    of XK_x:            Key.x
-    of XK_y:            Key.y
-    of XK_z:            Key.z
-    of XK_0:            Key.n0
-    of XK_1:            Key.n1
-    of XK_2:            Key.n2
-    of XK_3:            Key.n3
-    of XK_4:            Key.n4
-    of XK_5:            Key.n5
-    of XK_6:            Key.n6
-    of XK_7:            Key.n7
-    of XK_8:            Key.n8
-    of XK_9:            Key.n9
+    of Xk_shiftL:       Key.lshift
+    of Xk_shiftR:       Key.rshift
+    of Xk_controlL:     Key.lcontrol
+    of Xk_controlR:     Key.rcontrol
+    of Xk_altL:         Key.lalt
+    of Xk_altR:         Key.ralt
+    of Xk_superL:       Key.lsystem
+    of Xk_superR:       Key.rsystem
+    of Xk_menu:         Key.menu
+    of Xk_escape:       Key.escape
+    of Xk_semicolon:    Key.semicolon
+    of Xk_slash:        Key.slash
+    of Xk_equal:        Key.equal
+    of Xk_minus:        Key.minus
+    of Xk_bracketleft:  Key.lbracket
+    of Xk_bracketright: Key.rbracket
+    of Xk_comma:        Key.comma
+    of Xk_period:       Key.dot
+    of Xk_apostrophe:   Key.quote
+    of Xk_backslash:    Key.backslash
+    of Xk_grave:        Key.tilde
+    of Xk_space:        Key.space
+    of Xk_return:       Key.enter
+    of Xk_kpEnter:      Key.enter
+    of Xk_backspace:    Key.backspace
+    of Xk_tab:          Key.tab
+    of Xk_prior:        Key.page_up
+    of Xk_next:         Key.page_down
+    of Xk_end:          Key.End
+    of Xk_home:         Key.home
+    of Xk_insert:       Key.insert
+    of Xk_delete:       Key.del
+    of Xk_kpAdd:        Key.add
+    of Xk_kpSubtract:   Key.subtract
+    of Xk_kpMultiply:   Key.multiply
+    of Xk_kpDivide:     Key.divide
+    of Xk_pause:        Key.pause
+    of Xk_f1:           Key.f1
+    of Xk_f2:           Key.f2
+    of Xk_f3:           Key.f3
+    of Xk_f4:           Key.f4
+    of Xk_f5:           Key.f5
+    of Xk_f6:           Key.f6
+    of Xk_f7:           Key.f7
+    of Xk_f8:           Key.f8
+    of Xk_f9:           Key.f9
+    of Xk_f10:          Key.f10
+    of Xk_f11:          Key.f11
+    of Xk_f12:          Key.f12
+    of Xk_f13:          Key.f13
+    of Xk_f14:          Key.f14
+    of Xk_f15:          Key.f15
+    of Xk_left:         Key.left
+    of Xk_right:        Key.right
+    of Xk_up:           Key.up
+    of Xk_down:         Key.down
+    of Xk_kpInsert:     Key.npad0
+    of Xk_kpEnd:        Key.npad1
+    of Xk_kpDown:       Key.npad2
+    of Xk_kpPagedown:   Key.npad3
+    of Xk_kpLeft:       Key.npad4
+    of Xk_kpBegin:      Key.npad5
+    of Xk_kpRight:      Key.npad6
+    of Xk_kpHome:       Key.npad7
+    of Xk_kpUp:         Key.npad8
+    of Xk_kpPageup:     Key.npad9
+    of Xk_a:            Key.a
+    of Xk_b:            Key.b
+    of Xk_c:            Key.c
+    of Xk_d:            Key.d
+    of Xk_e:            Key.r
+    of Xk_f:            Key.f
+    of Xk_g:            Key.g
+    of Xk_h:            Key.h
+    of Xk_i:            Key.i
+    of Xk_j:            Key.j
+    of Xk_k:            Key.k
+    of Xk_l:            Key.l
+    of Xk_m:            Key.m
+    of Xk_n:            Key.n
+    of Xk_o:            Key.o
+    of Xk_p:            Key.p
+    of Xk_q:            Key.q
+    of Xk_r:            Key.r
+    of Xk_s:            Key.s
+    of Xk_t:            Key.t
+    of Xk_u:            Key.u
+    of Xk_v:            Key.v
+    of Xk_w:            Key.w
+    of Xk_x:            Key.x
+    of Xk_y:            Key.y
+    of Xk_z:            Key.z
+    of Xk_0:            Key.n0
+    of Xk_1:            Key.n1
+    of Xk_2:            Key.n2
+    of Xk_3:            Key.n3
+    of Xk_4:            Key.n4
+    of Xk_5:            Key.n5
+    of Xk_6:            Key.n6
+    of Xk_7:            Key.n7
+    of Xk_8:            Key.n8
+    of Xk_9:            Key.n9
     else:               Key.unknown
 
   template d: x.PDisplay = x.display
 
-  proc malloc(a: culong): pointer {.importc.}
+  proc getScreenCount*(): int = d.ScreenCount.int
 
-  proc getScreenCount*(): int = x.connected:
-    result = display.ScreenCount.int
-
-  proc `=destroy`(a: var Screen) =
-    disconnect()
   proc screen*(n: int): Screen = with result:
-    connect()
     if n notin 0..<getScreenCount(): raise IndexDefect.newException(&"screen {n} is not exist")
     id = n.cint
     xid = d.ScreenOfDisplay(id)
 
-  proc defaultScreen*(): Screen = x.connected:
-    result = screen(d.DefaultScreen.int)
+  proc defaultScreen*(): Screen = screen(d.DefaultScreen.int)
   proc screen*(): Screen = defaultScreen()
 
   proc n*(a: Screen): int = a.id.int
@@ -325,7 +328,7 @@ when defined(linux):
   proc size*(a: Screen): tuple[x, y: int] =
     result = (a.xid.width.int, a.xid.height.int)
   
-  proc rootWindow(a: Screen): x.Window {.used.} = a.xid.root
+  proc rootWindow(a: Screen): x.Window {.used.} = x.Window a.xid.root
 
 elif defined(windows):
   proc wkeyToKey(key: WParam, flags: LParam): Key =
@@ -338,65 +341,65 @@ elif defined(windows):
       if (flags and KF_EXTENDED) != 0: Key.ralt else: Key.lalt
     of VK_control:
       if (flags and KF_EXTENDED) != 0: Key.rcontrol else: Key.lcontrol
-    of VK_lwin:         Key.lsystem
-    of VK_rwin:         Key.rsystem
-    of VK_apps:         Key.menu
-    of VK_escape:       Key.escape
-    of VK_oem1:         Key.semicolon
-    of VK_oem2:         Key.slash
-    of VK_oem_plus:     Key.equal
-    of VK_oem_minus:    Key.minus
-    of VK_oem4:         Key.lbracket
-    of VK_oem6:         Key.rbracket
-    of VK_oem_comma:    Key.comma
-    of VK_oem_period:   Key.dot
-    of VK_oem7:         Key.quote
-    of VK_oem5:         Key.backslash
-    of VK_oem3:         Key.tilde
-    of VK_space:        Key.space
-    of VK_return:       Key.enter
-    of VK_back:         Key.backspace
-    of VK_tab:          Key.tab
-    of VK_prior:        Key.page_up
-    of VK_next:         Key.page_down
-    of VK_end:          Key.End
-    of VK_home:         Key.home
-    of VK_insert:       Key.insert
-    of VK_delete:       Key.del
-    of VK_add:          Key.add
-    of VK_subtract:     Key.subtract
-    of VK_multiply:     Key.multiply
-    of VK_divide:       Key.divide
-    of VK_pause:        Key.pause
-    of VK_f1:           Key.f1
-    of VK_f2:           Key.f2
-    of VK_f3:           Key.f3
-    of VK_f4:           Key.f4
-    of VK_f5:           Key.f5
-    of VK_f6:           Key.f6
-    of VK_f7:           Key.f7
-    of VK_f8:           Key.f8
-    of VK_f9:           Key.f9
-    of VK_f10:          Key.f10
-    of VK_f11:          Key.f11
-    of VK_f12:          Key.f12
-    of VK_f13:          Key.f13
-    of VK_f14:          Key.f14
-    of VK_f15:          Key.f15
-    of VK_left:         Key.left
-    of VK_right:        Key.right
-    of VK_up:           Key.up
-    of VK_down:         Key.down
-    of VK_numpad0:      Key.numpad0
-    of VK_numpad1:      Key.numpad1
-    of VK_numpad2:      Key.numpad2
-    of VK_numpad3:      Key.numpad3
-    of VK_numpad4:      Key.numpad4
-    of VK_numpad5:      Key.numpad5
-    of VK_numpad6:      Key.numpad6
-    of VK_numpad7:      Key.numpad7
-    of VK_numpad8:      Key.numpad8
-    of VK_numpad9:      Key.numpad9
+    of Vk_lwin:         Key.lsystem
+    of Vk_rwin:         Key.rsystem
+    of Vk_apps:         Key.menu
+    of Vk_escape:       Key.escape
+    of Vk_oem1:         Key.semicolon
+    of Vk_oem2:         Key.slash
+    of Vk_oem_plus:     Key.equal
+    of Vk_oem_minus:    Key.minus
+    of Vk_oem4:         Key.lbracket
+    of Vk_oem6:         Key.rbracket
+    of Vk_oem_comma:    Key.comma
+    of Vk_oem_period:   Key.dot
+    of Vk_oem7:         Key.quote
+    of Vk_oem5:         Key.backslash
+    of Vk_oem3:         Key.tilde
+    of Vk_space:        Key.space
+    of Vk_return:       Key.enter
+    of Vk_back:         Key.backspace
+    of Vk_tab:          Key.tab
+    of Vk_prior:        Key.page_up
+    of Vk_next:         Key.page_down
+    of Vk_end:          Key.End
+    of Vk_home:         Key.home
+    of Vk_insert:       Key.insert
+    of Vk_delete:       Key.del
+    of Vk_add:          Key.add
+    of Vk_subtract:     Key.subtract
+    of Vk_multiply:     Key.multiply
+    of Vk_divide:       Key.divide
+    of Vk_pause:        Key.pause
+    of Vk_f1:           Key.f1
+    of Vk_f2:           Key.f2
+    of Vk_f3:           Key.f3
+    of Vk_f4:           Key.f4
+    of Vk_f5:           Key.f5
+    of Vk_f6:           Key.f6
+    of Vk_f7:           Key.f7
+    of Vk_f8:           Key.f8
+    of Vk_f9:           Key.f9
+    of Vk_f10:          Key.f10
+    of Vk_f11:          Key.f11
+    of Vk_f12:          Key.f12
+    of Vk_f13:          Key.f13
+    of Vk_f14:          Key.f14
+    of Vk_f15:          Key.f15
+    of Vk_left:         Key.left
+    of Vk_right:        Key.right
+    of Vk_up:           Key.up
+    of Vk_down:         Key.down
+    of Vk_numpad0:      Key.npad0
+    of Vk_numpad1:      Key.npad1
+    of Vk_numpad2:      Key.npad2
+    of Vk_numpad3:      Key.npad3
+    of Vk_numpad4:      Key.npad4
+    of Vk_numpad5:      Key.npad5
+    of Vk_numpad6:      Key.npad6
+    of Vk_numpad7:      Key.npad7
+    of Vk_numpad8:      Key.npad8
+    of Vk_numpad9:      Key.npad9
     of 'A'.ord:         Key.a
     of 'B'.ord:         Key.b
     of 'C'.ord:         Key.c
@@ -450,50 +453,75 @@ template screenCount*: int = getScreenCount()
 
 
 
+template withWindow(a: SomeWindow, body: untyped) =
+  when a is PictureWindow:
+    with (a, a.Window):
+      body
+  elif a is Window:
+    with a:
+      body
+
 when defined(linux):
-  const defaultVisualMode = VisualMode(vi: nil)
-
   proc `=destroy`*(a: var Window) = with a:
-    if ximg != nil: xcheck XDestroyImage(ximg)
-    if gc != nil: xcheck d.XFreeGC(gc)
-    if xinContext != nil: XDestroyIC(xinContext)
-    if xinMethod != nil: xcheck XCloseIM(xinMethod)
-    if xcursor != 0: xcheck d.XFreeCursor(xcursor)
-    if xicon != 0: xcheck d.XFreePixmap(xicon)
-    if xiconMask != 0: xcheck d.XFreePixmap(xiconMask)
-    if xwin != 0: xcheck d.XDestroyWindow(xwin)
-    x.disconnect()
+    if xinContext != nil: destroy xinContext
+    if xinMethod != nil: close xinMethod
+    if xcursor != 0: destroy xcursor
+    if xicon != 0: destroy xicon
+    if xiconMask != 0: destroy xiconMask
+    destroy xwin
 
-  proc newWindowImpl(w, h: int, scr: Screen, fullscreen: bool, visualMode: VisualMode): Window = with result:
-    x.connect()
-    screen = scr.id
+  proc `=destroy`*(a: var PictureWindow) = with a:
+    destroy ximg
+    destroy gc
+    `=destroy` a.Window
+
+  proc newNoRenderWindowImpl(w, h: int; screen: Screen, fullscreen: bool): Window = with result:
+    xscr = screen.id
     m_size = (w, h)
-    let root = d.DefaultRootWindow
+    let root = x.Window d.DefaultRootWindow
 
-    if visualMode.vi == nil:
-      xwin = d.XCreateSimpleWindow(root, 0, 0, w.cuint, h.cuint, 0, 0, d.BlackPixel(screen))
-    else:
-      let cmap = d.XCreateColormap(root, visualMode.vi.visual, AllocNone)
-      var swa: XSetWindowAttributes
-      swa.colormap = cmap
-      xwin = d.XCreateWindow(root, 0, 0, w.cuint, h.cuint, 0, visualMode.vi.depth, InputOutput, visualMode.vi.visual, CwColormap or CwEventMask, swa.addr)
-    doassert xwin != 0
-
-    xcheck d.XSelectInput(xwin, 
-      ExposureMask or KeyPressMask or KeyReleaseMask or PointerMotionMask or ButtonPressMask or
-      ButtonReleaseMask or StructureNotifyMask or EnterWindowMask or LeaveWindowMask or FocusChangeMask
-    )
+    xwin = newSimpleWindow(root, 0, 0, w, h, 0, 0, xscr.blackPixel)
+    xwin.input = [ 
+      ExposureMask, KeyPressMask, KeyReleaseMask, PointerMotionMask, ButtonPressMask,
+      ButtonReleaseMask, StructureNotifyMask, EnterWindowMask, LeaveWindowMask, FocusChangeMask
+    ]
     
     m_isFullscreen = fullscreen
     if fullscreen:
-      let atoms = [atom NetWmStateFullscreen, None]
-      xcheck d.XChangeProperty(xwin, atom NetWmState, XaAtom, 32, PropModeReplace, cast[PCUchar](atoms.unsafeAddr), 1)
+      xwin.netWmState = [NetWmStateFullscreen]
       m_size = window.screen().size
 
-    xcheck d.XMapWindow xwin
-    gc = d.XCreateGC(xwin, x.GCForeground or x.GCBackground, gcv.addr)
+    map xwin
+    xwin.wmProtocols = [WmDeleteWindow]
 
-    xcheck d.XSetWMProtocols(xwin, patom WmDeleteWindow, 1)
+    xinMethod = d.XOpenIM(nil, nil, nil)
+    if xinMethod != nil:
+      xinContext = xinMethod.XCreateIC(
+        XNClientWindow, xwin, XNFocusWindow, xwin, XnInputStyle, XimPreeditNothing or XimStatusNothing, nil
+      )
+
+    m_isOpen = true
+    m_hasFocus = true
+    curCursor = arrow
+
+  proc newPictureWindowImpl(w, h: int; screen: Screen, fullscreen: bool): PictureWindow = withWindow result:
+    xscr = screen.id
+    m_size = (w, h)
+    let root = x.Window d.DefaultRootWindow
+
+    xwin = newSimpleWindow(root, 0, 0, w, h, 0, 0, xscr.blackPixel)
+    xwin.input = [ 
+      ExposureMask, KeyPressMask, KeyReleaseMask, PointerMotionMask, ButtonPressMask,
+      ButtonReleaseMask, StructureNotifyMask, EnterWindowMask, LeaveWindowMask, FocusChangeMask
+    ]
+    
+    m_isFullscreen = fullscreen
+    if fullscreen:
+      xwin.netWmState = [NetWmStateFullscreen]
+      m_size = window.screen().size
+
+    map xwin
+    xwin.wmProtocols = [WmDeleteWindow]
 
     xinMethod = d.XOpenIM(nil, nil, nil)
     if xinMethod != nil:
@@ -503,67 +531,51 @@ when defined(linux):
 
     m_isOpen = true
     m_hasFocus = true
-
-    waitForReDraw = true
     curCursor = arrow
+    waitForReDraw = true
+    gc = d.XCreateGC(xwin, x.GCForeground or x.GCBackground, gcv.addr)
+    doassert gc != nil
+
+    m_data = malloc[Color](m_size.x * m_size.y)
+    ximg = d.XCreateImage(
+      d.DefaultVisual(xscr), d.DefaultDepth(xscr).cuint, ZPixmap, 0, cast[cstring](cast[ptr Color](m_data)),
+      m_size.x.cuint, m_size.y.cuint, 32, 0
+    )
+    doassert ximg != nil
 
   template pushEvent(a: Window, event, args) =
     when args is tuple: 
       if a.event != nil: a.event(args)
     else:
       if a.event != nil: a.event((args,))
-  
-  proc initRender*(w: var Window) = with w:
-    ## set that window render using picture
-    if m_usingPictureForRender: return
-    m_usingPictureForRender = true
-
-    m_data = ArrayPtr[Color](cast[ptr Color](malloc(culong Color.sizeof * m_size.x * m_size.y)))
-    ximg = d.XCreateImage(
-      d.DefaultVisual(screen), d.DefaultDepth(screen).cuint, ZPixmap, 0, cast[cstring](cast[ptr Color](m_data)),
-      m_size.x.cuint, m_size.y.cuint, 32, 0
-    )
-    doassert ximg != nil
 
   proc `title=`*(a: Window, title: string) = with a:
     ## set window title
-    let useUtf8 = atom(Utf8String)
-    xcheck d.XChangeProperty(xwin, atom(NetWmName), useUtf8, 8, PropModeReplace, title, title.len.cint)
-    xcheck d.XChangeProperty(xwin, atom(NetWmIconName), useUtf8, 8, PropModeReplace, title, title.len.cint)
-
-    d.Xutf8SetWMProperties(a.xwin, title, title, nil, 0, nil, nil, nil)
+    xwin.netWmName = title
+    xwin.netWmIconName = title
+    d.Xutf8SetWMProperties(xwin, title, title, nil, 0, nil, nil, nil)
   
   proc opened*(a: Window): bool = a.m_isOpen
   proc close*(a: var Window) {.lazy.} = with a:
     ## close request
-    ##* this proc is lazy
     if not m_isOpen: return
-    var e: XEvent
-    e.xclient.theType      = ClientMessage
-    e.xclient.window       = xwin
-    e.xclient.message_type = x.atom(WM_PROTOCOLS)
-    e.xclient.format       = 32
-    e.xclient.data.l[0]    = x.atom(WM_DELETE_WINDOW).clong
-    e.xclient.data.l[1]    = CurrentTime
-    xcheck d.XSendEvent(xwin, 0, NoEventMask, e.addr)
+    xwin.send xwin.newClientMessage(WmProtocols, [atom WmDeleteWindow, CurrentTime])
     m_isOpen = false
 
-  proc redraw*(a: var Window) {.lazy.} = a.waitForReDraw = true
+  proc redraw*(a: var PictureWindow) {.lazy.} = a.waitForReDraw = true
     ## render request
-    ##* this proc is lazy
 
   proc updateSize(a: var Window) = with a:
-    let (_, _, _, w, h, _, _) = xwin.geometry
-    m_size = (w.int, h.int)
-
-    if m_usingPictureForRender:
-      xcheck XDestroyImage ximg
-      m_data = ArrayPtr[Color](cast[ptr Color](malloc(culong Color.sizeof * w.int * h.int)))
-      ximg = d.XCreateImage(
-        d.DefaultVisual(screen), d.DefaultDepth(screen).cuint, ZPixmap, 0, cast[cstring](cast[ptr Color](m_data)),
-        w.cuint, h.cuint, 32, 0
-      )
-      doassert ximg != nil
+    m_size = xwin.geometry.size
+  proc updateSize(a: var PictureWindow) = withWindow a:
+    updateSize a.Window
+    destroy ximg
+    m_data = malloc[Color](m_size.x * m_size.y)
+    ximg = d.XCreateImage(
+      d.DefaultVisual(xscr), d.DefaultDepth(xscr).cuint, ZPixmap, 0, cast[cstring](m_data),
+      m_size.x.cuint, m_size.y.cuint, 32, 0
+    )
+    doassert ximg != nil
     waitForReDraw = true
   
   proc fullscreen*(a: Window): bool = a.m_isFullscreen
@@ -573,41 +585,27 @@ when defined(linux):
     ##* this proc is lazy, don't try get size of window after it
     ## track when the fullscreen state will be applied in the onFullscreenChanged event
     if m_isFullscreen == v: return
+    #TODO также смотреть на запрошенное значение, а не только на реальное
     
-    var xwa: x.XWindowAttributes
-    xcheck d.XGetWindowAttributes(xwin, xwa.addr)
-
-    var e: XEvent
-    e.xclient.theType      = ClientMessage
-    e.xclient.message_type = atom(NetWmState, true)
-    e.xclient.display      = d
-    e.xclient.window       = xwin
-    e.xclient.format       = 32
-    e.xclient.data.l[0]    = 2 # 2 - переключить, 1 - добавить, 0 - убрать
-    e.xclient.data.l[1]    = atom(NetWmStateFullscreen).clong
-    e.xclient.data.l[2]    = 0
-    e.xclient.data.l[3]    = 0
-    e.xclient.data.l[4]    = 0
-    xcheck d.XSendEvent(xwa.root, 0, SubstructureNotifyMask or SubstructureRedirectMask, e.addr)
+    xwin.root.send(
+      xwin.newClientMessage(NetWmState, [Atom 2, atom NetWmStateFullscreen]), # 2 - переключить, 1 - добавить, 0 - убрать
+      SubstructureNotifyMask or SubstructureRedirectMask
+    )
   
-  proc position*(a: Window): tuple[x, y: int] = with a:
-    ## get position of window
-    let (_, x, y, _, _, _, _) = xwin.geometry
-    return (x.int, y.int)
+  proc position*(a: Window): tuple[x, y: int] = a.xwin.geometry.position
   proc `position=`*(a: var Window, p: tuple[x, y: int]) = with a:
     ## move window
     ## do nothing if window is fullscreen
     if m_isFullscreen: return
-    xcheck d.XMoveWindow(xwin, p.x.cint, p.y.cint)
+    xwin.position = p
     m_pos = p
   
   proc size*(a: Window): tuple[x, y: int] = a.m_size
-    ## get size of window
   proc `size=`*(a: var Window, size: tuple[x, y: int]) = with a:
     ## resize window
-    ## if window is fullscreen, 
+    ## exit fullscreen if window is fullscreen
     if not a.fullscreen:
-      xcheck d.XResizeWindow(xwin, size.x.cuint, size.y.cuint)
+      xwin.size = size
       a.updateSize()
     else:
       a.fullscreen = false
@@ -616,28 +614,28 @@ when defined(linux):
   proc `cursor=`*(a: var Window, kind: Cursor) = with a:
     ## set cursor font, used when mouse hover window
     if kind == curCursor: return
-    if xcursor != 0: xcheck d.XFreeCursor(xcursor)
+    if xcursor != 0: destroy xcursor
     case kind
-    of Cursor.arrow:          xcursor = d.XCreateFontCursor(XcLeftPtr)
-    of Cursor.arrowUp:        xcursor = d.XCreateFontCursor(XcCenterPtr)
-    of Cursor.hand:           xcursor = d.XCreateFontCursor(XcHand1)
-    of Cursor.sizeAll:        xcursor = d.XCreateFontCursor(XcFleur)
-    of Cursor.sizeVertical:   xcursor = d.XCreateFontCursor(XcSb_v_doubleArrow)
-    of Cursor.sizeHorisontal: xcursor = d.XCreateFontCursor(XcSb_h_doubleArrow)
-    xcheck d.XDefineCursor(xwin, xcursor)
-    xcheck d.XSync(0)
+    of Cursor.arrow:          xcursor = cursorFromFont XcLeftPtr
+    of Cursor.arrowUp:        xcursor = cursorFromFont XcCenterPtr
+    of Cursor.hand:           xcursor = cursorFromFont XcHand1
+    of Cursor.sizeAll:        xcursor = cursorFromFont XcFleur
+    of Cursor.sizeVertical:   xcursor = cursorFromFont XcSb_v_doubleArrow
+    of Cursor.sizeHorisontal: xcursor = cursorFromFont XcSb_h_doubleArrow
+    xwin.cursor = xcursor
+    syncX()
     curCursor = kind
 
-  proc newPixmap(img: Picture, a: Window): x.Pixmap = with a:
-    var ddata = cast[ptr Color](malloc(culong Color.sizeof * img.size.x * img.size.y))
-    copyMem(ddata, cast[ptr Color](img.data), Color.sizeof * img.size.x * img.size.y)
-    result = d.XCreatePixmap(xwin, img.size.x.cuint, img.size.y.cuint, d.DefaultDepth(screen).cuint)
+  proc newPixmap(img: Picture, a: Window): Pixmap = with a:
+    var ddata = malloc[Color](img.size.x * img.size.y)
+    copyMem(ddata.pointer, img.data.pointer, Color.sizeof * img.size.x * img.size.y)
+    result = Pixmap d.XCreatePixmap(xwin, img.size.x.cuint, img.size.y.cuint, d.DefaultDepth(xscr).cuint)
     
     var gcv2: XGCValues
     let gc2 = d.XCreateGC(xwin, x.GCForeground or x.GCBackground, gcv2.addr)
 
     let image = d.XCreateImage(
-      d.DefaultVisual(screen), d.DefaultDepth(screen).cuint, ZPixmap, 0, cast[cstring](cast[ptr Color](ddata)),
+      d.DefaultVisual(xscr), d.DefaultDepth(xscr).cuint, ZPixmap, 0, cast[cstring](ddata),
       img.size.x.cuint, img.size.y.cuint, 32, 0
     )
     xcheckStatus d.XPutImage(result, gc2, image, 0, 0, 0, 0, img.size.x.cuint, img.size.y.cuint)
@@ -675,11 +673,8 @@ when defined(linux):
     xcheck d.XSetWMHints(xwin, wmh)
     xcheck XFree(wmh)
 
-  proc displayImpl(a: var Window) = with a:
-    if m_usingPictureForRender:
-      xcheckStatus d.XPutImage(xwin, gc, ximg, 0, 0, 0, 0, m_size.x.cuint, m_size.y.cuint)
-  
-  proc run*(a: var Window) = with a:
+  # proc runImpl(a: var SomeWindow) = withWindow a:
+  proc run*(a: var SomeWindow) = withWindow a:
     ## run main loop of window
     template pushEvent(event, args) = a.pushEvent(event, args)
     
@@ -717,10 +712,11 @@ when defined(linux):
             let osize = m_size
             a.updateSize()
             pushEvent onResize, (osize, m_size)
-          redraw a
+          when a is PictureWindow:
+            redraw a
         of ClientMessage:
           if ev.xclient.data.l[0] == (clong)x.atom(WmDeleteWindow, false):
-            m_isOpen = false;
+            m_isOpen = false
           
         of ConfigureNotify:
           if ev.xconfigure.width != m_size.x or ev.xconfigure.height != m_size.y:
@@ -732,7 +728,8 @@ when defined(linux):
             m_pos = (ev.xconfigure.x.int, ev.xconfigure.y.int)
             pushEvent onWindowMove, (oldPos, m_pos)
           
-          let wmState = xwin.property(NetWmState)
+          # let wmState = xwin.property(NetWmState)
+          let wmState = xwin.property(atom AtomKind.NetWmState, seq[Atom])
           if atom(NetWmStateFullscreen) in wmState and not m_isFullscreen:
             m_isFullscreen = true
             pushEvent onFullscreenChanged, (true)
@@ -838,14 +835,20 @@ when defined(linux):
       pushEvent onTick, (mouse, keyboard, nows - lastTickTime)
       lastTickTime = nows
 
-      if waitForReDraw:
-        waitForReDraw = false
-        pushEvent on_render, (m_data, m_size)
-        a.displayImpl()
+      when a is PictureWindow:
+        if waitForReDraw:
+          waitForReDraw = false
+          pushEvent on_render, (m_data, m_size)
+          xcheckStatus d.XPutImage(xwin, gc, ximg, 0, 0, 0, 0, m_size.x.cuint, m_size.y.cuint)
       
       clipboardProcessEvents()
 
     pushEvent onClose, ()
+  
+  # proc run*(a: var Window) =
+  #   runImpl a
+  # proc run*(a: var PictureWindow) =
+  #   runImpl a
   
   proc systemHandle*(a: Window): x.Window = a.xwin
     ## get system handle of window
@@ -1154,17 +1157,22 @@ else:
 
 
 
-proc newWindow*(w: int = 1280, h: int = 720, title: string = "", screen = screen(), fullscreen: bool = false, visualMode: VisualMode = defaultVisualMode): Window =
-  result = newWindowImpl(w, h, screen, fullscreen, visualMode)
+proc newNoRenderWindow*(w: int = 1280, h: int = 720, title: string = "", screen = screen(), fullscreen: bool = false): Window =
+  result = newNoRenderWindowImpl(w, h, screen, fullscreen)
   result.title = title
-proc newWindow*(size: tuple[x, y: int], title: string = "", screen = screen(), fullscreen: bool = false, visualMode: VisualMode = defaultVisualMode): Window =
-  newWindow(size.x, size.y, title, screen, fullscreen, visualMode)
+proc newNoRenderWindow*(size: tuple[x, y: int], title: string = "", screen = screen(), fullscreen: bool = false): Window =
+  newNoRenderWindow(size.x, size.y, title, screen, fullscreen)
+
+proc newPictureWindow*(w: int = 1280, h: int = 720, title: string = "", screen = screen(), fullscreen: bool = false): PictureWindow =
+  result = newPictureWindowImpl(w, h, screen, fullscreen)
+  result.title = title
+proc newPictureWindow*(size: tuple[x, y: int], title: string = "", screen = screen(), fullscreen: bool = false): PictureWindow =
+  newPictureWindow(size.x, size.y, title, screen, fullscreen)
 
 template w*(a: Screen): int = a.size.x
   ## width of screen
 template h*(a: Screen): int = a.size.y
   ## height of screen
 
-converter getPicture*(a: Window): Picture =
-  if not a.m_usingPictureForRender: raise NilAccessDefect.newException("failed access picture of window, that isn't render using picture")
+converter getPicture*(a: PictureWindow): Picture =
   Picture(size: a.m_size, data: a.m_data)

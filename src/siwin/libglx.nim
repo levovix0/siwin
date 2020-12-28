@@ -58,7 +58,7 @@ const
   GlxTransparentIndexExt* = 0x00008009
 
 type
-  GlxContext* = distinct pointer
+  GlxContext* = ptr object
   GlxPixmap* = XID
   GlxContextID* = XID
 

@@ -1,9 +1,8 @@
-import parseutils
+import parseutils, utils
 
 type
   Color* = tuple
     b, g, r, a: uint8
-  ArrayPtr*[T] = distinct ptr T
   Picture* = object
     size*: tuple[x, y: int]
     data*: ArrayPtr[Color]
@@ -39,19 +38,6 @@ func color*(hex: string): Color {.compileTime.} =
     discard parseHex(hex, c)
     return color c
   else: raise ValueError.newException "parse #" & hex & ": incorrect number of digits"
-
-
-
-proc `[]`*[T](a: ArrayPtr[T], i: int): var T =
-  cast[ptr T](cast[int](a) + i * T.sizeof)[]
-proc `[]=`*[T](a: ArrayPtr[T], i: int, v: T) =
-  cast[ptr T](cast[int](a) + i * T.sizeof)[] = v
-
-iterator items*[T](a: ArrayPtr[T], len: int): var T =
-  for i in 0..<len:
-    yield a[i]
-
-proc allocArray*[T](len: int): ArrayPtr[T] = ArrayPtr[T](cast[ptr T](alloc(len * T.sizeof)))
 
 
 

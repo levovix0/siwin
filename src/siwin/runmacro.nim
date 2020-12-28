@@ -1,6 +1,10 @@
 import macros, strformat, strutils, unicode, tables, sequtils, algorithm
 import window
 
+type
+  SomeWindow = Window|PictureWindow
+  WinRKind {.pure.} = enum noRender picture
+
 proc high(a: NimNode): int = a.len - 1
 
 proc toNimCorrect(a: string): string =
@@ -90,7 +94,7 @@ proc genExPressedKeySeq(a: seq[NimNode]): seq[Key] {.compileTime.} =
   for v in r.reversed:
     result.delete v.ord
 
-proc runImpl(w: NimNode, a: NimNode): NimNode =
+proc runImpl(w: NimNode, a: NimNode, wt: static[WinRKind]): NimNode =
   a.expectKind nnkStmtList
   result = nnkStmtList.newTree()
 
@@ -236,6 +240,7 @@ proc runImpl(w: NimNode, a: NimNode): NimNode =
           result.cond = quote do: `rk` and `rc`
       else: result.cond = newLit true
 
+    let e = ident"e"
     case eventName[2..eventName.high].toLower
     of "keydown", "keyup":
       if pars.len == 1 and pars[0] != ident"any":
@@ -394,8 +399,8 @@ proc runImpl(w: NimNode, a: NimNode): NimNode =
       elif pars.len > 1: error(&"got {pars.len} parametrs, but expected one of (), (renderEngine)", pars[1])
       else:
         eventName.resaddas `w`.render: `body`
-        "onInit".resadd quote do:
-          initRender(`w`)
+        # "onInit".resadd quote do:
+        #   initRender(`w`)
     of "focus":
       eventName.resaddas e.focused: `body`
     of "fullscreen", "fullscreenchanged":
@@ -428,7 +433,9 @@ proc runImpl(w: NimNode, a: NimNode): NimNode =
 
     case eventName[2..eventName.high].toLower
     of "close":  eproc CloseEvent
-    of "render": eproc RenderEvent
+    of "render":
+      when wt == WinRKind.picture:
+        eproc PictureRenderEvent
     of "tick":   eproc TickEvent
     of "resize": eproc ResizeEvent
     of "windowmove": eproc WindowMoveEvent
@@ -452,12 +459,14 @@ proc runImpl(w: NimNode, a: NimNode): NimNode =
   result.add quote do:
     run `w`
 
-macro run*(w: var Window, a: untyped) =
+macro run*(w: var SomeWindow, a: untyped) =
   ## run window macro
   ## 
   ## to add a new render engine, add `init_RENDERNAME_Render(var Window) -> void` and `RENDERNAME_Render(Picture|Window) -> RENDERINTERFACE` procs
-  runImpl w, a
+  runImpl w, a:
+    when w is PictureWindow: WinRKind.picture
+    else: WinRKind.noRender
 
-template run*(w: Window, a: untyped) =
+template run*(w: SomeWindow, a: untyped) =
   var window {.inject, used.} = w
   run window, a
