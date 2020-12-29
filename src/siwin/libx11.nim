@@ -242,13 +242,14 @@ proc send*(a: Window, e: XEvent, mask: clong = NoEventMask, propagate: bool = fa
 proc newClientMessage*[T](window: Window, messageKind: Atom, data: openarray[T], serial: int = 0, sendEvent: bool = false): XEvent =
   result.theType = ClientMessage
   result.xclient.messageType = messageKind
-  if data.len * T.sizeof > 20:
-    raise X11ValueError.newException("to much data in client message (>20 bytes)")
+  if data.len * T.sizeof > XClientMessageData.sizeof:
+    raise X11ValueError.newException(&"to much data in client message (>{XClientMessageData.sizeof} bytes)")
   copyMem(result.xclient.data.addr, data.dataAddr, data.len * T.sizeof)
   result.xclient.format = case T.sizeof
     of 1: 8
     of 2: 16
     of 4: 32
+    of 8: 32 #?
     else: 8
   result.xclient.window = window
   result.xclient.display = display

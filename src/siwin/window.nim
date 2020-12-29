@@ -124,7 +124,7 @@ type
       curCursor: Cursor
 
       m_pos: tuple[x, y: int]
-      requesedSize: Option[tuple[x, y: int]]
+      requestedSize: Option[tuple[x, y: int]]
 
     elif defined(windows):
       handle: HWnd
@@ -566,7 +566,6 @@ when defined(linux):
     ##* this proc is lazy, don't try get size of window after it
     ## track when the fullscreen state will be applied in the onFullscreenChanged event
     if m_isFullscreen == v: return
-    #TODO также смотреть на запрошенное значение, а не только на реальное
     
     xwin.root.send(
       xwin.newClientMessage(NetWmState, [Atom 2, atom NetWmStateFullscreen]), # 2 - переключить, 1 - добавить, 0 - убрать
@@ -590,7 +589,7 @@ when defined(linux):
       a.updateSize()
     else:
       a.fullscreen = false
-      requesedSize = some size
+      requestedSize = some size
 
   proc `cursor=`*(a: var Window, kind: Cursor) {.with.} =
     ## set cursor font, used when mouse hover window
@@ -698,9 +697,9 @@ when defined(linux):
           elif atom(NetWmStateFullscreen) notin wmState and m_isFullscreen:
             m_isFullscreen = false
             pushEvent onFullscreenChanged, (false)
-            if isSome a.requesedSize:
-              a.size = get a.requesedSize
-              a.requesedSize = none tuple[x, y: int]
+            if isSome a.requestedSize:
+              a.size = get a.requestedSize
+              a.requestedSize = none tuple[x, y: int]
 
         of MotionNotify:
           let oldPos = mouse.position

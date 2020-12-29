@@ -119,14 +119,14 @@ test "picture window":
 #   echo x
 #   check a == true
 
-# test "screen":
-#   if screenCount == 1:
-#     let size = screen().size
-#     echo &"screen().size: {size.x}x{size.y}"
-#   else:
-#     for i in 0..<screenCount:
-#       let size = screen(i).size
-#       echo &"screen({i}).size: {size.x}x{size.y}"
+test "screen":
+  if screenCount == 1:
+    let size = screen().size
+    echo &"screen().size: {size.x}x{size.y}"
+  else:
+    for i in 0..<screenCount:
+      let size = screen(i).size
+      echo &"screen({i}).size: {size.x}x{size.y}"
 
 # test "readme render example":
 #   run newPictureWindow(w=screen().size.x, title="render example"):
@@ -137,21 +137,21 @@ test "picture window":
 #     keyup escape:
 #       close window
 
-# test "readme manage window example":
-#   var win = newPictureWindow(w=800, h=600, title="manage example", fullscreen=true)
-#   win.onKeyup = proc(e: KeyEvent) =
-#     if e.key == Key.f1:
-#       win.fullscreen = not win.fullscreen
-#     elif e.key == Key.f2:
-#       win.size = (1280, 720)
-#     elif e.key == Key.escape:
-#       close win
-#   win.onRender = proc(e: PictureRenderEvent) =
-#     let r = render win
-#     r.clear color"202020"
-#   win.onFullscreenChanged = proc(e: StateChangedEvent) =
-#     win.position = (screen().size.x div 2 - win.size.x div 2, screen().size.y div 2 - win.size.y div 2)
-#   run win
+test "readme manage window example":
+  var win = newPictureWindow(w=800, h=600, title="manage example", fullscreen=true)
+  win.onKeyup = proc(e: KeyEvent) =
+    if e.key == Key.f1:
+      win.fullscreen = not win.fullscreen
+    elif e.key == Key.f2:
+      win.size = (1280, 720)
+    elif e.key == Key.escape:
+      close win
+  win.onRender = proc(e: PictureRenderEvent) =
+    let r = render win
+    r.clear color"202020"
+  win.onFullscreenChanged = proc(e: StateChangedEvent) =
+    win.position = (screen().size.x div 2 - win.size.x div 2, screen().size.y div 2 - win.size.y div 2)
+  run win
 
 test "clipboard":
   echo $clipboard   #= `clipboard.text`
