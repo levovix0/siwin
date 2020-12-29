@@ -2,7 +2,7 @@ import siwin
 import unittest, strformat
 
 test "no render window":
-  var win = newNoRenderWindow(title="Окошко")
+  var win = newWindow(title="Окошко", renderEngine=none)
   
   var a = false
   win.onClose = proc(e: CloseEvent) =
@@ -20,7 +20,7 @@ test "no render window":
   check a == true
 
 test "picture window":
-  var win = newPictureWindow(title="Окошко")
+  var win = newWindow(title="Окошко")
   
   var a = false
   win.onClose = proc(e: CloseEvent) =
@@ -74,7 +74,7 @@ test "picture window":
 #   let k = [Key.x, Key.y]
 #   var t = true
 
-#   run newPictureWindow(title="Окошко"):
+#   run newWindow(title="Окошко", renderEngine=picture):
 #     init:
 #       var icon = newImage(32, 32)
 #       let r = render icon
@@ -129,7 +129,7 @@ test "screen":
       echo &"screen({i}).size: {size.x}x{size.y}"
 
 # test "readme render example":
-#   run newPictureWindow(w=screen().size.x, title="render example"):
+#   run newWindow(w=screen().size.x, title="render example", renderEngine=picture):
 #     render as r:
 #       r.clear color"202020"
 #       for i in r.area.a.x..r.area.b.x:
@@ -138,7 +138,7 @@ test "screen":
 #       close window
 
 test "readme manage window example":
-  var win = newPictureWindow(w=800, h=600, title="manage example", fullscreen=true)
+  var win = newWindow(w=800, h=600, title="manage example", fullscreen=true, renderEngine=picture)
   win.onKeyup = proc(e: KeyEvent) =
     if e.key == Key.f1:
       win.fullscreen = not win.fullscreen

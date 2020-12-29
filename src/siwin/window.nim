@@ -12,9 +12,6 @@ when defined(windows):
 
 publicInterface:
   Window:
-    newWindow(w, h: int, title: string, Screen)
-    newWindow(size: Vec2, title: string, Screen)
-
     close() {.lazy.}
     opened -> bool
 
@@ -36,6 +33,8 @@ publicInterface:
     getPicture -> Picture
     redraw() {.lazy.}
 
+  newWindow(w, h: int, title: string, Screen, RenderEngine)
+  newWindow(size: Vec2, title: string, Screen, RenderEngine)
   run SomeWindow
   
   MouseButton enum
@@ -150,6 +149,10 @@ type
       hdc: HDC
 
   SomeWindow = Window|PictureWindow
+  RenderEngine* {.pure.} = enum
+    none
+    picture
+    # opengl
 
 
   CloseEvent* = tuple
@@ -464,7 +467,7 @@ when defined(linux):
     destroy ximg
     `=destroy` a.Window
 
-  proc newNoRenderWindowImpl(w, h: int; screen: Screen, fullscreen: bool): Window {.with: result.} =
+  proc initNoRenderWindow(a: var Window; w, h: int; screen: Screen, fullscreen: bool) {.with.} =
     xscr = screen.id
     m_size = (w, h)
     let root = defaultRootWindow()
@@ -493,34 +496,9 @@ when defined(linux):
     m_hasFocus = true
     curCursor = arrow
   
-  proc newPictureWindowImpl(w, h: int; screen: Screen, fullscreen: bool): PictureWindow {.with: result.} =
-    xscr = screen.id
-    m_size = (w, h)
-    let root = defaultRootWindow()
+  proc initPictureWindow(a: var PictureWindow; w, h: int; screen: Screen, fullscreen: bool) {.with.} =
+    a.initNoRenderWindow(w, h, screen, fullscreen)
 
-    xwin = newSimpleWindow(root, 0, 0, w, h, 0, 0, xscr.blackPixel)
-    xwin.input = [ 
-      ExposureMask, KeyPressMask, KeyReleaseMask, PointerMotionMask, ButtonPressMask,
-      ButtonReleaseMask, StructureNotifyMask, EnterWindowMask, LeaveWindowMask, FocusChangeMask
-    ]
-    
-    m_isFullscreen = fullscreen
-    if fullscreen:
-      xwin.netWmState = [NetWmStateFullscreen]
-      m_size = window.screen().size
-
-    map xwin
-    xwin.wmProtocols = [WmDeleteWindow]
-
-    xinMethod = d.XOpenIM(nil, nil, nil)
-    if xinMethod != nil:
-      xinContext = xinMethod.XCreateIC(
-        x.XNClientWindow, xwin, x.XNFocusWindow, xwin, x.XNInputStyle, x.XIMPreeditNothing or x.XIMStatusNothing, nil
-      )
-
-    m_isOpen = true
-    m_hasFocus = true
-    curCursor = arrow
     waitForReDraw = true
     gc = xwin.newGC(GCForeground or GCBackground)
 
@@ -1114,16 +1092,22 @@ else:
 
 
 proc newNoRenderWindow*(w: int = 1280, h: int = 720, title: string = "", screen = screen(), fullscreen: bool = false): Window =
-  result = newNoRenderWindowImpl(w, h, screen, fullscreen)
+  result.initNoRenderWindow(w, h, screen, fullscreen)
   result.title = title
 proc newNoRenderWindow*(size: tuple[x, y: int], title: string = "", screen = screen(), fullscreen: bool = false): Window =
   newNoRenderWindow(size.x, size.y, title, screen, fullscreen)
 
 proc newPictureWindow*(w: int = 1280, h: int = 720, title: string = "", screen = screen(), fullscreen: bool = false): PictureWindow =
-  result = newPictureWindowImpl(w, h, screen, fullscreen)
+  result.initPictureWindow(w, h, screen, fullscreen)
   result.title = title
 proc newPictureWindow*(size: tuple[x, y: int], title: string = "", screen = screen(), fullscreen: bool = false): PictureWindow =
   newPictureWindow(size.x, size.y, title, screen, fullscreen)
+
+template newWindow*(w: int = 1280, h: int = 720, title: string = "", screen = screen(), fullscreen: bool = false, renderEngine: RenderEngine = picture): SomeWindow =
+  when renderEngine == RenderEngine.none:    newNoRenderWindow(w, h, title, screen, fullscreen)
+  elif renderEngine == RenderEngine.picture: newPictureWindow(w, h, title, screen, fullscreen)
+template newWindow*(w: int = 1280, h: int = 720, title: string = "", screen = screen(), fullscreen: bool = false, renderEngine: RenderEngine = picture): SomeWindow =
+  newWindow(size.x, size.y, title, screen, fullscreen, renderEngine)
 
 template w*(a: Screen): int = a.size.x
   ## width of screen
