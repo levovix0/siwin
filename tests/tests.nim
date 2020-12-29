@@ -153,5 +153,5 @@ test "picture window":
 #     win.position = (screen().size.x div 2 - win.size.x div 2, screen().size.y div 2 - win.size.y div 2)
 #   run win
 
-# test "clipboard":
-#   echo $clipboard   #= `clipboard.text`
+test "clipboard":
+  echo $clipboard   #= `clipboard.text`

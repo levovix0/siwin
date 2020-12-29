@@ -34,6 +34,7 @@ type
     NET_WM_STATE
     NET_WM_NAME
     NET_WM_ICON_NAME
+    SIWIN_CLIPBOARD_TARGET_PROPERTY
 
 
 
@@ -159,8 +160,15 @@ proc property*(a: Window, name: Atom, t: typedesc = typedesc[byte]): tuple[data:
     raise X11Defect.newException("failed to get property " & $name)
   result.data = data.toSeq(n.int * (format div (8 * t.sizeof)))
   discard XFree data
-proc property*(a: Window, name: AtomKind, t: typedesc = typedesc[byte]): tuple[data: seq[t], kind: Atom] =
+
+proc property*(a: Window, name: Atom, t: typedesc[string]): tuple[data: string, kind: Atom] =
+  let a = a.property(name, char)
+  result.kind = a.kind
+  result.data = $cast[cstring]((a.data & '\0').dataAddr)
+
+proc property*(a: Window, name: AtomKind, t: typedesc = typedesc[byte]): auto =
   a.property(atom name, t)
+
 
 proc netWmState*(a: Window): seq[Atom] =
   let v = a.property(NetWmState, Atom)
@@ -228,8 +236,8 @@ proc put*(a: GraphicsContext, image: PXImage, srcPos: tuple[x, y: int] = (0, 0),
   a.put(image, image.size, srcPos, destPos)
 
 
-proc send*(a: Window, e: XEvent, mask: clong = NoEventMask) =
-  discard display.XSendEvent(a, 0, mask, e.unsafeAddr)
+proc send*(a: Window, e: XEvent, mask: clong = NoEventMask, propagate: bool = false) =
+  discard display.XSendEvent(a, propagate.XBool, mask, e.unsafeAddr)
 
 proc newClientMessage*[T](window: Window, messageKind: Atom, data: openarray[T], serial: int = 0, sendEvent: bool = false): XEvent =
   result.theType = ClientMessage

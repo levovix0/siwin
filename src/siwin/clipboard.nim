@@ -12,17 +12,16 @@ type Clipboard = object
     inited: bool
 
 when defined(linux):
-  proc close*(a: var Clipboard) = with a:
+  proc close*(a: var Clipboard) {.with.} =
     if inited:
       inited = false
       content = ""
       
       if display.XGetSelectionOwner(atom(AtomKind.Clipboard)) == xwin:
         discard display.XSetSelectionOwner(atom(AtomKind.Clipboard), None, CurrentTime)
-      xcheck display.XDestroyWindow(xwin)
+      destroy xwin
       discard XFlush display
       
-      disconnect()
       clipboardProcessEvents = proc() = discard
 
   proc `=destroy`(a: var Clipboard) =
@@ -45,23 +44,9 @@ when defined(linux):
         
         if e.property == None or e.selection != atom(AtomKind.Clipboard):
           continue
-
-        var
-          kind: Atom
-          format: cint
-          items: culong
-          remainingBytes: culong
-          data: cstring
         
-        if display.XGetWindowProperty(
-          xwin, atom"SIWIN_CLIPBOARD_TARGET_PROPERTY", 0, 0x7fffffff, 0, AnyPropertyType,
-          kind.addr, format.addr, items.addr, remainingBytes.addr, cast[PPCUchar](data.addr)
-        ) == Success:
-          if kind != atom(INCR):
-            result = $data
-
-          xcheck XFree data
-          xcheck display.XDeleteProperty(xwin, atom"SIWIN_CLIPBOARD_TARGET_PROPERTY")
+        result = xwin.property(SiwinClipboardTargetProperty, string).data
+        discard display.XDeleteProperty(xwin, atom SiwinClipboardTargetProperty)
 
         responsed = true
       
@@ -82,7 +67,7 @@ when defined(linux):
             if atom(Utf8String) != None: targets.add atom(Utf8String)
             discard display.XChangeProperty(e.requestor, e.property, XaAtom, 32, PropModeReplace, cast[PCUChar](targets[0].addr), targets.len.cint)
             resp.target = atom Targets
-            xcheck display.XSendEvent(e.requestor, 1, NoEventMask, cast[PXEvent](resp.addr))
+            (Window e.requestor).send(cast[XEvent](resp), propagate=true)
             continue
 
           elif e.target in [XaString, atom(Text)] or (atom(Utf8String) != None and e.target == atom(Utf8String)):
@@ -92,37 +77,36 @@ when defined(linux):
               e.requestor, e.property, resp.target,
               8, PropModeReplace, cast[PCUChar](if content.len > 0: content[0].addr else: nil), content.len.cint
             )
-            xcheck display.XSendEvent(e.requestor, 1, NoEventMask, cast[PXEvent](resp.addr))
+            (Window e.requestor).send(cast[XEvent](resp), propagate=true)
             continue
         
         # рассказать, что нам не удалось обработать запрос
         resp.target = e.target
         resp.property = None
-        xcheck display.XSendEvent(e.requestor, 1, NoEventMask, cast[PXEvent](resp.addr))
+        (Window e.requestor).send(cast[XEvent](resp), propagate=true)
 
       else: discard
 
   proc initClipboard() = with clipboard:
     if not inited:
-      connect()
-      xwin = XCreateSimpleWindow(display, display.DefaultRootWindow, 0, 0, 1, 1, 0, 0, 0) ## невидимое окно. костыли!
-      xcheck display.XSelectInput(xwin, SelectionNotify or SelectionRequest or SelectionClear)
+      xwin = newSimpleWindow(defaultRootWindow(), 0, 0, 1, 1, 0, 0, 0) ## невидимое окно. костыли!
+      xwin.input = [SelectionNotify, SelectionRequest, SelectionClear]
       inited = true
       clipboardProcessEvents = proc() =
         var rsp: bool
         discard clipboard.processEvents(rsp)
 
-  proc text*(a: var Clipboard): string = with a:
+  proc text*(a: var Clipboard): string {.with.} =
     initClipboard()
-    if display.XGetSelectionOwner(atom(AtomKind.Clipboard)) == None:
+    if display.XGetSelectionOwner(atom AtomKind.Clipboard) == None:
       content = ""
       return ""
     var rsp: bool
     discard a.processEvents(rsp)
     
     discard display.XConvertSelection(
-      atom(AtomKind.Clipboard), if atom(Utf8String) != 0: atom(Utf8String) else: XaString,
-      atom"SIWIN_CLIPBOARD_TARGET_PROPERTY", xwin, CurrentTime
+      atom AtomKind.Clipboard, if atom(Utf8String) != 0: atom(Utf8String) else: XaString,
+      atom SiwinClipboardTargetProperty, xwin, CurrentTime
     )
 
     let beginTime = getTime()
@@ -131,14 +115,14 @@ when defined(linux):
     while not rsp and getTime() - beginTime < initDuration(seconds=1):
       result = a.processEvents(rsp)
 
-  proc `text=`*(a: var Clipboard, s: string) = with a:
+  proc `text=`*(a: var Clipboard, s: string) {.with.} =
     initClipboard()
     
     content = s
-    discard display.XSetSelectionOwner(atom(AtomKind.Clipboard), xwin, CurrentTime)
+    discard display.XSetSelectionOwner(atom AtomKind.Clipboard, xwin, CurrentTime)
 
-    if display.XGetSelectionOwner(atom(AtomKind.Clipboard)) != xwin:
-      raise X11Error.newException("failed to set selection owner")
+    if display.XGetSelectionOwner(atom AtomKind.Clipboard) != xwin:
+      raise X11Defect.newException("failed to set selection owner")
 
 elif defined(windows):
   proc text*(a: var Clipboard): string =
