@@ -5,7 +5,6 @@ license       = "MIT"
 srcDir        = "src"
 
 requires "nim >= 1.4"
-requires "with"
 
 when defined linux:
   requires "x11"

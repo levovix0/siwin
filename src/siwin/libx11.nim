@@ -192,6 +192,7 @@ proc `cursor=`*(a: Window, c: Cursor) =
 
 
 proc rootWindow*(screen: cint): Window = Window display.RootWindow(screen)
+proc defaultRootWindow*(): Window = Window display.DefaultRootWindow
 proc defaultDepth*(screen: cint): cuint = cuint display.DefaultDepth(screen)
 proc defaultVisual*(screen: cint): PVisual = display.DefaultVisual(screen)
 proc blackPixel*(screen: cint): culong = display.BlackPixel(screen)

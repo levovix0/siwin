@@ -1,6 +1,6 @@
 when defined(linux):
   import times
-  import with
+  import utils
   import libx11 as x
 when defined(windows):
   import libwinapi

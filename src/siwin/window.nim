@@ -1,5 +1,4 @@
 import times, os
-import with
 import image, utils
 when defined(linux):
   import strformat, options
@@ -452,16 +451,8 @@ template screenCount*: int = getScreenCount()
 
 
 
-template withWindow(a: SomeWindow, body: untyped) =
-  when a is PictureWindow:
-    with (a, a.Window):
-      body
-  elif a is Window:
-    with a:
-      body
-
 when defined(linux):
-  proc `=destroy`*(a: var Window) = with a:
+  proc `=destroy`*(a: var Window) {.with.} =
     if xinContext != nil: destroy xinContext
     if xinMethod != nil: close xinMethod
     if xcursor != 0: destroy xcursor
@@ -473,10 +464,10 @@ when defined(linux):
     destroy ximg
     `=destroy` a.Window
 
-  proc newNoRenderWindowImpl(w, h: int; screen: Screen, fullscreen: bool): Window = with result:
+  proc newNoRenderWindowImpl(w, h: int; screen: Screen, fullscreen: bool): Window {.with: result.} =
     xscr = screen.id
     m_size = (w, h)
-    let root = x.Window d.DefaultRootWindow
+    let root = defaultRootWindow()
 
     xwin = newSimpleWindow(root, 0, 0, w, h, 0, 0, xscr.blackPixel)
     xwin.input = [ 
@@ -501,11 +492,11 @@ when defined(linux):
     m_isOpen = true
     m_hasFocus = true
     curCursor = arrow
-
-  proc newPictureWindowImpl(w, h: int; screen: Screen, fullscreen: bool): PictureWindow = withWindow result:
+  
+  proc newPictureWindowImpl(w, h: int; screen: Screen, fullscreen: bool): PictureWindow {.with: result.} =
     xscr = screen.id
     m_size = (w, h)
-    let root = x.Window d.DefaultRootWindow
+    let root = defaultRootWindow()
 
     xwin = newSimpleWindow(root, 0, 0, w, h, 0, 0, xscr.blackPixel)
     xwin.input = [ 
@@ -543,14 +534,14 @@ when defined(linux):
     else:
       if a.event != nil: a.event((args,))
 
-  proc `title=`*(a: Window, title: string) = with a:
+  proc `title=`*(a: Window, title: string) {.with.} =
     ## set window title
     xwin.netWmName = title
     xwin.netWmIconName = title
     d.Xutf8SetWMProperties(xwin, title, title, nil, 0, nil, nil, nil)
   
   proc opened*(a: Window): bool = a.m_isOpen
-  proc close*(a: var Window) {.lazy.} = with a:
+  proc close*(a: var Window) {.lazy, with.} =
     ## close request
     if not m_isOpen: return
     xwin.send xwin.newClientMessage(WmProtocols, [atom WmDeleteWindow, CurrentTime])
@@ -559,9 +550,9 @@ when defined(linux):
   proc redraw*(a: var PictureWindow) {.lazy.} = a.waitForReDraw = true
     ## render request
 
-  proc updateSize(a: var Window) = with a:
+  proc updateSize(a: var Window) {.with.} =
     m_size = xwin.geometry.size
-  proc updateSize(a: var PictureWindow) = withWindow a:
+  proc updateSize(a: var PictureWindow) {.with.} =
     updateSize a.Window
     destroy ximg
     m_data = malloc[Color](m_size.x * m_size.y)
@@ -570,7 +561,7 @@ when defined(linux):
   
   proc fullscreen*(a: Window): bool = a.m_isFullscreen
     ## get real fullscreen state of window
-  proc `fullscreen=`*(a: var Window, v: bool) {.lazy.} = with a:
+  proc `fullscreen=`*(a: var Window, v: bool) {.lazy, with.} =
     ## set fullscreen
     ##* this proc is lazy, don't try get size of window after it
     ## track when the fullscreen state will be applied in the onFullscreenChanged event
@@ -583,7 +574,7 @@ when defined(linux):
     )
   
   proc position*(a: Window): tuple[x, y: int] = a.xwin.geometry.position
-  proc `position=`*(a: var Window, p: tuple[x, y: int]) = with a:
+  proc `position=`*(a: var Window, p: tuple[x, y: int]) {.with.} =
     ## move window
     ## do nothing if window is fullscreen
     if m_isFullscreen: return
@@ -591,7 +582,7 @@ when defined(linux):
     m_pos = p
   
   proc size*(a: Window): tuple[x, y: int] = a.m_size
-  proc `size=`*(a: var Window, size: tuple[x, y: int]) = with a:
+  proc `size=`*(a: var Window, size: tuple[x, y: int]) {.with.} =
     ## resize window
     ## exit fullscreen if window is fullscreen
     if not a.fullscreen:
@@ -601,7 +592,7 @@ when defined(linux):
       a.fullscreen = false
       requesedSize = some size
 
-  proc `cursor=`*(a: var Window, kind: Cursor) = with a:
+  proc `cursor=`*(a: var Window, kind: Cursor) {.with.} =
     ## set cursor font, used when mouse hover window
     if kind == curCursor: return
     if xcursor != 0: destroy xcursor
@@ -616,7 +607,7 @@ when defined(linux):
     syncX()
     curCursor = kind
 
-  proc newPixmap(img: Picture, a: Window): Pixmap = with a:
+  proc newPixmap(img: Picture, a: Window): Pixmap {.with: a.} =
     var ddata = malloc[Color](img.size.x * img.size.y)
     copyMem(ddata, img.data, Color.sizeof * img.size.x * img.size.y)
     let image = newXImage(img.size, ddata, xscr.defaultVisual, xscr.defaultDepth)
@@ -625,7 +616,7 @@ when defined(linux):
     result.newGC.put image
     destroy image
 
-  proc `icon=`*(a: var Window, img: Picture) = with a:
+  proc `icon=`*(a: var Window, img: Picture) {.with.} =
     ## set window icon
     if xicon != 0: destroy xicon
     if xiconMask != 0: destroy xiconMask
@@ -638,7 +629,7 @@ when defined(linux):
     xiconMask = newPixmap(mask, a)
 
     xwin.wmHints = newWmHints(xicon, xiconMask)
-  proc `icon=`*(a: var Window, _: nil.typeof) = with a:
+  proc `icon=`*(a: var Window, _: nil.typeof) {.with.} =
     ## clear window icon
     if xicon != 0: destroy xicon
     if xiconMask != 0: destroy xiconMask
@@ -646,7 +637,7 @@ when defined(linux):
     xiconMask = 0.Pixmap
     xwin.wmHints = newWmHints(xicon, xiconMask)
 
-  proc run*(a: var SomeWindow) = withWindow a:
+  proc run*(a: var SomeWindow) {.with.} =
     ## run main loop of window
     template pushEvent(event, args) = a.pushEvent(event, args)
     
