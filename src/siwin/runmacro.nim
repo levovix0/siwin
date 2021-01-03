@@ -1,23 +1,14 @@
-import macros, strformat, strutils, unicode, tables, sequtils, algorithm
+import macros, strformat, strutils, unicode, tables, sequtils, algorithm, utils, sugar, sinim
 import window
 
 type
   SomeWindow = Window|PictureWindow
-  WinRKind {.pure.} = enum noRender picture
-
-proc high(a: NimNode): int = a.len - 1
-
-proc toNimCorrect(a: string): string =
-  let r = a.toRunes
-  if r.len < 1: return
-  result = $r[0]
-  result.add toLower $r[1..r.high]
 
 proc kindStrings(a: typedesc): seq[string] {.compileTime.} =
   let b = a.getTypeImpl
   b.expectKind nnkEnumTy
   for c in b:
-    if c.kind == nnkSym: result.add c.strVal.toNimCorrect
+    if c.kind == nnkSym: result.add c.strVal.toNimUniversal
 
 const keyKindStrings = Key.kindStrings
 const mouseButtonKindStrings = MouseButton.kindStrings
@@ -28,21 +19,26 @@ proc ofEnum(a: NimNode, b: typedesc): NimNode =
     elif b is typedesc[MouseButton]: mouseButtonKindStrings
     else: b.kindStrings
 
-  if a.kind == nnkIdent and a.strVal.toNimCorrect in possible:
+  if a.kind == nnkIdent and a.strVal.toNimUniversal in possible:
     nnkDotExpr.newTree(quote do: `b`, a)
   else:
     a
 
-proc newLit*(a: openArray[Key]): NimNode {.compileTime.} =
-  result = nnkBracket.newTree
-  for v in a: result.add newLit(v)
+
+proc check*(a, b: Key): bool = a == b
+proc check*(a: Key, b: openarray[Key]): bool = a in b
+proc check*(a: Key, b: proc(a: Key): bool): bool = b(a)
+proc check*(a, b: MouseButton): bool = a == b
+proc check*(a: MouseButton, b: openarray[MouseButton]): bool = a in b
+proc check*(a: MouseButton, b: proc(a: MouseButton): bool): bool = b(a)
+
 
 var keyNameBindings* {.compileTime.}: Table[string, seq[Key]]
 
-macro makeKeyNameBinding*(name: untyped, match: static[openArray[Key]]): untyped =
+macro makeKeyNameBinding*(name: untyped, match: static[openarray[Key]]): untyped =
   name.expectKind nnkIdent
-  let matchLit = newLit match
-  keyNameBindings[name.strVal.toNimCorrect] = match.toSeq
+  let matchLit = newArrayLit match
+  keyNameBindings[name.strVal.toNimUniversal] = match.toSeq
 
   result = quote do:
     proc `name`*(a: Key): bool = a in `matchLit`
@@ -57,11 +53,11 @@ makeKeyNameBinding shift,   [lshift, rshift]
 
 makeKeyNameBinding alt,     [lalt, ralt]
 
-makeKeyNameBinding system,  [lsystem, lsystem]
-makeKeyNameBinding meta,    [lsystem, lsystem]
-makeKeyNameBinding super,   [lsystem, lsystem]
-makeKeyNameBinding windows, [lsystem, lsystem]
-makeKeyNameBinding win,     [lsystem, lsystem]
+makeKeyNameBinding system,  [lsystem, rsystem]
+makeKeyNameBinding meta,    [lsystem, rsystem]
+makeKeyNameBinding super,   [lsystem, rsystem]
+makeKeyNameBinding windows, [lsystem, rsystem]
+makeKeyNameBinding win,     [lsystem, rsystem]
 
 makeKeyNameBinding esc,     [Key.escape]
 
@@ -78,7 +74,7 @@ proc contains*(a: array[Key.a..Key.pause, bool], b: openArray[Key]): bool =
       return
 
 proc nameToKeys(a: string): seq[Key] {.compileTime.} =
-  let a = a.toNimCorrect
+  let a = a.toNimUniversal
   if keyNameBindings.hasKey a: keyNameBindings[a]
   else: @[parseEnum[Key](a)]
 
@@ -94,7 +90,7 @@ proc genExPressedKeySeq(a: seq[NimNode]): seq[Key] {.compileTime.} =
   for v in r.reversed:
     result.delete v.ord
 
-proc runImpl(w: NimNode, a: NimNode, wt: static[WinRKind]): NimNode =
+proc runImpl(w: NimNode, a: NimNode, wt: static[RenderEngine]): NimNode =
   a.expectKind nnkStmtList
   result = nnkStmtList.newTree()
 
@@ -105,195 +101,145 @@ proc runImpl(w: NimNode, a: NimNode, wt: static[WinRKind]): NimNode =
       block: `body`
 
   for b in a:
-    b.expectKind {nnkCall, nnkCommand, nnkPrefix, nnkInfix}
-    
+    var b = b
     var eventName = ""
     var pars: seq[NimNode]
-    var asNode: NimNode
-    template resaddastu(ename: string; a, tu, arr, body: untyped) =
-      if asNode == nil:
-        ename.resadd quote do:
-          body
-      else:
-        case asNode.kind
-        of nnkIdent:
-          ename.resadd quote do:
-            let `asNode` {.inject.} = a
-            body
-        of nnkPar:
-          var r = nnkVarTuple.newTree
-          for c in asNode:
-            r.add nnkPragmaExpr.newTree(c, nnkPragma.newTree(ident"inject"))
-          r.add nnkEmpty.newNimNode
-          r.add quote do: tu
-          ename.resadd nnkStmtList.newTree(nnkLetSection.newTree(r), quote do: body)
-        of nnkBracketExpr:
-          asNode = asNode[0]
-          asNode.expectKind nnkIdent
-          asNode.expectLen 1
-          ename.resadd quote do:
-            let `asNode` {.inject.} = arr
-            body
-        else: error(&"got {asNode.kind}, but expected ident, ident[] or tuple", asNode)
-    template resaddas(ename: string; a, arr, body: untyped) = ename.resaddastu a, a, arr, body
-    template resaddastu(ename: string; a, tu, body: untyped) =
-      if asNode == nil:
-        ename.resadd quote do:
-          body
-      else:
-        case asNode.kind
-        of nnkIdent:
-          ename.resadd quote do:
-            let `asNode` {.inject.} = a
-            body
-        of nnkPar:
-          var r = nnkVarTuple.newTree
-          for c in asNode:
-            r.add nnkPragmaExpr.newTree(c, nnkPragma.newTree(ident"inject"))
-          r.add nnkEmpty.newNimNode
-          r.add quote do: tu
-          ename.resadd nnkStmtList.newTree(nnkLetSection.newTree(r), quote do: body)
-        else: error(&"got {asNode.kind}, but expected ident or tuple", asNode)
-    template resaddas(ename: string; a, body: untyped) = ename.resaddastu a, a, body
-    template resaddasdo(ename: string, noas: untyped, a: untyped, arr: untyped) =
-      if asNode == nil:
-        ename.resadd quote do:
-          noas
-      else:
-        case asNode.kind
-        of nnkIdent:
-          ename.resadd quote do:
-            a
-        of nnkPar:
-          var r = nnkVarTuple.newTree
-          for c in asNode:
-            r.add nnkPragmaExpr.newTree(c, nnkPragma.newTree(ident"inject"))
-          r.add nnkEmpty.newNimNode
-          r.add quote do: a
-          ename.resadd nnkStmtList.newTree(nnkLetSection.newTree(r), quote do: body)
-        of nnkBracketExpr:
-          asNode = asNode[0]
-          asNode.expectKind nnkIdent
-          ename.resadd quote do:
-            arr
-        else: error(&"got {asNode.kind}, but expected ident, ident[] or tuple", asNode)
+    var body: NimNode
+    
 
     if b.kind == nnkPrefix:
-      let b = b[1]
-      if b.kind == nnkIdent:
-        eventName = "not" & b.strVal
-      else:
-        case b[0].kind
-        of nnkIdent: eventName = "not" & b[0].strVal
-        of nnkDotExpr:
-          b[0][1].expectKind nnkIdent
-          eventName = "not" & b[0][1].strVal
-          pars.add b[0][0]
-        else: error(&"got {b[0].kind}, but expected ident or dotExpr", b[0])
-        pars.add b[1..b.high]
-    else:
-      var b = b
-
-      if b.kind == nnkInfix:
-        if b[0] != ident"as": error(&"got {b[0].treeRepr}, but expected `as`, try to place brackets", b[0])
-        asNode = b[2]
-        var tmp = if b[1].kind == nnkIdent: nnkCall.newTree(b[1]) else: b[1]
-        for a in b[3..b.high]: tmp.add a
-        b = tmp
-
-      case b[0].kind
-      of nnkIdent: eventName = b[0].strVal
-      of nnkDotExpr:
-        b[0][1].expectKind nnkIdent
-        eventName = b[0][1].strVal
-        pars.add b[0][0]
-      else: error(&"got {b[0].kind}, but expected ident or dotExpr", b[0])
-      pars.add b[1..<b.high]
+      b[0].expectIdent "not"
+      eventName &= "not"
+      let c = b[2..^1]
+      b = b[1]
+      b &= c
     
-    if eventName.startsWith("on"): eventName = "on" & eventName[2..eventName.high].capitalize
-    else: eventName = "on" & eventName.capitalize
-    
-    let body = b[b.high]
 
-    proc lookKeyCombination(a: NimNode, enm: typedesc = Key): tuple[k: NimNode, c: seq[NimNode]] =
-      if a.kind == nnkInfix and a[0] == ident"+":
-        let (lk, lc) = a[1].lookKeyCombination(enm)
-        result.k = a[2]
-        if lc.len != 0: result.c.add lc
-        result.c.add lk
-      else:
-        result.k = a
-    proc parseKeyCombination(a: NimNode, enm: typedesc = Key): tuple[k: NimNode, cond: NimNode] =
-      let (lk, lc) = a.lookKeyCombination(enm)
-      result.k = lk.ofEnum(Key)
-      if lc == [ident"_"]:
-        let ex = genExPressedKeySeq(@[lk]).newLit
-        let e = ident"e"
-        result.cond = quote do: `ex` notin `e`.keyboard.pressed
-      elif lc.len > 0:
-        let ex = genExPressedKeySeq(lc & lk).newLit
-        let e = ident"e"
-        result.cond = quote do: `ex` notin `e`.keyboard.pressed
-        for c in lc:
-          let rc = result.cond
-          let rk = genPressedKeyCheck c.ofEnum(Key)
-          result.cond = quote do: `rk` and `rc`
-      else: result.cond = newLit true
+    var asNode = nil.NimNode
+    if b.kind == nnkInfix:
+      b.expectLen 4
+      b[0].expectIdent "as"
+      
+      asNode = b[2]
+      let body = b[3]
+      b = if b[1].kind == nnkIdent: nnkCall.newTree(b[1]) else: b[1]
+      b.add body
+
+
+    var genAs: proc(v: NimNode): NimNode = proc(v: NimNode): NimNode = discard
+    var asKind = nnkEmpty
+    if asNode != nil:
+      asKind = asNode.kind
+      
+      case asKind
+      of nnkIdent: discard
+      of nnkPar:
+        var r = nnkVarTuple.newTree
+        for c in asNode:
+          r &= nnkPragmaExpr.newTree(c, nnkPragma.newTree(ident"inject"))
+        r &= nnkEmpty.newNimNode
+        asNode = r
+      of nnkBracketExpr:
+        asNode.expectLen 1
+        asNode = asNode[0]
+        asNode.expectKind nnkIdent
+      else: error(&"got {asNode.kind}, but expected ident, ident[] or tuple", asNode)
+
+      case asKind
+      of nnkIdent, nnkBracketExpr:
+        genAs = proc(v: NimNode): NimNode = quote do:
+          let `asNode` {.inject.} = `v`
+      of nnkPar:
+        genAs = proc(v: NimNode): NimNode =
+          var r = asNode
+          r.add v
+          return nnkLetSection.newTree(r)
+      else: discard
+
+    proc sellectAs(a: NimNode, arr: NimNode): NimNode =
+      if asKind == nnkBracketExpr: genAs(arr)
+      else: genAs(a)
+    proc sellectAs(a: NimNode): NimNode =
+      if asKind == nnkBracketExpr: error(&"can't get event val as array", asNode)
+      else: return genAs(a)
+    
+    
+    b.expectKind {nnkCall, nnkCommand}
+    
+    case b[0].kind
+    of nnkIdent: eventName &= b[0].strVal
+    of nnkDotExpr:
+      b[0][1].expectKind nnkIdent
+      eventName &= b[0][1].strVal
+      pars.add b[0][0]
+    else: error(&"got {b[0].kind}, but expected ident or dotExpr", b[0])
+
+    pars.add b[1..^2]
+    body = b[^1]
+    
+    if not eventName.startsWith("on"):
+      eventName = "on" & eventName.capitalize
+
 
     let e = ident"e"
-    case eventName[2..eventName.high].toLower
+    
+    template resaddas(ename: string; a, arr, body: untyped) =
+      let asl {.inject.} = sellectAs(quote do: a, quote do: arr)
+      if asl != nil:
+        ename.resadd quote do:
+          `asl`
+          body
+      else:
+        ename.resadd quote do:
+          body
+
+    template resaddas(ename: string; a, body: untyped) =
+      let asl {.inject.} = sellectAs(quote do: a)
+      if asl != nil:
+        ename.resadd quote do:
+          `asl`
+          body
+      else:
+        ename.resadd quote do:
+          body
+    
+    proc parseKeyCombination(a: NimNode): tuple[key: NimNode, cond: NimNode] = withExcl result, []:
+      var keys = flattenInfix a
+      key = keys[^1].ofEnum(Key)
+
+      let needEx = ident"_" in keys or keys.len > 1
+      keys.delete ident"_"
+
+      if needEx:
+        let ex = genExPressedKeySeq(keys).newLit
+        cond = quote do: `ex` notin `e`.keyboard.pressed
+        for c in keys[0..^2].map(a => a.ofEnum(Key).genPressedKeyCheck):
+          cond = quote do: `c` and `cond`
+      else:
+        cond = newLit true
+
+    case eventName[2..^1].toLower
     of "keydown", "keyup":
       if pars.len == 1 and pars[0] != ident"any":
         var (k, c) = pars[0].parseKeyCombination
         eventName.resadd quote do:
-          when compiles(e.key == `k`):
-            if e.key == `k` and `c`:
-              `body`
-          elif compiles(e.key in `k`):
-            if (e.key in `k`) and `c`:
-              `body`
-          else:
-            if `k`(e.key) and `c`:
-              `body`
+          if check(`e`.key, `k`) and `c`:
+            `body`
       elif pars.len > 1:
-        var kk: seq[NimNode]
-        var cc: seq[NimNode]
-        var cs = false
-        for v in pars:
-          var (k, c) = v.parseKeyCombination
-          kk.add k
-          cc.add c
-          cs = cs or c != newLit true
-        if not cs:
-          var karr = nnkBracket.newTree
-          for a in kk: karr.add a
-          eventName.resadd quote do:
-            if e.key in `karr`:
-              `body`
-        else:
-          var cond = newLit true
-          for i in 0..kk.high:
-            let kn = kk[i]
-            let cn = cc[i]
-            cond = quote do: `cond` or (`cn` and e.key == `kn`)
-          eventName.resadd quote do:
-            if `cond`:
-              `body`
+        var cond = newLit true
+        for (k, c) in pars.map(a => parseKeyCombination a):
+          cond = quote do: `cond` or (`c` and check(`e`.key, `k`))
+        eventName.resadd quote do:
+          if `cond`:
+            `body`
       else: eventName.resadd body
 
     of "mousedown", "mouseup":
       if pars.len == 1 and pars[0] != ident"any":
         var k = pars[0].ofEnum(MouseButton)
         eventName.resadd quote do:
-          when compiles(e.button == `k`):
-            if e.button == `k`:
-              `body`
-          elif compiles(e.button in `k`):
-            if e.key in `k`:
-              `body`
-          else:
-            if `k`(e.button):
-              `body`
+          if check(e.button, `k`):
+            `body`
       elif pars.len > 1:
         var kk = nnkBracket.newTree()
         for v in pars:
@@ -307,52 +253,62 @@ proc runImpl(w: NimNode, a: NimNode, wt: static[WinRKind]): NimNode =
       if pars.len == 1 and pars[0] != ident"any":
         var k = pars[0].ofEnum(Key)
         "onTick".resaddas `k`:
-          if e.keyboard.pressed[`k`]:
+          if `e`.keyboard.pressed[`k`]:
             `body`
       elif pars.len > 1:
         var kk = nnkBracket.newTree()
         for v in pars:
           kk.add v.ofEnum(Key)
-        "onTick".resaddasdo do:
-          var prs = false
-          for k in `kk`:
-            if e.keyboard.pressed[k]: prs = true; break
-          if prs:
-            `body`
-        do:
-          var `asNode` {.inject.} = Key.unknown
-          for k in `kk`:
-            if e.keyboard.pressed[k]: `asNode` = k; break
-          if `asNode` != Key.unknown:
-            `body`
-        do:
-          var `asNode` {.inject.}: seq[Key]
-          for k in `kk`:
-            if e.keyboard.pressed[k]: `asNode`.add k
-          if `asNode`.len > 0:
-            `body`
+        case asKind
+        of nnkEmpty:
+          "onTick".resadd quote do:
+            var prs = false
+            for k in `kk`:
+              if e.keyboard.pressed[k]: prs = true; break
+            if prs:
+              `body`
+        of nnkIdent:
+          "onTick".resadd quote do:
+            var `asNode` {.inject.} = Key.unknown
+            for k in `kk`:
+              if e.keyboard.pressed[k]: `asNode` = k; break
+            if `asNode` != Key.unknown:
+              `body`
+        of nnkBracketExpr:
+          "onTick".resadd quote do:
+            var `asNode` {.inject.}: seq[Key]
+            for k in `kk`:
+              if e.keyboard.pressed[k]: `asNode`.add k
+            if `asNode`.len > 0:
+              `body`
+        else: error(&"got {asNode.kind}, but expected ident or ident[]", asNode)
       else:
-        "onTick".resaddasdo do:
-          if true in e.keyboard.pressed:
-            `body`
-        do:
-          var `asNode` {.inject.} = Key.unknown
-          for k, v in e.keyboard.pressed:
-            if v: `asNode` = k; break
-          if `asNode` != Key.unknown:
-            `body`
-        do:
-          var `asNode` {.inject.}: seq[Key]
-          for k, v in e.keyboard.pressed:
-            if v: `asNode`.add k
-          if `asNode`.len > 0:
-            `body`
+        case asKind
+        of nnkEmpty:
+          "onTick".resadd quote do:
+            if true in `e`.keyboard.pressed:
+              `body`
+        of nnkIdent:
+          "onTick".resadd quote do:
+            var `asNode` {.inject.} = Key.unknown
+            for k, v in `e`.keyboard.pressed:
+              if v: `asNode` = k; break
+            if `asNode` != Key.unknown:
+              `body`
+        of nnkBracketExpr:
+          "onTick".resadd quote do:
+            var `asNode` {.inject.}: seq[Key]
+            for k, v in `e`.keyboard.pressed:
+              if v: `asNode`.add k
+            if `asNode`.len > 0:
+              `body`
+        else: error(&"got {asNode.kind}, but expected ident or ident[]", asNode)
 
     of "notpressingkey", "notkeypressing", "notpressing":
       if pars.len == 1 and pars[0] != ident"any":
         var k = pars[0].ofEnum(Key)
         "onTick".resadd quote do:
-          if not e.keyboard.pressed[`k`]:
+          if not `e`.keyboard.pressed[`k`]:
             `body`
       elif pars.len > 1:
         var kk = nnkBracket.newTree()
@@ -361,65 +317,56 @@ proc runImpl(w: NimNode, a: NimNode, wt: static[WinRKind]): NimNode =
         "onTick".resadd quote do:
           var prs = false
           for k in `kk`:
-            if e.keyboard.pressed[k]: prs = true
+            if `e`.keyboard.pressed[k]: prs = true
           if not prs:
             `body`
       else:
         "onTick".resadd quote do:
-          if true notin e.keyboard.pressed:
+          if true notin `e`.keyboard.pressed:
             `body`
 
     of "click":
       if pars.len == 1 and pars[0] != ident"any":
         var k = pars[0].ofEnum(MouseButton)
-        eventName.resaddas e.position:
-          if e.button == `k`:
+        eventName.resaddas `e`.position:
+          if `e`.button == `k`:
             `body`
       if pars.len > 1:
         var kk = nnkBracket.newTree()
         for v in pars:
           kk.add v.ofEnum(MouseButton)
-        eventName.resaddas e.position:
-          if e.button in `kk`:
+        eventName.resaddas `e`.position:
+          if `e`.button in `kk`:
             `body`
       else:
-        eventName.resaddastu e.button, (btn: e.button, pos: e.position): `body`
+        eventName.resaddas `e`.position: `body`
 
     of "textenter":
-      eventName.resaddas e.text, e.text.toRunes: `body`
+      eventName.resaddas `e`.text, `e`.text.toRunes: `body`
     of "render":
-      if pars.len == 1 and pars[0] != ident"user":
-        pars[0].expectKind nnkIdent
-        let ci = nnkCall.newTree(ident("init" & pars[0].strVal.capitalize & "Render"), w)
-        let c = nnkCall.newTree(ident(pars[0].strVal & "Render"), w)
-        "onInit".resadd quote do:
-          when compiles(`ci`):
-            `ci`
-        eventName.resaddas `c`: `body`
-      elif pars.len > 1: error(&"got {pars.len} parametrs, but expected one of (), (renderEngine)", pars[1])
-      else:
+      when wt == RenderEngine.picture:
         eventName.resaddas `w`.render: `body`
-        # "onInit".resadd quote do:
-        #   initRender(`w`)
+      else:
+        error "can't render on window (no render engine)", b
     of "focus":
-      eventName.resaddas e.focused: `body`
+      eventName.resaddas `e`.focused: `body`
     of "fullscreen", "fullscreenchanged":
       if pars.len == 1:
         let c = pars[0]
-        "onFullscreenChanged".resaddas e.state:
-          if e.state == `c`:
+        "onFullscreenChanged".resaddas `e`.state:
+          if `e`.state == `c`:
             `body`
       elif pars.len > 1:
         error(&"got {pars.len} parametrs, but expected one of (), (state)", pars[1])
       else:
-        "onFullscreenChanged".resaddas e.state: `body`
+        "onFullscreenChanged".resaddas `e`.state: `body`
 
     of "scroll":
-      eventName.resaddas e.delta: `body`
+      eventName.resaddas `e`.delta: `body`
     of "mousemove", "mouseleave", "mouseenter", "windowmove":
-      eventName.resaddastu e.position, (old: e.oldPosition, cur: e.position): `body`
+      eventName.resaddas `e`.position: `body`
     of "resize":
-      eventName.resaddastu e.size, (old: e.oldSize, cur: e.size): `body`
+      eventName.resaddas `e`.size: `body`
 
     else: eventName.resadd body
 
@@ -431,10 +378,10 @@ proc runImpl(w: NimNode, a: NimNode, wt: static[WinRKind]): NimNode =
         `w`.`eventNameIdent` = proc(e {.inject.}: t) =
           `body`
 
-    case eventName[2..eventName.high].toLower
+    case eventName[2..^1].toLower
     of "close":  eproc CloseEvent
     of "render":
-      when wt == WinRKind.picture:
+      when wt == RenderEngine.picture:
         eproc PictureRenderEvent
     of "tick":   eproc TickEvent
     of "resize": eproc ResizeEvent
@@ -454,18 +401,17 @@ proc runImpl(w: NimNode, a: NimNode, wt: static[WinRKind]): NimNode =
     of "init":
       result.add quote do:
         `body`
-    else: error(&"unknown event: {eventName[2..eventName.high]}")
+    else: error(&"unknown event: {eventName[2..^1]}")
 
   result.add quote do:
     run `w`
 
-macro run*(w: var SomeWindow, a: untyped) =
+macro run*(w: var Window, a: untyped) =
   ## run window macro
-  ## 
-  ## to add a new render engine, add `init_RENDERNAME_Render(var Window) -> void` and `RENDERNAME_Render(Picture|Window) -> RENDERINTERFACE` procs
-  runImpl w, a:
-    when w is PictureWindow: WinRKind.picture
-    else: WinRKind.noRender
+  runImpl w, a, RenderEngine.none
+macro run*(w: var PictureWindow, a: untyped) =
+  ## run window macro
+  runImpl w, a, RenderEngine.picture
 
 template run*(w: SomeWindow, a: untyped) =
   var window {.inject, used.} = w

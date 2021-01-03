@@ -1,4 +1,5 @@
-import strformat, sequtils, typetraits, macros
+import strformat, sequtils, algorithm, typetraits, macros, unicode, sugar, sinim
+export sugar
 
 type
   ArrayPtr*[T] = distinct ptr T
@@ -45,16 +46,21 @@ converter toPointer*(a: ArrayPtr): pointer = a.pointer
 
 
 
+proc del*[T](a: var seq[T], item: T) =
+  let i = a.find(item)
+  if i != -1: a.del i
+proc delete*[T](a: var seq[T], item: T) =
+  let i = a.find(item)
+  if i != -1: a.delete i
+
+
+
 proc fieldName(a: NimNode): string =
   a.expectKind nnkIdentDefs
   if a[0].kind == nnkPostfix:
     a[0][1].strVal
   else:
     a[0].strVal
-
-proc newLit[T](a: openarray[T]): NimNode =
-  result = nnkBracket.newTree
-  for v in a: result.add newLit(v)
 
 proc genFieldBind(a: NimNode, x: NimNode): NimNode =
   a.expectKind nnkIdentDefs
@@ -139,18 +145,17 @@ macro with*(x: untyped, body: untyped): untyped =
       echo a, ", ", b
   
   if body.kind in {nnkProcDef, nnkFuncDef, nnkTemplateDef}:
+    let body = body.asRoutine
+
     var excl: seq[string]
-    if body[0].kind in {nnkIdent, nnkSym}:
-      excl &= body[0].strVal
-    for b in body[3][1..<body[3].len]:
-      b.expectKind nnkIdentDefs
-      excl &= b[0].strVal
-    let exclLit = excl.newLit
+    if body.hasName: excl &= body.name
+    excl &= body.args.map(a => a.name)
+    let exclLit = excl.newArrayLit
     
-    let r = body.last
-    result = body.kind.newTree()
-    result &= body[0..<(body.len-1)]
-    result &= (quote do: withExcl `x`, `exclLit`, `r`)
+    let r = body.impl
+    var res = body
+    res.impl = (quote do: withExcl `x`, `exclLit`, `r`)
+    result = body.NimNode
   else:
     return quote do:
       withExcl `x`, [], `body`
@@ -164,16 +169,16 @@ macro with*(body: untyped): untyped =
     proc f(v: var A) {.with.} =
       a = 10
   
-  body.expectKind {nnkProcDef, nnkFuncDef, nnkTemplateDef}
-  if body[3].len < 2:
+  let body = body.asRoutine
+  if body.args.len == 0:
     let prc = case body.kind
       of nnkFuncDef: "func"
       of nnkTemplateDef: "template"
       else: "proc"
     let hint =
-      if body[3][0].kind != nnkEmpty: "\ndid you mean `with: result`?"
+      if body.returnType.kind != nnkEmpty: "\ndid you mean `with: result`?"
       else: ""
-    error(&"at least one {prc} argument is required{hint}", body[3])
-  let x = body[3][1][0]
+    error(&"at least one {prc} argument is required{hint}", body.NimNode[3])
+  let x = body.args[0].nameNode
   return quote do:
     with `x`, `body`

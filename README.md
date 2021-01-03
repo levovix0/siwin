@@ -3,7 +3,7 @@ Nim Simple Window Maker
 
 # Features
 * window creation and management
-* `run` event loop creation macro
+* `run` event loop generation macro
 * render in window using picture (access pixels)
 * clipboard
 * OS Linux support (using X11)
@@ -11,16 +11,16 @@ Nim Simple Window Maker
 
 simple window:
 ```nim
-run newWindow():
+run newWindow(renderEngine=picture):
   render as r:
     r.clear color"202020"
-  keyup escape:
+  keyup esc:
     close window
 ```
 
 pixel access:
 ```nim
-run newWindow(w=screen().size.x, title="render example"):
+run newWindow(w=screen().size.x, title="render example", renderEngine=picture):
   render as r:
     r.clear color"202020"
     for i in r.area.a.x..r.area.b.x:
@@ -29,8 +29,7 @@ run newWindow(w=screen().size.x, title="render example"):
 
 manage window:
 ```nim
-var win = newWindow(w=800, h=600, title="manage example", fullscreen=true)
-win.initRender()
+var win = newWindow(w=800, h=600, title="manage example", fullscreen=true, renderEngine=picture)
 win.onKeyup = proc(e: KeyEvent) =
   if e.key == Key.f1:
     win.fullscreen = not win.fullscreen

@@ -61,18 +61,27 @@ type
   Mouse* = tuple
     position: tuple[x, y: int]
     pressed: array[MouseButton.left..MouseButton.backward, bool]
+
   Key* {.pure.} = enum
     unknown = -1
-    a = 0, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r, s, t, u, v, w, x, y, z,
-    n0, n1, n2, n3, n4, n5, n6, n7, n8, n9,
-    escape, lcontrol, lshift, lalt, lsystem, rcontrol, rshift, ralt, rsystem, menu, lbracket, rbracket,
-    semicolon, comma, dot, quote, slash, backslash, tilde, equal, minus, space, enter, backspace, tab,
-    pageUp, pageDown, End, home, insert, del, add, subtract, multiply, divide, left, right, up, down,
-    npad0, npad1, npad2, npad3, npad4, npad5, npad6, npad7, npad8, npad9,
-    f1, f2, f3, f4, f5, f6, f7, f8, f9, f10, f11, f12, f13, f14, f15, pause
+
+    a = 0, b c d e f g h i j k l m n o p q r s t u v w x y z
+    tilde n1 n2 n3 n4 n5 n6 n7 n8 n9 n0 minus equal
+    f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 f11 f12 f13 f14 f15
+    lcontrol rcontrol  lshift rshift  lalt ralt  lsystem rsystem  lbracket rbracket
+    space escape enter tab backspace menu
+    slash dot comma  semicolon quote  backslash
+
+    pageUp pageDown  home End  insert del
+    left right up down
+    npad0 npad1 npad2 npad3 npad4 npad5 npad6 npad7 npad8 npad9
+    add subtract multiply divide
+
+    pause
+
   Keyboard* = tuple
     pressed: array[Key.a..Key.pause, bool]
-    
+
   Cursor* {.pure.} = enum
     arrow arrowUp
     hand
@@ -155,6 +164,12 @@ type
     # opengl
 
 
+  Screen* = object
+    when defined(linux):
+      id: cint
+      xid: PScreen
+
+
   CloseEvent* = tuple
 
   PictureRenderEvent* = tuple
@@ -199,11 +214,6 @@ type
   TextEnterEvent* = tuple
     keyboard: Keyboard
     text: string # строка, т.к. введённый символ может быть закодирован в unicode
-
-  Screen* = object
-    when defined(linux):
-      id: cint
-      xid: PScreen
 
 when defined(linux):
   proc xkeyToKey(sym: KeySym): Key =
