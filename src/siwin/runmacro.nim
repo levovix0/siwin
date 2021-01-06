@@ -213,7 +213,7 @@ proc runImpl(w: NimNode, a: NimNode, wt: static[RenderEngine]): NimNode =
       if needEx:
         let ex = genExPressedKeySeq(keys).newLit
         cond = quote do: `ex` notin `e`.keyboard.pressed
-        for c in keys[0..^2].map(a => a.ofEnum(Key).genPressedKeyCheck):
+        for c in keys[0..^2].mapit(it.ofEnum(Key).genPressedKeyCheck):
           cond = quote do: `c` and `cond`
       else:
         cond = newLit true
@@ -226,13 +226,13 @@ proc runImpl(w: NimNode, a: NimNode, wt: static[RenderEngine]): NimNode =
           if check(`e`.key, `k`) and `c`:
             `body`
       elif pars.len > 1:
-        var cond = newLit true
-        for (k, c) in pars.map(a => parseKeyCombination a):
+        var cond = newLit false
+        for (k, c) in pars.map(parseKeyCombination):
           cond = quote do: `cond` or (`c` and check(`e`.key, `k`))
         eventName.resadd quote do:
           if `cond`:
             `body`
-      else: eventName.resadd body
+      else: eventName.resaddas `e`.key: `body`
 
     of "mousedown", "mouseup":
       if pars.len == 1 and pars[0] != ident"any":
@@ -247,7 +247,7 @@ proc runImpl(w: NimNode, a: NimNode, wt: static[RenderEngine]): NimNode =
         eventName.resadd quote do:
           if e.button in `kk`:
             `body`
-      else: eventName.resadd body
+      else: eventName.resaddas `e`.button: `body`
 
     of "pressingkey", "keypressing", "pressing":
       if pars.len == 1 and pars[0] != ident"any":
@@ -255,51 +255,30 @@ proc runImpl(w: NimNode, a: NimNode, wt: static[RenderEngine]): NimNode =
         "onTick".resaddas `k`:
           if `e`.keyboard.pressed[`k`]:
             `body`
-      elif pars.len > 1:
-        var kk = nnkBracket.newTree()
-        for v in pars:
-          kk.add v.ofEnum(Key)
+      else:
+        let kk =
+          if pars.len < 2: bindSym"AllKeys"
+          else: nnkBracket.newTree: mapit pars:
+            it.ofEnum(Key)
         case asKind
         of nnkEmpty:
           "onTick".resadd quote do:
             var prs = false
             for k in `kk`:
-              if e.keyboard.pressed[k]: prs = true; break
+              if `e`.keyboard.pressed[k]: prs = true; break
             if prs:
               `body`
         of nnkIdent:
           "onTick".resadd quote do:
-            var `asNode` {.inject.} = Key.unknown
             for k in `kk`:
-              if e.keyboard.pressed[k]: `asNode` = k; break
-            if `asNode` != Key.unknown:
-              `body`
+              if `e`.keyboard.pressed[k]:
+                let `asNode` {.inject.} = k
+                `body`
         of nnkBracketExpr:
           "onTick".resadd quote do:
             var `asNode` {.inject.}: seq[Key]
             for k in `kk`:
-              if e.keyboard.pressed[k]: `asNode`.add k
-            if `asNode`.len > 0:
-              `body`
-        else: error(&"got {asNode.kind}, but expected ident or ident[]", asNode)
-      else:
-        case asKind
-        of nnkEmpty:
-          "onTick".resadd quote do:
-            if true in `e`.keyboard.pressed:
-              `body`
-        of nnkIdent:
-          "onTick".resadd quote do:
-            var `asNode` {.inject.} = Key.unknown
-            for k, v in `e`.keyboard.pressed:
-              if v: `asNode` = k; break
-            if `asNode` != Key.unknown:
-              `body`
-        of nnkBracketExpr:
-          "onTick".resadd quote do:
-            var `asNode` {.inject.}: seq[Key]
-            for k, v in `e`.keyboard.pressed:
-              if v: `asNode`.add k
+              if `e`.keyboard.pressed[k]: `asNode`.add k
             if `asNode`.len > 0:
               `body`
         else: error(&"got {asNode.kind}, but expected ident or ident[]", asNode)

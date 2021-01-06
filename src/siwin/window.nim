@@ -58,9 +58,10 @@ publicInterface:
 type
   MouseButton* {.pure.} = enum
     left right middle forward backward
+  AllMouseButtons* = MouseButton.left..MouseButton.backward
   Mouse* = tuple
     position: tuple[x, y: int]
-    pressed: array[MouseButton.left..MouseButton.backward, bool]
+    pressed: array[AllMouseButtons, bool]
 
   Key* {.pure.} = enum
     unknown = -1
@@ -78,15 +79,23 @@ type
     add subtract multiply divide
 
     pause
+  AllKeys* = Key.a..Key.pause
 
   Keyboard* = tuple
-    pressed: array[Key.a..Key.pause, bool]
+    pressed: array[AllKeys, bool]
 
   Cursor* {.pure.} = enum
     arrow arrowUp
     hand
     sizeAll sizeHorisontal sizeVertical
 
+type
+  Screen* = object
+    when defined(linux):
+      id: cint
+      xid: PScreen
+
+type
   Window* {.inheritable.} = object
     onClose*:       proc(e: CloseEvent)
     
@@ -118,7 +127,7 @@ type
     m_hasFocus: bool
     m_isFullscreen: bool
 
-    clicking: array[MouseButton.left..MouseButton.backward, bool]
+    clicking: array[AllMouseButtons, bool]
 
     when defined(linux):
       xscr: cint
@@ -162,12 +171,6 @@ type
     none
     picture
     # opengl
-
-
-  Screen* = object
-    when defined(linux):
-      id: cint
-      xid: PScreen
 
 
   CloseEvent* = tuple
@@ -665,7 +668,7 @@ when defined(linux):
           when a is PictureWindow:
             redraw a
         of ClientMessage:
-          if ev.xclient.data.l[0] == (clong)x.atom(WmDeleteWindow, false):
+          if ev.xclient.data.l[0].Atom == atom(WmDeleteWindow):
             m_isOpen = false
           
         of ConfigureNotify:
@@ -678,14 +681,11 @@ when defined(linux):
             m_pos = (ev.xconfigure.x.int, ev.xconfigure.y.int)
             pushEvent onWindowMove, (oldPos, m_pos)
           
-          let wmState = xwin.netWmState
-          if atom(NetWmStateFullscreen) in wmState and not m_isFullscreen:
-            m_isFullscreen = true
-            pushEvent onFullscreenChanged, (true)
-          elif atom(NetWmStateFullscreen) notin wmState and m_isFullscreen:
-            m_isFullscreen = false
-            pushEvent onFullscreenChanged, (false)
-            if isSome a.requestedSize:
+          let state = xwin.netWmState
+          if atom(NetWmStateFullscreen) in state != m_isFullscreen:
+            m_isFullscreen = not m_isFullscreen
+            pushEvent onFullscreenChanged, (m_isFullscreen)
+            if not m_isFullscreen and isSome a.requestedSize:
               a.size = get a.requestedSize
               a.requestedSize = none tuple[x, y: int]
 

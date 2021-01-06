@@ -58,10 +58,11 @@ proc atomImpl(a: AtomKind, onlyIfExist: bool): Atom =
   let s = if ($a).startsWith("NET_"): &"_{$a}" else: $a
   internAtom(s, onlyIfExist)
 
-proc atom*(a: AtomKind, onlyIfExist: bool = false): Atom =
+proc atom*(a: AtomKind, onlyIfExist: bool): Atom =
   if atoms.hasKey(a): return atoms[a]
   result = atomImpl(a, onlyIfExist)
   atoms[a] = result
+proc atom*(a: AtomKind): Atom = atom(a, false)
 
 
 
@@ -128,7 +129,7 @@ proc wmProtocols*(a: Window): seq[Atom] =
 proc `wmProtocols=`*(a: Window, v: openarray[Atom]) =
   discard display.XSetWMProtocols(a, v.dataAddr, v.len.cint)
 proc `wmProtocols=`*(a: Window, v: openarray[AtomKind]) =
-  a.wmProtocols = v.map(a => atom a)
+  a.wmProtocols = v.map(atom)
 
 proc newWmHints*(flags: clong = 0, icon: Pixmap = 0.Pixmap, iconMask: Pixmap = 0.Pixmap): WmHints =
   result.wmh = XAllocWMHints()
@@ -158,7 +159,7 @@ proc property*(a: Window, name: Atom, t: typedesc = typedesc[byte]): tuple[data:
     result.kind.addr, format.addr, n.addr, remainingBytes.addr, cast[PPCUchar](data.addr)
   ) != Success:
     raise X11Defect.newException("failed to get property " & $name)
-  result.data = data.toSeq(n.int * (format div (8 * t.sizeof)))
+  result.data = data.toSeq(n.int)
   discard XFree data
 
 proc property*(a: Window, name: Atom, t: typedesc[string]): tuple[data: string, kind: Atom] =
@@ -178,7 +179,7 @@ proc netWmState*(a: Window): seq[Atom] =
 proc `netWmState=`*(a: Window, v: openarray[Atom]) =
   discard display.XChangeProperty(a, atom NetWmState, XaAtom, 32, PropModeReplace, cast[PCUchar](v.dataAddr), v.len.cint)
 proc `netWmState=`*(a: Window, v: openarray[AtomKind]) =
-  a.netWmState = v.map(a => atom a)
+  a.netWmState = v.map(atom)
 
 proc `netWmName=`*(a: Window, v: string) =
   discard display.XChangeProperty(a, atom NetWmName, atom Utf8String, 8, PropModeReplace, cast[PCUchar](v.dataAddr), v.len.cint)

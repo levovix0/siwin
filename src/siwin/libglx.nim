@@ -1,5 +1,5 @@
 import macros, unicode, strutils, sequtils
-import ../../libx11
+import libx11
 
 const dllname = 
   when defined(linux): "libGL.so.1"
@@ -9,7 +9,7 @@ const dllname =
 
 macro glx(f: static[string], def: untyped) =
   result = def
-  let cname = "glX" & $f.toRunes[0].toUpper & f[f.runeLenAt(0)..f.high]
+  let cname = "glX" & $f.toRunes[0].toUpper & f[f.runeLenAt(0)..^1]
   result[result.len - 3] = quote do: {.cdecl, dynlib: dllname, importc: `cname`.}
 
 const
@@ -63,14 +63,14 @@ type
   GlxContextID* = XID
 
   GlxBool* = distinct cint
-  GlxError* = object of X11Error
+  GlxDefect* = object of Defect
 
 converter toGlxBool*(a: bool): GlxBool = a.cint.GlxBool
 converter toBool*(a: GlxBool): bool = a.cint.bool
 
 template glxAssertImpl*(a: untyped, s: string) =
   try: doassert a
-  except AssertionDefect: raise GlxError.newException "assertion failed: `" & s & "`"
+  except AssertionDefect: raise GlxDefect.newException "assertion failed: `" & s & "`"
 template glxAssert*(a: bool) = glxAssertImpl(a, astToStr(a))
 
 proc `==`*(a: GlxContext, b: typeof nil): bool = a.pointer == nil
