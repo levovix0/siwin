@@ -1,6 +1,6 @@
 import siwin, siwin/image
 import unittest, strformat
-import nimgl/opengl
+# import nimgl/opengl
 
 test "no render window":
   var a = false
@@ -61,33 +61,33 @@ test "picture window":
   echo x
   check a == true
 
-test "opengl window":
-  run newWindow(title="OpenGL"):
-    keyup esc: close window
-    keyup f1:  window.fullscreen = not window.fullscreen
-    resize as (w, h):
-      glViewport 0, 0, w.GLsizei, h.GLsizei
-      glMatrixMode GlProjection
-      glLoadIdentity()
-      glOrtho -30, 30, -30, 30, -30, 30
-      glMatrixMode GlModelView
-    render:
-      glClearColor 0.3, 0.3, 0.3, 0
-      glClear GlColorBufferBit or GlDepthBufferBit
+# test "opengl window":
+#   run newWindow(title="OpenGL"):
+#     keyup esc: close window
+#     keyup f1:  window.fullscreen = not window.fullscreen
+#     resize as (w, h):
+#       glViewport 0, 0, w.GLsizei, h.GLsizei
+#       glMatrixMode GlProjection
+#       glLoadIdentity()
+#       glOrtho -30, 30, -30, 30, -30, 30
+#       glMatrixMode GlModelView
+#     render:
+#       glClearColor 0.3, 0.3, 0.3, 0
+#       glClear GlColorBufferBit or GlDepthBufferBit
     
-      glShadeModel GlSmooth
+#       glShadeModel GlSmooth
     
-      glLoadIdentity()
-      glTranslatef -15, -15, 0
+#       glLoadIdentity()
+#       glTranslatef -15, -15, 0
     
-      glBegin GlTriangles
-      glColor3f 1, 0, 0
-      glVertex2f 0, 0
-      glColor3f 0, 1, 0
-      glVertex2f 30, 0
-      glColor3f 0, 0, 1
-      glVertex2f 0, 30
-      glEnd()
+#       glBegin GlTriangles
+#       glColor3f 1, 0, 0
+#       glVertex2f 0, 0
+#       glColor3f 0, 1, 0
+#       glVertex2f 30, 0
+#       glColor3f 0, 0, 1
+#       glVertex2f 0, 30
+#       glEnd()
 
 test "macro":
   var a = false
