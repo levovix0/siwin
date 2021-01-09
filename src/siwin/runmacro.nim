@@ -325,6 +325,13 @@ proc runImpl(w: NimNode, a: NimNode, wt: static[RenderEngine]): NimNode =
     of "render":
       when wt == RenderEngine.picture:
         eventName.resaddas `w`.render: `body`
+      elif wt == RenderEngine.opengl:
+        if asKind == nnkEmpty:
+          eventName.resadd quote do:
+            withOpengl:
+              `body`
+        else: #TODO
+          eventName.resadd body
       else:
         error "can't render on window (no render engine)", b
     of "focus":
@@ -362,6 +369,8 @@ proc runImpl(w: NimNode, a: NimNode, wt: static[RenderEngine]): NimNode =
     of "render":
       when wt == RenderEngine.picture:
         eproc PictureRenderEvent
+      when wt == RenderEngine.opengl:
+        eproc OpenglRenderEvent
     of "tick":   eproc TickEvent
     of "resize": eproc ResizeEvent
     of "windowmove": eproc WindowMoveEvent
@@ -386,11 +395,11 @@ proc runImpl(w: NimNode, a: NimNode, wt: static[RenderEngine]): NimNode =
     run `w`
 
 macro run*(w: var Window, a: untyped) =
-  ## run window macro
   runImpl w, a, RenderEngine.none
 macro run*(w: var PictureWindow, a: untyped) =
-  ## run window macro
   runImpl w, a, RenderEngine.picture
+macro run*(w: var OpenglWindow, a: untyped) =
+  runImpl w, a, RenderEngine.opengl
 
 template run*(w: SomeWindow, a: untyped) =
   var window {.inject, used.} = w

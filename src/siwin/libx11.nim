@@ -66,8 +66,14 @@ proc atom*(a: AtomKind): Atom = atom(a, false)
 
 
 
-converter toXID*(a: Window|Pixmap|Cursor): XID = a.XID
-converter toPXID*(a: ptr Window|Pixmap|Cursor): PXID = cast[PXID](a)
+converter toXID*(a: Window): XID = a.XID
+converter toXID*(a: Pixmap): XID = a.XID
+converter toXID*(a: Cursor): XID = a.XID
+converter toDrawable*(a: Window|Pixmap|Cursor): Drawable = a.toXID
+converter toPXID*(a: ptr Window): PXID = cast[PXID](a)
+converter toPXID*(a: ptr Pixmap): PXID = cast[PXID](a)
+converter toPXID*(a: ptr Cursor): PXID = cast[PXID](a)
+converter toPDrawable*(a: Window|Pixmap|Cursor): PDrawable = a.toPXID
 converter toPXWmHints*(a: WmHints): PXWmHints = a.wmh
 
 
@@ -96,6 +102,9 @@ proc syncX*() = discard display.XSync(0)
 
 proc newSimpleWindow*(parent: Window, x, y: int, w, h: int, borderW: int, border: culong, background: culong): Window =
   result = Window display.XCreateSimpleWindow(parent, x.cint, y.cint, w.cuint, h.cuint, borderW.cuint, border, background)
+  doassert result != 0
+proc newWindow*(parent: Window, x, y: int, w, h: int, borderW: int, depth: int, class: cuint, visual: PVisual, valuemask: culong, attributes: XSetWindowAttributes): Window =
+  result = Window display.XCreateWindow(parent, x.cint, y.cint, w.cuint, h.cuint, borderW.cuint, depth.cint, class, visual, valuemask, attributes.unsafeAddr)
   doassert result != 0
 
 proc geometry*(a: Window): tuple[root: Window; x, y: int; w, h: int; borderW: int, depth: int] =

@@ -1,4 +1,4 @@
-import siwin
+import siwin, siwin/image, siwin/opengl
 import unittest, strformat
 
 test "no render window":
@@ -14,7 +14,7 @@ test "no render window":
 
 
 test "picture window":
-  var win = newWindow(title="Окошко")
+  var win = newWindow(title="Окошко", renderEngine=picture)
   
   var a = false
   win.onClose = proc(e: CloseEvent) =
@@ -60,6 +60,31 @@ test "picture window":
   echo x
   check a == true
 
+test "opengl window":
+  run newWindow(title="OpenGL"):
+    keyup esc: close window
+    keyup f1:  window.fullscreen = not window.fullscreen
+    resize as (w, h):
+      glViewport(0, 0, w.GLsizei, h.GLsizei)
+      glMatrixMode GlProjection
+      glLoadIdentity()
+      glOrtho(-30.0, 30.0, -30.0, 30.0, -30.0, 30.0)
+      glMatrixMode GlModelView
+    render:
+      clear 0.3, 0.3, 0.3, 0, BufferBit.color, BufferBit.depth
+    
+      shade smooth
+    
+      loadIdentity()
+      translate -15, -15, 0
+    
+      draw triangles:
+        color 1, 0, 0
+        vertex 0, 0
+        color 0, 1, 0
+        vertex 30, 0
+        color 0, 0, 1
+        vertex 0, 30
 
 test "macro":
   var a = false
@@ -123,6 +148,12 @@ test "macro":
       keyup or keydown(j): ...
       keyup|keydown(j): ...
 
+      A as b or B as b: ...
+      A|B as b: ...
+      # are same
+
+      keyup ctrl-c: ... #= keyup ctrl+c
+
       keyup {.nodup.}: ... # исключено залипание клавиш
     ]#
   
@@ -165,7 +196,6 @@ test "readme manage window example":
   win.onFullscreenChanged = proc(e: StateChangedEvent) =
     win.position = (screen().size.x div 2 - win.size.x div 2, screen().size.y div 2 - win.size.y div 2)
   run win
-
 
 test "clipboard":
   echo $clipboard   #= `clipboard.text`

@@ -109,6 +109,7 @@ proc glxCreatePixmap*(dpy: PDisplay, visual: PXVisualInfo, pixmap: Pixmap): GlxP
 proc glxDestroyPixmap*(dpy: PDisplay, pixmap: GlxPixmap) {.glx: "destroyGLXPixmap".}
 
 proc glxSwapBuffers*(dpy: PDisplay, drawable: Drawable) {.glx: "swapBuffers".}
+proc glxSwapBuffers*(d: Drawable) = display.glxSwapBuffers(d)
 
 proc glxWaitGL*() {.glx: "waitGL".}
 proc glxWaitX*() {.glx: "waitX".}

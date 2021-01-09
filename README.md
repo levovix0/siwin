@@ -6,6 +6,7 @@ Nim Simple Window Maker
 * `run` event loop generation macro
 * render in window using picture (access pixels)
 * clipboard
+* OpenGl support
 * OS Linux support (using X11)
 * OS Windows support
 
@@ -16,6 +17,36 @@ run newWindow(renderEngine=picture):
     r.clear color"202020"
   keyup esc:
     close window
+```
+
+opengl:
+```nim
+import nimgl/opengl
+
+run newWindow(): # opengl is render engine by default
+  resize as (w, h):
+    glViewport(0, 0, w.GLsizei, h.GLsizei)
+    glMatrixMode GlProjection
+    glLoadIdentity()
+    glOrtho(-30.0, 30.0, -30.0, 30.0, -30.0, 30.0)
+    glMatrixMode GlModelView
+  render:
+    glClearColor(0.3,0.3,0.3,0.0)
+    glClear GlColorBufferBit or GlDepthBufferBit
+  
+    glShadeModel GlSmooth
+  
+    glLoadIdentity()
+    glTranslatef(-15.0, -15.0, 0.0)
+  
+    glBegin GlTriangles
+    glColor3f(1.0, 0.0, 0.0)
+    glVertex2f(0.0, 0.0)
+    glColor3f(0.0, 1.0, 0.0)
+    glVertex2f(30.0, 0.0)
+    glColor3f(0.0, 0.0, 1.0)
+    glVertex2f(0.0, 30.0)
+    glEnd()
 ```
 
 pixel access:

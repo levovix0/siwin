@@ -3,6 +3,8 @@ import image, utils
 when defined(linux):
   import strformat, options
   import libx11 as x
+  import libglx
+  from nimgl/opengl import glInit
 when defined(windows):
   import libwinapi
   type Color = image.Color
@@ -165,12 +167,18 @@ type
     elif defined(windows):
       wimage: HBitmap
       hdc: HDC
+  
+  OpenglWindow* = object of Window
+    onRender*: proc(e: OpenglRenderEvent)
+    
+    when defined(linux):
+      waitForReDraw: bool
 
-  SomeWindow = Window|PictureWindow
+  SomeWindow = Window|PictureWindow|OpenglWindow
   RenderEngine* {.pure.} = enum
     none
     picture
-    # opengl
+    opengl
 
 
   CloseEvent* = tuple
@@ -178,6 +186,7 @@ type
   PictureRenderEvent* = tuple
     data: ArrayPtr[Color]
     size: tuple[x, y: int]
+  OpenglRenderEvent* = tuple
   ResizeEvent* = tuple
     oldSize, size: tuple[x, y: int]
   WindowMoveEvent* = tuple
@@ -476,16 +485,23 @@ when defined(linux):
     if xiconMask != 0: destroy xiconMask
     destroy xwin
 
-  proc `=destroy`*(a: var PictureWindow) = with a:
+  proc `=destroy`*(a: var PictureWindow) {.with.} =
     destroy ximg
     `=destroy` a.Window
-
-  proc initNoRenderWindow(a: var Window; w, h: int; screen: Screen, fullscreen: bool) {.with.} =
+  
+  proc `=destroy`*(a: var OpenglWindow) {.with.} =
+    nil.GlxContext.target = 0
+    `=destroy` a.Window
+  
+  proc initWindow(a: var Window; w, h: int; screen: Screen) {.with.} =
     xscr = screen.id
     m_size = (w, h)
-    let root = defaultRootWindow()
 
-    xwin = newSimpleWindow(root, 0, 0, w, h, 0, 0, xscr.blackPixel)
+    m_isOpen = true
+    m_hasFocus = true
+    curCursor = arrow
+
+  proc setupWindow(a: var Window, fullscreen: bool) {.with.} =
     xwin.input = [ 
       ExposureMask, KeyPressMask, KeyReleaseMask, PointerMotionMask, ButtonPressMask,
       ButtonReleaseMask, StructureNotifyMask, EnterWindowMask, LeaveWindowMask, FocusChangeMask
@@ -505,12 +521,15 @@ when defined(linux):
         XNClientWindow, xwin, XNFocusWindow, xwin, XnInputStyle, XimPreeditNothing or XimStatusNothing, nil
       )
 
-    m_isOpen = true
-    m_hasFocus = true
-    curCursor = arrow
+  proc initNoRenderWindow(a: var Window; w, h: int; screen: Screen, fullscreen: bool) {.with.} =
+    a.initWindow w, h, screen
+    xwin = newSimpleWindow(defaultRootWindow(), 0, 0, w, h, 0, 0, xscr.blackPixel)
+    a.setupWindow fullscreen
   
   proc initPictureWindow(a: var PictureWindow; w, h: int; screen: Screen, fullscreen: bool) {.with.} =
-    a.initNoRenderWindow(w, h, screen, fullscreen)
+    a.initWindow w, h, screen
+    xwin = newSimpleWindow(defaultRootWindow(), 0, 0, w, h, 0, 0, xscr.blackPixel)
+    a.setupWindow fullscreen
 
     waitForReDraw = true
     gc = xwin.newGC(GCForeground or GCBackground)
@@ -518,6 +537,24 @@ when defined(linux):
     m_data = malloc[Color](m_size.x * m_size.y)
     ximg = newXImage(m_size, m_data, xscr.defaultVisual, xscr.defaultDepth)
     doassert ximg != nil
+
+  proc initOpenglWindow(a: var OpenglWindow; w, h: int; screen: Screen, fullscreen: bool) {.with.} =
+    a.initWindow w, h, screen
+    
+    let root = defaultRootWindow()
+    let vi = glxChooseVisual(0, [GlxRgba, GlxDepthSize, 24, GlxDoublebuffer])
+    let cmap = d.XCreateColormap(root, vi.visual, AllocNone)
+    var swa: XSetWindowAttributes
+    swa.colormap = cmap
+    xwin = x.newWindow(root, 0, 0, w, h, 0, vi.depth, InputOutput, vi.visual, CwColormap or CwEventMask, swa)
+    
+    a.setupWindow fullscreen
+
+    let ctx = newGlxContext(vi)
+    glxAssert ctx != nil
+    ctx.target = xwin
+    
+    doassert glInit()
 
   template pushEvent(a: Window, event, args) =
     when args is tuple: 
@@ -539,6 +576,8 @@ when defined(linux):
     m_isOpen = false
 
   proc redraw*(a: var PictureWindow) {.lazy.} = a.waitForReDraw = true
+    ## render request
+  proc redraw*(a: var OpenglWindow) {.lazy.} = a.waitForReDraw = true
     ## render request
 
   proc updateSize(a: var Window) {.with.} =
@@ -665,10 +704,10 @@ when defined(linux):
             let osize = m_size
             a.updateSize()
             pushEvent onResize, (osize, m_size)
-          when a is PictureWindow:
+          when a is PictureWindow|OpenglWindow:
             redraw a
         of ClientMessage:
-          if ev.xclient.data.l[0].Atom == atom(WmDeleteWindow):
+          if ev.xclient.data.l[0] == atom(WmDeleteWindow).clong:
             m_isOpen = false
           
         of ConfigureNotify:
@@ -784,11 +823,15 @@ when defined(linux):
       pushEvent onTick, (mouse, keyboard, nows - lastTickTime)
       lastTickTime = nows
 
-      when a is PictureWindow:
+      when a is PictureWindow|OpenglWindow:
         if waitForReDraw:
           waitForReDraw = false
-          pushEvent on_render, (m_data, m_size)
-          gc.put ximg
+          when a is PictureWindow:
+            pushEvent on_render, (m_data, m_size)
+            gc.put ximg
+          when a is OpenglWindow:
+            pushEvent on_render, ()
+            xwin.toDrawable.glxSwapBuffers()
       
       clipboardProcessEvents()
 
@@ -1113,10 +1156,17 @@ proc newPictureWindow*(w: int = 1280, h: int = 720, title: string = "", screen =
 proc newPictureWindow*(size: tuple[x, y: int], title: string = "", screen = screen(), fullscreen: bool = false): PictureWindow =
   newPictureWindow(size.x, size.y, title, screen, fullscreen)
 
-template newWindow*(w: int = 1280, h: int = 720, title: string = "", screen = screen(), fullscreen: bool = false, renderEngine: RenderEngine = picture): SomeWindow =
+proc newOpenglWindow*(w: int = 1280, h: int = 720, title: string = "", screen = screen(), fullscreen: bool = false): OpenglWindow =
+  result.initOpenglWindow(w, h, screen, fullscreen)
+  result.title = title
+proc newOpenglWindow*(size: tuple[x, y: int], title: string = "", screen = screen(), fullscreen: bool = false): OpenglWindow =
+  newOpenglWindow(size.x, size.y, title, screen, fullscreen)
+
+template newWindow*(w: int = 1280, h: int = 720, title: string = "", screen = screen(), fullscreen: bool = false, renderEngine: RenderEngine = RenderEngine.opengl): SomeWindow =
   when renderEngine == RenderEngine.none:    newNoRenderWindow(w, h, title, screen, fullscreen)
   elif renderEngine == RenderEngine.picture: newPictureWindow(w, h, title, screen, fullscreen)
-template newWindow*(w: int = 1280, h: int = 720, title: string = "", screen = screen(), fullscreen: bool = false, renderEngine: RenderEngine = picture): SomeWindow =
+  elif renderEngine == RenderEngine.opengl:  newOpenglWindow(w, h, title, screen, fullscreen)
+template newWindow*(size: tuple[x, y: int], title: string = "", screen = screen(), fullscreen: bool = false, renderEngine: RenderEngine = RenderEngine.opengl): SomeWindow =
   newWindow(size.x, size.y, title, screen, fullscreen, renderEngine)
 
 template w*(a: Screen): int = a.size.x
