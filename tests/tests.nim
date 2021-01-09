@@ -1,5 +1,6 @@
-import siwin, siwin/image, siwin/opengl
+import siwin, siwin/image
 import unittest, strformat
+import nimgl/opengl
 
 test "no render window":
   var a = false
@@ -65,26 +66,28 @@ test "opengl window":
     keyup esc: close window
     keyup f1:  window.fullscreen = not window.fullscreen
     resize as (w, h):
-      glViewport(0, 0, w.GLsizei, h.GLsizei)
+      glViewport 0, 0, w.GLsizei, h.GLsizei
       glMatrixMode GlProjection
       glLoadIdentity()
-      glOrtho(-30.0, 30.0, -30.0, 30.0, -30.0, 30.0)
+      glOrtho -30, 30, -30, 30, -30, 30
       glMatrixMode GlModelView
     render:
-      clear 0.3, 0.3, 0.3, 0, BufferBit.color, BufferBit.depth
+      glClearColor 0.3, 0.3, 0.3, 0
+      glClear GlColorBufferBit or GlDepthBufferBit
     
-      shade smooth
+      glShadeModel GlSmooth
     
-      loadIdentity()
-      translate -15, -15, 0
+      glLoadIdentity()
+      glTranslatef -15, -15, 0
     
-      draw triangles:
-        color 1, 0, 0
-        vertex 0, 0
-        color 0, 1, 0
-        vertex 30, 0
-        color 0, 0, 1
-        vertex 0, 30
+      glBegin GlTriangles
+      glColor3f 1, 0, 0
+      glVertex2f 0, 0
+      glColor3f 0, 1, 0
+      glVertex2f 30, 0
+      glColor3f 0, 0, 1
+      glVertex2f 0, 30
+      glEnd()
 
 test "macro":
   var a = false

@@ -326,12 +326,7 @@ proc runImpl(w: NimNode, a: NimNode, wt: static[RenderEngine]): NimNode =
       when wt == RenderEngine.picture:
         eventName.resaddas `w`.render: `body`
       elif wt == RenderEngine.opengl:
-        if asKind == nnkEmpty:
-          eventName.resadd quote do:
-            withOpengl:
-              `body`
-        else: #TODO
-          eventName.resadd body
+        eventName.resadd body
       else:
         error "can't render on window (no render engine)", b
     of "focus":
