@@ -22,6 +22,14 @@ proc flattenInfix*(a: NimNode): seq[NimNode] =
   result &= a
   reverse result
 
+proc flattenInfix*(a: NimNode, infix: string): seq[NimNode] =
+  var a = a
+  while a.kind == nnkInfix and $a[0] == infix:
+    result &= a[2]
+    a = a[1]
+  result &= a
+  reverse result
+
 proc expandInfix*(a: seq[NimNode], infix: NimNode): NimNode =
   result = a[0]
   for b in a[1..^1]:

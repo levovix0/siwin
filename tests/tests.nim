@@ -122,12 +122,12 @@ test "macro":
     pressing any:    g = min(g + 1, 255); redraw window #= `pressing:`
     # pressing as x: ...                                #= `pressing {.forEachKey.}: let x = magicGetPressedKey();`
     pressing as x[]: echo x                             #= `pressing: let x = magicGetAllPressedKeys();`
-    not pressing g:  g = max(g - 1, 0); redraw window   #= `notPressing g:`
+    notPressing g:   g = max(g - 1, 0); redraw window   #= `notPressing g:`
     keyup (k):       close window                       #= `keyup: if e.key in k:`
     textEnter:       echo e.text
 
     keydown ctrl+c:  clipboard $= "coppied from siwin"  #= `keydown c: if e.keyboard.pressed[control] and magicOtherKeysIsNotPressed():`
-    keydown ctrl+v:  echo $clipboard
+    keydown ctrl-v:  echo $clipboard                    #= `keyup ctrl+v:`
 
     keydown _+w:     echo "no, press ctrl+w to close window" #= keydown w: if magicOtherKeysIsNotPressed():
     keydown ctrl+w:  close window
@@ -135,7 +135,17 @@ test "macro":
     fullscreen true:  g = 255; redraw window
     fullscreen false: g = 0; redraw window
 
-    click(left, right) as (x, _): g = min(max(int(x / window.size.x * 255), 0), 255); redraw window
+    click(left, right) as (x, _):
+      g = min(max(int(x / window.size.x * 255), 0), 255); redraw window
+      
+    keyup(i) or keydown(j): discard
+    keyup(a)|keydown(b): discard
+
+    #[
+      A as b or B as b: ...
+      A|B as b: ...
+      # are same
+    ]#
 
     #TODO
     #[
@@ -148,14 +158,6 @@ test "macro":
         ... # выполняется при любом из событий в первом блоке. для некоторых событий могут быть указаны дополнительные действия.
       
       group keyup, keydown(j): ...
-      keyup or keydown(j): ...
-      keyup|keydown(j): ...
-
-      A as b or B as b: ...
-      A|B as b: ...
-      # are same
-
-      keyup ctrl-c: ... #= keyup ctrl+c
 
       keyup {.nodup.}: ... # исключено залипание клавиш
     ]#

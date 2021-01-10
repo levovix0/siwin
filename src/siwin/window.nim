@@ -95,12 +95,12 @@ type
   Screen* = object
     when defined(linux):
       id: cint
-      xid: PScreen
+      handle: PScreen
 
 type
-  Window* {.inheritable.} = object
+  Window* {.inheritable.} = object # inheritance here is optional, it's required only to not duplicate code, i.e it's part of implementation
     onClose*:       proc(e: CloseEvent)
-    
+
     onTick*:        proc(e: TickEvent)
     onResize*:      proc(e: ResizeEvent)
     onWindowMove*:  proc(e: WindowMoveEvent)
@@ -124,7 +124,7 @@ type
     onTextEnter*:   proc(e: TextEnterEvent)
 
     m_size: tuple[x, y: int]
-      
+
     m_isOpen: bool
     m_hasFocus: bool
     m_isFullscreen: bool
@@ -333,24 +333,22 @@ when defined(linux):
     of Xk_9:            Key.n9
     else:               Key.unknown
 
-  template d: x.PDisplay = x.display
+  template d: PDisplay = display
 
   proc getScreenCount*(): int = d.ScreenCount.int
 
-  proc screen*(n: int): Screen = with result:
+  proc screen*(n: int): Screen {.with: result.} =
     if n notin 0..<getScreenCount(): raise IndexDefect.newException(&"screen {n} is not exist")
     id = n.cint
-    xid = d.ScreenOfDisplay(id)
+    handle = d.ScreenOfDisplay(id)
 
   proc defaultScreen*(): Screen = screen(d.DefaultScreen.int)
   proc screen*(): Screen = defaultScreen()
 
   proc n*(a: Screen): int = a.id.int
 
-  proc size*(a: Screen): tuple[x, y: int] =
-    result = (a.xid.width.int, a.xid.height.int)
-  
-  proc rootWindow(a: Screen): x.Window {.used.} = x.Window a.xid.root
+  proc size*(a: Screen): tuple[x, y: int] {.with.} =
+    (handle.width.int, handle.height.int)
 
 elif defined(windows):
   proc wkeyToKey(key: WParam, flags: LParam): Key =
@@ -467,9 +465,9 @@ elif defined(windows):
   proc defaultScreen*(): Screen = screen()
   proc n*(a: Screen): int = 0
 
-  proc size*(a: Screen): tuple[x, y: int] =
-    result.x = GetSystemMetrics(SmCxScreen).int
-    result.y = GetSystemMetrics(SmCyScreen).int
+  proc size*(a: Screen): tuple[x, y: int] {.with: result.} =
+    x = GetSystemMetrics(SmCxScreen).int
+    y = GetSystemMetrics(SmCyScreen).int
 
 template screenCount*: int = getScreenCount()
 
@@ -584,7 +582,8 @@ when defined(linux):
   proc updateSize(a: var PictureWindow) {.with.} =
     updateSize a.Window
     destroy ximg
-    m_data = malloc[Color](m_size.x * m_size.y)
+    m_data = malloc[Color](m_size.x * m_size.y) # XImage destruction automaticly call `free`, which pairs to `malloc`
+    m_data.zeroMem(m_size.x * m_size.y * Color.sizeof) # clear allocated memory
     ximg = newXImage(m_size, m_data, xscr.defaultVisual, xscr.defaultDepth)
     waitForReDraw = true
   
@@ -597,7 +596,7 @@ when defined(linux):
     if m_isFullscreen == v: return
     
     xwin.root.send(
-      xwin.newClientMessage(NetWmState, [Atom 2, atom NetWmStateFullscreen]), # 2 - переключить, 1 - добавить, 0 - убрать
+      xwin.newClientMessage(NetWmState, [Atom 2, atom NetWmStateFullscreen]), # 2 - switch, 1 - set true, 0 - set false
       SubstructureNotifyMask or SubstructureRedirectMask
     )
   
@@ -651,6 +650,7 @@ when defined(linux):
 
     xicon = newPixmap(img, a)
 
+    # convert alpha channel to bit mask (semi-transparency is not supported)
     var mask = newImage(img.size.x, img.size.y)
     for i in 0..<(img.size.x * img.size.y):
       mask.data[i] = if img.data[i].a > 127: color(0, 0, 0) else: color(255, 255, 255)
@@ -679,12 +679,12 @@ when defined(linux):
       of 8: MouseButton.backward
       of 9: MouseButton.forward
       else: MouseButton.left
+    template isScroll: bool = ev.xbutton.button.int in 4..7
     template scrollDelta: float =
       case ev.xbutton.button
       of 4: -1
       of 5: 1
       else: 0
-    template isScroll: bool = ev.xbutton.button.int in 4..7
 
     var lastClickTime: times.Time
     var lastTickTime = getTime()
