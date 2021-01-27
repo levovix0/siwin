@@ -8,13 +8,13 @@ test "no render window":
   run newWindow(title="Окошко", renderEngine=none):
     init:      window.cursor = Cursor.hand
     close:     a = true
-    keyup esc: close window
-    keyup f1:  window.fullscreen = not window.fullscreen
+    # keyup esc: close window
+    # keyup f1:  window.fullscreen = not window.fullscreen
   
   check a == true
 
 
-test "picture window":
+#[ test "picture window":
   var win = newWindow(title="Окошко", renderEngine=picture)
   
   var a = false
@@ -132,8 +132,8 @@ test "macro":
     keydown _+w:     echo "no, press ctrl+w to close window" #= keydown w: if magicOtherKeysIsNotPressed():
     keydown ctrl+w:  close window
 
-    fullscreen true:  g = 255; redraw window
-    fullscreen false: g = 0; redraw window
+    fullscreen on:   g = 255; redraw window
+    fullscreen off:  g = 0; redraw window
 
     click(left, right) as (x, _):
       g = min(max(int(x / window.size.x * 255), 0), 255); redraw window
@@ -160,6 +160,7 @@ test "macro":
       group keyup, keydown(j): ...
 
       keyup {.nodup.}: ... # исключено залипание клавиш
+      {.nodup.} # залипание клавиш исключено глобально
     ]#
   
   echo x
@@ -204,3 +205,4 @@ test "readme manage window example":
 
 test "clipboard":
   echo $clipboard   #= `clipboard.text`
+ ]#

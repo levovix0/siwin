@@ -25,7 +25,7 @@ publicInterface:
 
     cursor = Cursor
     icon = Picture|nil
-  
+
   OpenglWindow of Window:
     onRender => proc(OpneglRenderer)
     redraw() {.lazy.}
@@ -38,13 +38,13 @@ publicInterface:
   newWindow(w, h: int, title: string, Screen, RenderEngine)
   newWindow(size: Vec2, title: string, Screen, RenderEngine)
   run SomeWindow
-  
+
   MouseButton enum
   Mouse:
     position -> Vec2
     pressed[MouseButton] -> bool
   Cursor enum
-  
+
   Key enum
   Keyboard:
     pressed[Key] -> bool
@@ -148,10 +148,10 @@ type
     elif defined(windows):
       handle: HWnd
       wicon: HIcon
-      
+
       wcursor: HCursor
       curCursor: Cursor
-  
+
   PictureWindow* = object of Window
     onRender*: proc(e: PictureRenderEvent)
 
@@ -166,10 +166,10 @@ type
       wimage: HBitmap
       hdc: HDC
       m_data: ArrayPtr[Color]
-  
+
   OpenglWindow* = object of Window
     onRender*: proc(e: OpenglRenderEvent)
-    
+
     when defined(linux):
       waitForReDraw: bool
 
@@ -485,11 +485,11 @@ when defined(linux):
   proc `=destroy`*(a: var PictureWindow) {.with.} =
     destroy ximg
     `=destroy` a.Window
-  
+
   proc `=destroy`*(a: var OpenglWindow) {.with.} =
     nil.GlxContext.target = 0
     `=destroy` a.Window
-  
+
   proc initWindow(a: var Window; w, h: int; screen: Screen) {.with.} =
     xscr = screen.id
     m_size = (w, h)
@@ -499,11 +499,11 @@ when defined(linux):
     curCursor = arrow
 
   proc setupWindow(a: var Window, fullscreen: bool) {.with.} =
-    xwin.input = [ 
+    xwin.input = [
       ExposureMask, KeyPressMask, KeyReleaseMask, PointerMotionMask, ButtonPressMask,
       ButtonReleaseMask, StructureNotifyMask, EnterWindowMask, LeaveWindowMask, FocusChangeMask
     ]
-    
+
     m_isFullscreen = fullscreen
     if fullscreen:
       xwin.netWmState = [NetWmStateFullscreen]
@@ -522,7 +522,7 @@ when defined(linux):
     a.initWindow w, h, screen
     xwin = newSimpleWindow(defaultRootWindow(), 0, 0, w, h, 0, 0, xscr.blackPixel)
     a.setupWindow fullscreen
-  
+
   proc initPictureWindow(a: var PictureWindow; w, h: int; screen: Screen, fullscreen: bool) {.with.} =
     a.initWindow w, h, screen
     xwin = newSimpleWindow(defaultRootWindow(), 0, 0, w, h, 0, 0, xscr.blackPixel)
@@ -537,24 +537,24 @@ when defined(linux):
 
   proc initOpenglWindow(a: var OpenglWindow; w, h: int; screen: Screen, fullscreen: bool) {.with.} =
     a.initWindow w, h, screen
-    
+
     let root = defaultRootWindow()
     let vi = glxChooseVisual(0, [GlxRgba, GlxDepthSize, 24, GlxDoublebuffer])
     let cmap = d.XCreateColormap(root, vi.visual, AllocNone)
     var swa: XSetWindowAttributes
     swa.colormap = cmap
     xwin = x.newWindow(root, 0, 0, w, h, 0, vi.depth, InputOutput, vi.visual, CwColormap or CwEventMask, swa)
-    
+
     a.setupWindow fullscreen
 
     let ctx = newGlxContext(vi)
     glxAssert ctx != nil
     ctx.target = xwin
-    
+
     doassert glInit()
 
   template pushEvent(a: Window, event, args) =
-    when args is tuple: 
+    when args is tuple:
       if a.event != nil: a.event(args)
     else:
       if a.event != nil: a.event((args,))
@@ -564,7 +564,7 @@ when defined(linux):
     xwin.netWmName = title
     xwin.netWmIconName = title
     d.Xutf8SetWMProperties(xwin, title, title, nil, 0, nil, nil, nil)
-  
+
   proc opened*(a: Window): bool = a.m_isOpen
   proc close*(a: var Window) {.lazy, with.} =
     ## close request
@@ -586,7 +586,7 @@ when defined(linux):
     m_data.zeroMem(m_size.x * m_size.y * Color.sizeof) # clear allocated memory
     ximg = newXImage(m_size, m_data, xscr.defaultVisual, xscr.defaultDepth)
     waitForReDraw = true
-  
+
   proc fullscreen*(a: Window): bool = a.m_isFullscreen
     ## get real fullscreen state of window
   proc `fullscreen=`*(a: var Window, v: bool) {.lazy, with.} =
@@ -594,12 +594,12 @@ when defined(linux):
     ##* this proc is lazy, don't try get size of window after it
     ## track when the fullscreen state will be applied in the onFullscreenChanged event
     if m_isFullscreen == v: return
-    
+
     xwin.root.send(
       xwin.newClientMessage(NetWmState, [Atom 2, atom NetWmStateFullscreen]), # 2 - switch, 1 - set true, 0 - set false
       SubstructureNotifyMask or SubstructureRedirectMask
     )
-  
+
   proc position*(a: Window): tuple[x, y: int] = a.xwin.geometry.position
   proc `position=`*(a: var Window, p: tuple[x, y: int]) {.with.} =
     ## move window
@@ -607,7 +607,7 @@ when defined(linux):
     if m_isFullscreen: return
     xwin.position = p
     m_pos = p
-  
+
   proc size*(a: Window): tuple[x, y: int] = a.m_size
   proc `size=`*(a: var Window, size: tuple[x, y: int]) {.with.} =
     ## resize window
@@ -638,7 +638,7 @@ when defined(linux):
     var ddata = malloc[Color](img.size.x * img.size.y)
     copyMem(ddata, img.data, Color.sizeof * img.size.x * img.size.y)
     let image = newXImage(img.size, ddata, xscr.defaultVisual, xscr.defaultDepth)
-    
+
     result = newPixmap(img.size, xwin, xscr.defaultDepth)
     result.newGC.put image
     destroy image
@@ -668,7 +668,7 @@ when defined(linux):
   proc run*(a: var SomeWindow) {.with.} =
     ## run main loop of window
     template pushEvent(event, args) = a.pushEvent(event, args)
-    
+
     var ev: XEvent
 
     template button: MouseButton =
@@ -688,7 +688,7 @@ when defined(linux):
 
     var lastClickTime: times.Time
     var lastTickTime = getTime()
-    
+
     while m_isOpen:
       var catched = false
 
@@ -708,7 +708,7 @@ when defined(linux):
         of ClientMessage:
           if ev.xclient.data.l[0] == atom(WmDeleteWindow).clong:
             m_isOpen = false
-          
+
         of ConfigureNotify:
           if ev.xconfigure.width != m_size.x or ev.xconfigure.height != m_size.y:
             let osize = m_size
@@ -718,7 +718,7 @@ when defined(linux):
             let oldPos = m_pos
             m_pos = (ev.xconfigure.x.int, ev.xconfigure.y.int)
             pushEvent onWindowMove, (oldPos, m_pos)
-          
+
           let state = xwin.netWmState
           if atom(NetWmStateFullscreen) in state != m_isFullscreen:
             m_isFullscreen = not m_isFullscreen
@@ -743,7 +743,7 @@ when defined(linux):
           if not isScroll:
             let nows = getTime()
             mouse.pressed[button] = false
-            
+
             if clicking[button]:
               if (nows - lastClickTime).inMilliseconds < 200: pushEvent onDoubleClick, (mouse, button, mouse.position, true)
               else: pushEvent onClick, (mouse, button, mouse.position, false)
@@ -761,6 +761,7 @@ when defined(linux):
           m_hasFocus = true
           if xinContext != nil: XSetICFocus xinContext
           pushEvent onFocusChanged, (true)
+          #TODO: восстановить нажатые на данный момент клавиши
         of FocusOut:
           m_hasFocus = false
           if xinContext != nil: XUnsetICFocus xinContext
@@ -771,7 +772,7 @@ when defined(linux):
               template mk(a): bool = (ev.xkey.state and a).bool
               pushEvent onKeyup, (keyboard, key, false, mk Mod1Mask, mk ControlMask, mk ShiftMask, mk Mod4Mask)
               k = false
-        
+
         of KeyPress:
           var key = Key.unknown
           block:
@@ -783,7 +784,7 @@ when defined(linux):
             keyboard.pressed[key] = true
             template mk(a): bool = (ev.xkey.state and a).bool
             pushEvent onKeydown, (keyboard, key, true, mk Mod1Mask, mk ControlMask, mk ShiftMask, mk Mod4Mask)
-          
+
           if xinContext != nil and not keyboard.pressed[lcontrol] and not keyboard.pressed[rcontrol] and not keyboard.pressed[lalt] and not keyboard.pressed[ralt]:
             var status: Status
             var buffer: array[16, char]
@@ -798,7 +799,7 @@ when defined(linux):
               let s = buffer[0..<length].toString()
               if s notin ["\u001B"]:
                 pushEvent onTextEnter, (keyboard, s)
-        
+
         of KeyRelease:
           var key = Key.unknown
           block:
@@ -812,7 +813,7 @@ when defined(linux):
             pushEvent onKeyup, (keyboard, key, false, mk Mod1Mask, mk ControlMask, mk ShiftMask, mk Mod4Mask)
 
         else: discard
-      
+
         if not m_isOpen: break
       if not m_isOpen: break
 
@@ -831,11 +832,11 @@ when defined(linux):
           when a is OpenglWindow:
             pushEvent on_render, ()
             xwin.toDrawable.glxSwapBuffers()
-      
+
       clipboardProcessEvents()
 
     pushEvent onClose, ()
-  
+
   proc systemHandle*(a: Window): x.Window = a.xwin
     ## get system handle of window
     ##* result depends on OS or platmofm
@@ -891,13 +892,13 @@ elif defined(windows):
     wcex.lpszClassName = wpClassName
     wcex.hIconSm       = 0
     winassert RegisterClassEx(wcex) != 0
-  
+
   proc `=destroy`*(a: var PictureWindow) {.with.} =
     DeleteDC hdc
     DeleteObject wimage
 
   template pushEvent(a: SomeWindow, event, args) =
-    when args is tuple: 
+    when args is tuple:
       if a.event != nil: a.event(args)
     else:
       if a.event != nil: a.event((args,))
@@ -907,9 +908,9 @@ elif defined(windows):
     let osize = m_size
     m_size = (rect.right.int, rect.bottom.int)
     if osize == m_size: return
-    
+
     a.pushEvent onResize, (osize, m_size)
-  
+
   proc updateSize(a: var PictureWindow) {.with.} =
     let rect = handle.clientRect
     let osize = m_size
@@ -930,9 +931,9 @@ elif defined(windows):
       m_data = nil
     let old = hdc.SelectObject(wimage)
     if old != 0: discard DeleteObject old
-    
+
     a.pushEvent onResize, (osize, m_size)
-    
+
   proc fullscreen*(a: Window): bool = a.m_isFullscreen
   proc `fullscreen=`*(a: var SomeWindow, v: bool) {.with.} =
     if m_isFullscreen == v: return
@@ -955,7 +956,7 @@ elif defined(windows):
     let bordery = (rcWind.bottom - rcWind.top) - rcClient.bottom
     MoveWindow(handle, rcWind.left, rcWind.top, (size.x + borderx).int32, (size.y + bordery).int32, True)
     a.updateSize()
-  
+
   proc initWindow(a: var Window; w, h: int; screen: Screen, wClassName: string) {.with.} =
     handle = CreateWindow(wClassName, "", WsOverlappedWindow, CwUseDefault, CwUseDefault, w.int32, h.int32, 0, 0, hInstance, nil)
     winassert handle != 0
@@ -973,7 +974,7 @@ elif defined(windows):
   proc initNoRenderWindow(a: var Window; w, h: int; screen: Screen, fullscreen: bool) {.with.} =
     a.initWindow w, h, screen, wClassName
     a.setupWindow fullscreen
-  
+
   proc initPictureWindow(a: var PictureWindow; w, h: int; screen: Screen, fullscreen: bool) {.with.} =
     a.initWindow w, h, screen, wpClassName
     a.setupWindow fullscreen
@@ -999,18 +1000,18 @@ elif defined(windows):
   proc opened*(a: Window): bool = a.m_isOpen
   proc close*(a: var Window) {.lazy, with.} =
     if m_isOpen: handle.SendMessage(WmClose, 0, 0)
-    
+
   proc redraw*(a: var Window) {.lazy, with.} =
     var cr = handle.clientRect
     handle.InvalidateRect(&cr, false)
-    
+
   proc position*(a: Window): tuple[x, y: int] {.with.} =
     let r = handle.clientRect
     return (r.left.int, r.top.int)
   proc `position=`*(a: var Window, v: tuple[x, y: int]) {.with.} =
     if m_isFullscreen: return
     handle.SetWindowPos(0, v.x.int32, v.y.int32, 0, 0, SwpNoSize)
-    
+
   proc `cursor=`*(a: var Window, kind: Cursor) {.with.} =
     if kind == curCursor: return
     var cu: HCursor = 0
@@ -1025,7 +1026,7 @@ elif defined(windows):
       SetCursor cu
       wcursor = cu
     curCursor = kind
-  
+
   proc `icon=`*(a: var Window, img: Picture) {.with.} =
     if wicon != 0: DestroyIcon wicon
     wicon = CreateIcon(hInstance, img.size.x.int32, img.size.y.int32, 1, 32, nil, cast[ptr Byte](img.data))
@@ -1070,7 +1071,7 @@ elif defined(windows):
       if not m_isOpen: break
 
       if not catched: sleep(2) # не так быстро!
-      
+
       let nows = getTime()
       if a.onTick != nil: onTick (mouse, keyboard, nows - lastTickTime)
       lastTickTime = nows
@@ -1100,36 +1101,36 @@ elif defined(windows):
         if a.m_size.x * a.m_size.y > 0:
           pushEvent onRender, (m_data, a.m_size)
       a.displayImpl()
-    
+
     of WmDestroy:
       pushEvent onClose, ()
       m_isOpen = false
       PostQuitMessage(0)
-    
+
     of WmMouseMove:
       let opos = a.mouse.position
       a.mouse.position = (lParam.GetX_LParam, lParam.GetY_LParam)
       for v in clicking.mitems: v = false
       pushEvent onMouseMove, (a.mouse, opos, a.mouse.position)
-    
+
     of WmMouseLeave:
       let npos = (lParam.GetX_LParam, lParam.GetY_LParam)
       pushEvent onMouseLeave, (a.mouse, a.mouse.position, npos)
       handle.trackMouseEvent(TmeHover)
-    
+
     of WmMouseHover:
       let npos = (lParam.GetX_LParam, lParam.GetY_LParam)
       pushEvent onMouseEnter, (a.mouse, a.mouse.position, npos)
       handle.trackMouseEvent(TmeLeave)
-    
+
     of WmMouseWheel:
       let delta = if wParam.GetWheelDeltaWParam > 0: -1.0 else: 1.0
       pushEvent onScroll, (a.mouse, delta)
-    
+
     of WmSetFocus:
       m_hasFocus = true
       pushEvent onFocusChanged, (m_hasFocus)
-    
+
     of WmKillFocus:
       m_hasFocus = false
       pushEvent onFocusChanged, (m_hasFocus)
@@ -1138,20 +1139,20 @@ elif defined(windows):
           template mk(vk): bool = HIWord(GetKeyState(vk)) != 0
           pushEvent onKeyup, (a.keyboard, key, false, mk VkMenu, mk VkControl, mk VkShift, mk(VkLWin) or mk(VkRWin))
           k = false
-    
+
     of WmLButtonDown, WmRButtonDown, WmMButtonDown, WmXButtonDown:
       handle.SetCapture()
       a.mouse.pressed[button] = true
       clicking[button] = true
       pushEvent onMouseDown, (a.mouse, button, true)
-    
+
     of WmLButtonUp, WmRButtonUp, WmMButtonUp, WmXButtonUp:
       ReleaseCapture()
       a.mouse.pressed[button] = false
       if clicking[button]: pushEvent onClick, (a.mouse, button, a.mouse.position, false)
       clicking[button] = false
       pushEvent onMouseDown, (a.mouse, button, false)
-    
+
     of WmLButtonDblclk, WmRButtonDblclk, WmMButtonDblclk, WmXButtonDblclk:
       pushEvent onDoubleClick, (a.mouse, button, a.mouse.position, true)
 
@@ -1160,7 +1161,7 @@ elif defined(windows):
       a.keyboard.pressed[key] = true
       template mk(vk): bool = HIWord(GetKeyState(vk)) != 0
       pushEvent onKeydown, (a.keyboard, key, true, mk VkMenu, mk VkControl, mk VkShift, mk(VkLWin) or mk(VkRWin))
-    
+
     of WmKeyUp, WmSysKeyUp:
       let key = wkeyToKey(wParam, lParam)
       a.keyboard.pressed[key] = false
@@ -1169,7 +1170,7 @@ elif defined(windows):
 
     of WmChar:
       pushEvent onTextEnter, (a.keyboard, %$[wParam.WChar])
-    
+
     of WmSetCursor:
       if lParam.LoWord == HtClient:
         SetCursor wcursor

@@ -36,6 +36,13 @@ proc expandInfix*(a: seq[NimNode], infix: NimNode): NimNode =
     result = nnkInfix.newTree(infix, result, b)
 
 
+proc concatSeq*[T](a: seq[seq[T]]): seq[T] =
+  for b in a: result.add b
+
+proc concatSet*[T](a: seq[set[T]]): set[T] =
+  for b in a: result = result + b
+
+
 
 type
   NimRoutine* = distinct NimNode
