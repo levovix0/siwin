@@ -81,15 +81,17 @@ type
     add subtract multiply divide
 
     pause
-  AllKeys* = Key.a..Key.pause
 
+  AllKeysRange* = Key.a..Key.pause
   Keyboard* = tuple
-    pressed: array[AllKeys, bool]
+    pressed: array[AllKeysRange, bool]
 
   Cursor* {.pure.} = enum
     arrow arrowUp
     hand
     sizeAll sizeHorisontal sizeVertical
+
+const AllKeys* = {Key.a..Key.pause}
 
 type
   Screen* = object
@@ -198,7 +200,7 @@ type
     mouse: Mouse
     button: MouseButton
     pressed: bool
-  ClickEvent* = tuple
+  ClickEvent* = tuple #TODO: не срабатывает в момент запуска окна, если не двигать мышкой
     mouse: Mouse
     button: MouseButton
     position: tuple[x, y: int]
@@ -1187,34 +1189,34 @@ else:
 
 
 
-proc newNoRenderWindow*(w: int = 1280, h: int = 720, title: string = "", screen = screen(), fullscreen: bool = false): Window =
+proc newNoRenderWindow*(w = 1280, h = 720, title = "", screen = screen(), fullscreen = false): Window =
   result.initNoRenderWindow(w, h, screen, fullscreen)
   result.title = title
-proc newNoRenderWindow*(size: tuple[x, y: int], title: string = "", screen = screen(), fullscreen: bool = false): Window =
+proc newNoRenderWindow*(size: tuple[x, y: int], title = "", screen = screen(), fullscreen = false): Window =
   newNoRenderWindow(size.x, size.y, title, screen, fullscreen)
 
-proc newPictureWindow*(w: int = 1280, h: int = 720, title: string = "", screen = screen(), fullscreen: bool = false): PictureWindow =
+proc newPictureWindow*(w = 1280, h = 720, title = "", screen = screen(), fullscreen = false): PictureWindow =
   result.initPictureWindow(w, h, screen, fullscreen)
   result.title = title
-proc newPictureWindow*(size: tuple[x, y: int], title: string = "", screen = screen(), fullscreen: bool = false): PictureWindow =
+proc newPictureWindow*(size: tuple[x, y: int], title = "", screen = screen(), fullscreen = false): PictureWindow =
   newPictureWindow(size.x, size.y, title, screen, fullscreen)
 
-proc newOpenglWindow*(w: int = 1280, h: int = 720, title: string = "", screen = screen(), fullscreen: bool = false): OpenglWindow =
+proc newOpenglWindow*(w = 1280, h = 720, title = "", screen = screen(), fullscreen = false): OpenglWindow =
   result.initOpenglWindow(w, h, screen, fullscreen)
   result.title = title
-proc newOpenglWindow*(size: tuple[x, y: int], title: string = "", screen = screen(), fullscreen: bool = false): OpenglWindow =
+proc newOpenglWindow*(size: tuple[x, y: int], title = "", screen = screen(), fullscreen = false): OpenglWindow =
   newOpenglWindow(size.x, size.y, title, screen, fullscreen)
 
-template newWindow*(w: int = 1280, h: int = 720, title: string = "", screen = screen(), fullscreen: bool = false, renderEngine: RenderEngine = RenderEngine.opengl): SomeWindow =
+template newWindow*(w = 1280, h = 720, title = "", screen = screen(), fullscreen = false, renderEngine = RenderEngine.opengl): SomeWindow =
   when renderEngine == RenderEngine.none:    newNoRenderWindow(w, h, title, screen, fullscreen)
   elif renderEngine == RenderEngine.picture: newPictureWindow(w, h, title, screen, fullscreen)
   elif renderEngine == RenderEngine.opengl:  newOpenglWindow(w, h, title, screen, fullscreen)
-template newWindow*(size: tuple[x, y: int], title: string = "", screen = screen(), fullscreen: bool = false, renderEngine: RenderEngine = RenderEngine.opengl): SomeWindow =
+template newWindow*(size: tuple[x, y: int], title = "", screen = screen(), fullscreen = false, renderEngine = RenderEngine.opengl): SomeWindow =
   newWindow(size.x, size.y, title, screen, fullscreen, renderEngine)
 
-template w*(a: Screen): int = a.size.x
+proc w*(a: Screen): int = a.size.x
   ## width of screen
-template h*(a: Screen): int = a.size.y
+proc h*(a: Screen): int = a.size.y
   ## height of screen
 
 converter getPicture*(a: PictureWindow): Picture =

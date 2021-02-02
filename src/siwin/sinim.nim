@@ -1,7 +1,6 @@
 import algorithm, macros, unicode
 
 
-
 proc high*(a: NimNode): int = a.len - 1
 
 proc newArrayLit*[T](a: openarray[T]): NimNode =
@@ -36,11 +35,17 @@ proc expandInfix*(a: seq[NimNode], infix: NimNode): NimNode =
     result = nnkInfix.newTree(infix, result, b)
 
 
-proc concatSeq*[T](a: seq[seq[T]]): seq[T] =
-  for b in a: result.add b
-
 proc concatSet*[T](a: seq[set[T]]): set[T] =
   for b in a: result = result + b
+
+proc `+=`*[T](a: var set[T], v: T) =
+  a.incl v
+proc `-=`*[T](a: var set[T], v: T) =
+  a.excl v
+
+proc toSet*[T](a: openarray[T]): set[T] =
+  for b in a:
+    result += b
 
 
 

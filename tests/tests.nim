@@ -8,13 +8,13 @@ test "no render window":
   run newWindow(title="Окошко", renderEngine=none):
     init:      window.cursor = Cursor.hand
     close:     a = true
-    # keyup esc: close window
-    # keyup f1:  window.fullscreen = not window.fullscreen
+    keyup esc: close window
+    keyup f1:  window.fullscreen = not window.fullscreen
   
   check a == true
 
 
-#[ test "picture window":
+test "picture window":
   var win = newWindow(title="Окошко", renderEngine=picture)
   
   var a = false
@@ -93,7 +93,6 @@ test "macro":
   var a = false
   var g = 32
   var x = 0
-  let k = [Key.x, Key.y]
   var t = true
 
   run newWindow(title="Окошко", renderEngine=picture):
@@ -117,13 +116,12 @@ test "macro":
     tick:            inc x; check t
     close:           a = true
     keyup escape:    close window; t = false            #= `keyup: if e.key == escape:`
-    keyup f1, f2:    window.fullscreen = not window.fullscreen #= `keyup [f1, f2]:`
+    keyup f1, f2:    window.fullscreen = not window.fullscreen #= `keyup(f1)|keyup(f2):`
     space.pressing:  g = min(g + 5, 255); redraw window #= `pressing space:`
-    pressing any:    g = min(g + 1, 255); redraw window #= `pressing:`
+    pressing:        g = min(g + 1, 255); redraw window #= `tick: if anyKeyIsPressed():`
     # pressing as x: ...                                #= `pressing {.forEachKey.}: let x = magicGetPressedKey();`
     pressing as x[]: echo x                             #= `pressing: let x = magicGetAllPressedKeys();`
     notPressing g:   g = max(g - 1, 0); redraw window   #= `notPressing g:`
-    keyup (k):       close window                       #= `keyup: if e.key in k:`
     textEnter:       echo e.text
 
     keydown ctrl+c:  clipboard $= "coppied from siwin"  #= `keydown c: if e.keyboard.pressed[control] and magicOtherKeysIsNotPressed():`
@@ -141,6 +139,12 @@ test "macro":
     keyup(i) or keydown(j): discard
     keyup(a)|keydown(b): discard
 
+    group:
+      keyup x: echo "closed with x"
+      keyup y: echo "closed with y"
+    do:
+      close window
+
     #[
       A as b or B as b: ...
       A|B as b: ...
@@ -149,16 +153,6 @@ test "macro":
 
     #TODO
     #[
-      group:
-        keydown j
-        keyup:
-          echo "keyup pre-executed"
-          defer: echo "keyup post-executed"
-      do:
-        ... # выполняется при любом из событий в первом блоке. для некоторых событий могут быть указаны дополнительные действия.
-      
-      group keyup, keydown(j): ...
-
       keyup {.nodup.}: ... # исключено залипание клавиш
       {.nodup.} # залипание клавиш исключено глобально
     ]#
@@ -205,4 +199,3 @@ test "readme manage window example":
 
 test "clipboard":
   echo $clipboard   #= `clipboard.text`
- ]#

@@ -2,18 +2,9 @@ import macros, strformat, strutils, unicode, tables, sequtils, algorithm, utils,
 import window
 
 type
-  SomeWindow = Window|PictureWindow
+  SomeWindow = Window|PictureWindow|OpenglWindow
 
   KeyBinding* = distinct set[Key]
-
-proc `+=`[T](a: var set[T], v: T) =
-  a.incl v
-proc `-=`[T](a: var set[T], v: T) =
-  a.excl v
-
-proc toSet[T](a: openarray[T]): set[T] =
-  for b in a:
-    result += b
 
 
 proc kindStrings(a: typedesc): seq[string] {.compileTime.} =
@@ -46,6 +37,10 @@ proc keys*(e: KeyEvent): set[Key] =
       result += k
   if e.key notin result:
     result += e.key
+proc keys*(e: TickEvent): set[Key] =
+  for k, state in e.keyboard.pressed:
+    if state:
+      result += k
 
 
 var keyBindings* {.compileTime.}: Table[string, KeyBinding]
@@ -77,430 +72,16 @@ static:
   esc     ==> {Key.escape}
 
 
-proc nameToKeys(a: string): set[Key] {.compileTime.} =
-  let a = a.toNimUniversal
-  if keyBindings.hasKey a: set[Key] keyBindings[a]
-  else: {parseEnum[Key](a)}
-
-
-proc ofKey(a: NimNode): NimNode =
-  result = a.ofEnum(Key)
-  if a.kind == nnkIdent and keyBindings.hasKey $a:
-    return newLit set[Key] keyBindings[$a]
-
-#[ 
-proc kindStrings(a: typedesc): seq[string] {.compileTime.} =
-  let b = a.getTypeImpl
-  b.expectKind nnkEnumTy
-  for c in b:
-    if c.kind == nnkSym: result.add c.strVal.toNimUniversal
-
-const keyKindStrings = Key.kindStrings
-const mouseButtonKindStrings = MouseButton.kindStrings
-
-proc ofEnum(a: NimNode, b: typedesc): NimNode =
-  template possible: seq[string] =
-    when b is typedesc[Key]: keyKindStrings
-    elif b is typedesc[MouseButton]: mouseButtonKindStrings
-    else: b.kindStrings
-
-  if a.kind == nnkIdent and a.strVal.toNimUniversal in possible:
-    nnkDotExpr.newTree(quote do: `b`, a)
-  else:
-    a
-
-
-proc check*(a, b: Key): bool = a == b
-proc check*(a: Key, b: openarray[Key]): bool = a in b
-proc check*(a: Key, b: proc(a: Key): bool): bool = b(a)
-proc check*(a, b: MouseButton): bool = a == b
-proc check*(a: MouseButton, b: openarray[MouseButton]): bool = a in b
-proc check*(a: MouseButton, b: proc(a: MouseButton): bool): bool = b(a)
-
-
-var keyNameBindings* {.compileTime.}: Table[string, seq[Key]]
-
-macro makeKeyNameBinding*(name: untyped, match: static[openarray[Key]]): untyped =
-  name.expectKind nnkIdent
-  let matchLit = newArrayLit match
-  keyNameBindings[name.strVal.toNimUniversal] = match.toSeq
-
-  result = quote do:
-    proc `name`*(a: Key): bool = a in `matchLit`
-    proc `name`*(a: array[Key.a..Key.pause, bool]): bool =
-      for k in `matchLit`:
-        result = result or a[k]
-
-makeKeyNameBinding control, [lcontrol, rcontrol]
-makeKeyNameBinding ctrl,    [lcontrol, rcontrol]
-
-makeKeyNameBinding shift,   [lshift, rshift]
-
-makeKeyNameBinding alt,     [lalt, ralt]
-
-makeKeyNameBinding system,  [lsystem, rsystem]
-makeKeyNameBinding meta,    [lsystem, rsystem]
-makeKeyNameBinding super,   [lsystem, rsystem]
-makeKeyNameBinding windows, [lsystem, rsystem]
-makeKeyNameBinding win,     [lsystem, rsystem]
-
-makeKeyNameBinding esc,     [Key.escape]
-
-proc genPressedKeyCheck(a: NimNode): NimNode = quote do:
-  when compiles(`a`(e.keyboard.pressed)) and `a`(e.keyboard.pressed) is bool:
-    `a`(e.keyboard.pressed)
-  else:
-    e.keyboard.pressed[`a`]
-
-proc contains*(a: array[Key.a..Key.pause, bool], b: openArray[Key]): bool =
-  for k in b:
-    if a[k]:
-      result = true
-      return
-
-proc nameToKeys(a: string): seq[Key] {.compileTime.} =
-  let a = a.toNimUniversal
-  if keyNameBindings.hasKey a: keyNameBindings[a]
-  else: @[parseEnum[Key](a)]
-
-proc genExPressedKeySeq(a: seq[NimNode]): seq[Key] {.compileTime.} =
-  for k in Key.a..Key.pause:
-    result.add k
-  var r: seq[Key]
-  for b in a:
-    b.expectKind nnkIdent
-    r.add nameToKeys(b.strVal)
-  sort r
-  r = r.deduplicate(true)
-  for v in r.reversed:
-    result.delete v.ord
-
-# TODO: тип события: название, параметры, тело
-
-proc runImpl(w: NimNode, a: NimNode, wt: static[RenderEngine]): NimNode =
-  a.expectKind nnkStmtList
-  result = nnkStmtList.newTree()
-
-  var runRes: Table[string, NimNode]
-  proc resadd(e: string, body: NimNode) =
-    if e notin runRes: runRes[e] = nnkStmtList.newTree()
-    runRes[e].add quote do:
-      block: `body`
-
-  type
-    EventHeader = tuple
-      name: string
-      args: seq[NimNode]
-    AsPair = tuple
-      head: EventHeader
-      res: NimNode
-    Event = tuple
-      head: AsPair
-      body: NimNode
-
-
-  template name(a: Event): auto = a.head.head.name
-  template args(a: Event): auto = a.head.head.args
-  template res(a: Event): auto = a.head.res
-
-  proc add(a: Event, v: NimNode) =
-    a.name.resadd v
-
-
-  proc `parse header`(a: NimNode): EventHeader =
-    a.expectKind {nnkIdent, nnkCall, nnkCommand}
-    case a.kind
-    of nnkIdent: result.name = $a
-    of nnkCall, nnkCommand:
-      if a[0].kind == nnkDotExpr:
-        result.name = $a[0][1]
-        result.args &= a[0][0]
-      else:
-        result.name = $a[0]
-      for b in a[1..^1]:
-        if b.kind == nnkStmtList:
-          result.args &= b[0..^1]
-        else:
-          result.args &= b
-    else: discard
-    result.name = result.name.toLower
-
-  proc `parse |`(a: NimNode): seq[EventHeader] =
-    a.flattenInfix("|").map(`parse header`)
-  
-  proc `parse as`(a: NimNode): seq[AsPair] =
-    if a.kind == nnkInfix and $a[0] == "as":
-      for b in a[1].`parse |`:
-        result &= (b, a[2])
+proc ofKeysImpl(a: openarray[NimNode]): seq[NimNode] =
+  for a in a:
+    if a.kind == nnkIdent and keyBindings.hasKey $a:
+      result.add ((set[Key])keyBindings[$a]).toSeq.map(newLit)
     else:
-      result = a.`parse |`.map(a => (a, nil.NimNode))
-  
-  proc `parse or`(a: NimNode): seq[AsPair] =
-    for b in a.flattenInfix("or"):
-      result &= b.`parse as`
-  
-  proc `parse event`(a: NimNode): seq[Event] =
-    if a.kind == nnkIdent:
-      @[((a.`parse header`, nil.NimNode), nil.NimNode)]
-    elif a.last.kind == nnkStmtList:
-      a.kind.newTree(a[0..^2]).`parse or`.map(b => (b, a[^1]))
-    else:
-      a.`parse or`.map(b => (b, nil.NimNode))
-
-
-  for b in a:
-    for event in b.`parse event`:
-      let pars = event.args
-      let body = event.body
-      var asNode = event.res
-      
-
-      var genAs: proc(v: NimNode): NimNode = proc(v: NimNode): NimNode = discard
-      var asKind = nnkEmpty
-      if asNode != nil:
-        asKind = asNode.kind
-        
-        case asKind
-        of nnkIdent: discard
-        of nnkPar:
-          var r = nnkVarTuple.newTree
-          for c in asNode:
-            r &= nnkPragmaExpr.newTree(c, nnkPragma.newTree(ident"inject"))
-          r &= nnkEmpty.newNimNode
-          asNode = r
-        of nnkBracketExpr:
-          asNode.expectLen 1
-          asNode = asNode[0]
-          asNode.expectKind nnkIdent
-        else: error(&"got {asNode.kind}, but expected ident, ident[] or tuple", asNode)
-
-        case asKind
-        of nnkIdent, nnkBracketExpr:
-          genAs = proc(v: NimNode): NimNode = quote do:
-            let `asNode` {.inject.} = `v`
-        of nnkPar:
-          genAs = proc(v: NimNode): NimNode =
-            var r = asNode
-            r.add v
-            return nnkLetSection.newTree(r)
-        else: discard
-
-      proc sellectAs(a: NimNode, arr: NimNode): NimNode =
-        if asKind == nnkBracketExpr: genAs(arr)
-        else: genAs(a)
-      proc sellectAs(a: NimNode): NimNode =
-        if asKind == nnkBracketExpr: error(&"can't get event val as array", asNode)
-        else: return genAs(a)
-
-
-      let e = ident"e"
-      
-      template resaddas(ename: string; a, arr, body: untyped) =
-        let asl {.inject.} = sellectAs(quote do: a, quote do: arr)
-        if asl != nil:
-          ename.resadd quote do:
-            `asl`
-            body
-        else:
-          ename.resadd quote do:
-            body
-
-      template resaddas(ename: string; a, body: untyped) =
-        let asl {.inject.} = sellectAs(quote do: a)
-        if asl != nil:
-          ename.resadd quote do:
-            `asl`
-            body
-        else:
-          ename.resadd quote do:
-            body
-      
-      proc parseKeyCombination(a: NimNode): tuple[key: NimNode, cond: NimNode] = withExcl result, []:
-        var keys = flattenInfix a
-        key = keys[^1].ofEnum(Key)
-
-        let needEx = ident"_" in keys or keys.len > 1
-        keys.delete ident"_"
-
-        if needEx:
-          let ex = genExPressedKeySeq(keys).newLit
-          cond = quote do: `ex` notin `e`.keyboard.pressed
-          for c in keys[0..^2].mapit(it.ofEnum(Key).genPressedKeyCheck):
-            cond = quote do: `c` and `cond`
-        else:
-          cond = newLit true
-
-      case event.name
-      of "keydown", "keyup":
-        if pars.len == 1 and pars[0] != ident"any":
-          var (k, c) = pars[0].parseKeyCombination
-          event.add quote do:
-            if check(`e`.key, `k`) and `c`:
-              `body`
-        elif pars.len > 1:
-          var cond = newLit false
-          for (k, c) in pars.map(parseKeyCombination):
-            cond = quote do: `cond` or (`c` and check(`e`.key, `k`))
-          event.add quote do:
-            if `cond`:
-              `body`
-        else: event.name.resaddas `e`.key: `body`
-
-      of "mousedown", "mouseup":
-        if pars.len == 1 and pars[0] != ident"any":
-          var k = pars[0].ofEnum(MouseButton)
-          event.add quote do:
-            if check(e.button, `k`):
-              `body`
-        elif pars.len > 1:
-          var kk = nnkBracket.newTree()
-          for v in pars:
-            kk.add v.ofEnum(MouseButton)
-          event.add quote do:
-            if e.button in `kk`:
-              `body`
-        else: event.name.resaddas `e`.button: `body`
-
-      of "pressingkey", "keypressing", "pressing":
-        if pars.len == 1 and pars[0] != ident"any":
-          var k = pars[0].ofEnum(Key)
-          "tick".resaddas `k`:
-            if `e`.keyboard.pressed[`k`]:
-              `body`
-        else:
-          let kk =
-            if pars.len < 2: bindSym"AllKeys"
-            else: nnkBracket.newTree: mapit pars:
-              it.ofEnum(Key)
-          case asKind
-          of nnkEmpty:
-            "tick".resadd quote do:
-              var prs = false
-              for k in `kk`:
-                if `e`.keyboard.pressed[k]: prs = true; break
-              if prs:
-                `body`
-          of nnkIdent:
-            "tick".resadd quote do:
-              for k in `kk`:
-                if `e`.keyboard.pressed[k]:
-                  let `asNode` {.inject.} = k
-                  `body`
-          of nnkBracketExpr:
-            "tick".resadd quote do:
-              var `asNode` {.inject.}: seq[Key]
-              for k in `kk`:
-                if `e`.keyboard.pressed[k]: `asNode`.add k
-              if `asNode`.len > 0:
-                `body`
-          else: error(&"got {asNode.kind}, but expected ident or ident[]", asNode)
-
-      of "notpressingkey", "notkeypressing", "notpressing":
-        if pars.len == 1 and pars[0] != ident"any":
-          var k = pars[0].ofEnum(Key)
-          "tick".resadd quote do:
-            if not `e`.keyboard.pressed[`k`]:
-              `body`
-        elif pars.len > 1:
-          var kk = nnkBracket.newTree()
-          for v in pars:
-            kk.add v.ofEnum(Key)
-          "tick".resadd quote do:
-            var prs = false
-            for k in `kk`:
-              if `e`.keyboard.pressed[k]: prs = true
-            if not prs:
-              `body`
-        else:
-          "tick".resadd quote do:
-            if true notin `e`.keyboard.pressed:
-              `body`
-
-      of "click":
-        if pars.len == 1 and pars[0] != ident"any":
-          var k = pars[0].ofEnum(MouseButton)
-          event.name.resaddas `e`.position:
-            if `e`.button == `k`:
-              `body`
-        if pars.len > 1:
-          var kk = nnkBracket.newTree()
-          for v in pars:
-            kk.add v.ofEnum(MouseButton)
-          event.name.resaddas `e`.position:
-            if `e`.button in `kk`:
-              `body`
-        else:
-          event.name.resaddas `e`.position: `body`
-
-      of "textenter":
-        event.name.resaddas `e`.text, `e`.text.toRunes: `body`
-      of "render":
-        when wt == RenderEngine.picture:
-          event.name.resaddas `w`.render: `body`
-        elif wt == RenderEngine.opengl:
-          event.add body
-        else:
-          error "can't render on window (no render engine)", b
-      of "focus":
-        event.name.resaddas `e`.focused: `body`
-      of "fullscreen", "fullscreenchanged":
-        if pars.len == 1:
-          let c = pars[0]
-          "fullscreenchanged".resaddas `e`.state:
-            if `e`.state == `c`:
-              `body`
-        elif pars.len > 1:
-          error(&"got {pars.len} parametrs, but expected one of (), (state)", pars[1])
-        else:
-          "fullscreenchanged".resaddas `e`.state: `body`
-
-      of "scroll":
-        event.name.resaddas `e`.delta: `body`
-      of "mousemove", "mouseleave", "mouseenter", "windowmove":
-        event.name.resaddas `e`.position: `body`
-      of "resize":
-        event.name.resaddas `e`.size: `body`
-
-      else: event.add body
-
-  for eventName, body in runRes:
-    let eventNameIdent = ident("on" & eventName)
-
-    template eproc(t: typedesc) {.dirty.} =
-      result.add quote do:
-        `w`.`eventNameIdent` = proc(e {.inject.}: t) =
-          `body`
-
-    case eventName
-    of "close":  eproc CloseEvent
-    of "render":
-      when wt == RenderEngine.picture:
-        eproc PictureRenderEvent
-      when wt == RenderEngine.opengl:
-        eproc OpenglRenderEvent
-    of "tick":   eproc TickEvent
-    of "resize": eproc ResizeEvent
-    of "windowmove": eproc WindowMoveEvent
-    
-    of "focus":  eproc FocusEvent
-    of "fullscreenchanged": eproc StateChangedEvent
-    
-    of "mousemove", "mouseleave", "mouseenter": eproc MouseMoveEvent
-    of "mousedown", "mouseup": eproc MouseButtonEvent
-    of "click", "doubleclick": eproc ClickEvent
-    of "scroll": eproc ScrollEvent
-
-    of "keydown", "keyup": eproc KeyEvent
-    of "textenter": eproc TextEnterEvent
-
-    of "init":
-      result.add quote do:
-        `body`
-    else: error(&"unknown event: {eventName}")
-
-  result.add quote do:
-    run `w`
- ]#
+      result.add a.ofEnum(Key)
+proc ofKeys(a: openarray[NimNode]): NimNode =
+  nnkCurly.newTree a.ofKeysImpl
+proc ofKeys(a: NimNode): NimNode =
+  nnkCurly.newTree [a].ofKeysImpl
 
 
 type
@@ -580,20 +161,19 @@ proc translateKeyCombination(a: NimNode): NimNode =
   keys.delete ident"_"
 
   if needEx:
-    let ex = keys.mapit(nameToKeys $it).concatSet
-    result = quote do: (`e`.keys - `ex`).len == 0
-    let kx = keys[^1].ofKey
-    result = quote do: (`kx` in `e`.keys) and `result` 
-    for c in keys[0..^2].mapit(nameToKeys $it):
-      result = quote do: (`c` in `e`.keys) and `result`
+    let ex = keys.ofKeys
+    result = quote do: (e.keys - `ex`).len == 0
+    for c in keys:
+      let kx = c.ofKeys
+      result = quote do: (e.keys * `kx`).len > 0 and `result`
   else:
-    let kx = keys[^1].ofKey
-    result = quote do: `kx` in `e`.keys
+    let kx = keys.ofKeys
+    result = quote do: (e.keys * `kx`).len > 0
 
 
 proc translateEvent(rp: RunParser, a: Event): seq[EventOutput] =
   template add(e: string, body: NimNode) =
-    result.add (e, nnkBlockStmt.newTree(body))
+    result.add (e, nnkBlockStmt.newTree(newEmptyNode(), body))
   template w: auto = rp.windowNode
   var (name, body, args, res) = a.toFlatTuple
 
@@ -649,10 +229,9 @@ proc translateEvent(rp: RunParser, a: Event): seq[EventOutput] =
     if asl != nil: ename.add newStmtList(asl, b)
     else:          ename.add b
 
-
   case name
   of "group": # meta-event
-    for c in args.map(`parse event`).concatSeq:
+    for c in args.map(`parse event`).concat:
       var c = c
       c.body =
         if c.body == nil: body
@@ -694,6 +273,11 @@ proc translateEvent(rp: RunParser, a: Event): seq[EventOutput] =
         if `e`.delta < 0: `body`
       else: error(&"unknown direction {args[0]}, expected down|up", args[0])
     else: error(&"got {args.len} parametrs, but expected one of (), (direction)", args[1])
+
+  of "mousemove", "mouseleave", "mouseenter", "windowmove":
+    name.addas `e`.position: `body`
+  of "resize":
+    name.addas `e`.size: `body`
   
   of "keydown", "keyup":
     case args.len
@@ -708,14 +292,67 @@ proc translateEvent(rp: RunParser, a: Event): seq[EventOutput] =
       name.add quote do:
         if `c`: `body`
 
-  of "mousemove", "mouseleave", "mouseenter", "windowmove":
-    name.addas `e`.position: `body`
-  of "resize":
-    name.addas `e`.size: `body`
+  of "mousedown", "mouseup":
+    case args.len
+    of 0:
+      name.addas `e`.button: `body`
+    of 1:
+      let k = args[0].ofEnum(MouseButton)
+      name.add quote do:
+        if check(e.button, `k`):
+          `body`
+    else:
+      let kk = nnkBracket.newTree args.mapit(it.ofEnum MouseButton)
+      name.add quote do:
+        if e.button in `kk`:
+          `body`
+
+  of "pressingkey", "keypressing", "pressing":
+    let kk =
+      if args.len < 1: bindSym"AllKeys"
+      else: args.ofKeys
+    case asKind
+    of nnkEmpty:
+      "tick".add quote do:
+        if (`e`.keys * `kk`).len > 0:
+          `body`
+    of nnkIdent:
+      "tick".add quote do:
+        for k in `e`.keys * `kk`:
+          let `res` {.inject.} = k
+          `body`
+    of nnkBracketExpr:
+      "tick".add quote do:
+        var `res` {.inject.} = `e`.keys * `kk`
+        if `res`.len > 0:
+          `body`
+    else: error(&"got {res.kind}, but expected ident or ident[]", res)
+  
+  of "notpressingkey", "notkeypressing", "notpressing":
+    var kk = args.ofKeys
+    "tick".add quote do:
+      if (`e`.keys * `kk`).len == 0:
+        `body`
+  
+  of "click":
+    case args.len
+    of 0:
+      name.addas `e`.position: `body`
+    of 1:
+      var k = args[0].ofEnum(MouseButton)
+      name.addas `e`.position:
+        if `e`.button == `k`:
+          `body`
+    else:
+      var kk = nnkCurly.newTree args.mapit(it.ofEnum(MouseButton))
+      name.addas `e`.position:
+        if `e`.button in `kk`:
+          `body`
+
   else: name.add body
 
 proc translateEvent(rp: RunParser, a: NimNode): seq[EventOutput] =
-  a.`parse event`.mapit(rp.translateEvent it).concatSeq
+  a.`parse event`.mapit(rp.translateEvent it).concat
 
 
 proc runImpl(win, a: NimNode, re: RenderEngine): NimNode =
@@ -728,20 +365,21 @@ proc runImpl(win, a: NimNode, re: RenderEngine): NimNode =
   a.expectKind nnkStmtList
 
   var outp: Table[string, NimNode]
-  for (name, body) in a.mapit(rp.translateEvent it).concatSeq:
+  for (name, body) in a.mapit(rp.translateEvent it).concat:
     if name notin outp: outp[name] = newStmtList()
     outp[name] &= body
 
   for name, body in outp:
     let wev = nnkDotExpr.newTree(win, ident("on" & name))
     proc eproct(t: typedesc): NimNode =
+      ## window.onX = proc(e: XEvent) = body
       nnkStmtList.newTree(
         nnkAsgn.newTree(
           wev,
           nnkLambda.newTree(
             newEmptyNode(),
             newEmptyNode(),
-            newEmptyNode(),
+            newEmptyNode(),            
             nnkFormalParams.newTree(
               newEmptyNode(),
               nnkIdentDefs.newTree(
@@ -790,7 +428,7 @@ proc runImpl(win, a: NimNode, re: RenderEngine): NimNode =
     else: error(&"unknown event: {name}")
 
   result.add quote do:
-    run `w`
+    run `win`
 
 macro run*(w: var Window, a: untyped) =
   runImpl w, a, RenderEngine.none
