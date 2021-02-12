@@ -96,11 +96,16 @@ proc glxMakeCurrent*(dpy: PDisplay, drawable: Drawable, ctx: GlxContext): GlxBoo
 proc glxCopyContext(dpy: PDisplay, src, dst: GlxContext, mask: int32) {.glx: "copyContext".}
 proc glxIsDirect(dpy: PDisplay, ctx: GlxContext): GlxBool {.glx: "isDirect".}
 
-proc newGlxContext*(vis: PXVisualInfo, direct: bool = true, shareList: GlxContext = nil): GlxContext = display.glxCreateContext(vis, shareList, direct)
-proc destroy*(a: GlxContext) = display.glxDestroyContext(a)
-proc `target=`*(ctx: GlxContext, a: Drawable) = glxAssert display.glxMakeCurrent(a, ctx)
-proc copyState*(src, dst: GlxContext, mask: int32) = display.glxCopyContext(src, dst, mask)
-proc isDirect*(a: GlxContext): bool = display.glxIsDirect(a)
+proc newGlxContext*(vis: PXVisualInfo, direct: bool = true, shareList: GlxContext = nil): GlxContext =
+  display.glxCreateContext(vis, shareList, direct)
+proc destroy*(a: GlxContext) =
+  display.glxDestroyContext(a)
+proc `target=`*(ctx: GlxContext, a: Drawable) =
+  glxAssert display.glxMakeCurrent(a, ctx)
+proc copyState*(src, dst: GlxContext, mask: int32) =
+  display.glxCopyContext(src, dst, mask)
+proc isDirect*(a: GlxContext): bool =
+  display.glxIsDirect(a)
 
 proc glxCurrentContext*(): GlxContext {.glx: "getCurrentContext".}
 proc glxCurrentDrawable*(): Drawable {.glx: "getCurrentDrawable".}

@@ -1,9 +1,12 @@
-# siwin
-Nim Simple Window Maker  
-can be used as an alternative to GLFW/GLUT
+# Siwin
+
+Simple window creation library.
+Can be used as an alternative to GLFW/GLUT
+![Language](https://img.shields.io/badge/language-Nim-orange.svg?style=flat-square) ![Code size](https://img.shields.io/github/languages/code-size/levovix0/siwin?style=flat-square) ![Total Lines](https://img.shields.io/tokei/lines/github/levovix0/siwin?color=purple&style=flat-square)
+
 
 # Features
-* window creation and management
+* window creation and simple management
 * `run` event loop generation macro
 * clipboard
 * OpenGl support
@@ -11,14 +14,9 @@ can be used as an alternative to GLFW/GLUT
 * OS Linux support (using X11)
 * OS Windows support
 
-# TODO
-* Wayland support
-* Vulkan support
-* web support
-* Android support
-* joystick support
+# Examples
 
-simple window:
+#### simple window
 ```nim
 run newWindow(renderEngine=picture):
   render as r:
@@ -27,7 +25,7 @@ run newWindow(renderEngine=picture):
     close window
 ```
 
-opengl:
+#### opengl
 ```nim
 import nimgl/opengl
 
@@ -57,7 +55,7 @@ run newWindow(): # opengl is render engine by default
     glEnd()
 ```
 
-pixel access:
+#### pixel access
 ```nim
 run newWindow(w=screen().size.x, title="render example", renderEngine=picture):
   render as r:
@@ -66,18 +64,18 @@ run newWindow(w=screen().size.x, title="render example", renderEngine=picture):
       r[i, i mod window.size.y] = color"ffffff"
 ```
 
-clipboard:
+#### clipboard
 ```nim
 run newWindow():
-  keydown control+c:    clipboard.text = "coppied from siwin window!"
+  keydown control+c:    clipboard.text = "some text"
   keydown control+v:    echo clipboard.text
-  keydown ctrl+shift+c: clipboard $= "other text coppied from siwin window!"
+  keydown ctrl+shift+c: clipboard $= "other text"
   keydown ctrl+shift+v: echo $clipboard
 ```
 
-manage window:
+#### moving and resizing window
 ```nim
-var win = newWindow(w=800, h=600, title="manage example", fullscreen=true, renderEngine=picture)
+var win = newWindow(w=800, h=600, title="moving and resizing example", fullscreen=true, renderEngine=picture)
 win.onKeyup = proc(e: KeyEvent) =
   if e.key == Key.f1:
     win.fullscreen = not win.fullscreen
@@ -92,3 +90,10 @@ win.onFullscreenChanged = proc(e: StateChangedEvent) =
   win.position = (screen().size.x div 2 - win.size.x div 2, screen().size.y div 2 - win.size.y div 2)
 run win
 ```
+
+# TODO
+* Wayland support
+* Vulkan support
+* web support
+* Android support
+* joystick support

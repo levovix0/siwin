@@ -1,6 +1,6 @@
 import siwin, siwin/image
 import unittest, strformat
-# import nimgl/opengl
+import nimgl/opengl
 
 test "no render window":
   var a = false
@@ -61,33 +61,33 @@ test "picture window":
   echo x
   check a == true
 
-# test "opengl window":
-#   run newWindow(title="OpenGL"):
-#     keyup esc: close window
-#     keyup f1:  window.fullscreen = not window.fullscreen
-#     resize as (w, h):
-#       glViewport 0, 0, w.GLsizei, h.GLsizei
-#       glMatrixMode GlProjection
-#       glLoadIdentity()
-#       glOrtho -30, 30, -30, 30, -30, 30
-#       glMatrixMode GlModelView
-#     render:
-#       glClearColor 0.3, 0.3, 0.3, 0
-#       glClear GlColorBufferBit or GlDepthBufferBit
+test "opengl window":
+  run newWindow(title="OpenGL"):
+    keyup esc: close window
+    keyup f1:  window.fullscreen = not window.fullscreen
+    resize as (w, h):
+      glViewport 0, 0, w.GLsizei, h.GLsizei
+      glMatrixMode GlProjection
+      glLoadIdentity()
+      glOrtho -30, 30, -30, 30, -30, 30
+      glMatrixMode GlModelView
+    render:
+      glClearColor 0.3, 0.3, 0.3, 0
+      glClear GlColorBufferBit or GlDepthBufferBit
     
-#       glShadeModel GlSmooth
+      glShadeModel GlSmooth
     
-#       glLoadIdentity()
-#       glTranslatef -15, -15, 0
+      glLoadIdentity()
+      glTranslatef -15, -15, 0
     
-#       glBegin GlTriangles
-#       glColor3f 1, 0, 0
-#       glVertex2f 0, 0
-#       glColor3f 0, 1, 0
-#       glVertex2f 30, 0
-#       glColor3f 0, 0, 1
-#       glVertex2f 0, 30
-#       glEnd()
+      glBegin GlTriangles
+      glColor3f 1, 0, 0
+      glVertex2f 0, 0
+      glColor3f 0, 1, 0
+      glVertex2f 30, 0
+      glColor3f 0, 0, 1
+      glVertex2f 0, 30
+      glEnd()
 
 test "macro":
   var a = false
@@ -122,7 +122,7 @@ test "macro":
     # pressing as x: ...                                #= `pressing {.forEachKey.}: let x = magicGetPressedKey();`
     pressing as x[]: echo x                             #= `pressing: let x = magicGetAllPressedKeys();`
     notPressing g:   g = max(g - 1, 0); redraw window   #= `notPressing g:`
-    textEnter:       echo e.text
+    input:           echo e.text
 
     keydown ctrl+c:  clipboard $= "coppied from siwin"  #= `keydown c: if e.keyboard.pressed[control] and magicOtherKeysIsNotPressed():`
     keydown ctrl-v:  echo $clipboard                    #= `keyup ctrl+v:`
@@ -171,31 +171,33 @@ test "screen":
       echo &"screen({i}).size: {size.x}x{size.y}"
 
 
-test "readme render example":
-  run newWindow(w=screen().size.x, title="render example", renderEngine=picture):
-    render as r:
-      r.clear color"202020"
-      for i in r.area.a.x..r.area.b.x:
-        r[i, i mod window.size.y] = color"ffffff"
-    keyup esc:
-      close window
-
-
-test "readme manage window example":
-  var win = newWindow(w=800, h=600, title="manage example", fullscreen=true, renderEngine=picture)
-  win.onKeyup = proc(e: KeyEvent) =
-    if e.key == Key.f1:
-      win.fullscreen = not win.fullscreen
-    elif e.key == Key.f2:
-      win.size = (1280, 720)
-    elif e.key == Key.escape:
-      close win
-  win.onRender = proc(e: PictureRenderEvent) =
-    let r = render win
-    r.clear color"202020"
-  win.onFullscreenChanged = proc(e: StateChangedEvent) =
-    win.position = (screen().size.x div 2 - win.size.x div 2, screen().size.y div 2 - win.size.y div 2)
-  run win
-
 test "clipboard":
   echo $clipboard   #= `clipboard.text`
+
+
+suite "readme":
+  test "render example":
+    run newWindow(w=screen().size.x, title="render example", renderEngine=picture):
+      render as r:
+        r.clear color"202020"
+        for i in r.area.a.x..r.area.b.x:
+          r[i, i mod window.size.y] = color"ffffff"
+      keyup esc:
+        close window
+
+
+  test "moving and resizing window example":
+    var win = newWindow(w=800, h=600, title="moving and resizing example", fullscreen=true, renderEngine=picture)
+    win.onKeyup = proc(e: KeyEvent) =
+      if e.key == Key.f1:
+        win.fullscreen = not win.fullscreen
+      elif e.key == Key.f2:
+        win.size = (1280, 720)
+      elif e.key == Key.escape:
+        close win
+    win.onRender = proc(e: PictureRenderEvent) =
+      let r = render win
+      r.clear color"202020"
+    win.onFullscreenChanged = proc(e: StateChangedEvent) =
+      win.position = (screen().size.x div 2 - win.size.x div 2, screen().size.y div 2 - win.size.y div 2)
+    run win

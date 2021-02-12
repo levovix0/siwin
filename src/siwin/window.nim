@@ -7,6 +7,8 @@ when defined(linux):
   from nimgl/opengl import glInit
 when defined(windows):
   import libwinapi, macros
+  import libwgl
+  from nimgl/opengl import glInit
   type Color = image.Color
 
 
@@ -166,7 +168,7 @@ type
 
     elif defined(windows):
       wimage: HBitmap
-      hdc: HDC
+      hdc: Hdc
       m_data: ArrayPtr[Color]
 
   OpenglWindow* = object of Window
@@ -174,6 +176,11 @@ type
 
     when defined(linux):
       waitForReDraw: bool
+      ctx: GlxContext
+    
+    elif defined(windows):
+      hdc: Hdc
+      ctx: WglContext
 
   SomeWindow = Window|PictureWindow|OpenglWindow
   RenderEngine* {.pure.} = enum
@@ -190,6 +197,7 @@ type
   OpenglRenderEvent* = tuple
   ResizeEvent* = tuple
     oldSize, size: tuple[x, y: int]
+    #TODO first: bool # is this initial resizing
   WindowMoveEvent* = tuple
     oldPosition, position: tuple[x, y: int]
 
@@ -218,15 +226,16 @@ type
     mouse: Mouse
     keyboard: Keyboard
     deltaTime: Duration
+  #TODO: FixedTickEvent
 
-  KeyEvent* = tuple
+  KeyEvent* = tuple #TODO: нажимать обратно нажатые в системе клавиши при получении фокуса
     keyboard: Keyboard
     key: Key
     pressed: bool
     alt, control, shift, system: bool
-  TextEnterEvent* = tuple
+  TextEnterEvent* = tuple #TODO: переименовать в TextInputEvent
     keyboard: Keyboard
-    text: string # строка, т.к. введённый символ может быть закодирован в unicode
+    text: string # one utf-8 encoded letter
 
 when defined(linux):
   proc xkeyToKey(sym: KeySym): Key =
@@ -490,6 +499,7 @@ when defined(linux):
 
   proc `=destroy`*(a: var OpenglWindow) {.with.} =
     nil.GlxContext.target = 0
+    destroy ctx
     `=destroy` a.Window
 
   proc initWindow(a: var Window; w, h: int; screen: Screen) {.with.} =
@@ -549,7 +559,7 @@ when defined(linux):
 
     a.setupWindow fullscreen
 
-    let ctx = newGlxContext(vi)
+    ctx = newGlxContext(vi)
     glxAssert ctx != nil
     ctx.target = xwin
 
@@ -715,7 +725,7 @@ when defined(linux):
           if ev.xconfigure.width != m_size.x or ev.xconfigure.height != m_size.y:
             let osize = m_size
             a.updateSize()
-            pushEvent on_resize, (osize, m_size)
+            pushEvent onResize, (osize, m_size)
           if ev.xconfigure.x.int != m_pos.x or ev.xconfigure.y.int != m_pos.y:
             let oldPos = m_pos
             m_pos = (ev.xconfigure.x.int, ev.xconfigure.y.int)
@@ -864,9 +874,17 @@ elif defined(windows):
     if (message == WmSysCommand) and (wParam == ScKeyMenu): return 0
     return DefWindowProc(handle, message, wParam, lParam)
 
+  proc openglWndProc(handle: HWnd, message: Uint, wParam: WParam, lParam: LParam): LResult {.stdcall.} =
+    let win = if handle != 0: cast[ptr OpenglWindow](GetWindowLongPtr(handle, GwlpUserData)) else: nil
+    if win != nil: return win[].poolEvent(message, wParam, lParam)
+
+    if message == WmClose: return 0
+    if (message == WmSysCommand) and (wParam == ScKeyMenu): return 0
+    return DefWindowProc(handle, message, wParam, lParam)
+
   const wClassName = "win64app"
   const wpClassName = "win64pictureapp"
-  # const woClassName = "win64openglapp"
+  const woClassName = "win64openglapp"
   block winapiInit:
     var wcex: WndClasseX
     wcex.cbSize        = WndClasseX.sizeof.int32
@@ -880,24 +898,25 @@ elif defined(windows):
     wcex.lpszMenuName  = nil
     wcex.lpszClassName = wClassName
     wcex.hIconSm       = 0
-    winassert RegisterClassEx(wcex) != 0
+    assert RegisterClassEx(wcex) != 0
 
-    wcex.cbSize        = WndClasseX.sizeof.int32
-    wcex.style         = CsHRedraw or CsVRedraw or CsDblClks
     wcex.lpfnWndProc   = pictureWndProc
-    wcex.cbClsExtra    = 0
-    wcex.cbWndExtra    = 0
-    wcex.hInstance     = hInstance
-    wcex.hCursor       = LoadCursor(0, IdcArrow)
-    wcex.hbrBackground = 0
-    wcex.lpszMenuName  = nil
     wcex.lpszClassName = wpClassName
-    wcex.hIconSm       = 0
-    winassert RegisterClassEx(wcex) != 0
+    assert RegisterClassEx(wcex) != 0
+
+    wcex.lpfnWndProc   = openglWndProc
+    wcex.lpszClassName = woClassName
+    assert RegisterClassEx(wcex) != 0
 
   proc `=destroy`*(a: var PictureWindow) {.with.} =
     DeleteDC hdc
     DeleteObject wimage
+  
+  proc `=destroy`*(a: var OpenglWindow) {.with.} =
+    if wglGetCurrentContext() == ctx:
+      wglMakeCurrent(0, 0)
+    wglDeleteContext ctx
+    DeleteDC hdc
 
   template pushEvent(a: SomeWindow, event, args) =
     when args is tuple:
@@ -924,11 +943,11 @@ elif defined(windows):
 
     if m_size.x * m_size.y > 0:
       var bmi = BitmapInfo(bmiHeader: BitmapInfoHeader(biSize: BitmapInfoHeader.sizeof.int32, biWidth: m_size.x.Long, biHeight: -m_size.y.Long,
-                            biPlanes: 1, biBitCount: 32, biCompression: BiRgb, biSizeImage: 0, biXPelsPerMeter: 0, biYPelsPerMeter: 0, biClrUsed: 0, biClrImportant: 0));
-      wimage  = CreateDibSection(0, &bmi, DibRgbColors, cast[ptr pointer](&m_data), 0, 0)
+                           biPlanes: 1, biBitCount: 32, biCompression: Bi_rgb))
+      wimage  = CreateDibSection(0, &bmi, Dib_rgb_colors, cast[ptr pointer](&m_data), 0, 0)
       hdc     = CreateCompatibleDC(0)
-      winassert wimage != 0
-      winassert hdc != 0
+      assert wimage != 0
+      assert hdc != 0
     else:
       m_data = nil
     let old = hdc.SelectObject(wimage)
@@ -961,7 +980,7 @@ elif defined(windows):
 
   proc initWindow(a: var Window; w, h: int; screen: Screen, wClassName: string) {.with.} =
     handle = CreateWindow(wClassName, "", WsOverlappedWindow, CwUseDefault, CwUseDefault, w.int32, h.int32, 0, 0, hInstance, nil)
-    winassert handle != 0
+    assert handle != 0
     m_hasFocus = true
     m_isOpen = true
     curCursor = arrow
@@ -983,17 +1002,35 @@ elif defined(windows):
 
     if m_size.x * m_size.y > 0:
       var bmi = BitmapInfo(bmiHeader: BitmapInfoHeader(biSize: BitmapInfoHeader.sizeof.int32, biWidth: m_size.x.Long, biHeight: -m_size.y.Long,
-                           biPlanes: 1, biBitCount: 32, biCompression: BI_RGB, biSizeImage: 0, biXPelsPerMeter: 0, biYPelsPerMeter: 0, biClrUsed: 0, biClrImportant: 0));
-      wimage  = CreateDibSection(0, &bmi, DibRgbColors, cast[ptr pointer](&m_data), 0, 0)
+                           biPlanes: 1, biBitCount: 32, biCompression: Bi_rgb))
+      wimage  = CreateDibSection(0, &bmi, Dib_rgb_colors, cast[ptr pointer](&m_data), 0, 0)
       hdc     = CreateCompatibleDC(0)
-      winassert wimage != 0
-      winassert hdc != 0
+      assert wimage != 0
+      assert hdc != 0
     else:
       m_data = nil
     discard hdc.SelectObject(wimage)
 
   proc initOpenglWindow(a: var OpenglWindow; w, h: int; screen: Screen, fullscreen: bool) {.with.} =
-    discard
+    a.initWindow w, h, screen, woClassName
+    a.setupWindow fullscreen
+
+    hdc = handle.GetDC
+    var pfd = PixelFormatDescriptor(
+      nSize: WORD PixelFormatDescriptor.sizeof,
+      nVersion: 1,
+      dwFlags: Pfd_draw_to_window or Pfd_support_opengl or Pfd_double_buffer,
+      iPixelType: Pfd_type_rgba,
+      cColorBits: 32,
+      cDepthBits: 24,
+      cStencilBits: 8,
+      iLayerType: Pfd_main_plane,
+    )
+    hdc.SetPixelFormat(hdc.ChoosePixelFormat(&pfd), &pfd)
+    ctx = wglCreateContext(hdc)
+    assert hdc.wglMakeCurrent(ctx)
+
+    doassert glInit()
 
 
   proc `title=`*(a: Window, title: string) {.with.} =
@@ -1058,9 +1095,12 @@ elif defined(windows):
 
   proc run*(a: var Window) = with a:
     ## run main loop of window
-    var lastTickTime = getTime()
     handle.ShowWindow(SwShow)
     handle.UpdateWindow()
+
+    a.pushEvent onResize, ((0, 0), m_size)
+
+    var lastTickTime = getTime()
     var msg: Msg
     while m_isOpen:
       var catched = false
@@ -1093,6 +1133,11 @@ elif defined(windows):
       else: MouseButton.left
 
     result = 0
+    
+    #TODO: выполнять отрисовку только по запросу программиста, как в x11 версии
+    when a is OpenglWindow:
+      pushEvent onRender, ()
+      hdc.SwapBuffers
 
     case message
     of WmPaint:

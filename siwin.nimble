@@ -11,3 +11,4 @@ when defined linux:
   requires "nimgl"
 when defined windows:
   requires "winim"
+  requires "nimgl"

@@ -2,15 +2,6 @@ when defined(windows):
   import winim
   export winim
 
-  type WinapiError* = object of OSError
-
-  template winassertImpl*(a: untyped, s: string) =
-    try: doassert a
-    except AssertionDefect:
-      raise WinapiError.newException "assertion failed: `" & s & "`"
-  template winassert*(a: bool) =
-    winassertImpl(a, astToStr(a))
-
   var hInstance* = GetModuleHandle(nil)
   
   proc trackMouseEvent*(handle: HWnd, e: DWord) =

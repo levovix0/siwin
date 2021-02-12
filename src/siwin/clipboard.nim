@@ -126,27 +126,27 @@ when defined(linux):
 
 elif defined(windows):
   proc text*(a: var Clipboard): string =
-    winassert OpenClipboard(0)
+    assert OpenClipboard(0)
 
     let hcpb = GetClipboardData(CfUnicodeText)
     if hcpb == 0:
       CloseClipboard()
-      raise WinapiError.newException("failed to get handle of clipboard")
+      return
     
     result = $cast[PWChar](GlobalLock hcpb)
     GlobalUnlock hcpb
     discard CloseClipboard()
 
   proc `text=`*(a: var Clipboard, s: string) =
-    winassert OpenClipboard(0)
-    winassert EmptyClipboard()
+    assert OpenClipboard(0)
+    assert EmptyClipboard()
     
     let ws = +$s
     let ts = (ws.len + 1) * WChar.sizeof
     let hstr = GlobalAlloc(GMemMoveable, ts)
     if hstr == 0:
       CloseClipboard()
-      raise WinapiError.newException("failed to alloc string")
+      raise OSError.newException("failed to alloc string")
 
     copyMem(GlobalLock hstr, ws.winstrConverterWStringToLPWstr, ts)
     GlobalUnlock hstr
