@@ -10,6 +10,9 @@ test "no render window":
     close:     a = true
     keyup esc: close window
     keyup f1:  window.fullscreen = not window.fullscreen
+    keydown as k:
+      if e.repeated: break
+      echo k
   
   check a == true
 
@@ -153,8 +156,8 @@ test "macro":
 
     #TODO
     #[
-      keyup {.nodup.}: ... # исключено залипание клавиш
-      {.nodup.} # залипание клавиш исключено глобально
+      keyup {.noRepeat.}: ... # исключено повторение клавиш
+      {.noRepeat.} # повторение клавиш исключено глобально
       resize {.noInitial.}: ...
     ]#
   
