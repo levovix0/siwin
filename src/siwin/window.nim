@@ -129,7 +129,7 @@ type
     keyboard*: Keyboard
     onKeydown*:     proc(e: KeyEvent)
     onKeyup*:       proc(e: KeyEvent)
-    onTextEnter*:   proc(e: TextEnterEvent)
+    onTextInput*:   proc(e: TextInputEvent)
 
     m_size: tuple[x, y: int]
 
@@ -238,7 +238,7 @@ type
     pressed: bool
     alt, control, shift, system: bool
     repeated: bool
-  TextEnterEvent* = tuple #TODO: переименовать в TextInputEvent
+  TextInputEvent* = tuple
     keyboard: Keyboard
     text: string # one utf-8 encoded letter
 
@@ -821,7 +821,7 @@ when defined(linux):
             if length > 0:
               let s = buffer[0..<length].toString()
               if s notin ["\u001B"]:
-                pushEvent onTextEnter, (keyboard, s)
+                pushEvent onTextInput, (keyboard, s)
 
         of KeyRelease:
           var key = Key.unknown
@@ -1231,7 +1231,10 @@ elif defined(windows):
       pushEvent onKeyup, (a.keyboard, key, false, mk VkMenu, mk VkControl, mk VkShift, mk(VkLWin) or mk(VkRWin), repeated)
 
     of WmChar:
-      pushEvent onTextEnter, (a.keyboard, %$[wParam.WChar])
+      if not a.keyboard.pressed[lcontrol] and not a.keyboard.pressed[rcontrol] and not a.keyboard.pressed[lalt] and not a.keyboard.pressed[ralt]:
+        let s = %$[wParam.WChar]
+        if s.len > 0 and s notin ["\u001B"]:
+          pushEvent onTextInput, (a.keyboard, s)
 
     of WmSetCursor:
       if lParam.LoWord == HtClient:

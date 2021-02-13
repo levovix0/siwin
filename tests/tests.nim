@@ -52,7 +52,7 @@ test "picture window":
     if e.key == f1:
       win.fullscreen = not win.fullscreen
   
-  win.onTextEnter = proc(e: TextEnterEvent) =
+  win.onTextInput = proc(e: TextInputEvent) =
     echo e.text
   
   var icon = newImage(32, 32)

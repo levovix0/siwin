@@ -247,8 +247,8 @@ proc translateEvent(rp: RunParser, a: Event): seq[EventOutput] =
     else:
       error "can't render on window (no render engine)", a.nameNode
   
-  of "textenter", "input":
-    "textenter".addas `e`.text, `e`.text.toRunes: `body`
+  of "input", "textinput", "textenter":
+    "textinput".addas `e`.text, `e`.text.toRunes: `body`
   of "focus":
     "focus".addas `e`.focused: `body`
   
@@ -422,7 +422,7 @@ proc runImpl(win, a: NimNode, re: RenderEngine): NimNode =
     of "scroll": eproc ScrollEvent
 
     of "keydown", "keyup": eproc KeyEvent
-    of "textenter": eproc TextEnterEvent
+    of "textinput": eproc TextInputEvent
 
     of "init": result.add body
     else: error(&"unknown event: {name}")
