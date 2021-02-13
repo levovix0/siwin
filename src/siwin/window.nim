@@ -198,7 +198,7 @@ type
   OpenglRenderEvent* = tuple
   ResizeEvent* = tuple
     oldSize, size: tuple[x, y: int]
-    #TODO first: bool # is this initial resizing
+    initial: bool # is this initial resizing
   WindowMoveEvent* = tuple
     oldPosition, position: tuple[x, y: int]
 
@@ -937,7 +937,7 @@ elif defined(windows):
     m_size = (rect.right.int, rect.bottom.int)
     if osize == m_size: return
 
-    a.pushEvent onResize, (osize, m_size)
+    a.pushEvent onResize, (osize, m_size, false)
 
   proc updateSize(a: var PictureWindow) {.with.} =
     let rect = handle.clientRect
@@ -960,7 +960,7 @@ elif defined(windows):
     let old = hdc.SelectObject(wimage)
     if old != 0: discard DeleteObject old
 
-    a.pushEvent onResize, (osize, m_size)
+    a.pushEvent onResize, (osize, m_size, false)
 
   proc fullscreen*(a: Window): bool = a.m_isFullscreen
   proc `fullscreen=`*(a: var SomeWindow, v: bool) {.with.} =
@@ -1105,7 +1105,7 @@ elif defined(windows):
     handle.ShowWindow(SwShow)
     handle.UpdateWindow()
 
-    a.pushEvent onResize, ((0, 0), m_size)
+    a.pushEvent onResize, ((0, 0), m_size, true)
 
     var lastTickTime = getTime()
     var msg: Msg
