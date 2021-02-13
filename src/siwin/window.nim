@@ -79,8 +79,9 @@ type
 
     pageUp pageDown  home End  insert del
     left right up down
-    npad0 npad1 npad2 npad3 npad4 npad5 npad6 npad7 npad8 npad9
+    npad0 npad1 npad2 npad3 npad4 npad5 npad6 npad7 npad8 npad9 npadDot
     add subtract multiply divide
+    capsLock numLock scrollLock printScreen
 
     pause
 
@@ -401,6 +402,12 @@ elif defined(windows):
     of Vk_subtract:     Key.subtract
     of Vk_multiply:     Key.multiply
     of Vk_divide:       Key.divide
+    of Vk_capital:      Key.capsLock
+    of Vk_numLock:      Key.numLock
+    of Vk_scroll:       Key.scrollLock
+    of Vk_snapshot:     Key.printScreen
+    of Vk_print:        Key.printScreen
+    of Vk_decimal:      Key.npadDot
     of Vk_pause:        Key.pause
     of Vk_f1:           Key.f1
     of Vk_f2:           Key.f2
@@ -1205,12 +1212,14 @@ elif defined(windows):
 
     of WmKeyDown, WmSysKeyDown:
       let key = wkeyToKey(wParam, lParam)
+      if key == Key.unknown: break
       a.keyboard.pressed[key] = true
       template mk(vk): bool = HIWord(GetKeyState(vk)) != 0
       pushEvent onKeydown, (a.keyboard, key, true, mk VkMenu, mk VkControl, mk VkShift, mk(VkLWin) or mk(VkRWin))
 
     of WmKeyUp, WmSysKeyUp:
       let key = wkeyToKey(wParam, lParam)
+      if key == Key.unknown: break
       a.keyboard.pressed[key] = false
       template mk(vk): bool = HIWord(GetKeyState(vk)) != 0
       pushEvent onKeyup, (a.keyboard, key, false, mk VkMenu, mk VkControl, mk VkShift, mk(VkLWin) or mk(VkRWin))
