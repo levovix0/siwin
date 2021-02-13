@@ -68,9 +68,9 @@ type
     pressed: array[AllMouseButtons, bool]
 
   Key* {.pure.} = enum
-    unknown = -1
+    unknown = 0
 
-    a = 0, b c d e f g h i j k l m n o p q r s t u v w x y z
+    a b c d e f g h i j k l m n o p q r s t u v w x y z
     tilde n1 n2 n3 n4 n5 n6 n7 n8 n9 n0 minus equal
     f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 f11 f12 f13 f14 f15
     lcontrol rcontrol  lshift rshift  lalt ralt  lsystem rsystem  lbracket rbracket
@@ -87,7 +87,7 @@ type
 
   AllKeysRange* = Key.a..Key.pause
   Keyboard* = tuple
-    pressed: array[AllKeysRange, bool] #TODO: переделать в set[AllKeysRange]
+    pressed: set[Key]
 
   Cursor* {.pure.} = enum
     arrow arrowUp #TODO: arrowRight
@@ -1192,11 +1192,11 @@ elif defined(windows):
     of WmKillFocus:
       m_hasFocus = false
       pushEvent onFocusChanged, (m_hasFocus)
-      for key, k in a.keyboard.pressed.mpairs: # отпустить все клавиши
-        if k:
-          template mk(vk): bool = HIWord(GetKeyState(vk)) != 0
-          pushEvent onKeyup, (a.keyboard, key, false, mk VkMenu, mk VkControl, mk VkShift, mk(VkLWin) or mk(VkRWin), false)
-          k = false
+      let pressed = a.keyboard.pressed
+      for key in pressed: # отпустить все клавиши
+        a.keyboard.pressed.excl key
+        template mk(vk): bool = HIWord(GetKeyState(vk)) != 0
+        pushEvent onKeyup, (a.keyboard, key, false, mk VkMenu, mk VkControl, mk VkShift, mk(VkLWin) or mk(VkRWin), false)
 
     of WmLButtonDown, WmRButtonDown, WmMButtonDown, WmXButtonDown:
       handle.SetCapture()
@@ -1217,21 +1217,21 @@ elif defined(windows):
     of WmKeyDown, WmSysKeyDown:
       let key = wkeyToKey(wParam, lParam)
       if key == Key.unknown: break
-      let repeated = a.keyboard.pressed[key]
-      a.keyboard.pressed[key] = true
+      let repeated = key in a.keyboard.pressed
+      a.keyboard.pressed.incl key
       template mk(vk): bool = HIWord(GetKeyState(vk)) != 0
       pushEvent onKeydown, (a.keyboard, key, true, mk VkMenu, mk VkControl, mk VkShift, mk(VkLWin) or mk(VkRWin), repeated)
 
     of WmKeyUp, WmSysKeyUp:
       let key = wkeyToKey(wParam, lParam)
       if key == Key.unknown: break
-      let repeated = not a.keyboard.pressed[key]
-      a.keyboard.pressed[key] = false
+      let repeated = key notin a.keyboard.pressed
+      a.keyboard.pressed.excl key
       template mk(vk): bool = HIWord(GetKeyState(vk)) != 0
       pushEvent onKeyup, (a.keyboard, key, false, mk VkMenu, mk VkControl, mk VkShift, mk(VkLWin) or mk(VkRWin), repeated)
 
     of WmChar:
-      if not a.keyboard.pressed[lcontrol] and not a.keyboard.pressed[rcontrol] and not a.keyboard.pressed[lalt] and not a.keyboard.pressed[ralt]:
+      if (a.keyboard.pressed * {lcontrol, rcontrol, lalt, ralt}).len < 0:
         let s = %$[wParam.WChar]
         if s.len > 0 and s notin ["\u001B"]:
           pushEvent onTextInput, (a.keyboard, s)

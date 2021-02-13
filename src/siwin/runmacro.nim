@@ -30,17 +30,8 @@ proc ofEnum(a: NimNode, b: typedesc): NimNode =
     a
 
 
-proc keys*(e: KeyEvent): set[Key] =
-  #TODO: преобразовать массив e.keyboard.pressed в set
-  for k, state in e.keyboard.pressed:
-    if state:
-      result += k
-  if e.key notin result:
-    result += e.key
-proc keys*(e: TickEvent): set[Key] =
-  for k, state in e.keyboard.pressed:
-    if state:
-      result += k
+proc keys*(e: KeyEvent): set[Key] = e.keyboard.pressed + {e.key}
+template keys*(e: TickEvent): set[Key] = e.keyboard.pressed
 
 
 var keyBindings* {.compileTime.}: Table[string, KeyBinding]

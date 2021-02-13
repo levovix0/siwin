@@ -12,7 +12,10 @@ test "no render window":
     keyup f1:  window.fullscreen = not window.fullscreen
     keydown as k:
       if e.repeated: break
-      echo k
+      echo "down ", k
+    keyup as k:
+      if e.repeated: break
+      echo "up ", k
   
   check a == true
 
