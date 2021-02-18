@@ -182,3 +182,9 @@ macro with*(body: untyped): untyped =
   let x = body.args[0].nameNode
   return quote do:
     with `x`, `body`
+
+
+proc findBy*[T](a: openarray[T], f: proc(a: T): bool): int =
+  result = -1
+  for i, b in a:
+    if f(b): return i

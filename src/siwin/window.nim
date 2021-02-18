@@ -713,19 +713,22 @@ when defined(linux):
     var lastTickTime = getTime()
 
     while m_isOpen:
-      var catched = false
+      var xevents: seq[XEvent]
 
       proc checkEvent(_: PDisplay, event: PXEvent, userData: XPointer): XBool {.cdecl.} =
         if cast[int](event.xany.window) == cast[int](userData): 1 else: 0
       while d.XCheckIfEvent(ev.addr, checkEvent, cast[XPointer](xwin)) == 1:
-        catched = true
+        xevents.add ev
+      
+      let catched = xevents.len > 0
 
+      for ev in xevents.mitems:
         case ev.theType
         of Expose:
           if ev.xexpose.width != m_size.x or ev.xexpose.height != m_size.y:
             let osize = m_size
             a.updateSize()
-            pushEvent onResize, (osize, m_size)
+            pushEvent onResize, (osize, m_size, false)
           when a is PictureWindow|OpenglWindow:
             redraw a
         of ClientMessage:
@@ -736,7 +739,7 @@ when defined(linux):
           if ev.xconfigure.width != m_size.x or ev.xconfigure.height != m_size.y:
             let osize = m_size
             a.updateSize()
-            pushEvent onResize, (osize, m_size)
+            pushEvent onResize, (osize, m_size, false)
           if ev.xconfigure.x.int != m_pos.x or ev.xconfigure.y.int != m_pos.y:
             let oldPos = m_pos
             m_pos = (ev.xconfigure.x.int, ev.xconfigure.y.int)
@@ -790,11 +793,11 @@ when defined(linux):
           if xinContext != nil: XUnsetICFocus xinContext
           pushEvent onFocusChanged, (false)
 
-          for key, k in keyboard.pressed.mpairs: # отпустить все клавиши
-            if k:
-              template mk(a): bool = (ev.xkey.state and a).bool
-              pushEvent onKeyup, (keyboard, key, false, mk Mod1Mask, mk ControlMask, mk ShiftMask, mk Mod4Mask)
-              k = false
+          let pressed = keyboard.pressed
+          for k in pressed: # отпустить все клавиши
+            template mk(a): bool = (ev.xkey.state and a).bool
+            pushEvent onKeyup, (keyboard, k, false, mk Mod1Mask, mk ControlMask, mk ShiftMask, mk Mod4Mask, false)
+            keyboard.pressed.excl k
 
         of KeyPress:
           var key = Key.unknown
@@ -804,11 +807,15 @@ when defined(linux):
               key = xkeyToKey(XLookupKeysym(ev.xkey.addr, i.cint))
               inc i
           if key != Key.unknown:
-            keyboard.pressed[key] = true
+            let ev = ev
+            let repeated = xevents.findBy(proc (a: XEvent): bool =
+              a.theType == KeyRelease and a.xkey.keycode == ev.xkey.keycode and a.xkey.time - ev.xkey.time < 2
+            ) >= 0
+            keyboard.pressed.incl key
             template mk(a): bool = (ev.xkey.state and a).bool
-            pushEvent onKeydown, (keyboard, key, true, mk Mod1Mask, mk ControlMask, mk ShiftMask, mk Mod4Mask)
+            pushEvent onKeydown, (keyboard, key, true, mk Mod1Mask, mk ControlMask, mk ShiftMask, mk Mod4Mask, repeated)
 
-          if xinContext != nil and not keyboard.pressed[lcontrol] and not keyboard.pressed[rcontrol] and not keyboard.pressed[lalt] and not keyboard.pressed[ralt]:
+          if xinContext != nil and (keyboard.pressed * {lcontrol, rcontrol, lalt, ralt}).len == 0:
             var status: Status
             var buffer: array[16, char]
             let length = Xutf8LookupString(xinContext, ev.xkey.addr, cast[cstring](buffer.addr), buffer.sizeof.cint, nil, status.addr)
@@ -831,9 +838,13 @@ when defined(linux):
               key = xkeyToKey(XLookupKeysym(ev.xkey.addr, i.cint))
               inc i
           if key != Key.unknown:
-            keyboard.pressed[key] = false
+            let ev = ev
+            let repeated = xevents.findBy(proc (a: XEvent): bool =
+              a.theType == KeyPress and a.xkey.keycode == ev.xkey.keycode and a.xkey.time - ev.xkey.time < 2
+            ) >= 0
+            keyboard.pressed.excl key
             template mk(a): bool = (ev.xkey.state and a).bool
-            pushEvent onKeyup, (keyboard, key, false, mk Mod1Mask, mk ControlMask, mk ShiftMask, mk Mod4Mask)
+            pushEvent onKeyup, (keyboard, key, false, mk Mod1Mask, mk ControlMask, mk ShiftMask, mk Mod4Mask, repeated)
 
         else: discard
 

@@ -8,6 +8,9 @@ test "no render window":
   run newWindow(title="Окошко", renderEngine=none):
     init:      window.cursor = Cursor.hand
     close:     a = true
+    resize:
+      if e.initial: echo "got it!"
+      echo "got that"
     keyup esc: close window
     keyup f1:  window.fullscreen = not window.fullscreen
     keydown as k:
