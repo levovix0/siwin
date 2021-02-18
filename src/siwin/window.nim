@@ -281,6 +281,11 @@ when defined(linux):
     of Xk_kpSubtract:   Key.subtract
     of Xk_kpMultiply:   Key.multiply
     of Xk_kpDivide:     Key.divide
+    of Xk_capsLock:     Key.capsLock
+    of Xk_numLock:      Key.numLock
+    of Xk_scrollLock:   Key.scrollLock
+    of Xk_print:        Key.printScreen
+    of Xk_kpSeparator:  Key.npadDot
     of Xk_pause:        Key.pause
     of Xk_f1:           Key.f1
     of Xk_f2:           Key.f2
