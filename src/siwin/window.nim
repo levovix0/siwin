@@ -600,10 +600,10 @@ when defined(linux):
   proc redraw*(a: var OpenglWindow) {.lazy.} = a.waitForReDraw = true
     ## render request
 
-  proc updateSize(a: var Window) {.with.} =
-    m_size = xwin.geometry.size
-  proc updateSize(a: var PictureWindow) {.with.} =
-    updateSize a.Window
+  proc updateSize(a: var Window, v: tuple[x, y: int]) {.with.} =
+    m_size = v
+  proc updateSize(a: var PictureWindow, v: tuple[x, y: int]) {.with.} =
+    updateSize a.Window, v
     destroy ximg
     m_data = malloc[Color](m_size.x * m_size.y) # XImage destruction automaticly call `free`, which pairs to `malloc`
     m_data.zeroMem(m_size.x * m_size.y * Color.sizeof) # clear allocated memory
@@ -637,7 +637,7 @@ when defined(linux):
     ## exit fullscreen if window is fullscreen
     if not a.fullscreen:
       xwin.size = size
-      a.updateSize()
+      a.updateSize size
     else:
       a.fullscreen = false
       requestedSize = some size
@@ -709,6 +709,8 @@ when defined(linux):
       of 5: 1
       else: 0
 
+    pushEvent onResize, ((0, 0), m_size, true)
+
     var lastClickTime: times.Time
     var lastTickTime = getTime()
 
@@ -725,10 +727,6 @@ when defined(linux):
       for ev in xevents.mitems:
         case ev.theType
         of Expose:
-          if ev.xexpose.width != m_size.x or ev.xexpose.height != m_size.y:
-            let osize = m_size
-            a.updateSize()
-            pushEvent onResize, (osize, m_size, false)
           when a is PictureWindow|OpenglWindow:
             redraw a
         of ClientMessage:
@@ -738,7 +736,7 @@ when defined(linux):
         of ConfigureNotify:
           if ev.xconfigure.width != m_size.x or ev.xconfigure.height != m_size.y:
             let osize = m_size
-            a.updateSize()
+            a.updateSize (ev.xconfigure.width.int, ev.xconfigure.height.int)
             pushEvent onResize, (osize, m_size, false)
           if ev.xconfigure.x.int != m_pos.x or ev.xconfigure.y.int != m_pos.y:
             let oldPos = m_pos
