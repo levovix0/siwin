@@ -119,6 +119,19 @@ proc geometry*(a: Window): tuple[root: Window; x, y: int; w, h: int; borderW: in
 proc size*(a: tuple[root: Window; x, y: int; w, h: int; borderW: int, depth: int]): tuple[x, y: int] = (a.w, a.h)
 proc position*(a: tuple[root: Window; x, y: int; w, h: int; borderW: int, depth: int]): tuple[x, y: int] = (a.x, a.y)
 
+proc cursor*(): tuple[x, y: int; root, child: Window; winX, winY: int; mask: uint; exists: bool] =
+  ## find cursor and return where it is
+  var
+    root, child: Window
+    x, y: cint
+    winX, winY: cint
+    mask: cuint
+  for i in 0..display.ScreenCount:
+    if display.XQueryPointer(display.XRootWindow(i), root.addr, child.addr, x.addr, y.addr, winX.addr, winY.addr, mask.addr) != 0:
+      return (x.int, y.int, root, child, winX.int, winY.int, mask.uint, true)
+proc position*(a: tuple[x, y: int; root, child: Window; winX, winY: int; mask: uint; exists: bool]): tuple[x, y: int] = (a.x, a.y)
+proc windowPosition*(a: tuple[x, y: int; root, child: Window; winX, winY: int; mask: uint; exists: bool]): tuple[x, y: int] = (a.winX, a.winY)
+
 proc attributes*(a: Window): XWindowAttributes =
   discard display.XGetWindowAttributes(a, result.addr)
 proc root*(a: Window): Window =

@@ -212,7 +212,7 @@ type
     mouse: Mouse
     button: MouseButton
     pressed: bool
-  ClickEvent* = tuple #TODO: не срабатывает в момент запуска окна, если не двигать мышкой (X11)
+  ClickEvent* = tuple
     mouse: Mouse
     button: MouseButton
     position: tuple[x, y: int]
@@ -514,7 +514,7 @@ when defined(linux):
     `=destroy` a.Window
 
   proc `=destroy`*(a: var OpenglWindow) {.with.} =
-    nil.GlxContext.target = 0
+    0.makeCurrent nil.GlxContext
     destroy ctx
     `=destroy` a.Window
 
@@ -577,7 +577,7 @@ when defined(linux):
 
     ctx = newGlxContext(vi)
     glxAssert ctx != nil
-    ctx.target = xwin
+    xwin.makeCurrent ctx 
 
     doassert glInit()
 
@@ -714,6 +714,7 @@ when defined(linux):
       of 5: 1
       else: 0
 
+    mouse.position = x.cursor().position
     pushEvent onResize, ((0, 0), m_size, true)
 
     var lastClickTime: times.Time

@@ -100,7 +100,7 @@ proc newGlxContext*(vis: PXVisualInfo, direct: bool = true, shareList: GlxContex
   display.glxCreateContext(vis, shareList, direct)
 proc destroy*(a: GlxContext) =
   display.glxDestroyContext(a)
-proc `target=`*(ctx: GlxContext, a: Drawable) =
+proc makeCurrent*(a: Drawable, ctx: GlxContext) =
   glxAssert display.glxMakeCurrent(a, ctx)
 proc copyState*(src, dst: GlxContext, mask: int32) =
   display.glxCopyContext(src, dst, mask)
