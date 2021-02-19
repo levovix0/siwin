@@ -714,7 +714,10 @@ when defined(linux):
       of 5: 1
       else: 0
 
+    m_pos = xwin.geometry.position
     mouse.position = x.cursor().position
+    mouse.position = (mouse.position.x - m_pos.x, mouse.position.y - m_pos.y)
+    
     pushEvent onResize, ((0, 0), m_size, true)
 
     var lastClickTime: times.Time
@@ -747,6 +750,8 @@ when defined(linux):
           if ev.xconfigure.x.int != m_pos.x or ev.xconfigure.y.int != m_pos.y:
             let oldPos = m_pos
             m_pos = (ev.xconfigure.x.int, ev.xconfigure.y.int)
+            mouse.position = x.cursor().position
+            mouse.position = (mouse.position.x - m_pos.x, mouse.position.y - m_pos.y)
             pushEvent onWindowMove, (oldPos, m_pos)
 
           let state = xwin.netWmState
