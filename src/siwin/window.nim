@@ -1,7 +1,7 @@
 import times, os
 import image, utils
 when defined(linux):
-  import strformat, options
+  import strformat, options, sequtils
   import libx11 as x
   import libglx
   from nimgl/opengl import glInit
@@ -232,7 +232,7 @@ type
     deltaTime: Duration
   #TODO: FixedTickEvent
 
-  KeyEvent* = tuple #TODO: нажимать обратно нажатые в системе клавиши при получении фокуса
+  KeyEvent* = tuple #TODO: нажимать обратно нажатые в системе клавиши при получении фокуса (Windows)
     keyboard: Keyboard
     key: Key
     pressed: bool
@@ -796,7 +796,12 @@ when defined(linux):
           m_hasFocus = true
           if xinContext != nil: XSetICFocus xinContext
           pushEvent onFocusChanged, (true)
-          #TODO: восстановить нажатые на данный момент клавиши
+          
+          let keys = queryKeyboardState().mapit(xkeyToKey display.XKeycodeToKeysym(it.cuchar, 0))
+          for k in keys: # нажать клавиши, нажатые в системе
+            keyboard.pressed.incl k
+            template mk(a): bool = a in keys
+            pushEvent onKeydown, (keyboard, k, false, mk(lalt) or mk(ralt), mk(lcontrol) or mk(rcontrol), mk(lshift) or mk(rshift), mk(lsystem) or mk(rsystem), false)
         of FocusOut:
           m_hasFocus = false
           if xinContext != nil: XUnsetICFocus xinContext
@@ -804,9 +809,9 @@ when defined(linux):
 
           let pressed = keyboard.pressed
           for k in pressed: # отпустить все клавиши
+            keyboard.pressed.excl k
             template mk(a): bool = (ev.xkey.state and a).bool
             pushEvent onKeyup, (keyboard, k, false, mk Mod1Mask, mk ControlMask, mk ShiftMask, mk Mod4Mask, false)
-            keyboard.pressed.excl k
 
         of KeyPress:
           var key = Key.unknown
@@ -1291,11 +1296,13 @@ proc newOpenglWindow*(size: tuple[x, y: int], title = "", screen = screen(), ful
   newOpenglWindow(size.x, size.y, title, screen, fullscreen)
 
 template newWindow*(w = 1280, h = 720, title = "", screen = screen(), fullscreen = false, renderEngine = RenderEngine.opengl): SomeWindow =
-  when renderEngine == RenderEngine.none:    newNoRenderWindow(w, h, title, screen, fullscreen)
-  elif renderEngine == RenderEngine.picture: newPictureWindow(w, h, title, screen, fullscreen)
-  elif renderEngine == RenderEngine.opengl:  newOpenglWindow(w, h, title, screen, fullscreen)
+  const re = renderEngine
+  when re == RenderEngine.none:    newNoRenderWindow(w, h, title, screen, fullscreen)
+  elif re == RenderEngine.picture: newPictureWindow(w, h, title, screen, fullscreen)
+  elif re == RenderEngine.opengl:  newOpenglWindow(w, h, title, screen, fullscreen)
 template newWindow*(size: tuple[x, y: int], title = "", screen = screen(), fullscreen = false, renderEngine = RenderEngine.opengl): SomeWindow =
-  newWindow(size.x, size.y, title, screen, fullscreen, renderEngine)
+  let sz = size
+  newWindow(sz.x, sz.y, title, screen, fullscreen, renderEngine)
 
 proc w*(a: Screen): int = a.size.x
   ## width of screen

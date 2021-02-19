@@ -132,6 +132,11 @@ proc cursor*(): tuple[x, y: int; root, child: Window; winX, winY: int; mask: uin
 proc position*(a: tuple[x, y: int; root, child: Window; winX, winY: int; mask: uint; exists: bool]): tuple[x, y: int] = (a.x, a.y)
 proc windowPosition*(a: tuple[x, y: int; root, child: Window; winX, winY: int; mask: uint; exists: bool]): tuple[x, y: int] = (a.winX, a.winY)
 
+proc queryKeyboardState*(): set[0..255] =
+  var r: array[32, char]
+  discard display.XQueryKeymap(r)
+  result = cast[ptr set[0..255]](r.addr)[]
+
 proc attributes*(a: Window): XWindowAttributes =
   discard display.XGetWindowAttributes(a, result.addr)
 proc root*(a: Window): Window =
