@@ -1129,6 +1129,9 @@ elif defined(windows):
       handle.ReleaseDC(hhdc)
     handle.EndPaint(&ps)
 
+  proc displayImpl(a: var OpenglWindow) {.with.} =
+    hdc.SwapBuffers
+
   proc run*(a: var Window) = with a:
     ## run main loop of window
     handle.ShowWindow(SwShow)
@@ -1169,11 +1172,6 @@ elif defined(windows):
       else: MouseButton.left
 
     result = 0
-    
-    #TODO: выполнять отрисовку только по запросу программиста, как в x11 версии
-    when a is OpenglWindow:
-      pushEvent onRender, ()
-      hdc.SwapBuffers
 
     case message
     of WmPaint:
@@ -1183,6 +1181,8 @@ elif defined(windows):
       when a is PictureWindow:
         if a.m_size.x * a.m_size.y > 0:
           pushEvent onRender, (m_data, a.m_size)
+      when a is OpenglWindow:
+        pushEvent onRender, ()
       a.displayImpl()
 
     of WmDestroy:

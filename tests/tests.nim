@@ -33,7 +33,7 @@ test "picture window":
 
   win.onMouseMove = proc(e: MouseMoveEvent) =
     if e.mouse.pressed[MouseButton.left]:
-      g = min(max(int(e.position.x / win.size.x * 255), 0), 255)
+      g = (e.position.x / win.size.x * 255).int.min(255).max(0)
       redraw win
 
   win.onRender = proc(e: PictureRenderEvent) =
@@ -68,6 +68,7 @@ test "picture window":
   check a == true
 
 test "opengl window":
+  var g = 1.0
   run newWindow(title="OpenGL"):
     keyup esc: close window
     keyup f1:  window.fullscreen = not window.fullscreen
@@ -87,13 +88,20 @@ test "opengl window":
       glTranslatef -15, -15, 0
     
       glBegin GlTriangles
-      glColor3f 1, 0, 0
+      glColor3f 1 * g, 0, 0
       glVertex2f 0, 0
-      glColor3f 0, 1, 0
+      glColor3f 0, 1 * g, 0
       glVertex2f 30, 0
-      glColor3f 0, 0, 1
+      glColor3f 0, 0, 1 * g
       glVertex2f 0, 30
       glEnd()
+    mouseMove as pos:
+      if e.mouse.pressed[MouseButton.left]:
+        g = (pos.x / window.size.x).min(1).max(0)
+        redraw window
+    click(left, right) as (x, _):
+      g = (x / window.size.x).min(1).max(0)
+      redraw window
 
 test "macro":
   var a = false
@@ -112,7 +120,7 @@ test "macro":
 
     mouseMove as pos:
       if e.mouse.pressed[MouseButton.left]:
-        g = min(max(int(pos.x / window.size.x * 255), 0), 255)
+        g = (pos.x / window.size.x * 255).int.min(255).max(0)
         redraw window
 
     render as r:
@@ -140,7 +148,8 @@ test "macro":
     fullscreen off:  g = 0; redraw window
 
     click(left, right) as (x, _):
-      g = min(max(int(x / window.size.x * 255), 0), 255); redraw window
+      g = (x / window.size.x * 255).int.min(255).max(0)
+      redraw window
       
     keyup(i) or keydown(j): discard
     keyup(a)|keydown(b): discard
