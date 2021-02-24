@@ -88,19 +88,19 @@ test "opengl window":
       glTranslatef -15, -15, 0
     
       glBegin GlTriangles
-      glColor3f 1 * g, 0, 0
+      glColor3f 1 * g, g - 1, g - 1
       glVertex2f 0, 0
-      glColor3f 0, 1 * g, 0
+      glColor3f g - 1, 1 * g, g - 1
       glVertex2f 30, 0
-      glColor3f 0, 0, 1 * g
+      glColor3f g - 1, g - 1, 1 * g
       glVertex2f 0, 30
       glEnd()
     mouseMove as pos:
       if e.mouse.pressed[MouseButton.left]:
-        g = (pos.x / window.size.x).min(1).max(0)
+        g = (pos.x / window.size.x * 2).min(2).max(0)
         redraw window
     click(left, right) as (x, _):
-      g = (x / window.size.x).min(1).max(0)
+      g = (x / window.size.x * 2).min(2).max(0)
       redraw window
 
 test "macro":

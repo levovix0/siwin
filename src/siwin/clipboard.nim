@@ -31,6 +31,7 @@ elif defined(windows):
   proc close*(a: var Clipboard) = discard
 
 var clipboard* = Clipboard()
+#TODO: selectionClipboard
 
 when defined(linux):
   proc processEvents(a: var Clipboard, responsed: var bool): string = with a:

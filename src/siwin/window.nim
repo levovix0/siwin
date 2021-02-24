@@ -6,7 +6,7 @@ when defined(linux):
   import libglx
   from nimgl/opengl import glInit
 when defined(windows):
-  import libwinapi, macros
+  import libwinapi, macros, sequtils
   import libwgl
   from nimgl/opengl import glInit
   type Color = image.Color
@@ -183,6 +183,7 @@ type
       ctx: GlxContext
     
     elif defined(windows):
+      waitForReDraw: bool
       hdc: Hdc
       ctx: WglContext
 
@@ -232,11 +233,10 @@ type
     deltaTime: Duration
   #TODO: FixedTickEvent
 
-  KeyEvent* = tuple #TODO: нажимать обратно нажатые в системе клавиши при получении фокуса (Windows)
+  KeyEvent* = tuple
     keyboard: Keyboard
     key: Key
     pressed: bool
-    alt, control, shift, system: bool
     repeated: bool
   TextInputEvent* = tuple
     keyboard: Keyboard
@@ -372,16 +372,14 @@ when defined(linux):
     (handle.width.int, handle.height.int)
 
 elif defined(windows):
-  proc wkeyToKey(key: WParam, flags: LParam): Key =
+  proc wkeyToKey(key: WParam): Key =
     case key
-    of VK_shift:
-      let lshift = MapVirtualKeyW(VK_shift, MAPVK_VK_TO_VSC)
-      let scancode = flags and ((0xFF shl 16) shr 16)
-      if scancode == lshift: Key.lshift else: Key.rshift
-    of VK_menu:
-      if (flags and KF_EXTENDED) != 0: Key.ralt else: Key.lalt
-    of VK_control:
-      if (flags and KF_EXTENDED) != 0: Key.rcontrol else: Key.lcontrol
+    of Vk_lshift:       Key.lshift
+    of Vk_rshift:       Key.rshift
+    of Vk_lmenu:        Key.lalt
+    of Vk_rmenu:        Key.ralt
+    of Vk_lcontrol:     Key.lcontrol
+    of Vk_rcontrol:     Key.rcontrol
     of Vk_lwin:         Key.lsystem
     of Vk_rwin:         Key.rsystem
     of Vk_apps:         Key.menu
@@ -484,6 +482,18 @@ elif defined(windows):
     of '8'.ord:         Key.n8
     of '9'.ord:         Key.n9
     else:               Key.unknown
+  
+  proc wkeyToKey(key: WParam, flags: LParam): Key =
+    let scancode = ((flags and 0xff0000) shr 16).Uint
+    case key
+    of VK_shift:
+      let key = MapVirtualKey(scancode, MAPVK_VSC_TO_VK_EX)
+      if key == Vk_lshift: Key.lshift else: Key.rshift
+    of VK_menu:
+      if (flags and 0x1000000) != 0: Key.ralt else: Key.lalt
+    of VK_control:
+      if (flags and 0x1000000) != 0: Key.rcontrol else: Key.lcontrol
+    else: wkeyToKey(key)
 
   #TODO: многоэкранность
   proc getScreenCount*(): int = 1
@@ -799,9 +809,9 @@ when defined(linux):
           
           let keys = queryKeyboardState().mapit(xkeyToKey display.XKeycodeToKeysym(it.cuchar, 0))
           for k in keys: # нажать клавиши, нажатые в системе
+            if k == Key.unknown: continue
             keyboard.pressed.incl k
-            template mk(a): bool = a in keys
-            pushEvent onKeydown, (keyboard, k, false, mk(lalt) or mk(ralt), mk(lcontrol) or mk(rcontrol), mk(lshift) or mk(rshift), mk(lsystem) or mk(rsystem), false)
+            pushEvent onKeydown, (keyboard, k, false, false)
         of FocusOut:
           m_hasFocus = false
           if xinContext != nil: XUnsetICFocus xinContext
@@ -810,8 +820,7 @@ when defined(linux):
           let pressed = keyboard.pressed
           for k in pressed: # отпустить все клавиши
             keyboard.pressed.excl k
-            template mk(a): bool = (ev.xkey.state and a).bool
-            pushEvent onKeyup, (keyboard, k, false, mk Mod1Mask, mk ControlMask, mk ShiftMask, mk Mod4Mask, false)
+            pushEvent onKeyup, (keyboard, k, false, false)
 
         of KeyPress:
           var key = Key.unknown
@@ -826,8 +835,7 @@ when defined(linux):
               a.theType == KeyRelease and a.xkey.keycode == ev.xkey.keycode and a.xkey.time - ev.xkey.time < 2
             ) >= 0
             keyboard.pressed.incl key
-            template mk(a): bool = (ev.xkey.state and a).bool
-            pushEvent onKeydown, (keyboard, key, true, mk Mod1Mask, mk ControlMask, mk ShiftMask, mk Mod4Mask, repeated)
+            pushEvent onKeydown, (keyboard, key, true, repeated)
 
           if xinContext != nil and (keyboard.pressed * {lcontrol, rcontrol, lalt, ralt}).len == 0:
             var status: Status
@@ -857,8 +865,7 @@ when defined(linux):
               a.theType == KeyPress and a.xkey.keycode == ev.xkey.keycode and a.xkey.time - ev.xkey.time < 2
             ) >= 0
             keyboard.pressed.excl key
-            template mk(a): bool = (ev.xkey.state and a).bool
-            pushEvent onKeyup, (keyboard, key, false, mk Mod1Mask, mk ControlMask, mk ShiftMask, mk Mod4Mask, repeated)
+            pushEvent onKeyup, (keyboard, key, false, repeated)
 
         else: discard
 
@@ -1050,6 +1057,8 @@ elif defined(windows):
   proc initOpenglWindow(a: var OpenglWindow; w, h: int; screen: Screen, fullscreen: bool) {.with.} =
     a.initWindow w, h, screen, woClassName
     a.setupWindow fullscreen
+    
+    a.waitForReDraw = true
 
     hdc = handle.GetDC
     var pfd = PixelFormatDescriptor(
@@ -1079,6 +1088,8 @@ elif defined(windows):
   proc redraw*(a: var Window) {.lazy, with.} =
     var cr = handle.clientRect
     handle.InvalidateRect(&cr, false)
+  
+  proc redraw*(a: var OpenglWindow) {.lazy.} = a.waitForReDraw = true
 
   proc position*(a: Window): tuple[x, y: int] {.with.} =
     let r = handle.clientRect
@@ -1130,14 +1141,40 @@ elif defined(windows):
     handle.EndPaint(&ps)
 
   proc displayImpl(a: var OpenglWindow) {.with.} =
-    hdc.SwapBuffers
+    discard
 
-  proc run*(a: var Window) = with a:
+  proc run*(a: var Window) {.with.} =
     ## run main loop of window
     handle.ShowWindow(SwShow)
     handle.UpdateWindow()
 
     a.pushEvent onResize, ((0, 0), m_size, true)
+
+    var lastTickTime = getTime()
+    var msg: Msg
+    while m_isOpen:
+      var catched = false
+      while PeekMessage(&msg, 0, 0, 0, PmRemove):
+        catched = true
+        TranslateMessage(&msg)
+        DispatchMessage(&msg)
+
+        if not m_isOpen: break
+      if not m_isOpen: break
+
+      if not catched: sleep(2) # не так быстро!
+
+      let nows = getTime()
+      if a.onTick != nil: onTick (mouse, keyboard, nows - lastTickTime)
+      lastTickTime = nows
+  
+  proc run*(a: var OpenglWindow) {.with.} =
+    ## run main loop of window
+    handle.ShowWindow(SwShow)
+    handle.UpdateWindow()
+
+    a.pushEvent onResize, ((0, 0), m_size, true)
+    a.waitForRedraw = true
 
     var lastTickTime = getTime()
     var msg: Msg
@@ -1178,11 +1215,16 @@ elif defined(windows):
       let rect = handle.clientRect
       if rect.right != a.m_size.x or rect.bottom != a.m_size.y:
         a.updateSize()
+        when a is OpenglWindow:
+          a.waitForRedraw = true
       when a is PictureWindow:
         if a.m_size.x * a.m_size.y > 0:
           pushEvent onRender, (m_data, a.m_size)
       when a is OpenglWindow:
-        pushEvent onRender, ()
+        if a.waitForRedraw:
+          pushEvent onRender, ()
+          hdc.SwapBuffers
+          a.waitForRedraw = false
       a.displayImpl()
 
     of WmDestroy:
@@ -1214,14 +1256,19 @@ elif defined(windows):
       m_hasFocus = true
       pushEvent onFocusChanged, (m_hasFocus)
 
+      let keys = getKeyboardState().mapit(wkeyToKey(it))
+      for k in keys: # нажать клавиши, нажатые в системе
+        if k == Key.unknown: continue
+        a.keyboard.pressed.incl k
+        pushEvent onKeydown, (a.keyboard, k, false, false)
+
     of WmKillFocus:
       m_hasFocus = false
       pushEvent onFocusChanged, (m_hasFocus)
       let pressed = a.keyboard.pressed
       for key in pressed: # отпустить все клавиши
         a.keyboard.pressed.excl key
-        template mk(vk): bool = HIWord(GetKeyState(vk)) != 0
-        pushEvent onKeyup, (a.keyboard, key, false, mk VkMenu, mk VkControl, mk VkShift, mk(VkLWin) or mk(VkRWin), false)
+        pushEvent onKeyup, (a.keyboard, key, false, false)
 
     of WmLButtonDown, WmRButtonDown, WmMButtonDown, WmXButtonDown:
       handle.SetCapture()
@@ -1244,16 +1291,14 @@ elif defined(windows):
       if key == Key.unknown: break
       let repeated = key in a.keyboard.pressed
       a.keyboard.pressed.incl key
-      template mk(vk): bool = HIWord(GetKeyState(vk)) != 0
-      pushEvent onKeydown, (a.keyboard, key, true, mk VkMenu, mk VkControl, mk VkShift, mk(VkLWin) or mk(VkRWin), repeated)
+      pushEvent onKeydown, (a.keyboard, key, true, repeated)
 
     of WmKeyUp, WmSysKeyUp:
       let key = wkeyToKey(wParam, lParam)
       if key == Key.unknown: break
       let repeated = key notin a.keyboard.pressed
       a.keyboard.pressed.excl key
-      template mk(vk): bool = HIWord(GetKeyState(vk)) != 0
-      pushEvent onKeyup, (a.keyboard, key, false, mk VkMenu, mk VkControl, mk VkShift, mk(VkLWin) or mk(VkRWin), repeated)
+      pushEvent onKeyup, (a.keyboard, key, false, repeated)
 
     of WmChar:
       if (a.keyboard.pressed * {lcontrol, rcontrol, lalt, ralt}).len < 0:
