@@ -32,6 +32,7 @@ elif defined(windows):
 
 var clipboard* = Clipboard()
 #TODO: selectionClipboard
+#TODO: поддержка изображений
 
 when defined(linux):
   proc processEvents(a: var Clipboard, responsed: var bool): string = with a:

@@ -90,12 +90,12 @@ type
     pressed: set[Key]
 
   Cursor* {.pure.} = enum
-    arrow arrowUp #TODO: arrowRight
-    #TODO: wait arrowWait
-    hand #TODO: grab grabbing
-    #TODO: text textVertical cross
+    arrow arrowUp arrowRight
+    wait arrowWait
+    hand grab grabbing
+    text textVertical cross
     sizeAll sizeHorisontal sizeVertical
-    #TODO: hided
+    hided
 
 const AllKeys* = {Key.a..Key.pause}
 
@@ -657,21 +657,6 @@ when defined(linux):
       a.fullscreen = false
       requestedSize = some size
 
-  proc `cursor=`*(a: var Window, kind: Cursor) {.with.} =
-    ## set cursor font, used when mouse hover window
-    if kind == curCursor: return
-    if xcursor != 0: destroy xcursor
-    case kind
-    of Cursor.arrow:          xcursor = cursorFromFont XcLeftPtr
-    of Cursor.arrowUp:        xcursor = cursorFromFont XcCenterPtr
-    of Cursor.hand:           xcursor = cursorFromFont XcHand1
-    of Cursor.sizeAll:        xcursor = cursorFromFont XcFleur
-    of Cursor.sizeVertical:   xcursor = cursorFromFont XcSb_v_doubleArrow
-    of Cursor.sizeHorisontal: xcursor = cursorFromFont XcSb_h_doubleArrow
-    xwin.cursor = xcursor
-    syncX()
-    curCursor = kind
-
   proc newPixmap(img: Picture, a: Window): Pixmap {.with: a.} =
     var ddata = malloc[Color](img.size.x * img.size.y)
     copyMem(ddata, img.data, Color.sizeof * img.size.x * img.size.y)
@@ -680,6 +665,35 @@ when defined(linux):
     result = newPixmap(img.size, xwin, xscr.defaultDepth)
     result.newGC.put image
     destroy image
+
+  proc `cursor=`*(a: var Window, kind: Cursor) {.with.} =
+    ## set cursor font, used when mouse hover window
+    if kind == curCursor: return
+    if xcursor != 0: destroy xcursor
+    case kind
+    of Cursor.arrow:          xcursor = cursorFromFont XcLeftPtr
+    of Cursor.arrowUp:        xcursor = cursorFromFont XcCenterPtr
+    of Cursor.arrowRight:     xcursor = cursorFromFont XcRightPtr
+    of Cursor.wait:           xcursor = cursorFromFont XcWatch
+    of Cursor.arrowWait:      xcursor = cursorFromFont XcWatch #! нет нужного курсора!
+    of Cursor.hand:           xcursor = cursorFromFont XcHand1
+    of Cursor.grab:           xcursor = cursorFromFont XcHand2 #! нет нужного курсора!
+    of Cursor.grabbing:       xcursor = cursorFromFont XcHand2 #! нет нужного курсора!
+    of Cursor.text:           xcursor = cursorFromFont XcXterm
+    of Cursor.textVertical:   xcursor = cursorFromFont XcXterm #! нет нужного курсора!
+    of Cursor.cross:          xcursor = cursorFromFont XcTCross
+    of Cursor.sizeAll:        xcursor = cursorFromFont XcFleur
+    of Cursor.sizeVertical:   xcursor = cursorFromFont XcSb_v_doubleArrow
+    of Cursor.sizeHorisontal: xcursor = cursorFromFont XcSb_h_doubleArrow
+    of Cursor.hided:
+      var data: array[1, char]
+      let blank = display.XCreateBitmapFromData(rootWindow(0), data[0].addr, 1, 1)
+      var pass: XColor
+      xcursor = x.Cursor display.XCreatePixmapCursor(blank, blank, pass.addr, pass.addr, 0, 0)
+      discard display.XFreePixmap blank
+    xwin.cursor = xcursor
+    syncX()
+    curCursor = kind
 
   proc `icon=`*(a: var Window, img: Picture) {.with.} =
     ## set window icon

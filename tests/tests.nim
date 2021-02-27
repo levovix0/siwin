@@ -6,7 +6,7 @@ test "no render window":
   var a = false
 
   run newWindow(title="Окошко", renderEngine=none):
-    init:      window.cursor = Cursor.hand
+    init:      window.cursor = Cursor.hided
     close:     a = true
     keyup esc: close window
     keyup f1:  window.fullscreen = not window.fullscreen
