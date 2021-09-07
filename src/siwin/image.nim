@@ -1,14 +1,11 @@
-import parseutils, utils
+import parseutils
 
 type
   Color* = tuple
     b, g, r, a: uint8
-  Picture* = object
-    size*: tuple[x, y: int]
-    data*: ArrayPtr[Color]
   Image* = object
-    picture*: Picture
-
+    width*, height*: int
+    data*: seq[Color]
 
 
 func color*(r, g, b: SomeInteger, a: SomeInteger = 255): Color =
@@ -40,29 +37,36 @@ func color*(hex: string): Color {.compileTime.} =
   else: raise ValueError.newException "parse #" & hex & ": incorrect number of digits"
 
 
-
-func `[]`*(a: Picture; x, y: int): var Color = a.data[y * a.size.x + x]
-func `[]=`*(a: Picture; x, y: int, c: Color) = a.data[y * a.size.x + x] = c
-
-iterator items*(a: Picture): var Color =
-  for v in a.data.items(a.size.x * a.size.y):
-    yield v
-
-func w*(a: Picture): auto = a.size.x
-  ## width of picture
-func h*(a: Picture): auto = a.size.y
-  ## height of picture
+func w*(a: Image): auto {.inline.} = a.width
+  ## width of image
+func h*(a: Image): auto {.inline.} = a.height
+  ## height of image
 
 
+func `[]`*(a: Image; x, y: int): Color = a.data[y * a.w + x]
+func `[]`*(a: var Image; x, y: int): var Color = a.data[y * a.w + x]
+func `[]=`*(a: var Image; x, y: int, c: Color) = a.data[y * a.w + x] = c
 
-converter toPicture*(a: Image): Picture = a.picture
 
-proc `=destroy`*(a: var Image) =
-  dealloc(cast[pointer](a.picture.data))
-proc newImage*(w, h: int): Image =
-  Image(picture: Picture(size: (x: w, y: h), data: allocArray[Color](w * h)))
+iterator items*(a: Image): Color =
+  for c in a.data:
+    yield c
 
-func size*(a: Image): auto = a.picture.size
-func data*(a: Image): auto = a.picture.data
-func `size=`*(a: var Image, v: tuple[x, y: int]) = a.picture.size = v
-func `data=`*(a: var Image, v: ArrayPtr[Color]) = a.picture.data = v
+iterator mitems*(a: var Image): var Color =
+  for c in a.data.mitems:
+    yield c
+
+iterator pairs*(a: Image): (int, Color) =
+  for i, c in a.data:
+    yield (i, c)
+
+iterator mpairs*(a: var Image): (int, var Color) =
+  for i, c in a.data.mpairs:
+    yield (i, c)
+
+
+func newImage*(w, h: int): Image =
+  Image(width: w, height: h, data: newSeq[Color](w * h))
+
+
+func sizeInBytes*(a: Image): int = a.w * a.h * Color.sizeof

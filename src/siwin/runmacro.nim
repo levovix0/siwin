@@ -165,7 +165,6 @@ proc translateKeyCombination(a: NimNode): NimNode =
 proc translateEvent(rp: RunParser, a: Event): seq[EventOutput] =
   template add(e: string, body: NimNode) =
     result.add (e, nnkBlockStmt.newTree(newEmptyNode(), body))
-  template w: auto = rp.windowNode
   var (name, body, args, res) = a.toFlatTuple
 
   var genAs: proc(v: NimNode): NimNode = proc(v: NimNode): NimNode = discard
@@ -231,9 +230,7 @@ proc translateEvent(rp: RunParser, a: Event): seq[EventOutput] =
   
   of "render":
     case rp.renderEngine
-    of RenderEngine.picture:
-      "render".addas `w`.render: `body`
-    of RenderEngine.opengl:
+    of RenderEngine.picture, RenderEngine.opengl:
       "render".add body
     else:
       error "can't render on window (no render engine)", a.nameNode

@@ -4,7 +4,7 @@ import x11/x except Window, Pixmap, Cursor
 export xlib, xutil, xatom, xshm, cursorfont, keysym
 export x except Window, Pixmap, Cursor
 import utils
-from image import Color
+import image
 
 type
   X11ValueError* = object of CatchableError
@@ -77,11 +77,6 @@ converter toPDrawable*(a: Window|Pixmap|Cursor): PDrawable = a.toPXID
 converter toPXWmHints*(a: WmHints): PXWmHints = a.wmh
 
 
-proc cmalloc(size: culong): pointer {.importc: "malloc".}
-proc malloc*[T](): ptr T = cast[ptr T](cmalloc(culong T.sizeof))
-proc malloc*[T](len: int): ArrayPtr[T] = cast[ArrayPtr[T]](cmalloc(culong T.sizeof * len))
-
-
 proc destroy*(a: Window)    = discard display.XDestroyWindow(a)
 proc destroy*(a: Pixmap)    = discard display.XFreePixmap(a)
 proc destroy*(a: Cursor)    = discard display.XFreeCursor(a)
@@ -148,10 +143,12 @@ proc map*(a: Window) =
 
 proc wmProtocols*(a: Window): seq[Atom] =
   var
-    protocols: ArrayPtr[Atom]
+    protocols: ptr UncheckedArray[Atom]
     n: cint
-  discard display.XGetWMProtocols(a, cast[ptr ptr Atom](protocols.addr), n.addr)
-  protocols.toSeq(n.int)
+  discard display.XGetWMProtocols(a, cast[PPAtom](protocols.addr), n.addr)
+  result.setLen n.int
+  for i in 0..<n.int: result[i] = protocols[i]
+  discard XFree protocols
 
 proc `wmProtocols=`*(a: Window, v: openarray[Atom]) =
   discard display.XSetWMProtocols(a, v.dataAddr, v.len.cint)
@@ -180,13 +177,14 @@ proc property*(a: Window, name: Atom, t: typedesc = typedesc[byte]): tuple[data:
     format: cint
     n: culong
     remainingBytes: culong
-    data: ArrayPtr[t]
+    data: ptr UncheckedArray[t]
   if display.XGetWindowProperty(
     a, name, 0, clong.high, 0, AnyPropertyType,
     result.kind.addr, format.addr, n.addr, remainingBytes.addr, cast[PPCUchar](data.addr)
   ) != Success:
     raise X11Defect.newException("failed to get property " & $name)
-  result.data = data.toSeq(n.int)
+  result.data.setLen n.int
+  for i in 0..<n.int: result.data[i] = data[i]
   discard XFree data
 
 proc property*(a: Window, name: Atom, t: typedesc[string]): tuple[data: string, kind: Atom] =
@@ -238,19 +236,22 @@ proc whitePixel*(screen: cint): culong = display.WhitePixel(screen)
 
 proc newPixmap*(w, h: int, window: Window, depth: cuint): Pixmap =
   Pixmap display.XCreatePixmap(window, w.cuint, h.cuint, depth)
-proc newPixmap*(size: tuple[x, y: int], window: Window, depth: cuint): Pixmap =
-  newPixmap(size.x, size.y, window, depth)
 
 
-proc newXImage*(size: tuple[x, y: int], data: ArrayPtr[Color], visual: PVisual, depth: cuint, format: cint = ZPixmap, offset: cint = 0, bitpad: cint = 32, bytesPerLine: cint = 0): PXImage =
-  result = display.XCreateImage(visual, depth, format, offset, cast[cstring](data), size.x.cuint, size.y.cuint, bitpad, bytesPerLine)
-  if result == nil: raise X11Defect.newException("failed to create XImage")
-proc newXImage*(size: tuple[x, y: int], visual: PVisual, depth: cuint, format: cint = ZPixmap, offset: cint = 0, bitpad: cint = 32, bytesPerLine: cint = 0): PXImage =
-  let data = malloc[Color](size.x * size.y)
-  newXImage(size, data, visual, depth, format, offset, bitpad, bytesPerLine)
-
-proc size*(a: PXImage): tuple[x, y: int] =
-  (int a.width, int a.height)
+converter asXImage*(this: Image): XImage = XImage(
+  width: cint this.w,
+  height: cint this.h,
+  depth: 24,
+  bitsPerPixel: 32,
+  xoffset: 0,
+  format: ZPixmap,
+  data: cast[cstring](this.data.dataAddr),
+  byteOrder: LSBFirst,
+  bitmapUnit: display.BitmapUnit,
+  bitmapBitOrder: LSBFirst,
+  bitmapPad: 32,
+  bytesPerLine: cint this.w * Color.sizeof
+)
 
 
 proc newGC*(a: Drawable, mask: culong = GcForeground or GcBackground): GraphicsContext =
@@ -259,10 +260,10 @@ proc newGC*(a: Drawable, mask: culong = GcForeground or GcBackground): GraphicsC
   result.gc = display.XCreateGC(a, mask, result.gcv.addr)
   if result.gc == nil: raise X11Defect.newException("failed to create gc")
 
-proc put*(a: GraphicsContext, image: PXImage, size: tuple[x, y: int], srcPos: tuple[x, y: int] = (0, 0), destPos: tuple[x, y: int] = (0, 0)) =
-  discard display.XPutImage(a.target, a.gc, image, cint srcPos.x, cint srcPos.y, cint destPos.x, cint destPos.y, cuint size.x, cuint size.y)
+proc put*(a: GraphicsContext, image: PXImage, w, h: int, srcPos: tuple[x, y: int] = (0, 0), destPos: tuple[x, y: int] = (0, 0)) =
+  discard display.XPutImage(a.target, a.gc, image, cint srcPos.x, cint srcPos.y, cint destPos.x, cint destPos.y, cuint w, cuint h)
 proc put*(a: GraphicsContext, image: PXImage, srcPos: tuple[x, y: int] = (0, 0), destPos: tuple[x, y: int] = (0, 0)) =
-  a.put(image, image.size, srcPos, destPos)
+  a.put(image, image.width, image.height, srcPos, destPos)
 
 
 proc send*(a: Window, e: XEvent, mask: clong = NoEventMask, propagate: bool = false) =

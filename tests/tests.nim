@@ -37,10 +37,9 @@ test "picture window":
       redraw win
 
   win.onRender = proc(e: PictureRenderEvent) =
-    let r = render win
-    r.clear color(g, g, g)
-    for i in r.area.a.x..r.area.b.x:
-      r[i, i mod win.size.y] = color"ffffff"
+    for c in e.image[].mitems: c = color(g, g, g)
+    for i in 0..<e.image[].w:
+      e.image[][i, i mod e.image[].h] = color"ffffff"
   
   win.onDoubleClick = proc(e: ClickEvent) =
     close win
@@ -59,8 +58,7 @@ test "picture window":
     echo e.text
   
   var icon = newImage(32, 32)
-  let r = render icon
-  r.clear color"FFFF20"
+  for c in icon.mitems: c = color"FFFF20"
   win.icon = icon
   
   run win
@@ -112,8 +110,7 @@ test "macro":
   run newWindow(title="Окошко", renderEngine=picture):
     init:
       var icon = newImage(32, 32)
-      let r = render icon
-      r.clear color"FFFF20"
+      for c in icon.mitems: c = color"FFFF20"
       window.icon = icon
 
       window.cursor = Cursor.arrowUp
@@ -123,8 +120,8 @@ test "macro":
         g = (pos.x / window.size.x * 255).int.min(255).max(0)
         redraw window
 
-    render as r:
-      r.clear color(g, g, g)
+    render:
+      for c in e.image[].mitems: c = color(g, g, g)
 
     doubleClick:     close window
     tick:            inc x; check t
@@ -191,29 +188,11 @@ test "clipboard":
   echo $clipboard   #= `clipboard.text`
 
 
-suite "readme":
-  test "render example":
-    run newWindow(w=screen().size.x, title="render example", renderEngine=picture):
-      render as r:
-        r.clear color"202020"
-        for i in r.area.a.x..r.area.b.x:
-          r[i, i mod window.size.y] = color"ffffff"
-      keyup esc:
-        close window
-
-
-  test "moving and resizing window example":
-    var win = newWindow(w=800, h=600, title="moving and resizing example", fullscreen=true, renderEngine=picture)
-    win.onKeyup = proc(e: KeyEvent) =
-      if e.key == Key.f1:
-        win.fullscreen = not win.fullscreen
-      elif e.key == Key.f2:
-        win.size = (1280, 720)
-      elif e.key == Key.escape:
-        close win
-    win.onRender = proc(e: PictureRenderEvent) =
-      let r = render win
-      r.clear color"202020"
-    win.onFullscreenChanged = proc(e: StateChangedEvent) =
-      win.position = (screen().size.x div 2 - win.size.x div 2, screen().size.y div 2 - win.size.y div 2)
-    run win
+test "draw pixels example":
+  run newWindow(w=screen().size.x, title="render example", renderEngine=picture):
+    render:
+      for c in e.image[].mitems: c = color"202020"
+      for i in 0..<e.image[].w:
+        e.image[][i, i mod e.image[].h] = color"ffffff"
+    keyup esc:
+      close window

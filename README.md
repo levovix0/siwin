@@ -6,21 +6,20 @@ Can be used as an alternative to GLFW/GLUT
 
 
 # Features
-* window creation and simple management
 * `run` event loop generation macro
 * clipboard
-* OpenGL support
-* render in window using picture (access pixels)
-* OS Linux support (using X11)
-* OS Windows support
+* drawing image without any graphical api's
+* OpenGL
+* Linux support (using X11)
+* Windows support
 
 # Examples
 
 #### simple window
 ```nim
 run newWindow(renderEngine=picture):
-  render as r:
-    r.clear color"202020"
+  render:
+    for c in e.image[].mitems: c = color"202020"
   keyup esc:
     close window
 ```
@@ -55,13 +54,15 @@ run newWindow(): # opengl is render engine by default
     glEnd()
 ```
 
-#### pixel access
+#### draw pixels
 ```nim
 run newWindow(w=screen().size.x, title="render example", renderEngine=picture):
-  render as r:
-    r.clear color"202020"
-    for i in r.area.a.x..r.area.b.x:
-      r[i, i mod window.size.y] = color"ffffff"
+  render:
+    for c in e.image[].mitems: c = color"202020"
+    for i in 0..<e.image[].w:
+      e.image[][i, i mod e.image[].h] = color"ffffff"
+  keyup esc:
+    close window
 ```
 
 #### clipboard
@@ -73,27 +74,5 @@ run newWindow():
   keydown ctrl+shift+v: echo $clipboard
 ```
 
-#### moving and resizing window
-```nim
-var win = newWindow(w=800, h=600, title="moving and resizing example", fullscreen=true, renderEngine=picture)
-win.onKeyup = proc(e: KeyEvent) =
-  if e.key == Key.f1:
-    win.fullscreen = not win.fullscreen
-  elif e.key == Key.f2:
-    win.size = (1280, 720)
-  elif e.key == Key.escape:
-    close win
-win.onRender = proc(e: RenderEvent) =
-  let r = render win
-  r.clear color"202020"
-win.onFullscreenChanged = proc(e: StateChangedEvent) =
-  win.position = (screen().size.x div 2 - win.size.x div 2, screen().size.y div 2 - win.size.y div 2)
-run win
-```
-
 # TODO
 * Wayland support
-* Vulkan support
-* web support
-* Android support
-* joystick support

@@ -1,62 +1,17 @@
 import times, os
 import image, utils
+
 when defined(linux):
   import strformat, options, sequtils
   import libx11 as x
   import libglx
   from nimgl/opengl import glInit
+
 when defined(windows):
   import libwinapi, macros, sequtils
   import libwgl
   from nimgl/opengl import glInit
   type Color = image.Color
-
-
-
-
-publicInterface:
-  Window:
-    close() {.lazy.}
-    opened -> bool
-
-    onEvent => proc(Event)
-
-    fullscreen => bool {.lazy.}
-    size => Vec2
-    position => Vec2
-
-    cursor = Cursor
-    icon = Picture|nil
-
-  OpenglWindow of Window:
-    onRender => proc(OpneglRenderer)
-    redraw() {.lazy.}
-
-  PictureWindow of Window:
-    onRender => proc(Renderer)
-    getPicture -> Picture
-    redraw() {.lazy.}
-
-  newWindow(w, h: int, title: string, Screen, RenderEngine)
-  newWindow(size: Vec2, title: string, Screen, RenderEngine)
-  run SomeWindow
-
-  MouseButton enum
-  Mouse:
-    position -> Vec2
-    pressed[MouseButton] -> bool
-  Cursor enum
-
-  Key enum
-  Keyboard:
-    pressed[Key] -> bool
-
-  Screen:
-    screen(void|int)
-
-    size -> Vec2
-
-
 
 
 type
@@ -106,7 +61,7 @@ type
       handle: PScreen
 
 type
-  Window* {.inheritable.} = object # inheritance here is optional, it's required only to not duplicate code, i.e it's part of implementation
+  Window* = object of RootObj
     onClose*:       proc(e: CloseEvent)
 
     onTick*:        proc(e: TickEvent)
@@ -165,9 +120,7 @@ type
 
     when defined(linux):
       gc: GraphicsContext
-      ximg: PXImage
-
-      m_data: ArrayPtr[Color]
+      image: Image
       waitForReDraw: bool
 
     elif defined(windows):
@@ -197,8 +150,7 @@ type
   CloseEvent* = tuple
 
   PictureRenderEvent* = tuple
-    data: ArrayPtr[Color]
-    size: tuple[x, y: int]
+    image: ptr Image
   OpenglRenderEvent* = tuple
   ResizeEvent* = tuple
     oldSize, size: tuple[x, y: int]
@@ -509,7 +461,6 @@ elif defined(windows):
 template screenCount*: int = getScreenCount()
 
 
-
 when defined(linux):
   proc `=destroy`*(a: var Window) {.with.} =
     if xinContext != nil: destroy xinContext
@@ -518,10 +469,6 @@ when defined(linux):
     if xicon != 0: destroy xicon
     if xiconMask != 0: destroy xiconMask
     destroy xwin
-
-  proc `=destroy`*(a: var PictureWindow) {.with.} =
-    destroy ximg
-    `=destroy` a.Window
 
   proc `=destroy`*(a: var OpenglWindow) {.with.} =
     0.makeCurrent nil.GlxContext
@@ -556,22 +503,20 @@ when defined(linux):
         XNClientWindow, xwin, XNFocusWindow, xwin, XnInputStyle, XimPreeditNothing or XimStatusNothing, nil
       )
 
-  proc initNoRenderWindow(a: var Window; w, h: int; screen: Screen, fullscreen: bool) {.with.} =
-    a.initWindow w, h, screen
+  proc initNoRenderWindow(this: var Window; w, h: int; screen: Screen, fullscreen: bool) {.with.} =
+    this.initWindow w, h, screen
     xwin = newSimpleWindow(defaultRootWindow(), 0, 0, w, h, 0, 0, xscr.blackPixel)
-    a.setupWindow fullscreen
+    this.setupWindow fullscreen
 
-  proc initPictureWindow(a: var PictureWindow; w, h: int; screen: Screen, fullscreen: bool) {.with.} =
-    a.initWindow w, h, screen
+  proc initPictureWindow(this: var PictureWindow; w, h: int; screen: Screen, fullscreen: bool) {.with.} =
+    this.initWindow w, h, screen
     xwin = newSimpleWindow(defaultRootWindow(), 0, 0, w, h, 0, 0, xscr.blackPixel)
-    a.setupWindow fullscreen
+    this.setupWindow fullscreen
 
     waitForReDraw = true
     gc = xwin.newGC(GCForeground or GCBackground)
 
-    m_data = malloc[Color](m_size.x * m_size.y)
-    ximg = newXImage(m_size, m_data, xscr.defaultVisual, xscr.defaultDepth)
-    doassert ximg != nil
+    this.image = newImage(w, h)
 
   proc initOpenglWindow(a: var OpenglWindow; w, h: int; screen: Screen, fullscreen: bool) {.with.} =
     a.initWindow w, h, screen
@@ -604,30 +549,27 @@ when defined(linux):
     d.Xutf8SetWMProperties(xwin, title, title, nil, 0, nil, nil, nil)
 
   proc opened*(a: Window): bool = a.m_isOpen
-  proc close*(a: var Window) {.lazy, with.} =
+  proc close*(a: var Window) {.with.} =
     ## close request
     if not m_isOpen: return
     xwin.send xwin.newClientMessage(WmProtocols, [atom WmDeleteWindow, CurrentTime])
     m_isOpen = false
 
-  proc redraw*(a: var PictureWindow) {.lazy.} = a.waitForReDraw = true
+  proc redraw*(a: var PictureWindow) = a.waitForReDraw = true
     ## render request
-  proc redraw*(a: var OpenglWindow) {.lazy.} = a.waitForReDraw = true
+  proc redraw*(a: var OpenglWindow) = a.waitForReDraw = true
     ## render request
 
   proc updateSize(a: var Window, v: tuple[x, y: int]) {.with.} =
     m_size = v
-  proc updateSize(a: var PictureWindow, v: tuple[x, y: int]) {.with.} =
-    updateSize a.Window, v
-    destroy ximg
-    m_data = malloc[Color](m_size.x * m_size.y) # XImage destruction automaticly call `free`, which pairs to `malloc`
-    m_data.zeroMem(m_size.x * m_size.y * Color.sizeof) # clear allocated memory
-    ximg = newXImage(m_size, m_data, xscr.defaultVisual, xscr.defaultDepth)
-    waitForReDraw = true
+  proc updateSize(this: var PictureWindow, v: tuple[x, y: int]) =
+    this.Window.updateSize v
+    this.image = newImage(v.x, v.y)
+    this.waitForReDraw = true
 
   proc fullscreen*(a: Window): bool = a.m_isFullscreen
     ## get real fullscreen state of window
-  proc `fullscreen=`*(a: var Window, v: bool) {.lazy, with.} =
+  proc `fullscreen=`*(a: var Window, v: bool) {.with.} =
     ## set fullscreen
     ##* this proc is lazy, don't try get size of window after it
     ## track when the fullscreen state will be applied in the onFullscreenChanged event
@@ -657,14 +599,10 @@ when defined(linux):
       a.fullscreen = false
       requestedSize = some size
 
-  proc newPixmap(img: Picture, a: Window): Pixmap {.with: a.} =
-    var ddata = malloc[Color](img.size.x * img.size.y)
-    copyMem(ddata, img.data, Color.sizeof * img.size.x * img.size.y)
-    let image = newXImage(img.size, ddata, xscr.defaultVisual, xscr.defaultDepth)
-
-    result = newPixmap(img.size, xwin, xscr.defaultDepth)
-    result.newGC.put image
-    destroy image
+  proc newPixmap(source: Image, window: Window): Pixmap =
+    result = newPixmap(source.w, source.h, window.xwin, window.xscr.defaultDepth)
+    var image = source.asXImage
+    result.newGC.put image.addr
 
   proc `cursor=`*(a: var Window, kind: Cursor) {.with.} =
     ## set cursor font, used when mouse hover window
@@ -695,17 +633,17 @@ when defined(linux):
     syncX()
     curCursor = kind
 
-  proc `icon=`*(a: var Window, img: Picture) {.with.} =
+  proc `icon=`*(a: var Window, image: Image) {.with.} =
     ## set window icon
     if xicon != 0: destroy xicon
     if xiconMask != 0: destroy xiconMask
 
-    xicon = newPixmap(img, a)
+    xicon = newPixmap(image, a)
 
     # convert alpha channel to bit mask (semi-transparency is not supported)
-    var mask = newImage(img.size.x, img.size.y)
-    for i in 0..<(img.size.x * img.size.y):
-      mask.data[i] = if img.data[i].a > 127: color(0, 0, 0) else: color(255, 255, 255)
+    var mask = newImage(image.w, image.h)
+    for i in 0..<(image.w * image.h):
+      mask.data[i] = if image.data[i].a > 127: color(0, 0, 0) else: color(255, 255, 255)
     xiconMask = newPixmap(mask, a)
 
     xwin.wmHints = newWmHints(xicon, xiconMask)
@@ -896,8 +834,9 @@ when defined(linux):
         if waitForReDraw:
           waitForReDraw = false
           when a is PictureWindow:
-            pushEvent on_render, (m_data, m_size)
-            gc.put ximg
+            pushEvent on_render, (addr a.image)
+            var ximg = a.image.asXImage
+            gc.put ximg.addr
           when a is OpenglWindow:
             pushEvent on_render, ()
             xwin.toDrawable.glxSwapBuffers()
@@ -909,7 +848,6 @@ when defined(linux):
   proc systemHandle*(a: Window): x.Window = a.xwin
     ## get system handle of window
     ##* result depends on OS or platmofm
-
 
 
 elif defined(windows):
@@ -1096,14 +1034,14 @@ elif defined(windows):
     handle.SetWindowText(title)
 
   proc opened*(a: Window): bool = a.m_isOpen
-  proc close*(a: var Window) {.lazy, with.} =
+  proc close*(a: var Window) {.with.} =
     if m_isOpen: handle.SendMessage(WmClose, 0, 0)
 
-  proc redraw*(a: var Window) {.lazy, with.} =
+  proc redraw*(a: var Window) {.with.} =
     var cr = handle.clientRect
     handle.InvalidateRect(&cr, false)
   
-  proc redraw*(a: var OpenglWindow) {.lazy.} = a.waitForReDraw = true
+  proc redraw*(a: var OpenglWindow) = a.waitForReDraw = true
 
   proc position*(a: Window): tuple[x, y: int] {.with.} =
     let r = handle.clientRect
@@ -1335,7 +1273,6 @@ else:
   {.error: "current OS is not supported".}
 
 
-
 proc newNoRenderWindow*(w = 1280, h = 720, title = "", screen = screen(), fullscreen = false): Window =
   result.initNoRenderWindow(w, h, screen, fullscreen)
   result.title = title
@@ -1367,6 +1304,3 @@ proc w*(a: Screen): int = a.size.x
   ## width of screen
 proc h*(a: Screen): int = a.size.y
   ## height of screen
-
-converter getPicture*(a: PictureWindow): Picture =
-  Picture(size: a.m_size, data: a.m_data)

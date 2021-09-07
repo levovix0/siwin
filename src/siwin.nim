@@ -1,3 +1,3 @@
-import siwin/[rendering, window, runmacro, clipboard]
-export rendering, window, runmacro, clipboard
+import siwin/[window, runmacro, clipboard]
+export window, runmacro, clipboard
 
