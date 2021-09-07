@@ -28,7 +28,9 @@ run newWindow(renderEngine=picture):
 ```nim
 import nimgl/opengl
 
-run newWindow(): # opengl is render engine by default
+run newWindow():
+  init:
+    doassert glInit()
   resize as (w, h):
     glViewport 0, 0, w.GLsizei, h.GLsizei
     glMatrixMode GlProjection

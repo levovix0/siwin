@@ -68,8 +68,8 @@ test "picture window":
 test "opengl window":
   var g = 1.0
   run newWindow(title="OpenGL"):
-    keyup esc: close window
-    keyup f1:  window.fullscreen = not window.fullscreen
+    init:
+      doassert glInit()
     resize as (w, h):
       glViewport 0, 0, w.GLsizei, h.GLsizei
       glMatrixMode GlProjection
@@ -93,6 +93,8 @@ test "opengl window":
       glColor3f g - 1, g - 1, 1 * g
       glVertex2f 0, 30
       glEnd()
+    keyup esc: close window
+    keyup f1:  window.fullscreen = not window.fullscreen
     mouseMove as pos:
       if e.mouse.pressed[MouseButton.left]:
         g = (pos.x / window.size.x * 2).min(2).max(0)

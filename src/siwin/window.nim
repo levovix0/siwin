@@ -5,12 +5,10 @@ when defined(linux):
   import strformat, options, sequtils
   import libx11 as x
   import libglx
-  from nimgl/opengl import glInit
 
 when defined(windows):
   import libwinapi, macros, sequtils
   import libwgl
-  from nimgl/opengl import glInit
   type Color = image.Color
 
 
@@ -532,9 +530,7 @@ when defined(linux):
 
     ctx = newGlxContext(vi)
     glxAssert ctx != nil
-    xwin.makeCurrent ctx 
-
-    doassert glInit()
+    xwin.makeCurrent ctx
 
   template pushEvent(a: Window, event, args) =
     when args is tuple:
