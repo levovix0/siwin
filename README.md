@@ -29,6 +29,7 @@ run newWindow():
 ```
 
 #### OpenGL
+![](https://ia.wampi.ru/2021/09/07/31.png)
 ```nim
 import siwin, nimgl/opengl
 
@@ -61,6 +62,7 @@ run newOpenglWindow():
 ```
 
 #### pixie
+![](https://ia.wampi.ru/2021/09/07/32.png)
 ```nim
 import siwin, pixie
 
@@ -70,7 +72,7 @@ run newWindow(title="pixie example"):
     image = newImage(w, h)
   render:
     image.fill(rgba(255, 255, 255, 255))
-    
+
     let ctx = image.newContext
     ctx.fillStyle = rgba(0, 255, 0, 255)
 
