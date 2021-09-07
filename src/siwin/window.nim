@@ -3,7 +3,7 @@ import image, utils
 
 when defined(linux):
   import strformat, options, sequtils
-  import libx11 as x
+  import libx11 as x, chroma
   import libglx
 
 when defined(windows):
@@ -612,7 +612,7 @@ when defined(linux):
     # convert alpha channel to bit mask (semi-transparency is not supported)
     var mask = newImage(image.w, image.h)
     for i in 0..<(image.w * image.h):
-      mask.data[i] = if image.data[i].a > 127: color(0, 0, 0) else: color(255, 255, 255)
+      mask.data[i] = if image.data[i].a > 127: rgbx(0, 0, 0, 255) else: rgbx(255, 255, 255, 255)
     xiconMask = newPixmap(mask, a)
 
     xwin.wmHints = newWmHints(xicon, xiconMask)
@@ -624,12 +624,12 @@ when defined(linux):
     xiconMask = 0.Pixmap
     xwin.wmHints = newWmHints(xicon, xiconMask)
 
-  proc drawImage*(this: var Window, pixels: seq[Color]) =
+  proc drawImage*(this: var Window, pixels: seq[ColorRGBX]) =
     doassert pixels.len == this.size.x * this.size.y, "pixels count must be width * height"
     var ximg = asXImage(pixels, this.size.x, this.size.y)
     this.gc.put ximg.addr
 
-  proc drawImage*(this: var OpenglWindow, pixels: seq[Color]) =
+  proc drawImage*(this: var OpenglWindow, pixels: seq[ColorRGBX]) =
     ## draw image on OpenglWindow is impossible, so this proc do nothing
 
   proc run*(a: var SomeWindow) {.with.} =

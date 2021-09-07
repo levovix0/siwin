@@ -1,6 +1,7 @@
-import siwin, siwin/image
+import siwin
+import siwin/image except Image, newImage
 import unittest, strformat
-import nimgl/opengl
+import nimgl/opengl, pixie
 
 
 test "screen":
@@ -13,47 +14,6 @@ test "screen":
       echo &"screen({i}).size: {size.x}x{size.y}"
 
 
-test "opengl window":
-  var g = 1.0
-  run newOpenglWindow(title="OpenGL"):
-    init:
-      doassert glInit()
-    resize as (w, h):
-      glViewport 0, 0, w.GLsizei, h.GLsizei
-      glMatrixMode GlProjection
-      glLoadIdentity()
-      glOrtho -30, 30, -30, 30, -30, 30
-      glMatrixMode GlModelView
-    render:
-      glClearColor 0.3, 0.3, 0.3, 0
-      glClear GlColorBufferBit or GlDepthBufferBit
-    
-      glShadeModel GlSmooth
-    
-      glLoadIdentity()
-      glTranslatef -15, -15, 0
-    
-      glBegin GlTriangles
-      glColor3f 1 * g, g - 1, g - 1
-      glVertex2f 0, 0
-      glColor3f g - 1, 1 * g, g - 1
-      glVertex2f 30, 0
-      glColor3f g - 1, g - 1, 1 * g
-      glVertex2f 0, 30
-      glEnd()
-    keyup esc:
-      close window
-    keyup esc: close window
-    keyup f1:  window.fullscreen = not window.fullscreen
-    mouseMove as pos:
-      if e.mouse.pressed[MouseButton.left]:
-        g = (pos.x / window.size.x * 2).min(2).max(0)
-        redraw window
-    click(left, right) as (x, _):
-      g = (x / window.size.x * 2).min(2).max(0)
-      redraw window
-
-
 test "macro":
   var a = false
   var g = 32
@@ -62,8 +22,8 @@ test "macro":
 
   run newWindow(title="Окошко"):
     init:
-      var icon = newImage(32, 32)
-      for c in icon.mitems: c = color"FFFF20"
+      var icon = image.newImage(32, 32)
+      for c in icon.mitems: c = parseHex("FFFF20").rgbx
       window.icon = icon
 
       window.cursor = Cursor.arrowUp
@@ -74,8 +34,8 @@ test "macro":
         redraw window
 
     render:
-      var image = newSeq[Color](window.size.x * window.size.y)
-      for c in image.mitems: c = color(g, g, g)
+      var image = newSeq[ColorRGBX](window.size.x * window.size.y)
+      for c in image.mitems: c = rgbx(g.uint8, g.uint8, g.uint8, 255)
       window.drawImage(image)
 
     doubleClick:     close window
@@ -87,7 +47,7 @@ test "macro":
     pressing:        g = min(g + 1, 255); redraw window #= `tick: if anyKeyIsPressed():`
     # pressing as x: ...                                #= `pressing {.forEachKey.}: let x = magicGetPressedKey();`
     pressing as x[]: echo x                             #= `pressing: let x = magicGetAllPressedKeys();`
-    notPressing g:   g = max(g - 1, 0); redraw window   #= `notPressing g:`
+    notPressing g:   g = max(g - 1, 0); redraw window
     input:           echo e.text
 
     keydown ctrl+c:  clipboard $= "coppied from siwin"  #= `keydown c: if e.keyboard.pressed[control] and magicOtherKeysIsNotPressed():`
@@ -129,13 +89,61 @@ test "macro":
   check a == true
 
 
-test "draw pixels example":
-  run newWindow(w = screen().size.x, title = "render example"):
+test "OpenGL":
+  var g = 1.0
+  run newOpenglWindow(title="OpenGL example"):
+    init:
+      doassert glInit()
+    resize as (w, h):
+      glViewport 0, 0, w.GLsizei, h.GLsizei
+      glMatrixMode GlProjection
+      glLoadIdentity()
+      glOrtho -30, 30, -30, 30, -30, 30
+      glMatrixMode GlModelView
     render:
-      var image = newSeq[Color](window.size.x * window.size.y)
-      for c in image.mitems: c = color"202020"
-      for i in countup(0, image.high, 8):
-        image[i] = color"ff2020"
-      window.drawImage(image)
+      glClearColor 0.3, 0.3, 0.3, 0
+      glClear GlColorBufferBit or GlDepthBufferBit
+    
+      glShadeModel GlSmooth
+    
+      glLoadIdentity()
+      glTranslatef -15, -15, 0
+    
+      glBegin GlTriangles
+      glColor3f 1 * g, g - 1, g - 1
+      glVertex2f 0, 0
+      glColor3f g - 1, 1 * g, g - 1
+      glVertex2f 30, 0
+      glColor3f g - 1, g - 1, 1 * g
+      glVertex2f 0, 30
+      glEnd()
+    keyup esc:
+      close window
+    keyup esc: close window
+    keyup f1:  window.fullscreen = not window.fullscreen
+    mouseMove as pos:
+      if e.mouse.pressed[MouseButton.left]:
+        g = (pos.x / window.size.x * 2).min(2).max(0)
+        redraw window
+    click(left, right) as (x, _):
+      g = (x / window.size.x * 2).min(2).max(0)
+      redraw window
+
+
+test "pixie":
+  var image: Image
+  run newWindow(title="pixie example"):
+    resize as (w, h):
+      image = newImage(w, h)
+    render:
+      image.fill(rgba(255, 255, 255, 255))
+      let ctx = image.newContext
+      ctx.fillStyle = rgba(0, 255, 0, 255)
+      let
+        wh = vec2(250, 250)
+        pos = vec2(image.width.float, image.height.float) / 2 - wh / 2
+      ctx.fillRoundedRect(rect(pos, wh), 25.0)
+      
+      window.drawImage(image.data)
     keyup esc:
       close window

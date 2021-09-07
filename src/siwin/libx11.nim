@@ -4,7 +4,7 @@ import x11/x except Window, Pixmap, Cursor
 export xlib, xutil, xatom, xshm, cursorfont, keysym
 export x except Window, Pixmap, Cursor
 import utils
-import image
+import chroma
 
 type
   X11ValueError* = object of CatchableError
@@ -238,7 +238,7 @@ proc newPixmap*(w, h: int, window: Window, depth: cuint): Pixmap =
   Pixmap display.XCreatePixmap(window, w.cuint, h.cuint, depth)
 
 
-proc asXImage*(data: seq[Color], w, h: int): XImage = XImage(
+proc asXImage*(data: seq[ColorRGBX], w, h: int): XImage = XImage(
   width: cint w,
   height: cint h,
   depth: 24,
@@ -250,7 +250,7 @@ proc asXImage*(data: seq[Color], w, h: int): XImage = XImage(
   bitmapUnit: display.BitmapUnit,
   bitmapBitOrder: MSBFirst,
   bitmapPad: 32,
-  bytesPerLine: cint w * Color.sizeof
+  bytesPerLine: cint w * ColorRGBX.sizeof
 )
 
 

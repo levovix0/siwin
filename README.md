@@ -19,14 +19,14 @@ Can be used as an alternative to GLFW/GLUT
 ```nim
 run newWindow():
   render:
-    var image = newSeq[Color](window.size.x * window.size.y)
-    for c in image.mitems: c = color"202020"
+    var image = newSeq[ColorRGBX](window.size.x * window.size.y)
+    for c in image.mitems: c = parseHex("202020").rgbx
     window.drawImage(image)
   keyup esc:
     close window
 ```
 
-#### opengl
+#### OpenGL
 ```nim
 import nimgl/opengl
 
@@ -58,15 +58,24 @@ run newOpenglWindow():
     glEnd()
 ```
 
-#### draw pixels
+#### pixie
 ```nim
-run newWindow(w=screen().size.x, title="render example"):
+import pixie
+
+var image: Image
+run newWindow(title="pixie example"):
+  resize as (w, h):
+    image = newImage(w, h)
   render:
-    var image = newSeq[Color](window.size.x * window.size.y)
-    for c in image.mitems: c = color"202020"
-    for i in countup(0, image.high, 8):
-      image[i] = color"ffffff"
-    window.drawImage(image)
+    image.fill(rgba(255, 255, 255, 255))
+    let ctx = image.newContext
+    ctx.fillStyle = rgba(0, 255, 0, 255)
+    let
+      wh = vec2(250, 250)
+      pos = vec2(image.width.float, image.height.float) / 2 - wh / 2
+    ctx.fillRoundedRect(rect(pos, wh), 25.0)
+    
+    window.drawImage(image.data)
   keyup esc:
     close window
 ```
