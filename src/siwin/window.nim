@@ -62,6 +62,7 @@ type
   Window* = object of RootObj
     onClose*:       proc(e: CloseEvent)
 
+    onRender*:      proc(e: RenderEvent)
     onTick*:        proc(e: TickEvent)
     onResize*:      proc(e: ResizeEvent)
     onWindowMove*:  proc(e: WindowMoveEvent)
@@ -91,6 +92,8 @@ type
     m_isFullscreen: bool
 
     clicking: array[AllMouseButtons, bool]
+    
+    waitForReDraw: bool
 
     when defined(linux):
       xscr: cint
@@ -99,6 +102,7 @@ type
       xiconMask: Pixmap
       xinContext: XIC
       xinMethod: XIM
+      gc: GraphicsContext
 
       xcursor: x.Cursor
       curCursor: Cursor
@@ -113,31 +117,15 @@ type
       wcursor: HCursor
       curCursor: Cursor
 
-  PictureWindow* = object of Window
-    onRender*: proc(e: PictureRenderEvent)
-
-    when defined(linux):
-      gc: GraphicsContext
-      waitForReDraw: bool
-
-    elif defined(windows):
-      wimage: HBitmap
-      hdc: Hdc
-      m_data: ArrayPtr[Color]
-
   OpenglWindow* = object of Window
-    onRender*: proc(e: OpenglRenderEvent)
-
     when defined(linux):
-      waitForReDraw: bool
       ctx: GlxContext
     
     elif defined(windows):
-      waitForReDraw: bool
       hdc: Hdc
       ctx: WglContext
 
-  SomeWindow = Window|PictureWindow|OpenglWindow
+  SomeWindow = Window|OpenglWindow
   RenderEngine* {.pure.} = enum
     none
     picture
@@ -146,8 +134,7 @@ type
 
   CloseEvent* = tuple
 
-  PictureRenderEvent* = tuple
-  OpenglRenderEvent* = tuple
+  RenderEvent* = tuple
   ResizeEvent* = tuple
     oldSize, size: tuple[x, y: int]
     initial: bool # is this initial resizing
@@ -471,7 +458,7 @@ when defined(linux):
     destroy ctx
     `=destroy` a.Window
 
-  proc initWindow(a: var Window; w, h: int; screen: Screen) {.with.} =
+  proc basicInitWindow(a: var Window; w, h: int; screen: Screen) {.with.} =
     xscr = screen.id
     m_size = (w, h)
 
@@ -499,21 +486,16 @@ when defined(linux):
         XNClientWindow, xwin, XNFocusWindow, xwin, XnInputStyle, XimPreeditNothing or XimStatusNothing, nil
       )
 
-  proc initNoRenderWindow(this: var Window; w, h: int; screen: Screen, fullscreen: bool) {.with.} =
-    this.initWindow w, h, screen
-    xwin = newSimpleWindow(defaultRootWindow(), 0, 0, w, h, 0, 0, xscr.blackPixel)
+  proc initWindow(this: var Window; w, h: int; screen: Screen, fullscreen: bool) =
+    this.basicInitWindow w, h, screen
+    this.xwin = newSimpleWindow(defaultRootWindow(), 0, 0, w, h, 0, 0, this.xscr.blackPixel)
     this.setupWindow fullscreen
 
-  proc initPictureWindow(this: var PictureWindow; w, h: int; screen: Screen, fullscreen: bool) {.with.} =
-    this.initWindow w, h, screen
-    xwin = newSimpleWindow(defaultRootWindow(), 0, 0, w, h, 0, 0, xscr.blackPixel)
-    this.setupWindow fullscreen
-
-    waitForReDraw = true
-    gc = xwin.newGC(GCForeground or GCBackground)
+    this.waitForReDraw = true
+    this.gc = this.xwin.newGC(GCForeground or GCBackground)
 
   proc initOpenglWindow(a: var OpenglWindow; w, h: int; screen: Screen, fullscreen: bool) {.with.} =
-    a.initWindow w, h, screen
+    a.basicInitWindow w, h, screen
 
     let root = defaultRootWindow()
     let vi = glxChooseVisual(0, [GlxRgba, GlxDepthSize, 24, GlxDoublebuffer])
@@ -547,15 +529,11 @@ when defined(linux):
     xwin.send xwin.newClientMessage(WmProtocols, [atom WmDeleteWindow, CurrentTime])
     m_isOpen = false
 
-  proc redraw*(a: var PictureWindow) = a.waitForReDraw = true
-    ## render request
-  proc redraw*(a: var OpenglWindow) = a.waitForReDraw = true
+  proc redraw*(a: var Window) = a.waitForReDraw = true
     ## render request
 
-  proc updateSize(a: var Window, v: tuple[x, y: int]) {.with.} =
-    m_size = v
-  proc updateSize(this: var PictureWindow, v: tuple[x, y: int]) =
-    this.Window.updateSize v
+  proc updateSize(this: var Window, v: tuple[x, y: int]) =
+    this.m_size = v
     this.waitForReDraw = true
 
   proc fullscreen*(a: Window): bool = a.m_isFullscreen
@@ -646,10 +624,13 @@ when defined(linux):
     xiconMask = 0.Pixmap
     xwin.wmHints = newWmHints(xicon, xiconMask)
 
-  proc drawImage*(this: var PictureWindow, pixels: seq[Color]) =
+  proc drawImage*(this: var Window, pixels: seq[Color]) =
     doassert pixels.len == this.size.x * this.size.y, "pixels count must be width * height"
     var ximg = asXImage(pixels, this.size.x, this.size.y)
     this.gc.put ximg.addr
+
+  proc drawImage*(this: var OpenglWindow, pixels: seq[Color]) =
+    ## draw image on OpenglWindow is impossible, so this proc do nothing
 
   proc run*(a: var SomeWindow) {.with.} =
     ## run main loop of window
@@ -694,8 +675,7 @@ when defined(linux):
       for ev in xevents.mitems:
         case ev.theType
         of Expose:
-          when a is PictureWindow|OpenglWindow:
-            redraw a
+          redraw a
         of ClientMessage:
           if ev.xclient.data.l[0] == atom(WmDeleteWindow).clong:
             m_isOpen = false
@@ -826,14 +806,11 @@ when defined(linux):
       pushEvent onTick, (mouse, keyboard, nows - lastTickTime)
       lastTickTime = nows
 
-      when a is PictureWindow|OpenglWindow:
-        if waitForReDraw:
-          waitForReDraw = false
-          when a is PictureWindow:
-            pushEvent on_render, ()
-          when a is OpenglWindow:
-            pushEvent on_render, ()
-            xwin.toDrawable.glxSwapBuffers()
+      if waitForReDraw:
+        waitForReDraw = false
+        pushEvent on_render, ()
+        when a is OpenglWindow:
+          xwin.toDrawable.glxSwapBuffers()
 
       clipboardProcessEvents()
 
@@ -1267,23 +1244,13 @@ else:
   {.error: "current OS is not supported".}
 
 
-proc newNoRenderWindow*(w = 1280, h = 720, title = "", screen = screen(), fullscreen = false): Window =
-  result.initNoRenderWindow(w, h, screen, fullscreen)
-  result.title = title
-
-proc newPictureWindow*(w = 1280, h = 720, title = "", screen = screen(), fullscreen = false): PictureWindow =
-  result.initPictureWindow(w, h, screen, fullscreen)
+proc newWindow*(w = 1280, h = 720, title = "", screen = screen(), fullscreen = false): Window =
+  result.initWindow(w, h, screen, fullscreen)
   result.title = title
 
 proc newOpenglWindow*(w = 1280, h = 720, title = "", screen = screen(), fullscreen = false): OpenglWindow =
   result.initOpenglWindow(w, h, screen, fullscreen)
   result.title = title
-
-template newWindow*(w = 1280, h = 720, title = "", screen = screen(), fullscreen = false, renderEngine = RenderEngine.opengl): SomeWindow =
-  const re = renderEngine
-  when re == RenderEngine.none:    newNoRenderWindow(w, h, title, screen, fullscreen)
-  elif re == RenderEngine.picture: newPictureWindow(w, h, title, screen, fullscreen)
-  elif re == RenderEngine.opengl:  newOpenglWindow(w, h, title, screen, fullscreen)
 
 proc w*(a: Screen): int = a.size.x
   ## width of screen

@@ -9,7 +9,7 @@ Can be used as an alternative to GLFW/GLUT
 * `run` event loop generation macro
 * clipboard
 * drawing image without any graphical api's
-* OpenGL
+* OpenGL support
 * Linux support (using X11)
 * Windows support
 
@@ -17,7 +17,7 @@ Can be used as an alternative to GLFW/GLUT
 
 #### simple window
 ```nim
-run newWindow(renderEngine=picture):
+run newWindow():
   render:
     var image = newSeq[Color](window.size.x * window.size.y)
     for c in image.mitems: c = color"202020"
@@ -30,7 +30,7 @@ run newWindow(renderEngine=picture):
 ```nim
 import nimgl/opengl
 
-run newWindow():
+run newOpenglWindow():
   init:
     doassert glInit()
   resize as (w, h):
@@ -60,7 +60,7 @@ run newWindow():
 
 #### draw pixels
 ```nim
-run newWindow(w=screen().size.x, title="render example", renderEngine=picture):
+run newWindow(w=screen().size.x, title="render example"):
   render:
     var image = newSeq[Color](window.size.x * window.size.y)
     for c in image.mitems: c = color"202020"

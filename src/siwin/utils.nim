@@ -2,7 +2,7 @@ import strformat, sequtils, macros, unicode, sugar, sinim
 export sugar
 
 
-proc dataAddr*[T: string|seq|array|openarray|cstring](a: T): auto =
+func dataAddr*[T: string|seq|array|openarray|cstring](a: T): auto =
   ## same as C++ `data` that works with std::string, std::vector etc
   ## Note: safe to use when a.len == 0 but whether the result is nil or not is implementation defined
   when T is string|seq|openarray:
@@ -16,10 +16,10 @@ proc dataAddr*[T: string|seq|array|openarray|cstring](a: T): auto =
   else: {.error.}
 
 
-proc del*[T](a: var seq[T], item: T) =
+func del*[T](a: var seq[T], item: T) =
   let i = a.find(item)
   if i != -1: a.del i
-proc delete*[T](a: var seq[T], item: T) =
+func delete*[T](a: var seq[T], item: T) =
   let i = a.find(item)
   if i != -1: a.delete i
 

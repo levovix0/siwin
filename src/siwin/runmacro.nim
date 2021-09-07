@@ -2,10 +2,7 @@ import macros, strformat, strutils, unicode, tables, sequtils, algorithm, utils,
 import window
 
 type
-  SomeWindow = Window|PictureWindow|OpenglWindow
-
   KeyBinding* = distinct set[Key]
-
 
 proc kindStrings(a: typedesc): seq[string] {.compileTime.} =
   let b = a.getTypeImpl
@@ -228,13 +225,6 @@ proc translateEvent(rp: RunParser, a: Event): seq[EventOutput] =
         else: newStmtList(c.body, body)
       result.add rp.translateEvent c
   
-  of "render":
-    case rp.renderEngine
-    of RenderEngine.picture, RenderEngine.opengl:
-      "render".add body
-    else:
-      error "can't render on window (no render engine)", a.nameNode
-  
   of "input", "textinput", "textenter":
     "textinput".addas `e`.text, `e`.text.toRunes: `body`
   of "focus":
@@ -392,11 +382,7 @@ proc runImpl(win, a: NimNode, re: RenderEngine): NimNode =
     
     case name
     of "close": eproc CloseEvent
-    of "render":
-      if re == RenderEngine.picture:
-        eproc PictureRenderEvent
-      elif re == RenderEngine.opengl:
-        eproc OpenglRenderEvent
+    of "render": eproc RenderEvent
     of "tick": eproc TickEvent
     of "resize": eproc ResizeEvent
     of "windowmove": eproc WindowMoveEvent
@@ -420,11 +406,9 @@ proc runImpl(win, a: NimNode, re: RenderEngine): NimNode =
 
 macro run*(w: var Window, a: untyped) =
   runImpl w, a, RenderEngine.none
-macro run*(w: var PictureWindow, a: untyped) =
-  runImpl w, a, RenderEngine.picture
 macro run*(w: var OpenglWindow, a: untyped) =
   runImpl w, a, RenderEngine.opengl
 
-template run*(w: SomeWindow, a: untyped) =
+template run*(w: Window|OpenglWindow, a: untyped) =
   var window {.inject, used.} = w
   run window, a

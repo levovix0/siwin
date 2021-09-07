@@ -2,9 +2,20 @@ import siwin, siwin/image
 import unittest, strformat
 import nimgl/opengl
 
+
+test "screen":
+  if screenCount == 1:
+    let size = screen().size
+    echo &"screen().size: {size.x}x{size.y}"
+  else:
+    for i in 0..<screenCount:
+      let size = screen(i).size
+      echo &"screen({i}).size: {size.x}x{size.y}"
+
+
 test "opengl window":
   var g = 1.0
-  run newWindow(title="OpenGL"):
+  run newOpenglWindow(title="OpenGL"):
     init:
       doassert glInit()
     resize as (w, h):
@@ -30,6 +41,8 @@ test "opengl window":
       glColor3f g - 1, g - 1, 1 * g
       glVertex2f 0, 30
       glEnd()
+    keyup esc:
+      close window
     keyup esc: close window
     keyup f1:  window.fullscreen = not window.fullscreen
     mouseMove as pos:
@@ -40,13 +53,14 @@ test "opengl window":
       g = (x / window.size.x * 2).min(2).max(0)
       redraw window
 
+
 test "macro":
   var a = false
   var g = 32
   var x = 0
   var t = true
 
-  run newWindow(title="Окошко", renderEngine=picture):
+  run newWindow(title="Окошко"):
     init:
       var icon = newImage(32, 32)
       for c in icon.mitems: c = color"FFFF20"
@@ -115,22 +129,8 @@ test "macro":
   check a == true
 
 
-test "screen":
-  if screenCount == 1:
-    let size = screen().size
-    echo &"screen().size: {size.x}x{size.y}"
-  else:
-    for i in 0..<screenCount:
-      let size = screen(i).size
-      echo &"screen({i}).size: {size.x}x{size.y}"
-
-
-test "clipboard":
-  echo $clipboard   #= `clipboard.text`
-
-
 test "draw pixels example":
-  run newWindow(w=screen().size.x, title="render example", renderEngine=picture):
+  run newWindow(w=screen().size.x, title="render example"):
     render:
       var image = newSeq[Color](window.size.x * window.size.y)
       for c in image.mitems: c = color"202020"
