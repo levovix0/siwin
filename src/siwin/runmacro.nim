@@ -92,7 +92,6 @@ type
     body: NimNode
 
 
-template nameNode(a: Event): auto = a.head.head.nameNode
 template name(a: Event): auto = a.head.head.name
 template args(a: Event): auto = a.head.head.args
 template res(a: Event): auto = a.head.res

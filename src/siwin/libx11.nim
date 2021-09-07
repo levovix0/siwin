@@ -245,10 +245,10 @@ proc asXImage*(data: seq[Color], w, h: int): XImage = XImage(
   bitsPerPixel: 32,
   xoffset: 0,
   format: ZPixmap,
-  data: cast[cstring](data.dataAddr),
-  byteOrder: LSBFirst,
+  data: cast[cstring](cast[int](data.dataAddr) - 1),
+  byteOrder: MSBFirst,
   bitmapUnit: display.BitmapUnit,
-  bitmapBitOrder: LSBFirst,
+  bitmapBitOrder: MSBFirst,
   bitmapPad: 32,
   bytesPerLine: cint w * Color.sizeof
 )

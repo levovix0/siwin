@@ -107,8 +107,8 @@ test "macro":
     keyup(a)|keydown(b): discard
 
     group:
-      keyup x: echo "closed with x"
-      keyup y: echo "closed with y"
+      keyup x: echo "closed using x"
+      keyup y: echo "closed using y"
     do:
       close window
 
@@ -130,12 +130,12 @@ test "macro":
 
 
 test "draw pixels example":
-  run newWindow(w=screen().size.x, title="render example"):
+  run newWindow(w = screen().size.x, title = "render example"):
     render:
       var image = newSeq[Color](window.size.x * window.size.y)
       for c in image.mitems: c = color"202020"
       for i in countup(0, image.high, 8):
-        image[i] = color"ffffff"
+        image[i] = color"ff2020"
       window.drawImage(image)
     keyup esc:
       close window
