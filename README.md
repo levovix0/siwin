@@ -17,6 +17,8 @@ Can be used as an alternative to GLFW/GLUT
 
 #### simple window
 ```nim
+import siwin, chroma
+
 run newWindow():
   render:
     var image = newSeq[ColorRGBX](window.size.x * window.size.y)
@@ -28,7 +30,7 @@ run newWindow():
 
 #### OpenGL
 ```nim
-import nimgl/opengl
+import siwin, nimgl/opengl
 
 run newOpenglWindow():
   init:
@@ -60,7 +62,7 @@ run newOpenglWindow():
 
 #### pixie
 ```nim
-import pixie
+import siwin, pixie
 
 var image: Image
 run newWindow(title="pixie example"):
@@ -68,11 +70,14 @@ run newWindow(title="pixie example"):
     image = newImage(w, h)
   render:
     image.fill(rgba(255, 255, 255, 255))
+    
     let ctx = image.newContext
     ctx.fillStyle = rgba(0, 255, 0, 255)
+
     let
       wh = vec2(250, 250)
       pos = vec2(image.width.float, image.height.float) / 2 - wh / 2
+    
     ctx.fillRoundedRect(rect(pos, wh), 25.0)
     
     window.drawImage(image.data)
@@ -82,6 +87,8 @@ run newWindow(title="pixie example"):
 
 #### clipboard
 ```nim
+import siwin
+
 run newWindow():
   keydown control+c:    clipboard.text = "some text"
   keydown control+v:    echo clipboard.text

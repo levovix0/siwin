@@ -137,11 +137,14 @@ test "pixie":
       image = newImage(w, h)
     render:
       image.fill(rgba(255, 255, 255, 255))
+
       let ctx = image.newContext
       ctx.fillStyle = rgba(0, 255, 0, 255)
+
       let
         wh = vec2(250, 250)
         pos = vec2(image.width.float, image.height.float) / 2 - wh / 2
+      
       ctx.fillRoundedRect(rect(pos, wh), 25.0)
       
       window.drawImage(image.data)
