@@ -118,7 +118,6 @@ type
 
     when defined(linux):
       gc: GraphicsContext
-      image: Image
       waitForReDraw: bool
 
     elif defined(windows):
@@ -148,7 +147,6 @@ type
   CloseEvent* = tuple
 
   PictureRenderEvent* = tuple
-    image: ptr Image
   OpenglRenderEvent* = tuple
   ResizeEvent* = tuple
     oldSize, size: tuple[x, y: int]
@@ -514,8 +512,6 @@ when defined(linux):
     waitForReDraw = true
     gc = xwin.newGC(GCForeground or GCBackground)
 
-    this.image = newImage(w, h)
-
   proc initOpenglWindow(a: var OpenglWindow; w, h: int; screen: Screen, fullscreen: bool) {.with.} =
     a.initWindow w, h, screen
 
@@ -560,7 +556,6 @@ when defined(linux):
     m_size = v
   proc updateSize(this: var PictureWindow, v: tuple[x, y: int]) =
     this.Window.updateSize v
-    this.image = newImage(v.x, v.y)
     this.waitForReDraw = true
 
   proc fullscreen*(a: Window): bool = a.m_isFullscreen
@@ -597,7 +592,7 @@ when defined(linux):
 
   proc newPixmap(source: Image, window: Window): Pixmap =
     result = newPixmap(source.w, source.h, window.xwin, window.xscr.defaultDepth)
-    var image = source.asXImage
+    var image = asXImage(source.data, source.w, source.h)
     result.newGC.put image.addr
 
   proc `cursor=`*(a: var Window, kind: Cursor) {.with.} =
@@ -650,6 +645,11 @@ when defined(linux):
     xicon = 0.Pixmap
     xiconMask = 0.Pixmap
     xwin.wmHints = newWmHints(xicon, xiconMask)
+
+  proc drawImage*(this: var PictureWindow, pixels: seq[Color]) =
+    doassert pixels.len == this.size.x * this.size.y, "pixels count must be width * height"
+    var ximg = asXImage(pixels, this.size.x, this.size.y)
+    this.gc.put ximg.addr
 
   proc run*(a: var SomeWindow) {.with.} =
     ## run main loop of window
@@ -830,9 +830,7 @@ when defined(linux):
         if waitForReDraw:
           waitForReDraw = false
           when a is PictureWindow:
-            pushEvent on_render, (addr a.image)
-            var ximg = a.image.asXImage
-            gc.put ximg.addr
+            pushEvent on_render, ()
           when a is OpenglWindow:
             pushEvent on_render, ()
             xwin.toDrawable.glxSwapBuffers()
@@ -1272,29 +1270,20 @@ else:
 proc newNoRenderWindow*(w = 1280, h = 720, title = "", screen = screen(), fullscreen = false): Window =
   result.initNoRenderWindow(w, h, screen, fullscreen)
   result.title = title
-proc newNoRenderWindow*(size: tuple[x, y: int], title = "", screen = screen(), fullscreen = false): Window =
-  newNoRenderWindow(size.x, size.y, title, screen, fullscreen)
 
 proc newPictureWindow*(w = 1280, h = 720, title = "", screen = screen(), fullscreen = false): PictureWindow =
   result.initPictureWindow(w, h, screen, fullscreen)
   result.title = title
-proc newPictureWindow*(size: tuple[x, y: int], title = "", screen = screen(), fullscreen = false): PictureWindow =
-  newPictureWindow(size.x, size.y, title, screen, fullscreen)
 
 proc newOpenglWindow*(w = 1280, h = 720, title = "", screen = screen(), fullscreen = false): OpenglWindow =
   result.initOpenglWindow(w, h, screen, fullscreen)
   result.title = title
-proc newOpenglWindow*(size: tuple[x, y: int], title = "", screen = screen(), fullscreen = false): OpenglWindow =
-  newOpenglWindow(size.x, size.y, title, screen, fullscreen)
 
 template newWindow*(w = 1280, h = 720, title = "", screen = screen(), fullscreen = false, renderEngine = RenderEngine.opengl): SomeWindow =
   const re = renderEngine
   when re == RenderEngine.none:    newNoRenderWindow(w, h, title, screen, fullscreen)
   elif re == RenderEngine.picture: newPictureWindow(w, h, title, screen, fullscreen)
   elif re == RenderEngine.opengl:  newOpenglWindow(w, h, title, screen, fullscreen)
-template newWindow*(size: tuple[x, y: int], title = "", screen = screen(), fullscreen = false, renderEngine = RenderEngine.opengl): SomeWindow =
-  let sz = size
-  newWindow(sz.x, sz.y, title, screen, fullscreen, renderEngine)
 
 proc w*(a: Screen): int = a.size.x
   ## width of screen

@@ -2,69 +2,6 @@ import siwin, siwin/image
 import unittest, strformat
 import nimgl/opengl
 
-test "no render window":
-  var a = false
-
-  run newWindow(title="Окошко", renderEngine=none):
-    init:      window.cursor = Cursor.hided
-    close:     a = true
-    keyup esc: close window
-    keyup f1:  window.fullscreen = not window.fullscreen
-    keydown as k:
-      if e.repeated: break
-      echo "down ", k
-    keyup as k:
-      if e.repeated: break
-      echo "up ", k
-  
-  check a == true
-
-
-test "picture window":
-  var win = newWindow(title="Окошко", renderEngine=picture)
-  
-  var a = false
-  win.onClose = proc(e: CloseEvent) =
-    a = true
-  
-  win.cursor = Cursor.arrowUp
-
-  var g = 32
-
-  win.onMouseMove = proc(e: MouseMoveEvent) =
-    if e.mouse.pressed[MouseButton.left]:
-      g = (e.position.x / win.size.x * 255).int.min(255).max(0)
-      redraw win
-
-  win.onRender = proc(e: PictureRenderEvent) =
-    for c in e.image[].mitems: c = color(g, g, g)
-    for i in 0..<e.image[].w:
-      e.image[][i, i mod e.image[].h] = color"ffffff"
-  
-  win.onDoubleClick = proc(e: ClickEvent) =
-    close win
-  
-  var x = 0
-  win.onTick = proc(e: TickEvent) =
-    inc x
-  
-  win.onKeyup = proc(e: KeyEvent) =
-    if e.key == Key.escape:
-      close win
-    if e.key == f1:
-      win.fullscreen = not win.fullscreen
-  
-  win.onTextInput = proc(e: TextInputEvent) =
-    echo e.text
-  
-  var icon = newImage(32, 32)
-  for c in icon.mitems: c = color"FFFF20"
-  win.icon = icon
-  
-  run win
-  echo x
-  check a == true
-
 test "opengl window":
   var g = 1.0
   run newWindow(title="OpenGL"):
@@ -123,7 +60,9 @@ test "macro":
         redraw window
 
     render:
-      for c in e.image[].mitems: c = color(g, g, g)
+      var image = newSeq[Color](window.size.x * window.size.y)
+      for c in image.mitems: c = color(g, g, g)
+      window.drawImage(image)
 
     doubleClick:     close window
     tick:            inc x; check t
@@ -193,8 +132,10 @@ test "clipboard":
 test "draw pixels example":
   run newWindow(w=screen().size.x, title="render example", renderEngine=picture):
     render:
-      for c in e.image[].mitems: c = color"202020"
-      for i in 0..<e.image[].w:
-        e.image[][i, i mod e.image[].h] = color"ffffff"
+      var image = newSeq[Color](window.size.x * window.size.y)
+      for c in image.mitems: c = color"202020"
+      for i in countup(0, image.high, 8):
+        image[i] = color"ffffff"
+      window.drawImage(image)
     keyup esc:
       close window

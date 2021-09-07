@@ -238,19 +238,19 @@ proc newPixmap*(w, h: int, window: Window, depth: cuint): Pixmap =
   Pixmap display.XCreatePixmap(window, w.cuint, h.cuint, depth)
 
 
-converter asXImage*(this: Image): XImage = XImage(
-  width: cint this.w,
-  height: cint this.h,
+proc asXImage*(data: seq[Color], w, h: int): XImage = XImage(
+  width: cint w,
+  height: cint h,
   depth: 24,
   bitsPerPixel: 32,
   xoffset: 0,
   format: ZPixmap,
-  data: cast[cstring](this.data.dataAddr),
+  data: cast[cstring](data.dataAddr),
   byteOrder: LSBFirst,
   bitmapUnit: display.BitmapUnit,
   bitmapBitOrder: LSBFirst,
   bitmapPad: 32,
-  bytesPerLine: cint this.w * Color.sizeof
+  bytesPerLine: cint w * Color.sizeof
 )
 
 

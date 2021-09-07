@@ -19,7 +19,9 @@ Can be used as an alternative to GLFW/GLUT
 ```nim
 run newWindow(renderEngine=picture):
   render:
-    for c in e.image[].mitems: c = color"202020"
+    var image = newSeq[Color](window.size.x * window.size.y)
+    for c in image.mitems: c = color"202020"
+    window.drawImage(image)
   keyup esc:
     close window
 ```
@@ -60,9 +62,11 @@ run newWindow():
 ```nim
 run newWindow(w=screen().size.x, title="render example", renderEngine=picture):
   render:
-    for c in e.image[].mitems: c = color"202020"
-    for i in 0..<e.image[].w:
-      e.image[][i, i mod e.image[].h] = color"ffffff"
+    var image = newSeq[Color](window.size.x * window.size.y)
+    for c in image.mitems: c = color"202020"
+    for i in countup(0, image.high, 8):
+      image[i] = color"ffffff"
+    window.drawImage(image)
   keyup esc:
     close window
 ```
