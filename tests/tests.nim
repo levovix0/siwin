@@ -139,7 +139,7 @@ test "pixie":
       image.fill(rgba(255, 255, 255, 255))
 
       let ctx = image.newContext
-      ctx.fillStyle = rgba(0, 255, 0, 255)
+      ctx.fillStyle = rgba(50, 50, 255, 255)
 
       let
         wh = vec2(250, 250)

@@ -1,4 +1,4 @@
-version       = "0.3"
+version       = "0.4"
 author        = "levovix0"
 description   = "Nim Simple Window Maker"
 license       = "MIT"

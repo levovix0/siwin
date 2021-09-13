@@ -83,6 +83,10 @@ type
   Event = tuple
     head: AsPair
     body: NimNode
+
+  RenderEngine = enum
+    none
+    opengl
   
   RunParser = object
     windowNode: NimNode

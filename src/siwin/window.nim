@@ -1,15 +1,14 @@
 import times, os
+import chroma
 import image, utils
 
 when defined(linux):
   import strformat, options, sequtils
-  import libx11 as x, chroma
-  import libglx
+  import libx11 as x, libglx
 
 when defined(windows):
-  import libwinapi, macros, sequtils
-  import libwgl
-  type Color = image.Color
+  import macros, sequtils
+  import libwinapi, libwgl
 
 
 type
@@ -45,8 +44,8 @@ type
   Cursor* {.pure.} = enum
     arrow arrowUp arrowRight
     wait arrowWait
-    hand grab grabbing
-    text textVertical cross
+    pointingHand grab
+    text cross
     sizeAll sizeHorisontal sizeVertical
     hided
 
@@ -113,6 +112,7 @@ type
     elif defined(windows):
       handle: HWnd
       wicon: HIcon
+      hdc: Hdc
 
       wcursor: HCursor
       curCursor: Cursor
@@ -122,14 +122,9 @@ type
       ctx: GlxContext
     
     elif defined(windows):
-      hdc: Hdc
       ctx: WglContext
 
   SomeWindow = Window|OpenglWindow
-  RenderEngine* {.pure.} = enum
-    none
-    picture
-    opengl
 
 
   CloseEvent* = tuple
@@ -582,12 +577,10 @@ when defined(linux):
     of Cursor.arrowUp:        xcursor = cursorFromFont XcCenterPtr
     of Cursor.arrowRight:     xcursor = cursorFromFont XcRightPtr
     of Cursor.wait:           xcursor = cursorFromFont XcWatch
-    of Cursor.arrowWait:      xcursor = cursorFromFont XcWatch #! нет нужного курсора!
-    of Cursor.hand:           xcursor = cursorFromFont XcHand1
-    of Cursor.grab:           xcursor = cursorFromFont XcHand2 #! нет нужного курсора!
-    of Cursor.grabbing:       xcursor = cursorFromFont XcHand2 #! нет нужного курсора!
+    of Cursor.arrowWait:      xcursor = cursorFromFont XcWatch  #! no needed cursor
+    of Cursor.pointingHand:   xcursor = cursorFromFont XcHand1
+    of Cursor.grab:           xcursor = cursorFromFont XcHand2
     of Cursor.text:           xcursor = cursorFromFont XcXterm
-    of Cursor.textVertical:   xcursor = cursorFromFont XcXterm #! нет нужного курсора!
     of Cursor.cross:          xcursor = cursorFromFont XcTCross
     of Cursor.sizeAll:        xcursor = cursorFromFont XcFleur
     of Cursor.sizeVertical:   xcursor = cursorFromFont XcSb_v_doubleArrow
@@ -624,12 +617,12 @@ when defined(linux):
     xiconMask = 0.Pixmap
     xwin.wmHints = newWmHints(xicon, xiconMask)
 
-  proc drawImage*(this: var Window, pixels: seq[ColorRGBX]) =
+  proc drawImage*(this: var Window, pixels: openarray[ColorRGBX]) =
     doassert pixels.len == this.size.x * this.size.y, "pixels count must be width * height"
     var ximg = asXImage(pixels, this.size.x, this.size.y)
     this.gc.put ximg.addr
 
-  proc drawImage*(this: var OpenglWindow, pixels: seq[ColorRGBX]) =
+  proc drawImage*(this: var OpenglWindow, pixels: openarray[ColorRGBX]) =
     ## draw image on OpenglWindow is impossible, so this proc do nothing
 
   proc run*(a: var SomeWindow) {.with.} =
@@ -833,7 +826,7 @@ elif defined(windows):
     return DefWindowProc(handle, message, wParam, lParam)
 
   proc pictureWndProc(handle: HWnd, message: Uint, wParam: WParam, lParam: LParam): LResult {.stdcall.} =
-    let win = if handle != 0: cast[ptr PictureWindow](GetWindowLongPtr(handle, GwlpUserData)) else: nil
+    let win = if handle != 0: cast[ptr Window](GetWindowLongPtr(handle, GwlpUserData)) else: nil
     if win != nil: return win[].poolEvent(message, wParam, lParam)
 
     if message == WmClose: return 0
@@ -874,15 +867,14 @@ elif defined(windows):
     wcex.lpszClassName = woClassName
     assert RegisterClassEx(wcex) != 0
 
-  proc `=destroy`*(a: var PictureWindow) {.with.} =
-    DeleteDC hdc
-    DeleteObject wimage
+  proc `=destroy`*(this: var Window) =
+    DeleteDC this.hdc
   
-  proc `=destroy`*(a: var OpenglWindow) {.with.} =
-    if wglGetCurrentContext() == ctx:
+  proc `=destroy`*(this: var OpenglWindow) =
+    if wglGetCurrentContext() == this.ctx:
       wglMakeCurrent(0, 0)
-    wglDeleteContext ctx
-    DeleteDC hdc
+    wglDeleteContext this.ctx
+    DeleteDC this.hdc
 
   template pushEvent(a: SomeWindow, event, args) =
     when args is tuple:
@@ -890,36 +882,13 @@ elif defined(windows):
     else:
       if a.event != nil: a.event((args,))
 
-  proc updateSize(a: var Window) {.with.} =
-    let rect = handle.clientRect
-    let osize = m_size
-    m_size = (rect.right.int, rect.bottom.int)
-    if osize == m_size: return
+  proc updateSize(this: var Window) =
+    let rect = this.handle.clientRect
+    let osize = this.m_size
+    this.m_size = (rect.right.int, rect.bottom.int)
+    if osize == this.m_size: return
 
-    a.pushEvent onResize, (osize, m_size, false)
-
-  proc updateSize(a: var PictureWindow) {.with.} =
-    let rect = handle.clientRect
-    let osize = m_size
-    m_size = (rect.right.int, rect.bottom.int)
-    if osize == m_size: return
-
-    DeleteDC hdc
-    DeleteObject wimage
-
-    if m_size.x * m_size.y > 0:
-      var bmi = BitmapInfo(bmiHeader: BitmapInfoHeader(biSize: BitmapInfoHeader.sizeof.int32, biWidth: m_size.x.Long, biHeight: -m_size.y.Long,
-                           biPlanes: 1, biBitCount: 32, biCompression: Bi_rgb))
-      wimage  = CreateDibSection(0, &bmi, Dib_rgb_colors, cast[ptr pointer](&m_data), 0, 0)
-      hdc     = CreateCompatibleDC(0)
-      assert wimage != 0
-      assert hdc != 0
-    else:
-      m_data = nil
-    let old = hdc.SelectObject(wimage)
-    if old != 0: discard DeleteObject old
-
-    a.pushEvent onResize, (osize, m_size, false)
+    this.pushEvent onResize, (osize, this.m_size, false)
 
   proc fullscreen*(a: Window): bool = a.m_isFullscreen
   proc `fullscreen=`*(a: var SomeWindow, v: bool) {.with.} =
@@ -944,42 +913,22 @@ elif defined(windows):
     MoveWindow(handle, rcWind.left, rcWind.top, (size.x + borderx).int32, (size.y + bordery).int32, True)
     a.updateSize()
 
-  proc initWindow(a: var Window; w, h: int; screen: Screen, wClassName: string) {.with.} =
-    handle = CreateWindow(wClassName, "", WsOverlappedWindow, CwUseDefault, CwUseDefault, w.int32, h.int32, 0, 0, hInstance, nil)
-    assert handle != 0
-    m_hasFocus = true
-    m_isOpen = true
-    curCursor = arrow
-    wcursor = LoadCursor(0, IdcArrow)
-    discard handle.SetWindowLongPtrW(GwlpUserData, cast[LongPtr](a.addr))
-    handle.trackMouseEvent(TmeHover)
-    a.size = (w, h)
-
-  proc setupWindow(a: var Window, fullscreen: bool) {.with.} =
-    a.fullscreen = fullscreen
-
-  proc initNoRenderWindow(a: var Window; w, h: int; screen: Screen, fullscreen: bool) {.with.} =
-    a.initWindow w, h, screen, wClassName
-    a.setupWindow fullscreen
-
-  proc initPictureWindow(a: var PictureWindow; w, h: int; screen: Screen, fullscreen: bool) {.with.} =
-    a.initWindow w, h, screen, wpClassName
-    a.setupWindow fullscreen
-
-    if m_size.x * m_size.y > 0:
-      var bmi = BitmapInfo(bmiHeader: BitmapInfoHeader(biSize: BitmapInfoHeader.sizeof.int32, biWidth: m_size.x.Long, biHeight: -m_size.y.Long,
-                           biPlanes: 1, biBitCount: 32, biCompression: Bi_rgb))
-      wimage  = CreateDibSection(0, &bmi, Dib_rgb_colors, cast[ptr pointer](&m_data), 0, 0)
-      hdc     = CreateCompatibleDC(0)
-      assert wimage != 0
-      assert hdc != 0
-    else:
-      m_data = nil
-    discard hdc.SelectObject(wimage)
+  proc initWindow(this: var Window; w, h: int; screen: Screen, fullscreen: bool, wClassName = wpClassName) =
+    this.handle = CreateWindow(wClassName, "", WsOverlappedWindow, CwUseDefault, CwUseDefault, w.int32, h.int32, 0, 0, hInstance, nil)
+    assert this.handle != 0
+    this.m_hasFocus = true
+    this.m_isOpen = true
+    this.curCursor = arrow
+    this.wcursor = LoadCursor(0, IdcArrow)
+    discard this.handle.SetWindowLongPtrW(GwlpUserData, cast[LongPtr](this.addr))
+    this.handle.trackMouseEvent(TmeHover)
+    this.size = (w, h)
+    this.hdc = this.handle.GetDC
+    
+    this.fullscreen = fullscreen
 
   proc initOpenglWindow(a: var OpenglWindow; w, h: int; screen: Screen, fullscreen: bool) {.with.} =
-    a.initWindow w, h, screen, woClassName
-    a.setupWindow fullscreen
+    a.initWindow w, h, screen, fullscreen, woClassName
     
     a.waitForReDraw = true
 
@@ -997,8 +946,6 @@ elif defined(windows):
     hdc.SetPixelFormat(hdc.ChoosePixelFormat(&pfd), &pfd)
     ctx = wglCreateContext(hdc)
     assert hdc.wglMakeCurrent(ctx)
-
-    doassert glInit()
 
 
   proc `title=`*(a: Window, title: string) {.with.} =
@@ -1021,83 +968,88 @@ elif defined(windows):
     if m_isFullscreen: return
     handle.SetWindowPos(0, v.x.int32, v.y.int32, 0, 0, SwpNoSize)
 
-  proc `cursor=`*(a: var Window, kind: Cursor) {.with.} =
-    if kind == curCursor: return
-    var cu: HCursor = 0
-    case kind
-    of Cursor.arrow:          cu = LoadCursor(0, IdcArrow)
-    of Cursor.arrowUp:        cu = LoadCursor(0, IdcUpArrow)
-    of Cursor.hand:           cu = LoadCursor(0, IdcHand)
-    of Cursor.sizeAll:        cu = LoadCursor(0, IdcSizeAll)
-    of Cursor.sizeVertical:   cu = LoadCursor(0, IdcSizens)
-    of Cursor.sizeHorisontal: cu = LoadCursor(0, IdcSizewe)
+  proc `cursor=`*(this: var Window, kind: Cursor) =
+    if kind == this.curCursor: return
+    
+    var cu: HCursor = case kind
+    of Cursor.arrow:          LoadCursor(0, IdcArrow)
+    of Cursor.arrowUp:        LoadCursor(0, IdcUpArrow)
+    of Cursor.pointingHand:   LoadCursor(0, IdcHand)
+    of Cursor.arrowRight:     LoadCursor(0, IdcArrow)  #! no needed cursor
+    of Cursor.wait:           LoadCursor(0, IdcWait)
+    of Cursor.arrowWait:      LoadCursor(0, IdcAppStarting)
+    of Cursor.grab:           LoadCursor(0, IdcHand)  #! no needed cursor
+    of Cursor.text:           LoadCursor(0, IdcIBeam)
+    of Cursor.cross:          LoadCursor(0, IdcCross)
+    of Cursor.sizeAll:        LoadCursor(0, IdcSizeAll)
+    of Cursor.sizeVertical:   LoadCursor(0, IdcSizens)
+    of Cursor.sizeHorisontal: LoadCursor(0, IdcSizewe)
+    of Cursor.hided:          LoadCursor(0, IdcNo)
+    
     if cu != 0:
       SetCursor cu
-      wcursor = cu
-    curCursor = kind
+      this.wcursor = cu
+    this.curCursor = kind
 
-  proc `icon=`*(a: var Window, img: Picture) {.with.} =
-    if wicon != 0: DestroyIcon wicon
-    wicon = CreateIcon(hInstance, img.size.x.int32, img.size.y.int32, 1, 32, nil, cast[ptr Byte](img.data))
-    if wicon != 0:
-      handle.SendMessageW(WmSetIcon, IconBig, wicon)
-      handle.SendMessageW(WmSetIcon, IconSmall, wicon)
-  proc `icon=`*(a: var Window, _: nil.typeof) {.with.} =
-    if wicon != 0: DestroyIcon wicon
-    handle.SendMessageW(WmSetIcon, IconBig, 0)
-    handle.SendMessageW(WmSetIcon, IconSmall, 0)
+  proc `icon=`*(this: var Window, img: Image) =
+    if this.wicon != 0: DestroyIcon this.wicon
+    
+    this.wicon = CreateIcon(hInstance, img.w.int32, img.h.int32, 1, 32, nil, cast[ptr Byte](img.data[0].unsafeAddr))
+    if this.wicon != 0:
+      this.handle.SendMessageW(WmSetIcon, IconBig, this.wicon)
+      this.handle.SendMessageW(WmSetIcon, IconSmall, this.wicon)
+  
+  proc `icon=`*(this: var Window, _: nil.typeof) =
+    # clear icon
+    if this.wicon != 0:
+      DestroyIcon this.wicon
+      this.wicon = 0
+    
+    this.handle.SendMessageW(WmSetIcon, IconBig, 0)
+    this.handle.SendMessageW(WmSetIcon, IconSmall, 0)
 
-  proc displayImpl(a: var Window) {.with.} =
+  proc drawImage*(this: var Window, pixels: openarray[ColorRGBX]) =
+    doassert pixels.len == this.size.x * this.size.y, "pixels count must be width * height"
+    if this.size.x * this.size.y == 0: return
+    
+    var bmi = BitmapInfo(
+      bmiHeader: BitmapInfoHeader(
+        biSize: BitmapInfoHeader.sizeof.int32, biWidth: this.size.x.Long, biHeight: -this.size.y.Long,
+        biPlanes: 1, biBitCount: 32, biCompression: Bi_rgb
+      )
+    )
+    var pixelsPtr: ptr UncheckedArray[tuple[b, g, r, _: uint8]]
+    let wimage = CreateDibSection(0, &bmi, Dib_rgb_colors, cast[ptr pointer](&pixelsPtr), 0, 0)
+    let ihdc = CreateCompatibleDC(0)
+    assert wimage != 0
+    assert ihdc != 0
+    discard ihdc.SelectObject(wimage)
+    
+    let rect = this.handle.clientRect
+    for i in 0..<(this.size.x * this.size.y):
+      pixelsPtr[i] = (pixels[i].b, pixels[i].g, pixels[i].r, 0'u8)
+      
+    this.hdc.BitBlt(0, 0, rect.right, rect.bottom, ihdc, 0, 0, SrcCopy)
+
+  proc drawImage*(this: var OpenglWindow, pixels: openarray[ColorRGBX]) =
+    ## draw image on OpenglWindow is impossible, so this proc do nothing
+
+  proc displayImpl(this: var Window) =
     var ps: PaintStruct
-    handle.BeginPaint(&ps)
-    handle.EndPaint(&ps)
+    this.handle.BeginPaint(&ps)
+    this.pushEvent onRender, ()
+    this.handle.EndPaint(&ps)
 
-  proc displayImpl(a: var PictureWindow) {.with.} =
-    var ps: PaintStruct
-    handle.BeginPaint(&ps)
-    if m_size.x * m_size.y > 0:
-      let hhdc = handle.GetDC()
-      let rect = handle.clientRect
-
-      BitBlt(hhdc, 0, 0, rect.right, rect.bottom, hdc, 0, 0, SrcCopy)
-      handle.ReleaseDC(hhdc)
-    handle.EndPaint(&ps)
-
-  proc displayImpl(a: var OpenglWindow) {.with.} =
-    discard
+  proc displayImpl(this: var OpenglWindow) =
+    this.pushEvent onRender, ()
 
   proc run*(a: var Window) {.with.} =
     ## run main loop of window
     handle.ShowWindow(SwShow)
-    handle.UpdateWindow()
-
-    a.pushEvent onResize, ((0, 0), m_size, true)
-
-    var lastTickTime = getTime()
-    var msg: Msg
-    while m_isOpen:
-      var catched = false
-      while PeekMessage(&msg, 0, 0, 0, PmRemove):
-        catched = true
-        TranslateMessage(&msg)
-        DispatchMessage(&msg)
-
-        if not m_isOpen: break
-      if not m_isOpen: break
-
-      if not catched: sleep(2) # не так быстро!
-
-      let nows = getTime()
-      if a.onTick != nil: onTick (mouse, keyboard, nows - lastTickTime)
-      lastTickTime = nows
-  
-  proc run*(a: var OpenglWindow) {.with.} =
-    ## run main loop of window
-    handle.ShowWindow(SwShow)
-    handle.UpdateWindow()
-
     a.pushEvent onResize, ((0, 0), m_size, true)
     a.waitForRedraw = true
+
+    handle.UpdateWindow()
 
     var lastTickTime = getTime()
     var msg: Msg
@@ -1138,17 +1090,13 @@ elif defined(windows):
       let rect = handle.clientRect
       if rect.right != a.m_size.x or rect.bottom != a.m_size.y:
         a.updateSize()
+        a.waitForRedraw = true
+
+      if a.m_size.x * a.m_size.y > 0:
+        a.displayImpl()
+        a.waitForRedraw = false
         when a is OpenglWindow:
-          a.waitForRedraw = true
-      when a is PictureWindow:
-        if a.m_size.x * a.m_size.y > 0:
-          pushEvent onRender, (m_data, a.m_size)
-      when a is OpenglWindow:
-        if a.waitForRedraw:
-          pushEvent onRender, ()
           hdc.SwapBuffers
-          a.waitForRedraw = false
-      a.displayImpl()
 
     of WmDestroy:
       pushEvent onClose, ()
