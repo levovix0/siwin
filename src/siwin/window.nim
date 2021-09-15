@@ -93,6 +93,7 @@ type
     clicking: array[AllMouseButtons, bool]
     
     waitForReDraw: bool
+    curCursor: Cursor
 
     when defined(linux):
       xscr: cint
@@ -104,7 +105,6 @@ type
       gc: GraphicsContext
 
       xcursor: x.Cursor
-      curCursor: Cursor
 
       m_pos: tuple[x, y: int]
       requestedSize: Option[tuple[x, y: int]]
@@ -113,9 +113,9 @@ type
       handle: HWnd
       wicon: HIcon
       hdc: Hdc
+      buffer: tuple[x, y: int; bitmap: HBitmap, hdc: Hdc, pixels: ptr UncheckedArray[tuple[b, g, r, _: uint8]]]
 
       wcursor: HCursor
-      curCursor: Cursor
 
   OpenglWindow* = object of Window
     when defined(linux):
@@ -577,7 +577,7 @@ when defined(linux):
     of Cursor.arrowUp:        xcursor = cursorFromFont XcCenterPtr
     of Cursor.arrowRight:     xcursor = cursorFromFont XcRightPtr
     of Cursor.wait:           xcursor = cursorFromFont XcWatch
-    of Cursor.arrowWait:      xcursor = cursorFromFont XcWatch  #! no needed cursor
+    of Cursor.arrowWait:      xcursor = cursorFromFont XcWatch #! no needed cursor
     of Cursor.pointingHand:   xcursor = cursorFromFont XcHand1
     of Cursor.grab:           xcursor = cursorFromFont XcHand2
     of Cursor.text:           xcursor = cursorFromFont XcXterm
@@ -793,7 +793,7 @@ when defined(linux):
         if not m_isOpen: break
       if not m_isOpen: break
 
-      if not catched: sleep(2) # не так быстро!
+      if not catched: sleep(2)
 
       let nows = getTime()
       pushEvent onTick, (mouse, keyboard, nows - lastTickTime)
@@ -817,70 +817,52 @@ when defined(linux):
 elif defined(windows):
   proc poolEvent(a: var SomeWindow, message: Uint, wParam: WParam, lParam: LParam): LResult
 
-  proc wndProc(handle: HWnd, message: Uint, wParam: WParam, lParam: LParam): LResult {.stdcall.} =
-    let win = if handle != 0: cast[ptr Window](GetWindowLongPtr(handle, GwlpUserData)) else: nil
-    if win != nil: return win[].poolEvent(message, wParam, lParam)
+  template wndProc(name; t: typedesc) =
+    proc name(handle: HWnd, message: Uint, wParam: WParam, lParam: LParam): LResult {.stdcall.} =
+      let win = if handle != 0: cast[ptr t](GetWindowLongPtr(handle, GwlpUserData)) else: nil
+      
+      if win != nil: win[].poolEvent(message, wParam, lParam)
+      else:          DefWindowProc(handle, message, wParam, lParam)
+  
+  wndProc windowProc, Window
+  wndProc openglWindowProc, OpenglWindow
 
-    if message == WmClose: return 0
-    if (message == WmSysCommand) and (wParam == ScKeyMenu): return 0
-    return DefWindowProc(handle, message, wParam, lParam)
-
-  proc pictureWndProc(handle: HWnd, message: Uint, wParam: WParam, lParam: LParam): LResult {.stdcall.} =
-    let win = if handle != 0: cast[ptr Window](GetWindowLongPtr(handle, GwlpUserData)) else: nil
-    if win != nil: return win[].poolEvent(message, wParam, lParam)
-
-    if message == WmClose: return 0
-    if (message == WmSysCommand) and (wParam == ScKeyMenu): return 0
-    return DefWindowProc(handle, message, wParam, lParam)
-
-  proc openglWndProc(handle: HWnd, message: Uint, wParam: WParam, lParam: LParam): LResult {.stdcall.} =
-    let win = if handle != 0: cast[ptr OpenglWindow](GetWindowLongPtr(handle, GwlpUserData)) else: nil
-    if win != nil: return win[].poolEvent(message, wParam, lParam)
-
-    if message == WmClose: return 0
-    if (message == WmSysCommand) and (wParam == ScKeyMenu): return 0
-    return DefWindowProc(handle, message, wParam, lParam)
-
-  const wClassName = "win64app"
-  const wpClassName = "win64pictureapp"
-  const woClassName = "win64openglapp"
+  const
+    wClassName = "w"
+    woClassName = "o"
+  
   block winapiInit:
-    var wcex: WndClasseX
-    wcex.cbSize        = WndClasseX.sizeof.int32
-    wcex.style         = CsHRedraw or CsVRedraw or CsDblClks
-    wcex.lpfnWndProc   = wndProc
-    wcex.cbClsExtra    = 0
-    wcex.cbWndExtra    = 0
-    wcex.hInstance     = hInstance
-    wcex.hCursor       = LoadCursor(0, IdcArrow)
-    wcex.hbrBackground = 0
-    wcex.lpszMenuName  = nil
-    wcex.lpszClassName = wClassName
-    wcex.hIconSm       = 0
-    assert RegisterClassEx(wcex) != 0
+    var wcex = WndClassEx(
+      cbSize:        WndClasseX.sizeof.int32,
+      style:         CsHRedraw or CsVRedraw or CsDblClks,
+      hInstance:     hInstance,
+      hCursor:       LoadCursor(0, IdcArrow),
+      lpfnWndProc:   windowProc,
+      lpszClassName: wClassName,
+    )
+    RegisterClassEx(&wcex)
 
-    wcex.lpfnWndProc   = pictureWndProc
-    wcex.lpszClassName = wpClassName
-    assert RegisterClassEx(wcex) != 0
-
-    wcex.lpfnWndProc   = openglWndProc
+    wcex.lpfnWndProc   = openglWindowProc
     wcex.lpszClassName = woClassName
-    assert RegisterClassEx(wcex) != 0
+    RegisterClassEx(&wcex)
 
   proc `=destroy`*(this: var Window) =
     DeleteDC this.hdc
+    if this.buffer.pixels != nil:
+      DeleteDC this.buffer.hdc
+      DeleteObject this.buffer.bitmap
+    if this.wicon != 0: DestroyIcon this.wicon
+    if this.wcursor != 0: DestroyCursor this.wcursor
   
   proc `=destroy`*(this: var OpenglWindow) =
     if wglGetCurrentContext() == this.ctx:
       wglMakeCurrent(0, 0)
     wglDeleteContext this.ctx
-    DeleteDC this.hdc
+    this.Window.`=destroy`
 
-  template pushEvent(a: SomeWindow, event, args) =
-    when args is tuple:
-      if a.event != nil: a.event(args)
-    else:
-      if a.event != nil: a.event((args,))
+  template pushEvent(this: SomeWindow, event, args) =
+    if this.event != nil:
+      this.event(when args is tuple: args else: (args,))
 
   proc updateSize(this: var Window) =
     let rect = this.handle.clientRect
@@ -891,48 +873,46 @@ elif defined(windows):
     this.pushEvent onResize, (osize, this.m_size, false)
 
   proc fullscreen*(a: Window): bool = a.m_isFullscreen
-  proc `fullscreen=`*(a: var SomeWindow, v: bool) {.with.} =
-    if m_isFullscreen == v: return
-    m_isFullscreen = v
+  proc `fullscreen=`*(this: var Window, v: bool) =
+    if this.m_isFullscreen == v: return
+    this.m_isFullscreen = v
     if v:
-      discard handle.SetWindowLongPtr(GwlStyle, WsVisible)
-      discard handle.ShowWindow(SwMaximize)
+      this.handle.SetWindowLongPtr(GwlStyle, WsVisible)
+      discard this.handle.ShowWindow(SwMaximize)
     else:
-      discard handle.ShowWindow(SwShowNormal)
-      discard handle.SetWindowLongPtr(GwlStyle, WsVisible or WsOverlappedWindow)
-    a.updateSize()
-    a.pushEvent onFullscreenChanged, (v)
+      this.handle.ShowWindow(SwShowNormal)
+      discard this.handle.SetWindowLongPtr(GwlStyle, WsVisible or WsOverlappedWindow)
+    this.updateSize()
+    this.pushEvent onFullscreenChanged, (v)
 
-  proc size*(a: Window): tuple[x, y: int] = a.m_size
-  proc `size=`*(a: var SomeWindow, size: tuple[x, y: int]) {.with.} =
-    a.fullscreen = false
-    let rcClient = handle.clientRect
-    var rcWind = handle.windowRect
+  proc size*(this: Window): tuple[x, y: int] = this.m_size
+  proc `size=`*(this: var Window, size: tuple[x, y: int]) =
+    this.fullscreen = false
+    let rcClient = this.handle.clientRect
+    var rcWind = this.handle.windowRect
     let borderx = (rcWind.right - rcWind.left) - rcClient.right
     let bordery = (rcWind.bottom - rcWind.top) - rcClient.bottom
-    MoveWindow(handle, rcWind.left, rcWind.top, (size.x + borderx).int32, (size.y + bordery).int32, True)
-    a.updateSize()
+    this.handle.MoveWindow(rcWind.left, rcWind.top, (size.x + borderx).int32, (size.y + bordery).int32, True)
+    this.updateSize()
 
-  proc initWindow(this: var Window; w, h: int; screen: Screen, fullscreen: bool, wClassName = wpClassName) =
-    this.handle = CreateWindow(wClassName, "", WsOverlappedWindow, CwUseDefault, CwUseDefault, w.int32, h.int32, 0, 0, hInstance, nil)
-    assert this.handle != 0
+  proc initWindow(this: var Window; w, h: int; screen: Screen, fullscreen: bool, class = wClassName) =
+    this.handle = CreateWindow(class, "", WsOverlappedWindow, CwUseDefault, CwUseDefault, w.int32, h.int32, 0, 0, hInstance, nil)
     this.m_hasFocus = true
     this.m_isOpen = true
     this.curCursor = arrow
     this.wcursor = LoadCursor(0, IdcArrow)
-    discard this.handle.SetWindowLongPtrW(GwlpUserData, cast[LongPtr](this.addr))
+    this.handle.SetWindowLongPtrW(GwlpUserData, cast[LongPtr](this.addr))
     this.handle.trackMouseEvent(TmeHover)
     this.size = (w, h)
     this.hdc = this.handle.GetDC
     
     this.fullscreen = fullscreen
 
-  proc initOpenglWindow(a: var OpenglWindow; w, h: int; screen: Screen, fullscreen: bool) {.with.} =
-    a.initWindow w, h, screen, fullscreen, woClassName
+  proc initOpenglWindow(this: var OpenglWindow; w, h: int; screen: Screen, fullscreen: bool) =
+    this.initWindow w, h, screen, fullscreen, woClassName
     
-    a.waitForReDraw = true
+    this.waitForReDraw = true
 
-    hdc = handle.GetDC
     var pfd = PixelFormatDescriptor(
       nSize: WORD PixelFormatDescriptor.sizeof,
       nVersion: 1,
@@ -943,42 +923,44 @@ elif defined(windows):
       cStencilBits: 8,
       iLayerType: Pfd_main_plane,
     )
-    hdc.SetPixelFormat(hdc.ChoosePixelFormat(&pfd), &pfd)
-    ctx = wglCreateContext(hdc)
-    assert hdc.wglMakeCurrent(ctx)
+    this.hdc.SetPixelFormat(this.hdc.ChoosePixelFormat(&pfd), &pfd)
+    this.ctx = wglCreateContext(this.hdc)
+    doassert this.hdc.wglMakeCurrent(this.ctx)
 
 
-  proc `title=`*(a: Window, title: string) {.with.} =
-    handle.SetWindowText(title)
+  proc `title=`*(this: Window, title: string) =
+    this.handle.SetWindowText(title)
 
   proc opened*(a: Window): bool = a.m_isOpen
-  proc close*(a: var Window) {.with.} =
-    if m_isOpen: handle.SendMessage(WmClose, 0, 0)
+  proc close*(this: var Window) =
+    if this.m_isOpen: this.handle.SendMessage(WmClose, 0, 0)
 
-  proc redraw*(a: var Window) {.with.} =
-    var cr = handle.clientRect
-    handle.InvalidateRect(&cr, false)
+  proc redraw*(this: var Window) =
+    var cr = this.handle.clientRect
+    this.handle.InvalidateRect(&cr, false)
   
   proc redraw*(a: var OpenglWindow) = a.waitForReDraw = true
 
-  proc position*(a: Window): tuple[x, y: int] {.with.} =
-    let r = handle.clientRect
-    return (r.left.int, r.top.int)
-  proc `position=`*(a: var Window, v: tuple[x, y: int]) {.with.} =
-    if m_isFullscreen: return
-    handle.SetWindowPos(0, v.x.int32, v.y.int32, 0, 0, SwpNoSize)
+  proc position*(this: Window): tuple[x, y: int] =
+    let r = this.handle.clientRect
+    (r.left.int, r.top.int)
+  
+  proc `position=`*(this: var Window, v: tuple[x, y: int]) =
+    if this.m_isFullscreen: return
+    this.handle.SetWindowPos(0, v.x.int32, v.y.int32, 0, 0, SwpNoSize)
 
   proc `cursor=`*(this: var Window, kind: Cursor) =
     if kind == this.curCursor: return
+    if this.wcursor != 0: DestroyCursor this.wcursor
     
     var cu: HCursor = case kind
     of Cursor.arrow:          LoadCursor(0, IdcArrow)
     of Cursor.arrowUp:        LoadCursor(0, IdcUpArrow)
     of Cursor.pointingHand:   LoadCursor(0, IdcHand)
-    of Cursor.arrowRight:     LoadCursor(0, IdcArrow)  #! no needed cursor
+    of Cursor.arrowRight:     LoadCursor(0, IdcArrow) #! no needed cursor
     of Cursor.wait:           LoadCursor(0, IdcWait)
     of Cursor.arrowWait:      LoadCursor(0, IdcAppStarting)
-    of Cursor.grab:           LoadCursor(0, IdcHand)  #! no needed cursor
+    of Cursor.grab:           LoadCursor(0, IdcHand) #! no needed cursor
     of Cursor.text:           LoadCursor(0, IdcIBeam)
     of Cursor.cross:          LoadCursor(0, IdcCross)
     of Cursor.sizeAll:        LoadCursor(0, IdcSizeAll)
@@ -994,10 +976,10 @@ elif defined(windows):
   proc `icon=`*(this: var Window, img: Image) =
     if this.wicon != 0: DestroyIcon this.wicon
     
-    this.wicon = CreateIcon(hInstance, img.w.int32, img.h.int32, 1, 32, nil, cast[ptr Byte](img.data[0].unsafeAddr))
-    if this.wicon != 0:
-      this.handle.SendMessageW(WmSetIcon, IconBig, this.wicon)
-      this.handle.SendMessageW(WmSetIcon, IconSmall, this.wicon)
+    var pixels = img.data.mapit((it.b, it.g, it.r, 0'u8))
+    this.wicon = CreateIcon(hInstance, img.w.int32, img.h.int32, 1, 32, nil, cast[ptr Byte](pixels.dataAddr))
+    this.handle.SendMessageW(WmSetIcon, IconBig, this.wicon)
+    this.handle.SendMessageW(WmSetIcon, IconSmall, this.wicon)
   
   proc `icon=`*(this: var Window, _: nil.typeof) =
     # clear icon
@@ -1012,24 +994,29 @@ elif defined(windows):
     doassert pixels.len == this.size.x * this.size.y, "pixels count must be width * height"
     if this.size.x * this.size.y == 0: return
     
-    var bmi = BitmapInfo(
-      bmiHeader: BitmapInfoHeader(
-        biSize: BitmapInfoHeader.sizeof.int32, biWidth: this.size.x.Long, biHeight: -this.size.y.Long,
-        biPlanes: 1, biBitCount: 32, biCompression: Bi_rgb
+    if this.size.x != this.buffer.x or this.size.y != this.buffer.y:
+      if this.buffer.pixels != nil:
+        DeleteDC this.buffer.hdc
+        DeleteObject this.buffer.bitmap
+      
+      this.buffer.x = this.size.x
+      this.buffer.y = this.size.y
+    
+      var bmi = BitmapInfo(
+        bmiHeader: BitmapInfoHeader(
+          biSize: BitmapInfoHeader.sizeof.int32, biWidth: this.size.x.Long, biHeight: -this.size.y.Long,
+          biPlanes: 1, biBitCount: 32, biCompression: Bi_rgb
+        )
       )
-    )
-    var pixelsPtr: ptr UncheckedArray[tuple[b, g, r, _: uint8]]
-    let wimage = CreateDibSection(0, &bmi, Dib_rgb_colors, cast[ptr pointer](&pixelsPtr), 0, 0)
-    let ihdc = CreateCompatibleDC(0)
-    assert wimage != 0
-    assert ihdc != 0
-    discard ihdc.SelectObject(wimage)
+      this.buffer.bitmap = CreateDibSection(0, &bmi, Dib_rgb_colors, cast[ptr pointer](this.buffer.pixels.addr), 0, 0)
+      this.buffer.hdc = CreateCompatibleDC(0)
+      this.buffer.hdc.SelectObject this.buffer.bitmap
     
     let rect = this.handle.clientRect
-    for i in 0..<(this.size.x * this.size.y):
-      pixelsPtr[i] = (pixels[i].b, pixels[i].g, pixels[i].r, 0'u8)
+    for i, c in pixels:
+      this.buffer.pixels[i] = (c.b, c.g, c.r, 0'u8)
       
-    this.hdc.BitBlt(0, 0, rect.right, rect.bottom, ihdc, 0, 0, SrcCopy)
+    this.hdc.BitBlt(0, 0, rect.right, rect.bottom, this.buffer.hdc, 0, 0, SrcCopy)
 
   proc drawImage*(this: var OpenglWindow, pixels: openarray[ColorRGBX]) =
     ## draw image on OpenglWindow is impossible, so this proc do nothing
@@ -1063,7 +1050,7 @@ elif defined(windows):
         if not m_isOpen: break
       if not m_isOpen: break
 
-      if not catched: sleep(2) # не так быстро!
+      if not catched: sleep(2)
 
       let nows = getTime()
       if a.onTick != nil: onTick (mouse, keyboard, nows - lastTickTime)
@@ -1080,7 +1067,10 @@ elif defined(windows):
       of WM_mbuttonDown, WM_mbuttonUp, WM_mbuttonDblclk: MouseButton.middle
       of WM_xbuttonDown, WM_xbuttonUp, WM_xbuttonDblclk:
         let button = wParam.GetXButtonWParam()
-        if button == MkXButton1: MouseButton.backward elif button == MkXButton2: MouseButton.forward else: MouseButton.left
+        case button
+        of MkXButton1: MouseButton.backward
+        of MkXButton2: MouseButton.forward
+        else: MouseButton.left
       else: MouseButton.left
 
     result = 0
