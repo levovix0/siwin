@@ -58,7 +58,6 @@ type
     nameNode*: NimNode
     typeNode: NimNode
     pragmaNode: NimNode
-  # NimField* = object #TODO
 
 
 
@@ -103,15 +102,3 @@ proc `impl=`*(a: var NimRoutine, v: NimNode) =
 
 proc name*(a: NimArg): string =
   $a.nameNode
-proc `name=`*(a: var NimArg, v: string) =
-  a.nameNode = ident v
-
-proc argType*(a: NimArg): NimNode =
-  a.typeNode
-proc `argType=`*(a: var NimArg, v: NimNode) =
-  a.typeNode = v
-
-proc pragma*(a: NimArg): NimNode =
-  a.pragmaNode
-proc `pragma=`*(a: var NimArg, v: NimNode) =
-  a.pragmaNode = v

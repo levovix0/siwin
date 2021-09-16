@@ -33,7 +33,7 @@ run newWindow():
 ```nim
 import siwin, nimgl/opengl
 
-run newOpenglWindow():
+run newOpenglWindow(title="OpenGL example"):
   init:
     doassert glInit()
   resize as (w, h):

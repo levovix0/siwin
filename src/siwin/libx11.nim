@@ -86,9 +86,9 @@ proc destroy*(a: XIC)       = XDestroyIC(a)
 proc destroy*(a: PXWmHints) = discard XFree(a)
 proc close*(a: XIM)         = discard XCloseIM(a)
 
+proc `=destroy`(this: var GraphicsContext) =
+  if this.gc != nil: destroy this.gc
 
-proc `=destroy`(a: var GraphicsContext) =
-  if a.gc != nil: destroy a.gc
 proc `=destroy`(a: var WmHints) =
   destroy a.wmh
 
@@ -238,12 +238,11 @@ proc newPixmap*(w, h: int, window: Window, depth: cuint): Pixmap =
   Pixmap display.XCreatePixmap(window, w.cuint, h.cuint, depth)
 
 
-proc asXImage*(data: seq[ColorRGBX], w, h: int): XImage = XImage(
+proc asXImage*(data: openarray[ColorRGBX], w, h: int): XImage = XImage(
   width: cint w,
   height: cint h,
   depth: 24,
   bitsPerPixel: 32,
-  xoffset: 0,
   format: ZPixmap,
   data: cast[cstring](cast[int](data.dataAddr) - 1),
   byteOrder: MSBFirst,

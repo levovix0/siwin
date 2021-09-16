@@ -288,18 +288,18 @@ when defined(linux):
 
   proc getScreenCount*(): int = d.ScreenCount.int
 
-  proc screen*(n: int): Screen {.with: result.} =
+  proc screen*(n: int): Screen =
     if n notin 0..<getScreenCount(): raise IndexDefect.newException(&"screen {n} is not exist")
-    id = n.cint
-    handle = d.ScreenOfDisplay(id)
+    result.id = n.cint
+    result.handle = d.ScreenOfDisplay(result.id)
 
   proc defaultScreen*(): Screen = screen(d.DefaultScreen.int)
-  proc screen*(): Screen = defaultScreen()
+  proc screen*: Screen = defaultScreen()
 
   proc n*(a: Screen): int = a.id.int
 
-  proc size*(a: Screen): tuple[x, y: int] {.with.} =
-    (handle.width.int, handle.height.int)
+  proc w*(this: Screen): int = this.handle.width.int
+  proc h*(this: Screen): int = this.handle.height.int
 
 elif defined(windows):
   proc wkeyToKey(key: WParam): Key =
@@ -416,12 +416,12 @@ elif defined(windows):
   proc wkeyToKey(key: WParam, flags: LParam): Key =
     let scancode = ((flags and 0xff0000) shr 16).Uint
     case key
-    of VK_shift:
-      let key = MapVirtualKey(scancode, MAPVK_VSC_TO_VK_EX)
+    of Vk_shift:
+      let key = MapVirtualKey(scancode, Map_vkVsc_to_vkEx)
       if key == Vk_lshift: Key.lshift else: Key.rshift
-    of VK_menu:
+    of Vk_menu:
       if (flags and 0x1000000) != 0: Key.ralt else: Key.lalt
-    of VK_control:
+    of Vk_control:
       if (flags and 0x1000000) != 0: Key.rcontrol else: Key.lcontrol
     else: wkeyToKey(key)
 
@@ -432,21 +432,21 @@ elif defined(windows):
   proc defaultScreen*(): Screen = screen()
   proc n*(a: Screen): int = 0
 
-  proc size*(a: Screen): tuple[x, y: int] {.with: result.} =
-    x = GetSystemMetrics(SmCxScreen).int
-    y = GetSystemMetrics(SmCyScreen).int
+  proc w*(this: Screen): int = GetSystemMetrics(SmCxScreen).int
+  proc h*(this: Screen): int = GetSystemMetrics(SmCyScreen).int
 
 template screenCount*: int = getScreenCount()
+proc size*(this: Screen): tuple[x, y: int] = (this.w, this.h)
 
 
 when defined(linux):
-  proc `=destroy`*(a: var Window) {.with.} =
+  proc `=destroy`*(this: var Window) {.with.} =
     if xinContext != nil: destroy xinContext
     if xinMethod != nil: close xinMethod
     if xcursor != 0: destroy xcursor
     if xicon != 0: destroy xicon
     if xiconMask != 0: destroy xiconMask
-    destroy xwin
+    if xwin != 0: destroy xwin
 
   proc `=destroy`*(a: var OpenglWindow) {.with.} =
     0.makeCurrent nil.GlxContext
@@ -761,7 +761,7 @@ when defined(linux):
           if xinContext != nil and (keyboard.pressed * {lcontrol, rcontrol, lalt, ralt}).len == 0:
             var status: Status
             var buffer: array[16, char]
-            let length = Xutf8LookupString(xinContext, ev.xkey.addr, cast[cstring](buffer.addr), buffer.sizeof.cint, nil, status.addr)
+            let length = xinContext.Xutf8LookupString(ev.xkey.addr, cast[cstring](buffer.addr), buffer.sizeof.cint, nil, status.addr)
 
             proc toString(str: openArray[char]): string =
               result = newStringOfCap(len(str))
@@ -1189,8 +1189,3 @@ proc newWindow*(w = 1280, h = 720, title = "", screen = screen(), fullscreen = f
 proc newOpenglWindow*(w = 1280, h = 720, title = "", screen = screen(), fullscreen = false): OpenglWindow =
   result.initOpenglWindow(w, h, screen, fullscreen)
   result.title = title
-
-proc w*(a: Screen): int = a.size.x
-  ## width of screen
-proc h*(a: Screen): int = a.size.y
-  ## height of screen
