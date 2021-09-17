@@ -9,6 +9,7 @@ requires "chroma >= 0.2.5"
 
 when defined linux:
   requires "x11 >= 1.1"
+  requires "https://github.com/levovix0/wayland"
 when defined windows:
   requires "winim >= 3.6"
 

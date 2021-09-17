@@ -150,3 +150,41 @@ test "pixie":
       window.drawImage(image.data)
     keyup esc:
       close window
+
+when defined(wayland):
+  import wayland/client
+
+  var
+    compositor: Compositor
+    shell: Shell
+
+    srf: Surface
+    shsrf: ShellSurface
+
+  test "wayland":
+    let display = displayConnect()
+    if display == nil:
+      raise Exception.newException "Can't connect to display"
+    
+    let reg = display.getRegistry
+    var rl = RegistryListener(
+      global: proc(data: pointer, registry: Registry, name: uint32, iface: cstring, version: uint32) {.cdecl.} =
+        template i(v, f): untyped = v = cast[type(v)](registry.bindRegistry(name, f.addr, 1))
+        echo $iface
+        case $iface
+        of "wl_compositor": i(compositor, wl_compositor_interface)
+        of "wl_shell": i(shell, wl_shell_interface)
+      ,
+      globalRemove: proc(data: pointer, registry: Registry, name: uint32) {.cdecl.} = discard
+        # who cares?
+    )
+    reg.addListener rl.addr
+
+    dispatch display
+    roundtrip display
+
+    srf = compositor.createSurface
+    shsrf = shell.getShellSurface(srf)
+    setTopLevel shsrf
+
+    disconnect display
