@@ -197,10 +197,8 @@ proc property*(a: Window, name: AtomKind, t: typedesc = typedesc[byte]): auto =
 
 
 proc netWmState*(a: Window): seq[Atom] =
-  #TODO: вылетает на linux/manjaro/gnome/wayland
   let v = a.property(NetWmState, Atom)
-  if v.kind != XaAtom: raise X11Defect.newException("failed to get netWmState (got incorrect property kind)")
-  result = v.data
+  if v.kind == XaAtom: v.data else: @[]
 
 proc `netWmState=`*(a: Window, v: openarray[Atom]) =
   discard display.XChangeProperty(a, atom NetWmState, XaAtom, 32, PropModeReplace, cast[PCUchar](v.dataAddr), v.len.cint)
