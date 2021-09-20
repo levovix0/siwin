@@ -24,11 +24,11 @@ var clipboard* = Clipboard()
 
 
 when defined(linux):
-  proc processEvents(a: var Clipboard, responsed: var bool): string = with a:
+  proc processEvents(this: var Clipboard, responsed: var bool): string =
     var ev: XEvent
     proc checkEvent(_: PDisplay, event: PXEvent, userData: XPointer): XBool {.cdecl.} =
       if event.xany.window == (x.Window)(cast[int](userData)): 1 else: 0
-    while display.XCheckIfEvent(ev.addr, checkEvent, cast[XPointer](xwin)) == 1:
+    while display.XCheckIfEvent(ev.addr, checkEvent, cast[XPointer](this.xwin)) == 1:
       case ev.theType
       of SelectionNotify: # получен ответ на запрос содержимого буфера обмена
         template e: untyped = ev.xselection
@@ -36,8 +36,8 @@ when defined(linux):
         if e.property == None or e.selection != atom"CLIPBOARD":
           continue
         
-        result = xwin.property(atom"siwin_clipboardTargetProperty", string).data
-        discard display.XDeleteProperty(xwin, atom"siwin_clipboardTargetProperty")
+        result = this.xwin.property(atom"siwin_clipboardTargetProperty", string).data
+        discard display.XDeleteProperty(this.xwin, atom"siwin_clipboardTargetProperty")
 
         responsed = true
       
@@ -65,7 +65,7 @@ when defined(linux):
             resp.target = if e.target == atom"UTF8_STRING": atom"UTF8_STRING" else: XaString
             discard display.XChangeProperty(
               e.requestor, e.property, resp.target,
-              8, PropModeReplace, cast[PCUChar](if content.len > 0: content[0].addr else: nil), content.len.cint
+              8, PropModeReplace, cast[PCUChar](this.content.dataAddr), this.content.len.cint
             )
             (Window e.requestor).send(cast[XEvent](resp), propagate=true)
             continue

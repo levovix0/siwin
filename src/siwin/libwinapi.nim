@@ -1,6 +1,9 @@
 import winim
 export winim
 
+type
+  WglContext* = HGlRc
+
 var hInstance* = GetModuleHandle(nil)
 
 proc trackMouseEvent*(handle: HWnd, e: DWord) =

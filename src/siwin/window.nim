@@ -3,12 +3,12 @@ import chroma
 import image, utils
 
 when defined(linux):
-  import strformat, options, sequtils
+  import options
   import libx11 as x, libglx
 
 when defined(windows):
-  import macros, sequtils
-  import libwinapi, libwgl
+  import macros
+  import libwinapi
 
 
 type
@@ -284,16 +284,14 @@ when defined(linux):
     of Xk_9:            Key.n9
     else:               Key.unknown
 
-  template d: PDisplay = display
-
-  proc getScreenCount*(): int = d.ScreenCount.int
+  proc getScreenCount*(): int = display.ScreenCount.int
 
   proc screen*(n: int): Screen =
     if n notin 0..<getScreenCount(): raise IndexDefect.newException(&"screen {n} is not exist")
     result.id = n.cint
-    result.handle = d.ScreenOfDisplay(result.id)
+    result.handle = display.ScreenOfDisplay(result.id)
 
-  proc defaultScreen*(): Screen = screen(d.DefaultScreen.int)
+  proc defaultScreen*(): Screen = screen(display.DefaultScreen.int)
   proc screen*: Screen = defaultScreen()
 
   proc n*(a: Screen): int = a.id.int
@@ -440,13 +438,13 @@ proc size*(this: Screen): tuple[x, y: int] = (this.w, this.h)
 
 
 when defined(linux):
-  proc `=destroy`*(this: var Window) {.with.} =
-    if xinContext != nil: destroy xinContext
-    if xinMethod != nil: close xinMethod
-    if xcursor != 0: destroy xcursor
-    if xicon != 0: destroy xicon
-    if xiconMask != 0: destroy xiconMask
-    if xwin != 0: destroy xwin
+  proc `=destroy`*(this: var Window) =
+    if this.xinContext != nil: destroy this.xinContext
+    if this.xinMethod != nil:  close this.xinMethod
+    if this.xcursor != 0:      destroy this.xcursor
+    if this.xicon != 0:        destroy this.xicon
+    if this.xiconMask != 0:    destroy this.xiconMask
+    if this.xwin != 0:         destroy this.xwin
 
   proc `=destroy`*(this: var OpenglWindow) =
     0.makeCurrent nil.GlxContext
@@ -474,7 +472,7 @@ when defined(linux):
     map this.xwin
     this.xwin.wmProtocols = [atom"WM_DELETE_WINDOW"]
 
-    this.xinMethod = d.XOpenIM(nil, nil, nil)
+    this.xinMethod = display.XOpenIM(nil, nil, nil)
     if this.xinMethod != nil:
       this.xinContext = this.xinMethod.XCreateIC(
         XNClientWindow, this.xwin, XNFocusWindow, this.xwin, XnInputStyle, XimPreeditNothing or XimStatusNothing, nil
@@ -488,33 +486,26 @@ when defined(linux):
     this.waitForReDraw = true
     this.gc = this.xwin.newGC(GCForeground or GCBackground)
 
-  proc initOpenglWindow(a: var OpenglWindow; w, h: int; screen: Screen, fullscreen: bool) {.with.} =
-    a.basicInitWindow w, h, screen
+  proc initOpenglWindow(this: var OpenglWindow; w, h: int; screen: Screen, fullscreen: bool) =
+    this.basicInitWindow w, h, screen
 
     let root = defaultRootWindow()
     let vi = glxChooseVisual(0, [GlxRgba, GlxDepthSize, 24, GlxDoublebuffer])
-    let cmap = d.XCreateColormap(root, vi.visual, AllocNone)
+    let cmap = display.XCreateColormap(root, vi.visual, AllocNone)
     var swa: XSetWindowAttributes
     swa.colormap = cmap
-    xwin = x.newWindow(root, 0, 0, w, h, 0, vi.depth, InputOutput, vi.visual, CwColormap or CwEventMask, swa)
+    this.xwin = x.newWindow(root, 0, 0, w, h, 0, vi.depth, InputOutput, vi.visual, CwColormap or CwEventMask, swa)
 
-    a.setupWindow fullscreen
+    this.setupWindow fullscreen
 
-    ctx = newGlxContext(vi)
-    glxAssert ctx != nil
-    xwin.makeCurrent ctx
+    this.ctx = newGlxContext(vi)
+    this.xwin.makeCurrent this.ctx
 
-  template pushEvent(a: Window, event, args) =
-    when args is tuple:
-      if a.event != nil: a.event(args)
-    else:
-      if a.event != nil: a.event((args,))
-
-  proc `title=`*(a: Window, title: string) {.with.} =
+  proc `title=`*(this: Window, title: string) =
     ## set window title
-    xwin.netWmName = title
-    xwin.netWmIconName = title
-    d.Xutf8SetWMProperties(xwin, title, title, nil, 0, nil, nil, nil)
+    this.xwin.netWmName = title
+    this.xwin.netWmIconName = title
+    display.Xutf8SetWMProperties(this.xwin, title, title, nil, 0, nil, nil, nil)
 
   proc opened*(this: Window): bool = not this.closed
   proc close*(this: var Window) =
@@ -530,69 +521,69 @@ when defined(linux):
     this.m_size = v
     this.waitForReDraw = true
 
-  proc fullscreen*(a: Window): bool = a.m_isFullscreen
+  proc fullscreen*(this: Window): bool = this.m_isFullscreen
     ## get real fullscreen state of window
-  proc `fullscreen=`*(a: var Window, v: bool) {.with.} =
+  proc `fullscreen=`*(this: var Window, v: bool) =
     ## set fullscreen
     ##* this proc is lazy, don't try get size of window after it
     ## track when the fullscreen state will be applied in the onFullscreenChanged event
-    if m_isFullscreen == v: return
+    if this.m_isFullscreen == v: return
 
-    xwin.root.send(
-      xwin.newClientMessage(atom"_NET_WM_STATE", [Atom 2, atom"_NET_WM_STATE_FULLSCREEN"]), # 2 - switch, 1 - set true, 0 - set false
+    this.xwin.root.send(
+      this.xwin.newClientMessage(atom"_NET_WM_STATE", [Atom 2, atom"_NET_WM_STATE_FULLSCREEN"]), # 2 - switch, 1 - set true, 0 - set false
       SubstructureNotifyMask or SubstructureRedirectMask
     )
 
-  proc position*(a: Window): tuple[x, y: int] = a.xwin.geometry.position
-  proc `position=`*(a: var Window, p: tuple[x, y: int]) {.with.} =
+  proc position*(this: Window): tuple[x, y: int] = this.xwin.geometry.position
+  proc `position=`*(this: var Window, p: tuple[x, y: int]) =
     ## move window
     ## do nothing if window is fullscreen
-    if m_isFullscreen: return
-    xwin.position = p
-    m_pos = p
+    if this.m_isFullscreen: return
+    this.xwin.position = p
+    this.m_pos = p
 
-  proc size*(a: Window): tuple[x, y: int] = a.m_size
-  proc `size=`*(a: var Window, size: tuple[x, y: int]) {.with.} =
+  proc size*(this: Window): tuple[x, y: int] = this.m_size
+  proc `size=`*(this: var Window, size: tuple[x, y: int]) =
     ## resize window
     ## exit fullscreen if window is fullscreen
-    if not a.fullscreen:
-      xwin.size = size
-      a.updateSize size
+    if not this.fullscreen:
+      this.xwin.size = size
+      this.updateSize size
     else:
-      a.fullscreen = false
-      requestedSize = some size
+      this.fullscreen = false
+      this.requestedSize = some size
 
   proc newPixmap(source: Image, window: Window): Pixmap =
     result = newPixmap(source.w, source.h, window.xwin, window.xscr.defaultDepth)
     var image = asXImage(source.data, source.w, source.h)
     result.newGC.put image.addr
 
-  proc `cursor=`*(a: var Window, kind: Cursor) {.with.} =
+  proc `cursor=`*(this: var Window, kind: Cursor) =
     ## set cursor font, used when mouse hover window
-    if kind == curCursor: return
-    if xcursor != 0: destroy xcursor
+    if kind == this.curCursor: return
+    if this.xcursor != 0: destroy this.xcursor
     case kind
-    of Cursor.arrow:          xcursor = cursorFromFont XcLeftPtr
-    of Cursor.arrowUp:        xcursor = cursorFromFont XcCenterPtr
-    of Cursor.arrowRight:     xcursor = cursorFromFont XcRightPtr
-    of Cursor.wait:           xcursor = cursorFromFont XcWatch
-    of Cursor.arrowWait:      xcursor = cursorFromFont XcWatch #! no needed cursor
-    of Cursor.pointingHand:   xcursor = cursorFromFont XcHand1
-    of Cursor.grab:           xcursor = cursorFromFont XcHand2
-    of Cursor.text:           xcursor = cursorFromFont XcXterm
-    of Cursor.cross:          xcursor = cursorFromFont XcTCross
-    of Cursor.sizeAll:        xcursor = cursorFromFont XcFleur
-    of Cursor.sizeVertical:   xcursor = cursorFromFont XcSb_v_doubleArrow
-    of Cursor.sizeHorisontal: xcursor = cursorFromFont XcSb_h_doubleArrow
+    of Cursor.arrow:          this.xcursor = cursorFromFont XcLeftPtr
+    of Cursor.arrowUp:        this.xcursor = cursorFromFont XcCenterPtr
+    of Cursor.arrowRight:     this.xcursor = cursorFromFont XcRightPtr
+    of Cursor.wait:           this.xcursor = cursorFromFont XcWatch
+    of Cursor.arrowWait:      this.xcursor = cursorFromFont XcWatch #! no needed cursor
+    of Cursor.pointingHand:   this.xcursor = cursorFromFont XcHand1
+    of Cursor.grab:           this.xcursor = cursorFromFont XcHand2
+    of Cursor.text:           this.xcursor = cursorFromFont XcXterm
+    of Cursor.cross:          this.xcursor = cursorFromFont XcTCross
+    of Cursor.sizeAll:        this.xcursor = cursorFromFont XcFleur
+    of Cursor.sizeVertical:   this.xcursor = cursorFromFont XcSb_v_doubleArrow
+    of Cursor.sizeHorisontal: this.xcursor = cursorFromFont XcSb_h_doubleArrow
     of Cursor.hided:
       var data: array[1, char]
       let blank = display.XCreateBitmapFromData(rootWindow(0), data[0].addr, 1, 1)
       var pass: XColor
-      xcursor = x.Cursor display.XCreatePixmapCursor(blank, blank, pass.addr, pass.addr, 0, 0)
+      this.xcursor = x.Cursor display.XCreatePixmapCursor(blank, blank, pass.addr, pass.addr, 0, 0)
       discard display.XFreePixmap blank
-    xwin.cursor = xcursor
+    this.xwin.cursor = this.xcursor
     syncX()
-    curCursor = kind
+    this.curCursor = kind
 
   proc `icon=`*(this: var Window, image: Image) =
     ## set window icon
@@ -625,9 +616,13 @@ when defined(linux):
   proc drawImage*(this: var OpenglWindow, pixels: openarray[ColorRGBX]) =
     ## draw image on OpenglWindow is impossible, so this proc do nothing
 
-  proc run*(a: var SomeWindow) {.with.} =
+  proc run*(this: var SomeWindow) =
     ## run main loop of window
-    template pushEvent(event, args) = a.pushEvent(event, args)
+    template invoke(event, args) =
+      when args is tuple:
+        if event != nil: event(args)
+      else:
+        if event != nil: event((args,))
 
     var ev: XEvent
 
@@ -646,21 +641,21 @@ when defined(linux):
       of 5: 1
       else: 0
 
-    m_pos = xwin.geometry.position
-    mouse.position = x.cursor().position
-    mouse.position = (mouse.position.x - m_pos.x, mouse.position.y - m_pos.y)
+    this.m_pos = this.xwin.geometry.position
+    this.mouse.position = x.cursor().position
+    this.mouse.position = (this.mouse.position.x - this.m_pos.x, this.mouse.position.y - this.m_pos.y)
     
-    pushEvent onResize, ((0, 0), m_size, true)
+    this.onResize.invoke ((0, 0), this.m_size, true)
 
     var lastClickTime: times.Time
     var lastTickTime = getTime()
 
-    while not closed:
+    while not this.closed:
       var xevents: seq[XEvent]
 
       proc checkEvent(_: PDisplay, event: PXEvent, userData: XPointer): XBool {.cdecl.} =
         if cast[int](event.xany.window) == cast[int](userData): 1 else: 0
-      while d.XCheckIfEvent(ev.addr, checkEvent, cast[XPointer](xwin)) == 1:
+      while display.XCheckIfEvent(ev.addr, checkEvent, cast[XPointer](this.xwin)) == 1:
         xevents.add ev
       
       let catched = xevents.len > 0
@@ -668,80 +663,81 @@ when defined(linux):
       for ev in xevents.mitems:
         case ev.theType
         of Expose:
-          redraw a
+          redraw this
+          
         of ClientMessage:
           if ev.xclient.data.l[0] == "WM_DELETE_WINDOW".atom.clong:
-            closed = true
+            this.closed = true
 
         of ConfigureNotify:
-          if ev.xconfigure.width != m_size.x or ev.xconfigure.height != m_size.y:
-            let osize = m_size
-            a.updateSize (ev.xconfigure.width.int, ev.xconfigure.height.int)
-            pushEvent onResize, (osize, m_size, false)
-          if ev.xconfigure.x.int != m_pos.x or ev.xconfigure.y.int != m_pos.y:
-            let oldPos = m_pos
-            m_pos = (ev.xconfigure.x.int, ev.xconfigure.y.int)
-            mouse.position = x.cursor().position
-            mouse.position = (mouse.position.x - m_pos.x, mouse.position.y - m_pos.y)
-            pushEvent onWindowMove, (oldPos, m_pos)
+          if ev.xconfigure.width != this.m_size.x or ev.xconfigure.height != this.m_size.y:
+            let osize = this.m_size
+            this.updateSize (ev.xconfigure.width.int, ev.xconfigure.height.int)
+            this.onResize.invoke (osize, this.m_size, false)
+          if ev.xconfigure.x.int != this.m_pos.x or ev.xconfigure.y.int != this.m_pos.y:
+            let oldPos = this.m_pos
+            this.m_pos = (ev.xconfigure.x.int, ev.xconfigure.y.int)
+            this.mouse.position = x.cursor().position
+            this.mouse.position = (this.mouse.position.x - this.m_pos.x, this.mouse.position.y - this.m_pos.y)
+            this.onWindowMove.invoke (oldPos, this.m_pos)
 
-          let state = xwin.netWmState
-          if atom"_NET_WM_STATE_FULLSCREEN" in state != m_isFullscreen:
-            m_isFullscreen = not m_isFullscreen
-            pushEvent onFullscreenChanged, (m_isFullscreen)
-            if not m_isFullscreen and isSome a.requestedSize:
-              a.size = get a.requestedSize
-              a.requestedSize = none tuple[x, y: int]
+          let state = this.xwin.netWmState
+          if atom"_NET_WM_STATE_FULLSCREEN" in state != this.m_isFullscreen:
+            this.m_isFullscreen = not this.m_isFullscreen
+            this.onFullscreenChanged.invoke (this.m_isFullscreen)
+            if not this.m_isFullscreen and isSome this.requestedSize:
+              this.size = get this.requestedSize
+              this.requestedSize = none tuple[x, y: int]
 
         of MotionNotify:
-          let oldPos = mouse.position
-          mouse.position = (ev.xmotion.x.int, ev.xmotion.y.int)
-          for v in clicking.mitems: v = false
-          pushEvent onMouseMove, (mouse, oldPos, mouse.position)
+          let oldPos = this.mouse.position
+          this.mouse.position = (ev.xmotion.x.int, ev.xmotion.y.int)
+          for v in this.clicking.mitems: v = false
+          this.onMouseMove.invoke (this.mouse, oldPos, this.mouse.position)
 
         of ButtonPress:
           if not isScroll:
-            mouse.pressed[button] = true
-            clicking[button] = true
-            pushEvent onMouseDown, (mouse, button, true)
-          elif scrollDelta != 0: pushEvent onScroll, (mouse, scrollDelta)
+            this.mouse.pressed[button] = true
+            this.clicking[button] = true
+            this.onMouseDown.invoke (this.mouse, button, true)
+          elif scrollDelta != 0: this.onScroll.invoke (this.mouse, scrollDelta)
         of ButtonRelease:
           if not isScroll:
             let nows = getTime()
-            mouse.pressed[button] = false
+            this.mouse.pressed[button] = false
 
-            if clicking[button]:
-              if (nows - lastClickTime).inMilliseconds < 200: pushEvent onDoubleClick, (mouse, button, mouse.position, true)
-              else: pushEvent onClick, (mouse, button, mouse.position, false)
+            if this.clicking[button]:
+              if (nows - lastClickTime).inMilliseconds < 200: this.onDoubleClick.invoke (this.mouse, button, this.mouse.position, true)
+              else: this.onClick.invoke (this.mouse, button, this.mouse.position, false)
 
-            mouse.pressed[button] = false
+            this.mouse.pressed[button] = false
             lastClickTime = nows
-            pushEvent onMouseUp, (mouse, button, false)
+            this.onMouseUp.invoke (this.mouse, button, false)
 
         of LeaveNotify:
-          pushEvent onMouseLeave, (mouse, mouse.position, (ev.xcrossing.x.int, ev.xcrossing.y.int))
+          this.onMouseLeave.invoke (this.mouse, this.mouse.position, (ev.xcrossing.x.int, ev.xcrossing.y.int))
         of EnterNotify:
-          pushEvent onMouseEnter, (mouse, mouse.position, (ev.xcrossing.x.int, ev.xcrossing.y.int))
+          this.onMouseEnter.invoke (this.mouse, this.mouse.position, (ev.xcrossing.x.int, ev.xcrossing.y.int))
 
         of FocusIn:
-          m_hasFocus = true
-          if xinContext != nil: XSetICFocus xinContext
-          pushEvent onFocusChanged, (true)
+          this.m_hasFocus = true
+          if this.xinContext != nil: XSetICFocus this.xinContext
+          this.onFocusChanged.invoke (true)
           
           let keys = queryKeyboardState().mapit(xkeyToKey display.XKeycodeToKeysym(it.cuchar, 0))
           for k in keys: # нажать клавиши, нажатые в системе
             if k == Key.unknown: continue
-            keyboard.pressed.incl k
-            pushEvent onKeydown, (keyboard, k, false, false)
+            this.keyboard.pressed.incl k
+            this.onKeydown.invoke (this.keyboard, k, false, false)
         of FocusOut:
-          m_hasFocus = false
-          if xinContext != nil: XUnsetICFocus xinContext
-          pushEvent onFocusChanged, (false)
+          this.m_hasFocus = false
+          if this.xinContext != nil: XUnsetICFocus this.xinContext
+          this.onFocusChanged.invoke (false)
 
-          let pressed = keyboard.pressed
+          let pressed = this.keyboard.pressed
           for k in pressed: # отпустить все клавиши
-            keyboard.pressed.excl k
-            pushEvent onKeyup, (keyboard, k, false, false)
+            this.keyboard.pressed.excl k
+            this.onKeyup.invoke (this.keyboard, k, false, false)
 
         of KeyPress:
           var key = Key.unknown
@@ -755,13 +751,13 @@ when defined(linux):
             let repeated = xevents.findBy(proc (a: XEvent): bool =
               a.theType == KeyRelease and a.xkey.keycode == ev.xkey.keycode and a.xkey.time - ev.xkey.time < 2
             ) >= 0
-            keyboard.pressed.incl key
-            pushEvent onKeydown, (keyboard, key, true, repeated)
+            this.keyboard.pressed.incl key
+            this.onKeydown.invoke (this.keyboard, key, true, repeated)
 
-          if xinContext != nil and (keyboard.pressed * {lcontrol, rcontrol, lalt, ralt}).len == 0:
+          if this.xinContext != nil and (this.keyboard.pressed * {lcontrol, rcontrol, lalt, ralt}).len == 0:
             var status: Status
             var buffer: array[16, char]
-            let length = xinContext.Xutf8LookupString(ev.xkey.addr, cast[cstring](buffer.addr), buffer.sizeof.cint, nil, status.addr)
+            let length = this.xinContext.Xutf8LookupString(ev.xkey.addr, cast[cstring](buffer.addr), buffer.sizeof.cint, nil, status.addr)
 
             proc toString(str: openArray[char]): string =
               result = newStringOfCap(len(str))
@@ -771,7 +767,7 @@ when defined(linux):
             if length > 0:
               let s = buffer[0..<length].toString()
               if s notin ["\u001B"]:
-                pushEvent onTextInput, (keyboard, s)
+                this.onTextInput.invoke (this.keyboard, s)
 
         of KeyRelease:
           var key = Key.unknown
@@ -785,33 +781,29 @@ when defined(linux):
             let repeated = xevents.findBy(proc (a: XEvent): bool =
               a.theType == KeyPress and a.xkey.keycode == ev.xkey.keycode and a.xkey.time - ev.xkey.time < 2
             ) >= 0
-            keyboard.pressed.excl key
-            pushEvent onKeyup, (keyboard, key, false, repeated)
+            this.keyboard.pressed.excl key
+            this.onKeyup.invoke (this.keyboard, key, false, repeated)
 
         else: discard
 
-        if closed: break
-      if closed: break
+        if this.closed: break
+      if this.closed: break
 
       if not catched: sleep(2)
 
       let nows = getTime()
-      pushEvent onTick, (mouse, keyboard, nows - lastTickTime)
+      this.onTick.invoke (this.mouse, this.keyboard, nows - lastTickTime)
       lastTickTime = nows
 
-      if waitForReDraw:
-        waitForReDraw = false
-        pushEvent on_render, ()
-        when a is OpenglWindow:
-          xwin.toDrawable.glxSwapBuffers()
+      if this.waitForReDraw:
+        this.waitForReDraw = false
+        this.onRender.invoke ()
+        when this is OpenglWindow:
+          this.xwin.toDrawable.glxSwapBuffers()
 
       if clipboardProcessEvents != nil: clipboardProcessEvents()
 
-    pushEvent onClose, ()
-
-  proc systemHandle*(a: Window): x.Window = a.xwin
-    ## get system handle of window
-    ##* result depends on OS or platmofm
+    this.onClose.invoke ()
 
 
 elif defined(windows):
@@ -898,7 +890,6 @@ elif defined(windows):
   proc initWindow(this: var Window; w, h: int; screen: Screen, fullscreen: bool, class = wClassName) =
     this.handle = CreateWindow(class, "", WsOverlappedWindow, CwUseDefault, CwUseDefault, w.int32, h.int32, 0, 0, hInstance, nil)
     this.m_hasFocus = true
-    this.m_isOpen = true
     this.curCursor = arrow
     this.wcursor = LoadCursor(0, IdcArrow)
     this.handle.SetWindowLongPtrW(GwlpUserData, cast[LongPtr](this.addr))
@@ -1030,33 +1021,33 @@ elif defined(windows):
   proc displayImpl(this: var OpenglWindow) =
     this.pushEvent onRender, ()
 
-  proc run*(a: var Window) {.with.} =
+  proc run*(this: var Window) =
     ## run main loop of window
     handle.ShowWindow(SwShow)
-    a.pushEvent onResize, ((0, 0), m_size, true)
-    a.waitForRedraw = true
+    this.pushEvent this.onResize, ((0, 0), this.m_size, true)
+    this.waitForRedraw = true
 
     handle.UpdateWindow()
 
     var lastTickTime = getTime()
     var msg: Msg
-    while m_isOpen:
+    while not this.closed:
       var catched = false
       while PeekMessage(&msg, 0, 0, 0, PmRemove):
         catched = true
         TranslateMessage(&msg)
         DispatchMessage(&msg)
 
-        if not m_isOpen: break
-      if not m_isOpen: break
+        if this.closed: break
+      if this.closed: break
 
       if not catched: sleep(2)
 
       let nows = getTime()
-      if a.onTick != nil: onTick (mouse, keyboard, nows - lastTickTime)
+      pushEvent this.onTick, (this.mouse, this.keyboard, nows - lastTickTime)
       lastTickTime = nows
 
-  proc poolEvent(a: var SomeWindow, message: Uint, wParam: WParam, lParam: LParam): LResult {.with.} =
+  proc poolEvent(a: var SomeWindow, message: Uint, wParam: WParam, lParam: LParam): LResult =
     template pushEvent(event, args): untyped =
       a.pushEvent(event, args)
 
@@ -1175,9 +1166,6 @@ elif defined(windows):
 
     else: return handle.DefWindowProc(message, wParam, lParam)
 
-  proc systemHandle*(a: Window): HWnd = a.handle
-    ## get system handle of window
-    ##* result depends on OS or platmofm
 else:
   {.error: "current OS is not supported".}
 

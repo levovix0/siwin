@@ -1,4 +1,4 @@
-import macros, strformat, strutils, unicode, tables, sequtils, algorithm, utils, sugar, sinim
+import macros, tables, utils
 import window
 
 type
