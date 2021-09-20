@@ -86,7 +86,7 @@ type
 
     m_size: tuple[x, y: int]
 
-    m_isOpen: bool
+    closed: bool
     m_hasFocus: bool
     m_isFullscreen: bool
 
@@ -448,37 +448,36 @@ when defined(linux):
     if xiconMask != 0: destroy xiconMask
     if xwin != 0: destroy xwin
 
-  proc `=destroy`*(a: var OpenglWindow) {.with.} =
+  proc `=destroy`*(this: var OpenglWindow) =
     0.makeCurrent nil.GlxContext
-    destroy ctx
-    `=destroy` a.Window
+    destroy this.ctx
+    `=destroy` this.Window
 
-  proc basicInitWindow(a: var Window; w, h: int; screen: Screen) {.with.} =
-    xscr = screen.id
-    m_size = (w, h)
+  proc basicInitWindow(this: var Window; w, h: int; screen: Screen) =
+    this.xscr = screen.id
+    this.m_size = (w, h)
 
-    m_isOpen = true
-    m_hasFocus = true
-    curCursor = arrow
+    this.m_hasFocus = true
+    this.curCursor = arrow
 
-  proc setupWindow(a: var Window, fullscreen: bool) {.with.} =
-    xwin.input = [
+  proc setupWindow(this: var Window, fullscreen: bool) =
+    this.xwin.input = [
       ExposureMask, KeyPressMask, KeyReleaseMask, PointerMotionMask, ButtonPressMask,
       ButtonReleaseMask, StructureNotifyMask, EnterWindowMask, LeaveWindowMask, FocusChangeMask
     ]
 
-    m_isFullscreen = fullscreen
+    this.m_isFullscreen = fullscreen
     if fullscreen:
-      xwin.netWmState = [NetWmStateFullscreen]
-      m_size = window.screen().size
+      this.xwin.netWmState = [atom"_NET_WM_STATE_FULLSCREEN"]
+      this.m_size = window.screen().size
 
-    map xwin
-    xwin.wmProtocols = [WmDeleteWindow]
+    map this.xwin
+    this.xwin.wmProtocols = [atom"WM_DELETE_WINDOW"]
 
-    xinMethod = d.XOpenIM(nil, nil, nil)
-    if xinMethod != nil:
-      xinContext = xinMethod.XCreateIC(
-        XNClientWindow, xwin, XNFocusWindow, xwin, XnInputStyle, XimPreeditNothing or XimStatusNothing, nil
+    this.xinMethod = d.XOpenIM(nil, nil, nil)
+    if this.xinMethod != nil:
+      this.xinContext = this.xinMethod.XCreateIC(
+        XNClientWindow, this.xwin, XNFocusWindow, this.xwin, XnInputStyle, XimPreeditNothing or XimStatusNothing, nil
       )
 
   proc initWindow(this: var Window; w, h: int; screen: Screen, fullscreen: bool) =
@@ -517,12 +516,12 @@ when defined(linux):
     xwin.netWmIconName = title
     d.Xutf8SetWMProperties(xwin, title, title, nil, 0, nil, nil, nil)
 
-  proc opened*(a: Window): bool = a.m_isOpen
-  proc close*(a: var Window) {.with.} =
+  proc opened*(this: Window): bool = not this.closed
+  proc close*(this: var Window) =
     ## close request
-    if not m_isOpen: return
-    xwin.send xwin.newClientMessage(WmProtocols, [atom WmDeleteWindow, CurrentTime])
-    m_isOpen = false
+    if this.closed: return
+    this.xwin.send this.xwin.newClientMessage(atom"WM_PROTOCOLS", [atom"WM_DELETE_WINDOW", CurrentTime])
+    this.closed = true
 
   proc redraw*(a: var Window) = a.waitForReDraw = true
     ## render request
@@ -540,7 +539,7 @@ when defined(linux):
     if m_isFullscreen == v: return
 
     xwin.root.send(
-      xwin.newClientMessage(NetWmState, [Atom 2, atom NetWmStateFullscreen]), # 2 - switch, 1 - set true, 0 - set false
+      xwin.newClientMessage(atom"_NET_WM_STATE", [Atom 2, atom"_NET_WM_STATE_FULLSCREEN"]), # 2 - switch, 1 - set true, 0 - set false
       SubstructureNotifyMask or SubstructureRedirectMask
     )
 
@@ -595,27 +594,28 @@ when defined(linux):
     syncX()
     curCursor = kind
 
-  proc `icon=`*(a: var Window, image: Image) {.with.} =
+  proc `icon=`*(this: var Window, image: Image) =
     ## set window icon
-    if xicon != 0: destroy xicon
-    if xiconMask != 0: destroy xiconMask
+    if this.xicon != 0: destroy this.xicon
+    if this.xiconMask != 0: destroy this.xiconMask
 
-    xicon = newPixmap(image, a)
+    this.xicon = newPixmap(image, this)
 
     # convert alpha channel to bit mask (semi-transparency is not supported)
     var mask = newImage(image.w, image.h)
     for i in 0..<(image.w * image.h):
       mask.data[i] = if image.data[i].a > 127: rgbx(0, 0, 0, 255) else: rgbx(255, 255, 255, 255)
-    xiconMask = newPixmap(mask, a)
+    this.xiconMask = newPixmap(mask, this)
 
-    xwin.wmHints = newWmHints(xicon, xiconMask)
-  proc `icon=`*(a: var Window, _: nil.typeof) {.with.} =
+    this.xwin.setWmHints(IconPixmapHint or IconMaskHint, this.xicon, this.xiconMask)
+  
+  proc `icon=`*(this: var Window, _: nil.typeof) =
     ## clear window icon
-    if xicon != 0: destroy xicon
-    if xiconMask != 0: destroy xiconMask
-    xicon = 0.Pixmap
-    xiconMask = 0.Pixmap
-    xwin.wmHints = newWmHints(xicon, xiconMask)
+    if this.xicon != 0: destroy this.xicon
+    if this.xiconMask != 0: destroy this.xiconMask
+    this.xicon = 0.Pixmap
+    this.xiconMask = 0.Pixmap
+    this.xwin.setWmHints(IconPixmapHint or IconMaskHint, 0.Pixmap, 0.Pixmap)
 
   proc drawImage*(this: var Window, pixels: openarray[ColorRGBX]) =
     doassert pixels.len == this.size.x * this.size.y, "pixels count must be width * height"
@@ -655,7 +655,7 @@ when defined(linux):
     var lastClickTime: times.Time
     var lastTickTime = getTime()
 
-    while m_isOpen:
+    while not closed:
       var xevents: seq[XEvent]
 
       proc checkEvent(_: PDisplay, event: PXEvent, userData: XPointer): XBool {.cdecl.} =
@@ -670,8 +670,8 @@ when defined(linux):
         of Expose:
           redraw a
         of ClientMessage:
-          if ev.xclient.data.l[0] == atom(WmDeleteWindow).clong:
-            m_isOpen = false
+          if ev.xclient.data.l[0] == "WM_DELETE_WINDOW".atom.clong:
+            closed = true
 
         of ConfigureNotify:
           if ev.xconfigure.width != m_size.x or ev.xconfigure.height != m_size.y:
@@ -686,7 +686,7 @@ when defined(linux):
             pushEvent onWindowMove, (oldPos, m_pos)
 
           let state = xwin.netWmState
-          if atom(NetWmStateFullscreen) in state != m_isFullscreen:
+          if atom"_NET_WM_STATE_FULLSCREEN" in state != m_isFullscreen:
             m_isFullscreen = not m_isFullscreen
             pushEvent onFullscreenChanged, (m_isFullscreen)
             if not m_isFullscreen and isSome a.requestedSize:
@@ -790,8 +790,8 @@ when defined(linux):
 
         else: discard
 
-        if not m_isOpen: break
-      if not m_isOpen: break
+        if closed: break
+      if closed: break
 
       if not catched: sleep(2)
 
@@ -805,7 +805,7 @@ when defined(linux):
         when a is OpenglWindow:
           xwin.toDrawable.glxSwapBuffers()
 
-      clipboardProcessEvents()
+      if clipboardProcessEvents != nil: clipboardProcessEvents()
 
     pushEvent onClose, ()
 

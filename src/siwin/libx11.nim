@@ -1,4 +1,4 @@
-import os, strutils, strformat, tables, sequtils, sugar
+import os, strutils, strformat, tables, sugar, hashes
 import x11/[xlib, xutil, xatom, xshm, cursorfont, keysym]
 import x11/x except Window, Pixmap, Cursor
 export xlib, xutil, xatom, xshm, cursorfont, keysym
@@ -18,24 +18,6 @@ type
     gc*: GC
     gcv*: XGCValues
     target*: Drawable
-  
-  WmHints* = object
-    wmh*: PXWmHints
-
-  AtomKind* {.pure.} = enum
-    WM_DELETE_WINDOW
-    WM_PROTOCOLS
-    UTF8_STRING
-    CLIPBOARD
-    TARGETS
-    TEXT
-    INCR
-    NET_WM_STATE_FULLSCREEN
-    NET_WM_STATE
-    NET_WM_NAME
-    NET_WM_ICON_NAME
-    SIWIN_CLIPBOARD_TARGET_PROPERTY
-
 
 
 var display*: PDisplay
@@ -48,22 +30,13 @@ proc `=destroy`(a: var LibX11GarbageCollector) =
 var libx11gc {.used.}: LibX11GarbageCollector
 
 
+var atoms: Table[Hash, Atom]
 
-var atoms: Table[AtomKind, Atom]
-
-proc internAtom*(a: string, onlyIfExist: bool = false): Atom =
-  display.XInternAtom(a, onlyIfExist.XBool)
-
-proc atomImpl(a: AtomKind, onlyIfExist: bool): Atom =
-  let s = if ($a).startsWith("NET_"): &"_{$a}" else: $a
-  internAtom(s, onlyIfExist)
-
-proc atom*(a: AtomKind, onlyIfExist: bool): Atom =
-  if atoms.hasKey(a): return atoms[a]
-  result = atomImpl(a, onlyIfExist)
-  atoms[a] = result
-proc atom*(a: AtomKind): Atom = atom(a, false)
-
+proc atom*(name: static string): Atom =
+  const i = hash name
+  if not atoms.hasKey(i):
+    atoms[i] = display.XInternAtom(name, 0)
+  atoms[i]
 
 
 converter toXID*(a: Window): XID = a.XID
@@ -74,7 +47,6 @@ converter toPXID*(a: ptr Window): PXID = cast[PXID](a)
 converter toPXID*(a: ptr Pixmap): PXID = cast[PXID](a)
 converter toPXID*(a: ptr Cursor): PXID = cast[PXID](a)
 converter toPDrawable*(a: Window|Pixmap|Cursor): PDrawable = a.toPXID
-converter toPXWmHints*(a: WmHints): PXWmHints = a.wmh
 
 
 proc destroy*(a: Window)    = discard display.XDestroyWindow(a)
@@ -88,9 +60,6 @@ proc close*(a: XIM)         = discard XCloseIM(a)
 
 proc `=destroy`(this: var GraphicsContext) =
   if this.gc != nil: destroy this.gc
-
-proc `=destroy`(a: var WmHints) =
-  destroy a.wmh
 
 
 proc syncX*() = discard display.XSync(0)
@@ -110,7 +79,7 @@ proc geometry*(a: Window): tuple[root: Window; x, y: int; w, h: int; borderW: in
     borderW: cuint
     depth: cuint
   discard display.XGetGeometry(a, root.addr, x.addr, y.addr, w.addr, h.addr, borderW.addr, depth.addr)
-  result = (root, x.int, y.int, w.int, h.int, borderW.int, depth.int)
+  (root, x.int, y.int, w.int, h.int, borderW.int, depth.int)
 proc size*(a: tuple[root: Window; x, y: int; w, h: int; borderW: int, depth: int]): tuple[x, y: int] = (a.w, a.h)
 proc position*(a: tuple[root: Window; x, y: int; w, h: int; borderW: int, depth: int]): tuple[x, y: int] = (a.x, a.y)
 
@@ -125,7 +94,6 @@ proc cursor*(): tuple[x, y: int; root, child: Window; winX, winY: int; mask: uin
     if display.XQueryPointer(display.XRootWindow(i), root.addr, child.addr, x.addr, y.addr, winX.addr, winY.addr, mask.addr) != 0:
       return (x.int, y.int, root, child, winX.int, winY.int, mask.uint, true)
 proc position*(a: tuple[x, y: int; root, child: Window; winX, winY: int; mask: uint; exists: bool]): tuple[x, y: int] = (a.x, a.y)
-proc windowPosition*(a: tuple[x, y: int; root, child: Window; winX, winY: int; mask: uint; exists: bool]): tuple[x, y: int] = (a.winX, a.winY)
 
 proc queryKeyboardState*(): set[0..255] =
   var r: array[32, char]
@@ -152,19 +120,10 @@ proc wmProtocols*(a: Window): seq[Atom] =
 
 proc `wmProtocols=`*(a: Window, v: openarray[Atom]) =
   discard display.XSetWMProtocols(a, v.dataAddr, v.len.cint)
-proc `wmProtocols=`*(a: Window, v: openarray[AtomKind]) =
-  a.wmProtocols = v.map(atom)
 
-proc newWmHints*(flags: clong = 0, icon: Pixmap = 0.Pixmap, iconMask: Pixmap = 0.Pixmap): WmHints =
-  result.wmh = XAllocWMHints()
-  result.wmh.flags = flags
-  result.wmh.iconPixmap = icon
-  result.wmh.iconMask = iconMask
-proc newWmHints*(icon: Pixmap, iconMask: Pixmap): WmHints =
-  newWmHints(IconPixmapHint or IconMaskHint, icon=icon, iconMask=iconMask)
-
-proc `wmHints=`*(a: Window, hints: PXWmHints) =
-  discard display.XSetWMHints(a, hints)
+proc setWmHints*(a: Window, flags: clong, icon: Pixmap = 0.Pixmap, iconMask: Pixmap = 0.Pixmap) =
+  var hints = XWmHints(flags: flags, iconPixmap: icon, iconMask: iconMask)
+  discard display.XSetWMHints(a, hints.addr)
 
 proc `input=`*(a: Window, v: openarray[int]) =
   var inputs = 0
@@ -192,23 +151,18 @@ proc property*(a: Window, name: Atom, t: typedesc[string]): tuple[data: string, 
   result.kind = a.kind
   result.data = $cast[cstring]((a.data & '\0').dataAddr)
 
-proc property*(a: Window, name: AtomKind, t: typedesc = typedesc[byte]): auto =
-  a.property(atom name, t)
-
 
 proc netWmState*(a: Window): seq[Atom] =
-  let v = a.property(NetWmState, Atom)
+  let v = a.property(atom"_NET_WM_STATE", Atom)
   if v.kind == XaAtom: v.data else: @[]
 
 proc `netWmState=`*(a: Window, v: openarray[Atom]) =
-  discard display.XChangeProperty(a, atom NetWmState, XaAtom, 32, PropModeReplace, cast[PCUchar](v.dataAddr), v.len.cint)
-proc `netWmState=`*(a: Window, v: openarray[AtomKind]) =
-  a.netWmState = v.map(atom)
+  discard display.XChangeProperty(a, atom"_NET_WM_STATE", XaAtom, 32, PropModeReplace, cast[PCUchar](v.dataAddr), v.len.cint)
 
 proc `netWmName=`*(a: Window, v: string) =
-  discard display.XChangeProperty(a, atom NetWmName, atom Utf8String, 8, PropModeReplace, cast[PCUchar](v.dataAddr), v.len.cint)
+  discard display.XChangeProperty(a, atom"_NET_WM_NAME", atom"UTF8_STRING", 8, PropModeReplace, cast[PCUchar](v.dataAddr), v.len.cint)
 proc `netWmIconName=`*(a: Window, v: string) =
-  discard display.XChangeProperty(a, atom NetWmIconName, atom Utf8String, 8, PropModeReplace, cast[PCUchar](v.dataAddr), v.len.cint)
+  discard display.XChangeProperty(a, atom"_NET_WM_ICON_NAME", atom"UTF8_STRING", 8, PropModeReplace, cast[PCUchar](v.dataAddr), v.len.cint)
 
 
 proc `position=`*(a: Window, position: tuple[x, y: int]) =
@@ -282,9 +236,6 @@ proc newClientMessage*[T](window: Window, messageKind: Atom, data: openarray[T],
   result.xclient.display = display
   result.xclient.serial = serial.culong
   result.xclient.sendEvent = sendEvent.XBool
-proc newClientMessage*[T](window: Window, messageKind: AtomKind, data: openarray[T], serial: int = 0, sendEvent: bool = false): XEvent =
-  newClientMessage(window, atom messageKind, data, serial, sendEvent)
 
 
-
-var clipboardProcessEvents*: proc() = proc() = discard
+var clipboardProcessEvents*: proc()
