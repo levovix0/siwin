@@ -38,6 +38,9 @@ proc atom*(name: static string): Atom =
     atoms[i] = display.XInternAtom(name, 0)
   atoms[i]
 
+proc atomIfExist*(name: string): Atom =
+  display.XInternAtom(name, 1)
+
 
 converter toXID*(a: Window): XID = a.XID
 converter toXID*(a: Pixmap): XID = a.XID
@@ -200,6 +203,20 @@ proc asXImage*(data: openarray[ColorRGBX], w, h: int): XImage = XImage(
   byteOrder: MSBFirst,
   bitmapUnit: display.BitmapUnit,
   bitmapBitOrder: MSBFirst,
+  bitmapPad: 32,
+  bytesPerLine: cint w * ColorRGBX.sizeof
+)
+
+proc asXImageTransparent*(data: seq[tuple[b, g, r, a: uint8]], w, h: int): XImage = XImage(
+  width: cint w,
+  height: cint h,
+  depth: 32,
+  bitsPerPixel: 32,
+  format: ZPixmap,
+  data: cast[cstring](data.dataAddr),
+  byteOrder: LSBFirst,
+  bitmapUnit: display.BitmapUnit,
+  bitmapBitOrder: LSBFirst,
   bitmapPad: 32,
   bytesPerLine: cint w * ColorRGBX.sizeof
 )

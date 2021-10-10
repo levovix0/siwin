@@ -1,4 +1,4 @@
-import times, os
+import times, os, options
 import chroma
 import image, utils
 
@@ -108,6 +108,8 @@ type
 
       m_pos: tuple[x, y: int]
       requestedSize: Option[tuple[x, y: int]]
+      
+      bgraPixels: Option[seq[tuple[b, g, r, a: uint8]]]
 
     elif defined(windows):
       handle: HWnd
@@ -438,6 +440,22 @@ proc size*(this: Screen): tuple[x, y: int] = (this.w, this.h)
 
 
 when defined(linux):
+  type WmForFramelessKind {.pure.} = enum
+    unsupported
+    motiv
+    kwm
+    other
+  var framelessAtom: Atom
+  var wmForFramelessKind =
+    if (framelessAtom = atomIfExist"_MOTIF_WM_HINTS"; framelessAtom != 0):
+      WmForFramelessKind.motiv
+    elif (framelessAtom = atomIfExist"KWM_WIN_DECORATION"; framelessAtom != 0):
+      WmForFramelessKind.kwm
+    elif (framelessAtom = atomIfExist"_WIN_HINTS"; framelessAtom != 0):
+      WmForFramelessKind.other
+    else:
+      WmForFramelessKind.unsupported
+
   proc `=destroy`*(this: var Window) =
     if this.xinContext != nil: destroy this.xinContext
     if this.xinMethod != nil:  close this.xinMethod
@@ -451,6 +469,33 @@ when defined(linux):
     destroy this.ctx
     `=destroy` this.Window
 
+  proc isTransparent(this: Window): bool = not this.bgraPixels.isNone
+  
+  proc `frameless=`*(this: var Window, v: bool) =
+    case wmForFramelessKind
+    of WmForFramelessKind.motiv:
+      type MWMHints = object
+        flags: culong
+        functions: culong
+        decorations: culong
+        input_mode: culong
+        status: culong
+      
+      var hints = MWMHints(flags: culong (if v: 1 else: 0) shl 1)
+      discard display.XChangeProperty(
+        this.xwin, framelessAtom, framelessAtom, 32, PropModeReplace,
+        cast[ptr cuchar](hints.addr), MWMHints.sizeof div 4
+      )
+
+    of WmForFramelessKind.kwm, WmForFramelessKind.other:
+      var hints: clong = if v: 0 else: 1
+      discard display.XChangeProperty(
+        this.xwin, framelessAtom, framelessAtom, 32, PropModeReplace,
+        cast[ptr cuchar](hints.addr), clong.sizeof div 4
+      )
+
+    else: discard display.XSetTransientForHint(this.xwin, display.RootWindow(this.xscr))
+
   proc basicInitWindow(this: var Window; w, h: int; screen: Screen) =
     this.xscr = screen.id
     this.m_size = (w, h)
@@ -458,7 +503,7 @@ when defined(linux):
     this.m_hasFocus = true
     this.curCursor = arrow
 
-  proc setupWindow(this: var Window, fullscreen: bool) =
+  proc setupWindow(this: var Window, fullscreen, frameless: bool) =
     this.xwin.input = [
       ExposureMask, KeyPressMask, KeyReleaseMask, PointerMotionMask, ButtonPressMask,
       ButtonReleaseMask, StructureNotifyMask, EnterWindowMask, LeaveWindowMask, FocusChangeMask
@@ -477,26 +522,44 @@ when defined(linux):
       this.xinContext = this.xinMethod.XCreateIC(
         XNClientWindow, this.xwin, XNFocusWindow, this.xwin, XnInputStyle, XimPreeditNothing or XimStatusNothing, nil
       )
+    
+    this.frameless = frameless
 
-  proc initWindow(this: var Window; w, h: int; screen: Screen, fullscreen: bool) =
+  proc initWindow(this: var Window; w, h: int; screen: Screen, fullscreen, frameless, transparent: bool) =
     this.basicInitWindow w, h, screen
-    this.xwin = newSimpleWindow(defaultRootWindow(), 0, 0, w, h, 0, 0, this.xscr.blackPixel)
-    this.setupWindow fullscreen
+    
+    if transparent:
+      let root = defaultRootWindow()
+
+      var vi: XVisualInfo
+      discard display.XMatchVisualInfo(this.xscr, 32, TrueColor, vi.addr)
+
+      let cmap = display.XCreateColormap(root, vi.visual, AllocNone)
+      var swa = XSetWindowAttributes(colormap: cmap)
+
+      this.xwin = x.newWindow(
+        root, 0, 0, w, h, 0, vi.depth, InputOutput, vi.visual,
+        CwColormap or CwEventMask or CwBorderPixel or CwBackPixel, swa
+      )
+      this.bgraPixels = some newSeq[tuple[b, g, r, a: uint8]](w * h)
+    else:
+      this.xwin = newSimpleWindow(defaultRootWindow(), 0, 0, w, h, 0, 0, this.xscr.blackPixel)
+
+    this.setupWindow fullscreen, frameless
 
     this.waitForReDraw = true
     this.gc = this.xwin.newGC(GCForeground or GCBackground)
 
-  proc initOpenglWindow(this: var OpenglWindow; w, h: int; screen: Screen, fullscreen: bool) =
+  proc initOpenglWindow(this: var OpenglWindow; w, h: int; screen: Screen, fullscreen, frameless, transparent: bool) =
     this.basicInitWindow w, h, screen
 
     let root = defaultRootWindow()
     let vi = glxChooseVisual(0, [GlxRgba, GlxDepthSize, 24, GlxDoublebuffer])
     let cmap = display.XCreateColormap(root, vi.visual, AllocNone)
-    var swa: XSetWindowAttributes
-    swa.colormap = cmap
+    var swa = XSetWindowAttributes(colormap: cmap)
     this.xwin = x.newWindow(root, 0, 0, w, h, 0, vi.depth, InputOutput, vi.visual, CwColormap or CwEventMask, swa)
 
-    this.setupWindow fullscreen
+    this.setupWindow fullscreen, frameless
 
     this.ctx = newGlxContext(vi)
     this.xwin.makeCurrent this.ctx
@@ -520,6 +583,7 @@ when defined(linux):
   proc updateSize(this: var Window, v: tuple[x, y: int]) =
     this.m_size = v
     this.waitForReDraw = true
+    if this.isTransparent: this.bgraPixels = some newSeq[tuple[b, g, r, a: uint8]](v.x * v.y)
 
   proc fullscreen*(this: Window): bool = this.m_isFullscreen
     ## get real fullscreen state of window
@@ -610,7 +674,12 @@ when defined(linux):
 
   proc drawImage*(this: var Window, pixels: openarray[ColorRGBX]) =
     doassert pixels.len == this.size.x * this.size.y, "pixels count must be width * height"
-    var ximg = asXImage(pixels, this.size.x, this.size.y)
+    var ximg =
+      if this.isTransparent:
+        for i, v in this.bgraPixels.get.mpairs: v = (pixels[i].b, pixels[i].g, pixels[i].r, pixels[i].a)
+        asXImageTransparent(this.bgraPixels.get, this.size.x, this.size.y)
+      else:
+        asXImage(pixels, this.size.x, this.size.y)
     this.gc.put ximg.addr
 
   proc drawImage*(this: var OpenglWindow, pixels: openarray[ColorRGBX]) =
@@ -887,7 +956,7 @@ elif defined(windows):
     this.handle.MoveWindow(rcWind.left, rcWind.top, (size.x + borderx).int32, (size.y + bordery).int32, True)
     this.updateSize()
 
-  proc initWindow(this: var Window; w, h: int; screen: Screen, fullscreen: bool, class = wClassName) =
+  proc initWindow(this: var Window; w, h: int; screen: Screen, fullscreen, frameless, transparent: bool, class = wClassName) =
     this.handle = CreateWindow(class, "", WsOverlappedWindow, CwUseDefault, CwUseDefault, w.int32, h.int32, 0, 0, hInstance, nil)
     this.m_hasFocus = true
     this.curCursor = arrow
@@ -899,7 +968,7 @@ elif defined(windows):
     
     this.fullscreen = fullscreen
 
-  proc initOpenglWindow(this: var OpenglWindow; w, h: int; screen: Screen, fullscreen: bool) =
+  proc initOpenglWindow(this: var OpenglWindow; w, h: int; screen: Screen, fullscreen, frameless, transparent: bool) =
     this.initWindow w, h, screen, fullscreen, woClassName
     
     this.waitForReDraw = true
@@ -1170,10 +1239,28 @@ else:
   {.error: "current OS is not supported".}
 
 
-proc newWindow*(w = 1280, h = 720, title = "", screen = screen(), fullscreen = false): Window =
-  result.initWindow(w, h, screen, fullscreen)
+proc newWindow*(
+  w = 1280,
+  h = 720,
+  title = "",
+  screen = screen(),
+  fullscreen = false,
+  frameless = false,
+  transparent = false
+  ): Window =
+
+  result.initWindow(w, h, screen, fullscreen, frameless, transparent)
   result.title = title
 
-proc newOpenglWindow*(w = 1280, h = 720, title = "", screen = screen(), fullscreen = false): OpenglWindow =
-  result.initOpenglWindow(w, h, screen, fullscreen)
+proc newOpenglWindow*(
+  w = 1280,
+  h = 720,
+  title = "",
+  screen = screen(),
+  fullscreen = false,
+  frameless = false,
+  transparent = false
+  ): OpenglWindow =
+  
+  result.initOpenglWindow(w, h, screen, fullscreen, frameless, transparent)
   result.title = title

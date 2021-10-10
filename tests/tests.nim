@@ -117,7 +117,7 @@ test "OpenGL":
       glColor3f g - 1, g - 1, 1 * g
       glVertex2f 0, 30
       glEnd()
-    keyup esc:
+    keyup(esc) | doubleClick:
       close window
     keyup esc: close window
     keyup f1:  window.fullscreen = not window.fullscreen
@@ -131,24 +131,44 @@ test "OpenGL":
 
 
 test "pixie":
-  var image: Image
-  run newWindow(title="pixie example"):
+  var
+    image: Image
+    shadowImage: Image
+  
+  run newWindow(title="pixie example", frameless=true, transparent=true):
     resize as (w, h):
       image = newImage(w, h)
-    render:
-      image.fill(rgba(255, 255, 255, 255))
 
       let ctx = image.newContext
-      ctx.fillStyle = rgba(50, 50, 255, 255)
+      ctx.fillStyle = rgba(255, 255, 255, 255)
+      ctx.fillRoundedRect(rect(vec2(10, 10), vec2(float image.width - 20, float image.height - 20)), 15.0)
+      shadowImage = image.shadow(
+        offset = vec2(0, 0),
+        spread = 2,
+        blur = 10,
+        color = rgba(0, 0, 0, 128)
+      )
+      
+    render:
+      image.fill(rgba(255, 255, 255, 0))
+
+      image.draw shadowImage
+
+      let ctx = image.newContext
+
+      ctx.fillStyle = rgba(255, 255, 255, 255)
+      ctx.fillRoundedRect(rect(vec2(10, 10), vec2(float image.width - 20, float image.height - 20)), 15.0)
 
       let
         wh = vec2(250, 250)
         pos = vec2(image.width.float, image.height.float) / 2 - wh / 2
-      
+
+      ctx.fillStyle = rgba(50, 50, 255, 255)
       ctx.fillRoundedRect(rect(pos, wh), 25.0)
       
-      window.drawImage(image.data)
-    keyup esc:
+      window.drawImage image.data
+
+    keyup(esc) | doubleClick:
       close window
 
 when defined(wayland):
