@@ -970,7 +970,7 @@ elif defined(windows):
     this.fullscreen = fullscreen
 
   proc initOpenglWindow(this: var OpenglWindow; w, h: int; screen: Screen, fullscreen, frameless, transparent: bool) =
-    this.initWindow w, h, screen, fullscreen, woClassName
+    this.initWindow w, h, screen, fullscreen, frameless, transparent, woClassName
     
     this.waitForReDraw = true
 
@@ -992,9 +992,9 @@ elif defined(windows):
   proc `title=`*(this: Window, title: string) =
     this.handle.SetWindowText(title)
 
-  proc opened*(a: Window): bool = a.m_isOpen
-  proc close*(this: var Window) =
-    if this.m_isOpen: this.handle.SendMessage(WmClose, 0, 0)
+  proc opened*(window: Window): bool = not window.closed
+  proc close*(window: var Window) =
+    if not window.closed: window.handle.SendMessage(WmClose, 0, 0)
 
   proc redraw*(this: var Window) =
     var cr = this.handle.clientRect
@@ -1093,11 +1093,11 @@ elif defined(windows):
 
   proc run*(this: var Window) =
     ## run main loop of window
-    handle.ShowWindow(SwShow)
-    this.pushEvent this.onResize, ((0, 0), this.m_size, true)
+    this.handle.ShowWindow(SwShow)
+    this.pushEvent onResize, ((0, 0), this.m_size, true)
     this.waitForRedraw = true
 
-    handle.UpdateWindow()
+    this.handle.UpdateWindow()
 
     var lastTickTime = getTime()
     var msg: Msg
@@ -1114,13 +1114,10 @@ elif defined(windows):
       if not catched: sleep(2)
 
       let nows = getTime()
-      pushEvent this.onTick, (this.mouse, this.keyboard, nows - lastTickTime)
+      this.pushEvent onTick, (this.mouse, this.keyboard, nows - lastTickTime)
       lastTickTime = nows
 
   proc poolEvent(a: var SomeWindow, message: Uint, wParam: WParam, lParam: LParam): LResult =
-    template pushEvent(event, args): untyped =
-      a.pushEvent(event, args)
-
     template button: MouseButton =
       case message
       of WM_lbuttonDown, WM_lbuttonUp, WM_lbuttonDblclk: MouseButton.left
@@ -1138,7 +1135,7 @@ elif defined(windows):
 
     case message
     of WmPaint:
-      let rect = handle.clientRect
+      let rect = a.handle.clientRect
       if rect.right != a.m_size.x or rect.bottom != a.m_size.y:
         a.updateSize()
         a.waitForRedraw = true
@@ -1147,94 +1144,94 @@ elif defined(windows):
         a.displayImpl()
         a.waitForRedraw = false
         when a is OpenglWindow:
-          hdc.SwapBuffers
+          a.hdc.SwapBuffers
 
     of WmDestroy:
-      pushEvent onClose, ()
-      m_isOpen = false
+      a.pushEvent onClose, ()
+      a.closed = true
       PostQuitMessage(0)
 
     of WmMouseMove:
       let opos = a.mouse.pos
       a.mouse.pos = (lParam.GetX_LParam, lParam.GetY_LParam)
-      for v in clicking.mitems: v = false
-      pushEvent onMouseMove, (a.mouse, opos, a.mouse.pos)
+      for v in a.clicking.mitems: v = false
+      a.pushEvent onMouseMove, (a.mouse, opos, a.mouse.pos)
 
     of WmMouseLeave:
       let npos = (lParam.GetX_LParam, lParam.GetY_LParam)
-      pushEvent onMouseLeave, (a.mouse, a.mouse.pos, npos)
-      handle.trackMouseEvent(TmeHover)
+      a.pushEvent onMouseLeave, (a.mouse, a.mouse.pos, npos)
+      a.handle.trackMouseEvent(TmeHover)
 
     of WmMouseHover:
       let npos = (lParam.GetX_LParam, lParam.GetY_LParam)
-      pushEvent onMouseEnter, (a.mouse, a.mouse.pos, npos)
-      handle.trackMouseEvent(TmeLeave)
+      a.pushEvent onMouseEnter, (a.mouse, a.mouse.pos, npos)
+      a.handle.trackMouseEvent(TmeLeave)
 
     of WmMouseWheel:
       let delta = if wParam.GetWheelDeltaWParam > 0: -1.0 else: 1.0
-      pushEvent onScroll, (a.mouse, delta)
+      a.pushEvent onScroll, (a.mouse, delta)
 
     of WmSetFocus:
-      m_hasFocus = true
-      pushEvent onFocusChanged, (m_hasFocus)
+      a.m_hasFocus = true
+      a.pushEvent onFocusChanged, (a.m_hasFocus)
 
       let keys = getKeyboardState().mapit(wkeyToKey(it))
       for k in keys: # нажать клавиши, нажатые в системе
         if k == Key.unknown: continue
         a.keyboard.pressed.incl k
-        pushEvent onKeydown, (a.keyboard, k, false, false)
+        a.pushEvent onKeydown, (a.keyboard, k, false, false)
 
     of WmKillFocus:
-      m_hasFocus = false
-      pushEvent onFocusChanged, (m_hasFocus)
+      a.m_hasFocus = false
+      a.pushEvent onFocusChanged, (a.m_hasFocus)
       let pressed = a.keyboard.pressed
       for key in pressed: # отпустить все клавиши
         a.keyboard.pressed.excl key
-        pushEvent onKeyup, (a.keyboard, key, false, false)
+        a.pushEvent onKeyup, (a.keyboard, key, false, false)
 
     of WmLButtonDown, WmRButtonDown, WmMButtonDown, WmXButtonDown:
-      handle.SetCapture()
+      a.handle.SetCapture()
       a.mouse.pressed[button] = true
-      clicking[button] = true
-      pushEvent onMouseDown, (a.mouse, button, true)
+      a.clicking[button] = true
+      a.pushEvent onMouseDown, (a.mouse, button, true)
 
     of WmLButtonUp, WmRButtonUp, WmMButtonUp, WmXButtonUp:
       ReleaseCapture()
       a.mouse.pressed[button] = false
-      if clicking[button]: pushEvent onClick, (a.mouse, button, a.mouse.pos, false)
-      clicking[button] = false
-      pushEvent onMouseDown, (a.mouse, button, false)
+      if a.clicking[button]: a.pushEvent onClick, (a.mouse, button, a.mouse.pos, false)
+      a.clicking[button] = false
+      a.pushEvent onMouseDown, (a.mouse, button, false)
 
     of WmLButtonDblclk, WmRButtonDblclk, WmMButtonDblclk, WmXButtonDblclk:
-      pushEvent onDoubleClick, (a.mouse, button, a.mouse.pos, true)
+      a.pushEvent onDoubleClick, (a.mouse, button, a.mouse.pos, true)
 
     of WmKeyDown, WmSysKeyDown:
       let key = wkeyToKey(wParam, lParam)
-      if key == Key.unknown: break
-      let repeated = key in a.keyboard.pressed
-      a.keyboard.pressed.incl key
-      pushEvent onKeydown, (a.keyboard, key, true, repeated)
+      if key != Key.unknown:
+        let repeated = key in a.keyboard.pressed
+        a.keyboard.pressed.incl key
+        a.pushEvent onKeydown, (a.keyboard, key, true, repeated)
 
     of WmKeyUp, WmSysKeyUp:
       let key = wkeyToKey(wParam, lParam)
-      if key == Key.unknown: break
-      let repeated = key notin a.keyboard.pressed
-      a.keyboard.pressed.excl key
-      pushEvent onKeyup, (a.keyboard, key, false, repeated)
+      if key != Key.unknown:
+        let repeated = key notin a.keyboard.pressed
+        a.keyboard.pressed.excl key
+        a.pushEvent onKeyup, (a.keyboard, key, false, repeated)
 
     of WmChar:
       if (a.keyboard.pressed * {lcontrol, rcontrol, lalt, ralt}).len < 0:
         let s = %$[wParam.WChar]
         if s.len > 0 and s notin ["\u001B"]:
-          pushEvent onTextInput, (a.keyboard, s)
+          a.pushEvent onTextInput, (a.keyboard, s)
 
     of WmSetCursor:
       if lParam.LoWord == HtClient:
-        SetCursor wcursor
+        SetCursor a.wcursor
         return 1
-      return handle.DefWindowProc(message, wParam, lParam)
+      return a.handle.DefWindowProc(message, wParam, lParam)
 
-    else: return handle.DefWindowProc(message, wParam, lParam)
+    else: return a.handle.DefWindowProc(message, wParam, lParam)
 
 else:
   {.error: "current OS is not supported".}
