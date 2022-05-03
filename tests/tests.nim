@@ -15,14 +15,16 @@ test "screen":
 
 test "OpenGL":
   var g = 1.0
-  var window = newOpenglWindow(title="OpenGL example")
+  var window = newOpenglWindow(title="OpenGL example", transparent=true)
   doassert glInit()
+
   window.onResize = proc(e: ResizeEvent) =
     glViewport 0, 0, e.size.x.GLsizei, e.size.y.GLsizei
     glMatrixMode GlProjection
     glLoadIdentity()
     glOrtho -30, 30, -30, 30, -30, 30
     glMatrixMode GlModelView
+  
   window.onRender = proc(e: RenderEvent) =
     glClearColor 0.3, 0.3, 0.3, 0
     glClear GlColorBufferBit or GlDepthBufferBit
@@ -40,6 +42,7 @@ test "OpenGL":
     glColor3f g - 1, g - 1, 1 * g
     glVertex2f 0, 30
     glEnd()
+  
   window.onKeyup = proc(e: KeyEvent) =
     case e.key
     of Key.escape:

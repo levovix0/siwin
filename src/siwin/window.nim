@@ -552,6 +552,7 @@ when defined(linux):
   proc initOpenglWindow(this: var OpenglWindow; w, h: int; screen: Screen, fullscreen, frameless, transparent: bool) =
     this.basicInitWindow w, h, screen
 
+    # todo: optional transparency
     let root = defaultRootWindow()
     var vi: XVisualInfo
     discard display.XMatchVisualInfo(this.xscr, 32, TrueColor, vi.addr)
@@ -958,7 +959,18 @@ elif defined(windows):
     this.updateSize()
 
   proc initWindow(this: var Window; w, h: int; screen: Screen, fullscreen, frameless, transparent: bool, class = wClassName) =
-    this.handle = CreateWindow(class, "", WsOverlappedWindow, CwUseDefault, CwUseDefault, w.int32, h.int32, 0, 0, hInstance, nil)
+    this.handle = CreateWindow(
+      class,
+      "",
+      if frameless: WsPopup or WsSysMenu
+      else: WsOverlappedWindow,
+      CwUseDefault,
+      CwUseDefault,
+      w.int32, h.int32,
+      0, 0,
+      hInstance,
+      nil
+    )
     this.m_hasFocus = true
     this.curCursor = arrow
     this.wcursor = LoadCursor(0, IdcArrow)

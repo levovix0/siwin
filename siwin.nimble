@@ -1,6 +1,6 @@
-version       = "0.4"
+version       = "0.5"
 author        = "levovix0"
-description   = "Nim Simple Window Maker"
+description   = "Simple Window Maker"
 license       = "MIT"
 srcDir        = "src"
 
