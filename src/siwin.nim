@@ -1,3 +1,3 @@
-import siwin/[window, runmacro, clipboard]
-export window, runmacro, clipboard
+import siwin/[window, clipboard]
+export window, clipboard
 

@@ -1,4 +1,4 @@
-import os, strutils, strformat, tables, sugar, hashes
+import os, strutils, strformat, tables, hashes
 import x11/[xlib, xutil, xatom, xshm, cursorfont, keysym]
 import x11/x except Window, Pixmap, Cursor
 export xlib, xutil, xatom, xshm, cursorfont, keysym
@@ -84,7 +84,7 @@ proc geometry*(a: Window): tuple[root: Window; x, y: int; w, h: int; borderW: in
   discard display.XGetGeometry(a, root.addr, x.addr, y.addr, w.addr, h.addr, borderW.addr, depth.addr)
   (root, x.int, y.int, w.int, h.int, borderW.int, depth.int)
 proc size*(a: tuple[root: Window; x, y: int; w, h: int; borderW: int, depth: int]): tuple[x, y: int] = (a.w, a.h)
-proc position*(a: tuple[root: Window; x, y: int; w, h: int; borderW: int, depth: int]): tuple[x, y: int] = (a.x, a.y)
+proc pos*(a: tuple[root: Window; x, y: int; w, h: int; borderW: int, depth: int]): tuple[x, y: int] = (a.x, a.y)
 
 proc cursor*(): tuple[x, y: int; root, child: Window; winX, winY: int; mask: uint; exists: bool] =
   ## find cursor and return where it is
@@ -96,7 +96,7 @@ proc cursor*(): tuple[x, y: int; root, child: Window; winX, winY: int; mask: uin
   for i in 0..display.ScreenCount:
     if display.XQueryPointer(display.XRootWindow(i), root.addr, child.addr, x.addr, y.addr, winX.addr, winY.addr, mask.addr) != 0:
       return (x.int, y.int, root, child, winX.int, winY.int, mask.uint, true)
-proc position*(a: tuple[x, y: int; root, child: Window; winX, winY: int; mask: uint; exists: bool]): tuple[x, y: int] = (a.x, a.y)
+proc pos*(a: tuple[x, y: int; root, child: Window; winX, winY: int; mask: uint; exists: bool]): tuple[x, y: int] = (a.x, a.y)
 
 proc queryKeyboardState*(): set[0..255] =
   var r: array[32, char]
@@ -168,8 +168,8 @@ proc `netWmIconName=`*(a: Window, v: string) =
   discard display.XChangeProperty(a, atom"_NET_WM_ICON_NAME", atom"UTF8_STRING", 8, PropModeReplace, cast[PCUchar](v.dataAddr), v.len.cint)
 
 
-proc `position=`*(a: Window, position: tuple[x, y: int]) =
-  discard display.XMoveWindow(a, position.x.cint, position.y.cint)
+proc `pos=`*(a: Window, v: tuple[x, y: int]) =
+  discard display.XMoveWindow(a, v.x.cint, v.y.cint)
 proc `size=`*(a: Window, size: tuple[x, y: int]) =
   discard display.XResizeWindow(a, size.x.cuint, size.y.cuint)
 

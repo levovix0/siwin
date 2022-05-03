@@ -3,7 +3,6 @@ import chroma
 import image, utils
 
 when defined(linux):
-  import options
   import libx11 as x, libglx
 
 when defined(windows):
@@ -16,7 +15,7 @@ type
     left right middle forward backward
   AllMouseButtons* = MouseButton.left..MouseButton.backward
   Mouse* = tuple
-    position: tuple[x, y: int]
+    pos: tuple[x, y: int]
     pressed: array[AllMouseButtons, bool]
 
   Key* {.pure.} = enum
@@ -136,11 +135,11 @@ type
     oldSize, size: tuple[x, y: int]
     initial: bool # is this initial resizing
   WindowMoveEvent* = tuple
-    oldPosition, position: tuple[x, y: int]
+    oldPos, pos: tuple[x, y: int]
 
   MouseMoveEvent* = tuple
     mouse: Mouse
-    oldPosition, position: tuple[x, y: int]
+    oldPos, pos: tuple[x, y: int]
   MouseButtonEvent* = tuple
     mouse: Mouse
     button: MouseButton
@@ -148,7 +147,7 @@ type
   ClickEvent* = tuple
     mouse: Mouse
     button: MouseButton
-    position: tuple[x, y: int]
+    pos: tuple[x, y: int]
     doubleClick: bool
   ScrollEvent* = tuple
     mouse: Mouse
@@ -484,14 +483,14 @@ when defined(linux):
       var hints = MWMHints(flags: culong (if v: 1 else: 0) shl 1)
       discard display.XChangeProperty(
         this.xwin, framelessAtom, framelessAtom, 32, PropModeReplace,
-        cast[ptr cuchar](hints.addr), MWMHints.sizeof div 4
+        cast[cstring](hints.addr), MWMHints.sizeof div 4
       )
 
     of WmForFramelessKind.kwm, WmForFramelessKind.other:
       var hints: clong = if v: 0 else: 1
       discard display.XChangeProperty(
         this.xwin, framelessAtom, framelessAtom, 32, PropModeReplace,
-        cast[ptr cuchar](hints.addr), clong.sizeof div 4
+        cast[cstring](hints.addr), clong.sizeof div 4
       )
 
     else: discard display.XSetTransientForHint(this.xwin, display.RootWindow(this.xscr))
@@ -554,14 +553,16 @@ when defined(linux):
     this.basicInitWindow w, h, screen
 
     let root = defaultRootWindow()
-    let vi = glxChooseVisual(0, [GlxRgba, GlxDepthSize, 24, GlxDoublebuffer])
+    var vi: XVisualInfo
+    discard display.XMatchVisualInfo(this.xscr, 32, TrueColor, vi.addr)
+    # let vi = glxChooseVisual(0, [GlxRgba, GlxDepthSize, 24, GlxDoublebuffer])
     let cmap = display.XCreateColormap(root, vi.visual, AllocNone)
     var swa = XSetWindowAttributes(colormap: cmap)
-    this.xwin = x.newWindow(root, 0, 0, w, h, 0, vi.depth, InputOutput, vi.visual, CwColormap or CwEventMask, swa)
+    this.xwin = x.newWindow(root, 0, 0, w, h, 0, vi.depth, InputOutput, vi.visual, CwColormap or CwEventMask or CwBorderPixel or CwBackPixel, swa)
 
     this.setupWindow fullscreen, frameless
 
-    this.ctx = newGlxContext(vi)
+    this.ctx = newGlxContext(vi.addr)
     this.xwin.makeCurrent this.ctx
 
   proc `title=`*(this: Window, title: string) =
@@ -598,12 +599,12 @@ when defined(linux):
       SubstructureNotifyMask or SubstructureRedirectMask
     )
 
-  proc position*(this: Window): tuple[x, y: int] = this.xwin.geometry.position
-  proc `position=`*(this: var Window, p: tuple[x, y: int]) =
+  proc pos*(this: Window): tuple[x, y: int] = this.xwin.geometry.pos
+  proc `pos=`*(this: var Window, p: tuple[x, y: int]) =
     ## move window
     ## do nothing if window is fullscreen
     if this.m_isFullscreen: return
-    this.xwin.position = p
+    this.xwin.pos = p
     this.m_pos = p
 
   proc size*(this: Window): tuple[x, y: int] = this.m_size
@@ -710,9 +711,9 @@ when defined(linux):
       of 5: 1
       else: 0
 
-    this.m_pos = this.xwin.geometry.position
-    this.mouse.position = x.cursor().position
-    this.mouse.position = (this.mouse.position.x - this.m_pos.x, this.mouse.position.y - this.m_pos.y)
+    this.m_pos = this.xwin.geometry.pos
+    this.mouse.pos = x.cursor().pos
+    this.mouse.pos = (this.mouse.pos.x - this.m_pos.x, this.mouse.pos.y - this.m_pos.y)
     
     this.onResize.invoke ((0, 0), this.m_size, true)
 
@@ -746,8 +747,8 @@ when defined(linux):
           if ev.xconfigure.x.int != this.m_pos.x or ev.xconfigure.y.int != this.m_pos.y:
             let oldPos = this.m_pos
             this.m_pos = (ev.xconfigure.x.int, ev.xconfigure.y.int)
-            this.mouse.position = x.cursor().position
-            this.mouse.position = (this.mouse.position.x - this.m_pos.x, this.mouse.position.y - this.m_pos.y)
+            this.mouse.pos = x.cursor().pos
+            this.mouse.pos = (this.mouse.pos.x - this.m_pos.x, this.mouse.pos.y - this.m_pos.y)
             this.onWindowMove.invoke (oldPos, this.m_pos)
 
           let state = this.xwin.netWmState
@@ -759,10 +760,10 @@ when defined(linux):
               this.requestedSize = none tuple[x, y: int]
 
         of MotionNotify:
-          let oldPos = this.mouse.position
-          this.mouse.position = (ev.xmotion.x.int, ev.xmotion.y.int)
+          let oldPos = this.mouse.pos
+          this.mouse.pos = (ev.xmotion.x.int, ev.xmotion.y.int)
           for v in this.clicking.mitems: v = false
-          this.onMouseMove.invoke (this.mouse, oldPos, this.mouse.position)
+          this.onMouseMove.invoke (this.mouse, oldPos, this.mouse.pos)
 
         of ButtonPress:
           if not isScroll:
@@ -776,24 +777,24 @@ when defined(linux):
             this.mouse.pressed[button] = false
 
             if this.clicking[button]:
-              if (nows - lastClickTime).inMilliseconds < 200: this.onDoubleClick.invoke (this.mouse, button, this.mouse.position, true)
-              else: this.onClick.invoke (this.mouse, button, this.mouse.position, false)
+              if (nows - lastClickTime).inMilliseconds < 200: this.onDoubleClick.invoke (this.mouse, button, this.mouse.pos, true)
+              else: this.onClick.invoke (this.mouse, button, this.mouse.pos, false)
 
             this.mouse.pressed[button] = false
             lastClickTime = nows
             this.onMouseUp.invoke (this.mouse, button, false)
 
         of LeaveNotify:
-          this.onMouseLeave.invoke (this.mouse, this.mouse.position, (ev.xcrossing.x.int, ev.xcrossing.y.int))
+          this.onMouseLeave.invoke (this.mouse, this.mouse.pos, (ev.xcrossing.x.int, ev.xcrossing.y.int))
         of EnterNotify:
-          this.onMouseEnter.invoke (this.mouse, this.mouse.position, (ev.xcrossing.x.int, ev.xcrossing.y.int))
+          this.onMouseEnter.invoke (this.mouse, this.mouse.pos, (ev.xcrossing.x.int, ev.xcrossing.y.int))
 
         of FocusIn:
           this.m_hasFocus = true
           if this.xinContext != nil: XSetICFocus this.xinContext
           this.onFocusChanged.invoke (true)
           
-          let keys = queryKeyboardState().mapit(xkeyToKey display.XKeycodeToKeysym(it.cuchar, 0))
+          let keys = queryKeyboardState().mapit(xkeyToKey display.XKeycodeToKeysym(it.char, 0))
           for k in keys: # нажать клавиши, нажатые в системе
             if k == Key.unknown: continue
             this.keyboard.pressed.incl k
@@ -1001,11 +1002,11 @@ elif defined(windows):
   
   proc redraw*(a: var OpenglWindow) = a.waitForReDraw = true
 
-  proc position*(this: Window): tuple[x, y: int] =
+  proc pos*(this: Window): tuple[x, y: int] =
     let r = this.handle.clientRect
     (r.left.int, r.top.int)
   
-  proc `position=`*(this: var Window, v: tuple[x, y: int]) =
+  proc `pos=`*(this: var Window, v: tuple[x, y: int]) =
     if this.m_isFullscreen: return
     this.handle.SetWindowPos(0, v.x.int32, v.y.int32, 0, 0, SwpNoSize)
 
@@ -1154,19 +1155,19 @@ elif defined(windows):
       PostQuitMessage(0)
 
     of WmMouseMove:
-      let opos = a.mouse.position
-      a.mouse.position = (lParam.GetX_LParam, lParam.GetY_LParam)
+      let opos = a.mouse.pos
+      a.mouse.pos = (lParam.GetX_LParam, lParam.GetY_LParam)
       for v in clicking.mitems: v = false
-      pushEvent onMouseMove, (a.mouse, opos, a.mouse.position)
+      pushEvent onMouseMove, (a.mouse, opos, a.mouse.pos)
 
     of WmMouseLeave:
       let npos = (lParam.GetX_LParam, lParam.GetY_LParam)
-      pushEvent onMouseLeave, (a.mouse, a.mouse.position, npos)
+      pushEvent onMouseLeave, (a.mouse, a.mouse.pos, npos)
       handle.trackMouseEvent(TmeHover)
 
     of WmMouseHover:
       let npos = (lParam.GetX_LParam, lParam.GetY_LParam)
-      pushEvent onMouseEnter, (a.mouse, a.mouse.position, npos)
+      pushEvent onMouseEnter, (a.mouse, a.mouse.pos, npos)
       handle.trackMouseEvent(TmeLeave)
 
     of WmMouseWheel:
@@ -1200,12 +1201,12 @@ elif defined(windows):
     of WmLButtonUp, WmRButtonUp, WmMButtonUp, WmXButtonUp:
       ReleaseCapture()
       a.mouse.pressed[button] = false
-      if clicking[button]: pushEvent onClick, (a.mouse, button, a.mouse.position, false)
+      if clicking[button]: pushEvent onClick, (a.mouse, button, a.mouse.pos, false)
       clicking[button] = false
       pushEvent onMouseDown, (a.mouse, button, false)
 
     of WmLButtonDblclk, WmRButtonDblclk, WmMButtonDblclk, WmXButtonDblclk:
-      pushEvent onDoubleClick, (a.mouse, button, a.mouse.position, true)
+      pushEvent onDoubleClick, (a.mouse, button, a.mouse.pos, true)
 
     of WmKeyDown, WmSysKeyDown:
       let key = wkeyToKey(wParam, lParam)
