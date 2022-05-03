@@ -93,6 +93,7 @@ type
     
     waitForReDraw: bool
     curCursor: Cursor
+    transparent: bool
 
     when defined(linux):
       xscr: cint
@@ -467,8 +468,6 @@ when defined(linux):
     0.makeCurrent nil.GlxContext
     destroy this.ctx
     `=destroy` this.Window
-
-  proc isTransparent(this: Window): bool = not this.bgraPixels.isNone
   
   proc `frameless=`*(this: var Window, v: bool) =
     case wmForFramelessKind
@@ -528,6 +527,7 @@ when defined(linux):
     this.basicInitWindow w, h, screen
     
     if transparent:
+      this.transparent = true
       let root = defaultRootWindow()
 
       var vi: XVisualInfo
@@ -585,7 +585,7 @@ when defined(linux):
   proc updateSize(this: var Window, v: tuple[x, y: int]) =
     this.m_size = v
     this.waitForReDraw = true
-    if this.isTransparent: this.bgraPixels = some newSeq[tuple[b, g, r, a: uint8]](v.x * v.y)
+    if this.transparent: this.bgraPixels = some newSeq[tuple[b, g, r, a: uint8]](v.x * v.y)
 
   proc fullscreen*(this: Window): bool = this.m_isFullscreen
     ## get real fullscreen state of window
@@ -677,7 +677,7 @@ when defined(linux):
   proc drawImage*(this: var Window, pixels: openarray[ColorRGBX]) =
     doassert pixels.len == this.size.x * this.size.y, "pixels count must be width * height"
     var ximg =
-      if this.isTransparent:
+      if this.transparent:
         for i, v in this.bgraPixels.get.mpairs: v = (pixels[i].b, pixels[i].g, pixels[i].r, pixels[i].a)
         asXImageTransparent(this.bgraPixels.get, this.size.x, this.size.y)
       else:
@@ -981,6 +981,19 @@ elif defined(windows):
     
     this.fullscreen = fullscreen
 
+    if transparent:
+      this.transparent = true
+
+      let region = CreateRectRgn(0, 0, -1, -1)
+      defer: discard DeleteObject(region)
+
+      var bb = DWM_BLURBEHIND()
+      bb.dwFlags = DWM_BB_ENABLE or DWM_BB_BLURREGION
+      bb.hRgnBlur = region
+      bb.fEnable = TRUE
+
+      this.handle.DwmEnableBlurBehindWindow(bb.addr)
+
   proc initOpenglWindow(this: var OpenglWindow; w, h: int; screen: Screen, fullscreen, frameless, transparent: bool) =
     this.initWindow w, h, screen, fullscreen, frameless, transparent, woClassName
     
@@ -1087,7 +1100,7 @@ elif defined(windows):
     
     let rect = this.handle.clientRect
     for i, c in pixels:
-      this.buffer.pixels[i] = (c.b, c.g, c.r, 0'u8)
+      this.buffer.pixels[i] = (c.b, c.g, c.r, c.a)
       
     this.hdc.BitBlt(0, 0, rect.right, rect.bottom, this.buffer.hdc, 0, 0, SrcCopy)
 
