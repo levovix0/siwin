@@ -252,7 +252,7 @@ when defined(linux):
     of Xk_b:            Key.b
     of Xk_c:            Key.c
     of Xk_d:            Key.d
-    of Xk_e:            Key.r
+    of Xk_e:            Key.e
     of Xk_f:            Key.f
     of Xk_g:            Key.g
     of Xk_h:            Key.h
