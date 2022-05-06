@@ -531,7 +531,7 @@ when defined(linux):
       let root = defaultRootWindow()
 
       var vi: XVisualInfo
-      discard display.XMatchVisualInfo(this.xscr, 32, TrueColor, vi.addr)
+      discard display.XMatchVisualInfo(this.xscr, if transparent: 32 else: 24, TrueColor, vi.addr)
 
       let cmap = display.XCreateColormap(root, vi.visual, AllocNone)
       var swa = XSetWindowAttributes(colormap: cmap)
@@ -552,10 +552,9 @@ when defined(linux):
   proc initOpenglWindow(this: var OpenglWindow; w, h: int; screen: Screen, fullscreen, frameless, transparent: bool) =
     this.basicInitWindow w, h, screen
 
-    # todo: optional transparency
     let root = defaultRootWindow()
     var vi: XVisualInfo
-    discard display.XMatchVisualInfo(this.xscr, 32, TrueColor, vi.addr)
+    discard display.XMatchVisualInfo(this.xscr, if transparent: 32 else: 24, TrueColor, vi.addr)
     # let vi = glxChooseVisual(0, [GlxRgba, GlxDepthSize, 24, GlxDoublebuffer])
     let cmap = display.XCreateColormap(root, vi.visual, AllocNone)
     var swa = XSetWindowAttributes(colormap: cmap)
@@ -796,7 +795,7 @@ when defined(linux):
           this.onFocusChanged.invoke (true)
           
           let keys = queryKeyboardState().mapit(xkeyToKey display.XKeycodeToKeysym(it.char, 0))
-          for k in keys: # нажать клавиши, нажатые в системе
+          for k in keys: # press pressed in system keys
             if k == Key.unknown: continue
             this.keyboard.pressed.incl k
             this.onKeydown.invoke (this.keyboard, k, false, false)
@@ -806,7 +805,7 @@ when defined(linux):
           this.onFocusChanged.invoke (false)
 
           let pressed = this.keyboard.pressed
-          for k in pressed: # отпустить все клавиши
+          for k in pressed: # release all keys
             this.keyboard.pressed.excl k
             this.onKeyup.invoke (this.keyboard, k, false, false)
 
@@ -1201,7 +1200,7 @@ elif defined(windows):
       a.pushEvent onFocusChanged, (a.m_hasFocus)
 
       let keys = getKeyboardState().mapit(wkeyToKey(it))
-      for k in keys: # нажать клавиши, нажатые в системе
+      for k in keys: # press pressed in system keys
         if k == Key.unknown: continue
         a.keyboard.pressed.incl k
         a.pushEvent onKeydown, (a.keyboard, k, false, false)
@@ -1210,7 +1209,7 @@ elif defined(windows):
       a.m_hasFocus = false
       a.pushEvent onFocusChanged, (a.m_hasFocus)
       let pressed = a.keyboard.pressed
-      for key in pressed: # отпустить все клавиши
+      for key in pressed: # release all keys
         a.keyboard.pressed.excl key
         a.pushEvent onKeyup, (a.keyboard, key, false, false)
 
