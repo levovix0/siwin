@@ -221,6 +221,20 @@ proc asXImageTransparent*(data: seq[tuple[b, g, r, a: uint8]], w, h: int): XImag
   bytesPerLine: cint w * ColorRGBX.sizeof
 )
 
+proc asXImage*(data: openarray[ColorBgrx], w, h: int, transparent = false): XImage = XImage(
+  width: cint w,
+  height: cint h,
+  depth: if transparent: 32 else: 24,
+  bitsPerPixel: 32,
+  format: ZPixmap,
+  data: cast[cstring](data.dataAddr),
+  byteOrder: LSBFirst,
+  bitmapUnit: display.BitmapUnit,
+  bitmapBitOrder: LSBFirst,
+  bitmapPad: 32,
+  bytesPerLine: cint w * ColorBgrx.sizeof
+)
+
 
 proc newGC*(a: Drawable, mask: culong = GcForeground or GcBackground): GraphicsContext =
   if a == 0: raise X11ValueError.newException("nil target")

@@ -1,6 +1,13 @@
 import sequtils, algorithm, strutils, strformat, sugar, unicode
 export sequtils, algorithm, strutils, strformat, sugar, unicode
 
+type
+  ColorBgrx* = object
+    ## pre-multiplied bgra color (to draw on window using software rendering)
+    ## b, g and r is 0..a
+    ## a is 0..255
+    b*, g*, r*, a*: byte
+
 func dataAddr*[T: string|seq|array|openarray|cstring](a: T): auto =
   ## same as C++ `data` that works with std::string, std::vector etc
   ## Note: safe to use when a.len == 0 but whether the result is nil or not is implementation defined

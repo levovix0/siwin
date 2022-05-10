@@ -9,6 +9,8 @@ when defined(windows):
   import macros
   import libwinapi
 
+export ColorBgrx
+
 
 type
   MouseButton* {.pure.} = enum
@@ -88,6 +90,8 @@ type
     closed: bool
     m_hasFocus: bool
     m_isFullscreen: bool
+    m_maximized: bool
+    m_minimized: bool
 
     clicking: array[AllMouseButtons, bool]
     
@@ -540,7 +544,6 @@ when defined(linux):
         root, 0, 0, w, h, 0, vi.depth, InputOutput, vi.visual,
         CwColormap or CwEventMask or CwBorderPixel or CwBackPixel, swa
       )
-      this.bgraPixels = some newSeq[tuple[b, g, r, a: uint8]](w * h)
     else:
       this.xwin = newSimpleWindow(defaultRootWindow(), 0, 0, w, h, 0, 0, this.xscr.blackPixel)
 
@@ -584,7 +587,7 @@ when defined(linux):
   proc updateSize(this: var Window, v: tuple[x, y: int]) =
     this.m_size = v
     this.waitForReDraw = true
-    if this.transparent: this.bgraPixels = some newSeq[tuple[b, g, r, a: uint8]](v.x * v.y)
+    this.bgraPixels = none seq[tuple[b, g, r, a: uint8]]
 
   proc fullscreen*(this: Window): bool = this.m_isFullscreen
     ## get real fullscreen state of window
@@ -660,7 +663,7 @@ when defined(linux):
     # convert alpha channel to bit mask (semi-transparency is not supported)
     var mask = newImage(image.w, image.h)
     for i in 0..<(image.w * image.h):
-      mask.data[i] = if image.data[i].a > 127: rgbx(0, 0, 0, 255) else: rgbx(255, 255, 255, 255)
+      mask.data[i] = if image.data[i].a > 127: ColorBgrx(b: 0, g: 0, r: 0, a: 255) else: ColorBgrx(b: 255, g: 255, r: 255, a: 255)
     this.xiconMask = newPixmap(mask, this)
 
     this.xwin.setWmHints(IconPixmapHint or IconMaskHint, this.xicon, this.xiconMask)
@@ -674,9 +677,11 @@ when defined(linux):
     this.xwin.setWmHints(IconPixmapHint or IconMaskHint, 0.Pixmap, 0.Pixmap)
 
   proc drawImage*(this: var Window, pixels: openarray[ColorRGBX]) =
-    doassert pixels.len == this.size.x * this.size.y, "pixels count must be width * height"
+    assert pixels.len == this.size.x * this.size.y, "pixels count must be width * height"
     var ximg =
       if this.transparent:
+        if this.bgraPixels.isNone:
+          this.bgraPixels = some newSeq[tuple[b, g, r, a: uint8]](this.size.x * this.size.y)
         for i, v in this.bgraPixels.get.mpairs: v = (pixels[i].b, pixels[i].g, pixels[i].r, pixels[i].a)
         asXImageTransparent(this.bgraPixels.get, this.size.x, this.size.y)
       else:
@@ -685,6 +690,29 @@ when defined(linux):
 
   proc drawImage*(this: var OpenglWindow, pixels: openarray[ColorRGBX]) =
     ## draw image on OpenglWindow is impossible, so this proc do nothing
+
+  proc drawImage*(this: var Window, pixels: openarray[ColorBgrx]) =
+    assert pixels.len == this.size.x * this.size.y, "pixels count must be width * height"
+    var ximg = asXImage(pixels, this.size.x, this.size.y, this.transparent)
+    this.gc.put ximg.addr
+
+  proc drawImage*(this: var OpenglWindow, pixels: openarray[ColorBgrx]) =
+    ## draw image on OpenglWindow is impossible, so this proc do nothing
+
+
+  proc maximized*(this: var Window): bool = this.m_maximized
+  proc `maximized=`*(this: var Window) =
+    ## maximize/unmaximize window
+    ## exit fullscreen if window is fullscreen
+    if this.fullscreen:
+      this.fullscreen = false
+    # todo
+
+  proc minimized*(this: var Window): bool = this.m_minimized
+  proc `minimized=`*(this: var Window) =
+    ## minimize/unminimize window
+    # todo
+
 
   proc run*(this: var SomeWindow) =
     ## run main loop of window

@@ -1,31 +1,28 @@
-import chroma
+import utils
 
 type Image* = object
-  width*, height*: int
-  data*: seq[ColorRGBX]
+  w*, h*: int
+  data*: seq[ColorBgrx]
 
-func w*(a: Image): auto {.inline.} = a.width
-func h*(a: Image): auto {.inline.} = a.height
+func `[]`*(a: Image; x, y: int): ColorBgrx = a.data[y * a.w + x]
+func `[]`*(a: var Image; x, y: int): var ColorBgrx = a.data[y * a.w + x]
+func `[]=`*(a: var Image; x, y: int, c: ColorBgrx) = a.data[y * a.w + x] = c
 
-func `[]`*(a: Image; x, y: int): ColorRGBX = a.data[y * a.w + x]
-func `[]`*(a: var Image; x, y: int): var ColorRGBX = a.data[y * a.w + x]
-func `[]=`*(a: var Image; x, y: int, c: ColorRGBX) = a.data[y * a.w + x] = c
-
-iterator items*(a: Image): ColorRGBX =
+iterator items*(a: Image): ColorBgrx =
   for c in a.data:
     yield c
 
-iterator mitems*(a: var Image): var ColorRGBX =
+iterator mitems*(a: var Image): var ColorBgrx =
   for c in a.data.mitems:
     yield c
 
-iterator pairs*(a: Image): (int, ColorRGBX) =
+iterator pairs*(a: Image): (int, ColorBgrx) =
   for i, c in a.data:
     yield (i, c)
 
-iterator mpairs*(a: var Image): (int, var ColorRGBX) =
+iterator mpairs*(a: var Image): (int, var ColorBgrx) =
   for i, c in a.data.mpairs:
     yield (i, c)
 
 func newImage*(w, h: int): Image =
-  Image(width: w, height: h, data: newSeq[ColorRGBX](w * h))
+  Image(w: w, h: h, data: newSeq[ColorBgrx](w * h))

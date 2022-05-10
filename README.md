@@ -71,6 +71,8 @@ run window
 
 #### pixie
 ![](https://ia.wampi.ru/2021/09/07/32.png)
+Note: pixie renders a rgbx image, but compositors usually take bgrx, so it's not so efficient.
+`drawImage` can take an openarray of rgbx and bgrx, but rgbx will be converted to bgrx.
 ```nim
 import siwin, pixie
 
@@ -78,7 +80,7 @@ var image: Image
 var window = newWindow(title="pixie example")
 
 window.onResize = proc(e: ResizeEvent) =
-  image = newImage(w, h)
+  image = newImage(e.size.x, e.size.y)
 
 window.onRender = proc(e: RenderEvent) =
   image.fill(rgba(255, 255, 255, 255))

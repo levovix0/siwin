@@ -1,4 +1,5 @@
 import siwin
+from siwin/image as sim import nil
 import unittest, strformat
 import nimgl/opengl, pixie
 
@@ -15,7 +16,7 @@ test "screen":
 
 test "OpenGL":
   var g = 1.0
-  var window = newOpenglWindow(title="OpenGL example", transparent=true)
+  var window = newOpenglWindow(title="OpenGL test", transparent=true)
   doassert glInit()
 
   window.onResize = proc(e: ResizeEvent) =
@@ -73,7 +74,7 @@ test "pixie":
   var
     image: Image
     shadowImage: Image
-    window = newWindow(title="pixie example", frameless=true, transparent=true)
+    window = newWindow(title="pixie test", frameless=true, transparent=true)
 
   window.onResize = proc(e: ResizeEvent) =
     image = newImage(e.size.x, e.size.y)
@@ -106,6 +107,35 @@ test "pixie":
 
     ctx.fillStyle = rgba(50, 50, 255, 255)
     ctx.fillRoundedRect(rect(pos, wh), 25.0)
+    
+    window.drawImage image.data
+
+  window.onKeyup = proc(e: KeyEvent) =
+    case e.key
+    of Key.escape:
+      close window
+    else: discard
+  
+  window.onDoubleClick = proc(e: ClickEvent) =
+    close window
+  
+  run window
+
+
+test "bgrx image":
+  var
+    image: sim.Image
+    window = newWindow(title="bgrx image test", frameless=true, transparent=true)
+
+  window.onResize = proc(e: ResizeEvent) =
+    image = sim.newImage(e.size.x, e.size.y)
+
+  window.onRender = proc(e: RenderEvent) =
+    for y in 0..<image.h:
+      let a = round(y / image.h * 255).byte
+      let c = ColorBgrx(b: a, g: a, r: a, a: a)
+      for x in 0..<image.w:
+        sim.`[]=`(image, x, y, c)
     
     window.drawImage image.data
 
