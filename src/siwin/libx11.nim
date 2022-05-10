@@ -1,4 +1,4 @@
-import os, strutils, strformat, tables, hashes
+import os, strutils, strformat, tables, hashes, sets
 import x11/[xlib, xutil, xatom, xshm, cursorfont, keysym]
 import x11/x except Window, Pixmap, Cursor
 export xlib, xutil, xatom, xshm, cursorfont, keysym
@@ -18,6 +18,90 @@ type
     gc*: GC
     gcv*: XGCValues
     target*: Drawable
+
+  XSyncValue* = object
+    hi*: int32
+    lo*: uint32
+  
+  XSyncCounter* = distinct XID
+
+const
+  xaPrimary* = Atom 1
+  xaSecondary* = Atom 2
+  xaArc* = Atom 3
+  xaAtom* = Atom 4
+  xaBitmap* = Atom 5
+  xaCardinal* = Atom 6
+  xaColormap* = Atom 7
+  xaCursor* = Atom 8
+  xaCutBuffer0* = Atom 9
+  xaCutBuffer1* = Atom 10
+  xaCutBuffer2* = Atom 11
+  xaCutBuffer3* = Atom 12
+  xaCutBuffer4* = Atom 13
+  xaCutBuffer5* = Atom 14
+  xaCutBuffer6* = Atom 15
+  xaCutBuffer7* = Atom 16
+  xaDrawable* = Atom 17
+  xaFont* = Atom 18
+  xaInteger* = Atom 19
+  xaPixmap* = Atom 20
+  xaPoint* = Atom 21
+  xaRectangle* = Atom 22
+  xaResourceManager* = Atom 23
+  xaRgbColorMap* = Atom 24
+  xaRgbBestMap* = Atom 25
+  xaRgbBlueMap* = Atom 26
+  xaRgbDefaultMap* = Atom 27
+  xaRgbGrayMap* = Atom 28
+  xaRgbGreenMap* = Atom 29
+  xaRgbRedMap* = Atom 30
+  xaString* = Atom 31
+  xaVisualid* = Atom 32
+  xaWindow* = Atom 33
+  xaWmCommand* = Atom 34
+  xaWmHints* = Atom 35
+  xaWmClientMachine* = Atom 36
+  xaWmIconName* = Atom 37
+  xaWmIconSize* = Atom 38
+  xaWmName* = Atom 39
+  xaWmNormalHints* = Atom 40
+  xaWmSizeHints* = Atom 41
+  xaWmZoomHints* = Atom 42
+  xaMinSpace* = Atom 43
+  xaNormSpace* = Atom 44
+  xaMaxSpace* = Atom 45
+  xaEndSpace* = Atom 46
+  xaSuperscriptX* = Atom 47
+  xaSuperscriptY* = Atom 48
+  xaSubscriptX* = Atom 49
+  xaSubscriptY* = Atom 50
+  xaUnderlinePosition* = Atom 51
+  xaUnderlineThickness* = Atom 52
+  xaStrikeoutAscent* = Atom 53
+  xaStrikeoutDescent* = Atom 54
+  xaItalicAngle* = Atom 55
+  xaXHeight* = Atom 56
+  xaQuadWidth* = Atom 57
+  xaWeight* = Atom 58
+  xaPointSize* = Atom 59
+  xaResolution* = Atom 60
+  xaCopyright* = Atom 61
+  xaNotice* = Atom 62
+  xaFontName* = Atom 63
+  xaFamilyName* = Atom 64
+  xaFullName* = Atom 65
+  xaCapHeight* = Atom 66
+  xaWmClass* = Atom 67
+  xaWmTransientFor* = Atom 68
+  xaLastPredefined* = Atom 68
+
+
+const libXExt* =
+  when defined(macosx):
+    "libXext.dylib"
+  else:
+    "libXext.so(|.6)"
 
 
 var display*: PDisplay
@@ -270,3 +354,82 @@ proc newClientMessage*[T](window: Window, messageKind: Atom, data: openarray[T],
 
 
 var clipboardProcessEvents*: proc()
+
+
+proc property*(
+  window: Window,
+  property: Atom
+): tuple[kind: Atom, data: string] =
+  var
+    kind: Atom
+    format: cint
+    length: culong
+    bytesAfter: culong
+    data: cstring
+  discard display.XGetWindowProperty(
+    window,
+    property,
+    0,
+    -1,
+    false.Xbool,
+    0,
+    kind.addr,
+    format.addr,
+    length.addr,
+    bytesAfter.addr,
+    cast[PPCuchar](data.addr)
+  )
+
+  result.kind = kind
+
+  let len = length.int * format.int div 8
+  result.data = newString(len)
+  if len != 0:
+    copyMem(result.data[0].addr, data, len)
+
+proc setProperty*(
+  window: Window, property: Atom, kind: Atom, format: cint, data: string
+) =
+  discard display.XChangeProperty(
+    window,
+    property,
+    kind,
+    format,
+    0,
+    data,
+    data.len.cint div (format div 8)
+  )
+
+proc delProperty*(window: Window, property: Atom) =
+  discard display.XDeleteProperty(window, property)
+
+proc asSeq*(s: string, T: type = uint8): seq[T] =
+  if s.len == 0:
+    return
+  result = newSeq[T]((s.len + T.sizeof - 1) div T.sizeof)
+  copyMem(result[0].addr, s[0].unsafeaddr, s.len)
+
+proc asString*[T](x: seq[T]|HashSet[T]): string =
+  result = newStringOfCap(x.len * T.sizeof)
+  for v in x:
+    for v in cast[array[T.sizeof, char]](v):
+      result.add v
+
+proc invert*[T](x: var set[T], v: T) =
+  if x.contains v:
+    x.excl v
+  else:
+    x.incl v
+
+
+{.push, cdecl, dynlib: libXExt, importc.}
+
+proc XSyncQueryExtension*(d: ptr Display, vEv, vEr: ptr cint): bool
+proc XSyncInitialize*(d: ptr Display, verMaj, verMin: ptr cint)
+
+proc XSyncCreateCounter*(d: ptr Display, v: XSyncValue): XSyncCounter
+proc XSyncDestroyCounter*(d: ptr Display, c: XSyncCounter)
+
+proc XSyncSetCounter*(d: ptr Display, c: XSyncCounter; v: XSyncValue)
+
+{.pop.}

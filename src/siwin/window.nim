@@ -107,6 +107,8 @@ type
       xinContext: XIC
       xinMethod: XIM
       gc: GraphicsContext
+      xSyncCounter: XSyncCounter
+      lastSync: XSyncValue
 
       xcursor: x.Cursor
 
@@ -467,6 +469,9 @@ when defined(linux):
     if this.xicon != 0:        destroy this.xicon
     if this.xiconMask != 0:    destroy this.xiconMask
     if this.xwin != 0:         destroy this.xwin
+    if this.xSyncCounter.int != 0:
+      display.XSyncDestroyCounter(this.xSyncCounter)
+      this.xSyncCounter = 0.XSyncCounter
 
   proc `=destroy`*(this: var OpenglWindow) =
     0.makeCurrent nil.GlxContext
@@ -526,6 +531,19 @@ when defined(linux):
       )
     
     this.frameless = frameless
+
+    block xsync:
+      var vEv, vEr: cint
+      if display.XSyncQueryExtension(vEv.addr, vEr.addr):
+        var vMaj, vMin: cint
+        display.XSyncInitialize(vMaj.addr, vMin.addr)
+        this.xSyncCounter = display.XSyncCreateCounter(XSyncValue())
+        this.xwin.setProperty(
+          atom"_NET_WM_SYNC_REQUEST_COUNTER",
+          xaCardinal,
+          32,
+          @[this.xSyncCounter].asString
+        )
 
   proc initWindow(this: var Window; w, h: int; screen: Screen, fullscreen, frameless, transparent: bool) =
     this.basicInitWindow w, h, screen
@@ -762,10 +780,16 @@ when defined(linux):
         case ev.theType
         of Expose:
           redraw this
-          
+
         of ClientMessage:
-          if ev.xclient.data.l[0] == "WM_DELETE_WINDOW".atom.clong:
+          if ev.xclient.data.l[0] == atom"WM_DELETE_WINDOW".clong:
             this.closed = true
+
+          elif ev.xclient.data.l[0] == atom"_NET_WM_SYNC_REQUEST".clong:
+            this.lastSync = XSyncValue(
+              lo: cast[uint32](ev.xclient.data.l[2]),
+              hi: cast[int32](ev.xclient.data.l[3])
+            )
 
         of ConfigureNotify:
           if ev.xconfigure.width != this.m_size.x or ev.xconfigure.height != this.m_size.y:
@@ -898,6 +922,7 @@ when defined(linux):
         this.onRender.invoke ()
         when this is OpenglWindow:
           this.xwin.toDrawable.glxSwapBuffers()
+        display.XSyncSetCounter(this.xSyncCounter, this.lastSync)
 
       if clipboardProcessEvents != nil: clipboardProcessEvents()
 
