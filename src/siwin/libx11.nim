@@ -356,37 +356,6 @@ proc newClientMessage*[T](window: Window, messageKind: Atom, data: openarray[T],
 var clipboardProcessEvents*: proc()
 
 
-proc property*(
-  window: Window,
-  property: Atom
-): tuple[kind: Atom, data: string] =
-  var
-    kind: Atom
-    format: cint
-    length: culong
-    bytesAfter: culong
-    data: cstring
-  discard display.XGetWindowProperty(
-    window,
-    property,
-    0,
-    -1,
-    false.Xbool,
-    0,
-    kind.addr,
-    format.addr,
-    length.addr,
-    bytesAfter.addr,
-    cast[PPCuchar](data.addr)
-  )
-
-  result.kind = kind
-
-  let len = length.int * format.int div 8
-  result.data = newString(len)
-  if len != 0:
-    copyMem(result.data[0].addr, data, len)
-
 proc setProperty*(
   window: Window, property: Atom, kind: Atom, format: cint, data: string
 ) =
@@ -420,6 +389,16 @@ proc invert*[T](x: var set[T], v: T) =
     x.excl v
   else:
     x.incl v
+
+proc wmState*(window: Window): HashSet[Atom] =
+  window.property(atom"_NET_WM_STATE", Atom).data.toHashSet
+
+proc wmStateSend*(window: Window, op: int, atom: Atom) =
+  # op: 2 - switch, 1 - set true, 0 - set false
+  display.DefaultRootWindow.Window.send(
+    window.newClientMessage(atom"_NET_WM_STATE", [Atom op, atom]),
+    SubstructureNotifyMask or SubstructureRedirectMask
+  )
 
 
 {.push, cdecl, dynlib: libXExt, importc.}

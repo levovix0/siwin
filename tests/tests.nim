@@ -50,6 +50,10 @@ test "OpenGL":
       close window
     of Key.f1:
       window.fullscreen = not window.fullscreen
+    of Key.f2:
+      window.maximized = not window.maximized
+    of Key.f3:
+      window.minimized = not window.minimized
     else: discard
   
   window.onDoubleClick = proc(e: ClickEvent) =

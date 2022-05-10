@@ -3,7 +3,7 @@ import chroma
 import image, utils
 
 when defined(linux):
-  import libx11 as x, libglx
+  import libx11 as x, libglx, sets
 
 when defined(windows):
   import macros
@@ -90,8 +90,6 @@ type
     closed: bool
     m_hasFocus: bool
     m_isFullscreen: bool
-    m_maximized: bool
-    m_minimized: bool
 
     clicking: array[AllMouseButtons, bool]
     
@@ -718,18 +716,28 @@ when defined(linux):
     ## draw image on OpenglWindow is impossible, so this proc do nothing
 
 
-  proc maximized*(this: var Window): bool = this.m_maximized
-  proc `maximized=`*(this: var Window) =
+  proc maximized*(window: var Window): bool =
+    let wmState = window.xwin.wmState
+    atom"_NET_WM_STATE_MAXIMIZED_HORZ" in wmState and atom"_NET_WM_STATE_MAXIMIZED_VERT" in wmState
+
+  proc `maximized=`*(window: var Window, v: bool) =
     ## maximize/unmaximize window
     ## exit fullscreen if window is fullscreen
-    if this.fullscreen:
-      this.fullscreen = false
-    # todo
+    if window.fullscreen:
+      window.fullscreen = false
+    window.xwin.wmStateSend(v.int, atom"_NET_WM_STATE_MAXIMIZED_HORZ")
+    window.xwin.wmStateSend(v.int, atom"_NET_WM_STATE_MAXIMIZED_VERT")
 
-  proc minimized*(this: var Window): bool = this.m_minimized
-  proc `minimized=`*(this: var Window) =
+  proc minimized*(window: var Window): bool =
+    let wmState = window.xwin.wmState
+    (wmState.len >= 1 and 3.Atom in wmState) or (atom"_NET_WM_STATE_HIDDEN" in wmState)
+
+  proc `minimized=`*(window: var Window, v: bool) =
     ## minimize/unminimize window
-    # todo
+    if v:
+      discard display.XIconifyWindow(window.xwin, display.DefaultScreen)
+    else:
+      discard display.XRaiseWindow(window.xwin)
 
 
   proc run*(this: var SomeWindow) =
