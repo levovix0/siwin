@@ -165,7 +165,7 @@ type
     mouse: Mouse
     keyboard: Keyboard
     deltaTime: Duration
-  #TODO: FixedTickEvent
+  # todo: FixedTickEvent
 
   KeyEvent* = tuple
     keyboard: Keyboard
@@ -427,7 +427,7 @@ elif defined(windows):
       if (flags and 0x1000000) != 0: Key.rcontrol else: Key.lcontrol
     else: wkeyToKey(key)
 
-  #TODO: многоэкранность
+  # todo: multiscreen support
   proc getScreenCount*(): int = 1
 
   proc screen*(n: int = 0): Screen = discard

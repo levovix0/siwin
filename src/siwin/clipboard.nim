@@ -30,7 +30,7 @@ when defined(linux):
       if event.xany.window == (x.Window)(cast[int](userData)): 1 else: 0
     while display.XCheckIfEvent(ev.addr, checkEvent, cast[XPointer](this.xwin)) == 1:
       case ev.theType
-      of SelectionNotify: # получен ответ на запрос содержимого буфера обмена
+      of SelectionNotify: # got clipboard data
         template e: untyped = ev.xselection
         
         if e.property == None or e.selection != atom"CLIPBOARD":
@@ -41,7 +41,7 @@ when defined(linux):
 
         responsed = true
       
-      of SelectionRequest: # получен запрос содержимого буфера обмена
+      of SelectionRequest: # got request from other application
         template e: untyped = ev.xselectionRequest
 
         var resp: XSelectionEvent
@@ -53,7 +53,7 @@ when defined(linux):
 
         if e.selection == atom"CLIPBOARD":
           if e.target == atom"TARGETS":
-            # запрос запросов, которые мы можем обработать
+            # requests we can handle request
             var targets = @[atom"TARGETS", atom"TEXT", XaString, atom"UTF8_STRING"]
             discard display.XChangeProperty(e.requestor, e.property, XaAtom, 32, PropModeReplace, cast[PCUChar](targets[0].addr), targets.len.cint)
             resp.target = atom"TARGETS"
@@ -61,7 +61,7 @@ when defined(linux):
             continue
 
           elif e.target in {XaString, atom"TEXT", atom"UTF8_STRING"}:
-            # запрос строки буфера обмена
+            # clipboard data request
             resp.target = if e.target == atom"UTF8_STRING": atom"UTF8_STRING" else: XaString
             discard display.XChangeProperty(
               e.requestor, e.property, resp.target,
@@ -70,7 +70,7 @@ when defined(linux):
             (Window e.requestor).send(cast[XEvent](resp), propagate=true)
             continue
         
-        # рассказать, что нам не удалось обработать запрос
+        # notify that we can't handle request
         resp.target = e.target
         resp.property = None
         (Window e.requestor).send(cast[XEvent](resp), propagate=true)
@@ -78,7 +78,7 @@ when defined(linux):
       else: discard
 
 
-  clipboard.xwin = newSimpleWindow(defaultRootWindow(), 0, 0, 1, 1, 0, 0, 0) ## невидимое окно. костыли!
+  clipboard.xwin = newSimpleWindow(defaultRootWindow(), 0, 0, 1, 1, 0, 0, 0) # invisible window!
   clipboard.xwin.input = [SelectionNotify, SelectionRequest, SelectionClear]
   clipboardProcessEvents = proc() =
     var rsp: bool
