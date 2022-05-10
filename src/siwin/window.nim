@@ -9,8 +9,6 @@ when defined(windows):
   import macros
   import libwinapi
 
-export ColorBgrx
-
 
 type
   MouseButton* {.pure.} = enum

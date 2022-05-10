@@ -137,7 +137,7 @@ test "bgrx image":
   window.onRender = proc(e: RenderEvent) =
     for y in 0..<image.h:
       let a = round(y / image.h * 255).byte
-      let c = ColorBgrx(b: a, g: a, r: a, a: a)
+      let c = sim.ColorBgrx(b: a, g: a, r: a, a: a)
       for x in 0..<image.w:
         sim.`[]=`(image, x, y, c)
     

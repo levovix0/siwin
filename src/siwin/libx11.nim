@@ -3,8 +3,8 @@ import x11/[xlib, xutil, xatom, xshm, cursorfont, keysym]
 import x11/x except Window, Pixmap, Cursor
 export xlib, xutil, xatom, xshm, cursorfont, keysym
 export x except Window, Pixmap, Cursor
-import utils
 import chroma
+import utils, image
 
 type
   X11ValueError* = object of CatchableError

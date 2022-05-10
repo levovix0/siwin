@@ -1,8 +1,15 @@
-import utils
 
-type Image* = object
-  w*, h*: int
-  data*: seq[ColorBgrx]
+type
+  ColorBgrx* = object
+    ## pre-multiplied bgra color (to draw on window using software rendering)
+    ## b, g and r is 0..a
+    ## a is 0..255
+    b*, g*, r*, a*: byte
+
+  Image* = object
+    w*, h*: int
+    data*: seq[ColorBgrx]
+
 
 func `[]`*(a: Image; x, y: int): ColorBgrx = a.data[y * a.w + x]
 func `[]`*(a: var Image; x, y: int): var ColorBgrx = a.data[y * a.w + x]
