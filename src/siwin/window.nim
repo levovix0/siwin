@@ -46,7 +46,18 @@ type
     pointingHand grab
     text cross
     sizeAll sizeHorisontal sizeVertical
+    sizeTopLeft sizeTopRight sizeBottomLeft sizeBottomRight
     hided
+  
+  Edge* {.pure.} = enum
+    left
+    right
+    top
+    bottom
+    topLeft
+    topRight
+    bottomLeft
+    bottomRight
 
 const AllKeys* = {Key.a..Key.pause}
 
@@ -645,18 +656,22 @@ when defined(linux):
     if kind == this.curCursor: return
     if this.xcursor != 0: destroy this.xcursor
     case kind
-    of Cursor.arrow:          this.xcursor = cursorFromFont XcLeftPtr
-    of Cursor.arrowUp:        this.xcursor = cursorFromFont XcCenterPtr
-    of Cursor.arrowRight:     this.xcursor = cursorFromFont XcRightPtr
-    of Cursor.wait:           this.xcursor = cursorFromFont XcWatch
-    of Cursor.arrowWait:      this.xcursor = cursorFromFont XcWatch #! no needed cursor
-    of Cursor.pointingHand:   this.xcursor = cursorFromFont XcHand1
-    of Cursor.grab:           this.xcursor = cursorFromFont XcHand2
-    of Cursor.text:           this.xcursor = cursorFromFont XcXterm
-    of Cursor.cross:          this.xcursor = cursorFromFont XcTCross
-    of Cursor.sizeAll:        this.xcursor = cursorFromFont XcFleur
-    of Cursor.sizeVertical:   this.xcursor = cursorFromFont XcSb_v_doubleArrow
-    of Cursor.sizeHorisontal: this.xcursor = cursorFromFont XcSb_h_doubleArrow
+    of Cursor.arrow:           this.xcursor = cursorFromFont XcLeftPtr
+    of Cursor.arrowUp:         this.xcursor = cursorFromFont XcCenterPtr
+    of Cursor.arrowRight:      this.xcursor = cursorFromFont XcRightPtr
+    of Cursor.wait:            this.xcursor = cursorFromFont XcWatch
+    of Cursor.arrowWait:       this.xcursor = cursorFromFont XcWatch #! no needed cursor
+    of Cursor.pointingHand:    this.xcursor = cursorFromFont XcHand1
+    of Cursor.grab:            this.xcursor = cursorFromFont XcHand2
+    of Cursor.text:            this.xcursor = cursorFromFont XcXterm
+    of Cursor.cross:           this.xcursor = cursorFromFont XcTCross
+    of Cursor.sizeAll:         this.xcursor = cursorFromFont XcFleur
+    of Cursor.sizeVertical:    this.xcursor = cursorFromFont XcSb_v_doubleArrow
+    of Cursor.sizeHorisontal:  this.xcursor = cursorFromFont XcSb_h_doubleArrow
+    of Cursor.sizeTopLeft:     this.xcursor = cursorFromFont XC_ul_angle
+    of Cursor.sizeTopRight:    this.xcursor = cursorFromFont XC_ur_angle
+    of Cursor.sizeBottomLeft:  this.xcursor = cursorFromFont XC_ll_angle
+    of Cursor.sizeBottomRight: this.xcursor = cursorFromFont XC_lr_angle
     of Cursor.hided:
       var data: array[1, char]
       let blank = display.XCreateBitmapFromData(rootWindow(0), data[0].addr, 1, 1)
@@ -736,6 +751,51 @@ when defined(linux):
       discard display.XIconifyWindow(window.xwin, display.DefaultScreen)
     else:
       discard display.XRaiseWindow(window.xwin)
+  
+
+  proc startInteractiveMove*(window: var Window) =
+    let pos = cursor().pos
+    wasMoved window.mouse.pressed
+    wasMoved window.keyboard.pressed
+    discard display.XUngrabPointer(0)
+    discard XFlush display
+
+    window.xwin.root.send(
+      window.xwin.newClientMessage(
+        atom"_NET_WM_MOVERESIZE",
+        [pos.x.int64, pos.y.int64, 8, 1, 0] #? int32 is working strange, but int64 is ok
+      ),
+      SubstructureNotifyMask or SubstructureRedirectMask
+    )
+    # todo: press all keys and mouse buttons that are pressed after move
+  
+  proc startInteractiveResize*(window: var Window, edge: Edge) =
+    let pos = cursor().pos
+    wasMoved window.mouse.pressed
+    wasMoved window.keyboard.pressed
+    discard display.XUngrabPointer(0)
+    discard XFlush display
+
+    window.xwin.root.send(
+      window.xwin.newClientMessage(
+        atom"_NET_WM_MOVERESIZE",
+        [
+          pos.x.int64, pos.y.int64, #? int32 is working strange, but int64 is ok
+          case edge
+          of Edge.topLeft: 0
+          of Edge.top: 1
+          of Edge.topRight: 2
+          of Edge.right: 3
+          of Edge.bottomRight: 4
+          of Edge.bottom: 5
+          of Edge.bottomLeft: 6
+          of Edge.left: 7,
+          1, 0
+        ]
+      ),
+      SubstructureNotifyMask or SubstructureRedirectMask
+    )
+    # todo: press all keys and mouse buttons that are pressed after resize
 
 
   proc run*(this: var SomeWindow) =

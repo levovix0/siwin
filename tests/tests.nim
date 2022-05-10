@@ -152,6 +152,46 @@ test "bgrx image":
   window.onDoubleClick = proc(e: ClickEvent) =
     close window
   
+  window.onMouseMove = proc(e: MouseMoveEvent) =
+    if e.pos.x in 10..(window.size.x - 10) and e.pos.y in 10..(window.size.y - 10):
+      window.cursor = Cursor.sizeAll
+    elif e.pos.x in 0..10 and e.pos.y in 0..10:
+      window.cursor = Cursor.sizeTopLeft
+    elif e.pos.x in 0..10 and e.pos.y in (window.size.y - 10)..window.size.y:
+      window.cursor = Cursor.sizeBottomLeft
+    elif e.pos.x in (window.size.x - 10)..window.size.x and e.pos.y in 0..10:
+      window.cursor = Cursor.sizeTopRight
+    elif e.pos.x in (window.size.x - 10)..window.size.x and e.pos.y in (window.size.y - 10)..window.size.y:
+      window.cursor = Cursor.sizeBottomRight
+    elif e.pos.x in 0..10:
+      window.cursor = Cursor.sizeHorisontal
+    elif e.pos.x in (window.size.x - 10)..window.size.x:
+      window.cursor = Cursor.sizeHorisontal
+    elif e.pos.y in 0..10:
+      window.cursor = Cursor.sizeVertical
+    elif e.pos.y in (window.size.y - 10)..window.size.y:
+      window.cursor = Cursor.sizeVertical
+
+    if e.mouse.pressed[MouseButton.left]:
+      if e.pos.x in 10..(window.size.x - 10) and e.pos.y in 10..(window.size.y - 10):
+        window.startInteractiveMove
+      elif e.pos.x in 0..10 and e.pos.y in 0..10:
+        window.startInteractiveResize(Edge.topLeft)
+      elif e.pos.x in 0..10 and e.pos.y in (window.size.y - 10)..window.size.y:
+        window.startInteractiveResize(Edge.bottomLeft)
+      elif e.pos.x in (window.size.x - 10)..window.size.x and e.pos.y in 0..10:
+        window.startInteractiveResize(Edge.topRight)
+      elif e.pos.x in (window.size.x - 10)..window.size.x and e.pos.y in (window.size.y - 10)..window.size.y:
+        window.startInteractiveResize(Edge.bottomRight)
+      elif e.pos.x in 0..10:
+        window.startInteractiveResize(Edge.left)
+      elif e.pos.x in (window.size.x - 10)..window.size.x:
+        window.startInteractiveResize(Edge.right)
+      elif e.pos.y in 0..10:
+        window.startInteractiveResize(Edge.top)
+      elif e.pos.y in (window.size.y - 10)..window.size.y:
+        window.startInteractiveResize(Edge.bottom)
+  
   run window
 
 when defined(wayland):

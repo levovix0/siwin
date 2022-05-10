@@ -345,7 +345,7 @@ proc newClientMessage*[T](window: Window, messageKind: Atom, data: openarray[T],
     of 1: 8
     of 2: 16
     of 4: 32
-    of 8: 32 #?
+    of 8: 32
     else: 8
   result.xclient.window = window
   result.xclient.display = display
