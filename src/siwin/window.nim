@@ -1158,19 +1158,23 @@ elif defined(windows):
     if this.wcursor != 0: DestroyCursor this.wcursor
     
     var cu: HCursor = case kind
-    of Cursor.arrow:          LoadCursor(0, IdcArrow)
-    of Cursor.arrowUp:        LoadCursor(0, IdcUpArrow)
-    of Cursor.pointingHand:   LoadCursor(0, IdcHand)
-    of Cursor.arrowRight:     LoadCursor(0, IdcArrow) #! no needed cursor
-    of Cursor.wait:           LoadCursor(0, IdcWait)
-    of Cursor.arrowWait:      LoadCursor(0, IdcAppStarting)
-    of Cursor.grab:           LoadCursor(0, IdcHand) #! no needed cursor
-    of Cursor.text:           LoadCursor(0, IdcIBeam)
-    of Cursor.cross:          LoadCursor(0, IdcCross)
-    of Cursor.sizeAll:        LoadCursor(0, IdcSizeAll)
-    of Cursor.sizeVertical:   LoadCursor(0, IdcSizens)
-    of Cursor.sizeHorisontal: LoadCursor(0, IdcSizewe)
-    of Cursor.hided:          LoadCursor(0, IdcNo)
+    of Cursor.arrow:           LoadCursor(0, IdcArrow)
+    of Cursor.arrowUp:         LoadCursor(0, IdcUpArrow)
+    of Cursor.pointingHand:    LoadCursor(0, IdcHand)
+    of Cursor.arrowRight:      LoadCursor(0, IdcArrow) #! no needed cursor
+    of Cursor.wait:            LoadCursor(0, IdcWait)
+    of Cursor.arrowWait:       LoadCursor(0, IdcAppStarting)
+    of Cursor.grab:            LoadCursor(0, IdcHand) #! no needed cursor
+    of Cursor.text:            LoadCursor(0, IdcIBeam)
+    of Cursor.cross:           LoadCursor(0, IdcCross)
+    of Cursor.sizeAll:         LoadCursor(0, IdcSizeAll)
+    of Cursor.sizeVertical:    LoadCursor(0, IdcSizens)
+    of Cursor.sizeHorisontal:  LoadCursor(0, IdcSizewe)
+    of Cursor.sizeTopLeft:     LoadCursor(0, IdcSizenwse)
+    of Cursor.sizeTopRight:    LoadCursor(0, IdcSizenesw)
+    of Cursor.sizeBottomLeft:  LoadCursor(0, IdcSizenesw)
+    of Cursor.sizeBottomRight: LoadCursor(0, IdcSizenwse)
+    of Cursor.hided:           LoadCursor(0, IdcNo)
     
     if cu != 0:
       SetCursor cu
@@ -1224,6 +1228,83 @@ elif defined(windows):
 
   proc drawImage*(this: var OpenglWindow, pixels: openarray[ColorRGBX]) =
     ## draw image on OpenglWindow is impossible, so this proc do nothing
+
+  proc drawImage*(this: var Window, pixels: openarray[ColorBgrx]) =
+    doassert pixels.len == this.size.x * this.size.y, "pixels count must be width * height"
+    if this.size.x * this.size.y == 0: return
+    
+    if this.size.x != this.buffer.x or this.size.y != this.buffer.y:
+      if this.buffer.pixels != nil:
+        DeleteDC this.buffer.hdc
+        DeleteObject this.buffer.bitmap
+      
+      this.buffer.x = this.size.x
+      this.buffer.y = this.size.y
+    
+      var bmi = BitmapInfo(
+        bmiHeader: BitmapInfoHeader(
+          biSize: BitmapInfoHeader.sizeof.int32, biWidth: this.size.x.Long, biHeight: -this.size.y.Long,
+          biPlanes: 1, biBitCount: 32, biCompression: Bi_rgb
+        )
+      )
+      this.buffer.bitmap = CreateDibSection(0, &bmi, Dib_rgb_colors, cast[ptr pointer](this.buffer.pixels.addr), 0, 0)
+      this.buffer.hdc = CreateCompatibleDC(0)
+      this.buffer.hdc.SelectObject this.buffer.bitmap
+    
+    let rect = this.handle.clientRect
+    for i, c in pixels:
+      this.buffer.pixels[i] = (c.b, c.g, c.r, c.a)
+      
+    this.hdc.BitBlt(0, 0, rect.right, rect.bottom, this.buffer.hdc, 0, 0, SrcCopy)
+
+  proc drawImage*(this: var OpenglWindow, pixels: openarray[ColorBgrx]) =
+    ## draw image on OpenglWindow is impossible, so this proc do nothing
+
+
+  proc maximized*(window: var Window): bool =
+    IsZoomed(window.handle) != 0
+
+  proc `maximized=`*(window: var Window, v: bool) =
+    ## maximize/unmaximize window
+    ## exit fullscreen if window is fullscreen
+    discard ShowWindow(window.handle, if v: SwMaximize else: SwRestore)
+
+  proc minimized*(window: var Window): bool =
+    IsIconic(window.handle) != 0
+
+  proc `minimized=`*(window: var Window, v: bool) =
+    ## minimize/unminimize window
+    discard ShowWindow(window.handle, if v: SwMinimize else: SwRestore)
+  
+
+  proc startInteractiveMove*(window: var Window) =
+    wasMoved window.mouse.pressed
+    wasMoved window.keyboard.pressed
+    ReleaseCapture()
+
+    window.handle.PostMessage(WmSysCommand, 0xF012, 0)
+    # todo: press all keys and mouse buttons that are pressed after move
+  
+  proc startInteractiveResize*(window: var Window, edge: Edge) =
+    wasMoved window.mouse.pressed
+    wasMoved window.keyboard.pressed
+    ReleaseCapture()
+
+    window.handle.PostMessage(
+      WmSysCommand,
+      case edge
+      of Edge.left: 0xf001
+      of Edge.right: 0xf002
+      of Edge.top: 0xf003
+      of Edge.topLeft: 0xf004
+      of Edge.topRight: 0xf005
+      of Edge.bottom: 0xf006
+      of Edge.bottomLeft: 0xf007
+      of Edge.bottomRight: 0xf008,
+      0
+    )
+    # todo: press all keys and mouse buttons that are pressed after resize
+
 
   proc displayImpl(this: var Window) =
     var ps: PaintStruct
