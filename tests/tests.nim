@@ -16,7 +16,7 @@ test "screen":
 
 test "OpenGL":
   var g = 1.0
-  var window = newOpenglWindow(title="OpenGL test", transparent=true)
+  let window = newOpenglWindow(title="OpenGL test", transparent=true)
   doassert glInit()
 
   window.onResize = proc(e: ResizeEvent) =
@@ -60,7 +60,7 @@ test "OpenGL":
     close window
   
   window.onMouseMove = proc(e: MouseMoveEvent) =
-    if e.mouse.pressed[MouseButton.left]:
+    if window.mouse.pressed[MouseButton.left]:
       g = (e.pos.x / window.size.x * 2).min(2).max(0)
       redraw window
   
@@ -172,7 +172,7 @@ test "bgrx image":
     elif e.pos.y in (window.size.y - 10)..window.size.y:
       window.cursor = Cursor.sizeVertical
 
-    if e.mouse.pressed[MouseButton.left]:
+    if window.mouse.pressed[MouseButton.left]:
       if e.pos.x in 10..(window.size.x - 10) and e.pos.y in 10..(window.size.y - 10):
         window.startInteractiveMove
       elif e.pos.x in 0..10 and e.pos.y in 0..10:
