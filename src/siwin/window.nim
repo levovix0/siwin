@@ -114,13 +114,12 @@ type
       xinContext: XIC
       xinMethod: XIM
       gc: GraphicsContext
-      xSyncCounter: XSyncCounter
-      lastSync: XSyncValue
+      # xSyncCounter: XSyncCounter
+      # lastSync: XSyncValue
 
       xcursor: x.Cursor
 
       m_pos: tuple[x, y: int]
-      requestedSize: Option[tuple[x, y: int]]
       
       bgraPixels: Option[seq[tuple[b, g, r, a: uint8]]]
 
@@ -484,9 +483,9 @@ when defined(linux):
       destroy this.xwin
       this.xwin = x.Window(0)
     
-    if this.xSyncCounter.int != 0:
-      display.XSyncDestroyCounter(this.xSyncCounter)
-      this.xSyncCounter = 0.XSyncCounter
+    # if this.xSyncCounter.int != 0:
+    #   display.XSyncDestroyCounter(this.xSyncCounter)
+    #   this.xSyncCounter = 0.XSyncCounter
 
   method destroy(this: OpenglWindow) =
     0.makeCurrent nil.GlxContext
@@ -582,18 +581,18 @@ when defined(linux):
     
     this.frameless = frameless
 
-    block xsync:
-      var vEv, vEr: cint
-      if display.XSyncQueryExtension(vEv.addr, vEr.addr):
-        var vMaj, vMin: cint
-        display.XSyncInitialize(vMaj.addr, vMin.addr)
-        this.xSyncCounter = display.XSyncCreateCounter(XSyncValue())
-        this.xwin.setProperty(
-          atom"_NET_WM_SYNC_REQUEST_COUNTER",
-          xaCardinal,
-          32,
-          @[this.xSyncCounter].asString
-        )
+    # block xsync:
+    #   var vEv, vEr: cint
+    #   if display.XSyncQueryExtension(vEv.addr, vEr.addr):
+    #     var vMaj, vMin: cint
+    #     display.XSyncInitialize(vMaj.addr, vMin.addr)
+    #     this.xSyncCounter = display.XSyncCreateCounter(XSyncValue())
+    #     this.xwin.setProperty(
+    #       atom"_NET_WM_SYNC_REQUEST_COUNTER",
+    #       xaCardinal,
+    #       32,
+    #       @[this.xSyncCounter].asString
+    #     )
 
   proc initWindow(this: Window; w, h: int; screen: Screen, fullscreen, frameless, transparent: bool) =
     this.basicInitWindow w, h, screen
@@ -652,22 +651,22 @@ when defined(linux):
     ## render request
 
   proc updateSize(this: Window, v: tuple[x, y: int]) =
+    let osize = this.m_size
     this.m_size = v
     this.waitForReDraw = true
     this.bgraPixels = none seq[tuple[b, g, r, a: uint8]]
+    this.onResize.invoke (osize, this.m_size, false)
 
   proc fullscreen*(this: Window): bool = this.m_isFullscreen
-    ## get real fullscreen state of window
   proc `fullscreen=`*(this: Window, v: bool) =
-    ## set fullscreen
-    ##* this proc is lazy, don't try get size of window after it
-    ## track when the fullscreen state will be applied in the onFullscreenChanged event
     if this.m_isFullscreen == v: return
 
     this.xwin.root.send(
       this.xwin.newClientMessage(atom"_NET_WM_STATE", [Atom 2, atom"_NET_WM_STATE_FULLSCREEN"]), # 2 - switch, 1 - set true, 0 - set false
       SubstructureNotifyMask or SubstructureRedirectMask
     )
+
+    discard XFlush display
 
   proc pos*(this: Window): tuple[x, y: int] = this.xwin.geometry.pos
   proc `pos=`*(this: Window, p: tuple[x, y: int]) =
@@ -681,12 +680,11 @@ when defined(linux):
   proc `size=`*(this: Window, size: tuple[x, y: int]) =
     ## resize window
     ## exit fullscreen if window is fullscreen
-    if not this.fullscreen:
-      this.xwin.size = size
-      this.updateSize size
-    else:
+    if this.fullscreen:
       this.fullscreen = false
-      this.requestedSize = some size
+    
+    this.xwin.size = size
+    this.updateSize size
 
   proc newPixmap(source: Image, window: Window): Pixmap =
     result = newPixmap(source.w, source.h, window.xwin, window.xscr.defaultDepth)
@@ -887,17 +885,15 @@ when defined(linux):
           if ev.xclient.data.l[0] == atom"WM_DELETE_WINDOW".clong:
             this.closed = true
 
-          elif ev.xclient.data.l[0] == atom"_NET_WM_SYNC_REQUEST".clong:
-            this.lastSync = XSyncValue(
-              lo: cast[uint32](ev.xclient.data.l[2]),
-              hi: cast[int32](ev.xclient.data.l[3])
-            )
+          # elif ev.xclient.data.l[0] == atom"_NET_WM_SYNC_REQUEST".clong:
+          #   this.lastSync = XSyncValue(
+          #     lo: cast[uint32](ev.xclient.data.l[2]),
+          #     hi: cast[int32](ev.xclient.data.l[3])
+          #   )
 
         of ConfigureNotify:
           if ev.xconfigure.width != this.m_size.x or ev.xconfigure.height != this.m_size.y:
-            let osize = this.m_size
             this.updateSize (ev.xconfigure.width.int, ev.xconfigure.height.int)
-            this.onResize.invoke (osize, this.m_size, false)
           if ev.xconfigure.x.int != this.m_pos.x or ev.xconfigure.y.int != this.m_pos.y:
             let oldPos = this.m_pos
             this.m_pos = (ev.xconfigure.x.int, ev.xconfigure.y.int)
@@ -909,9 +905,6 @@ when defined(linux):
           if atom"_NET_WM_STATE_FULLSCREEN" in state != this.m_isFullscreen:
             this.m_isFullscreen = not this.m_isFullscreen
             this.onFullscreenChanged.invoke (this.m_isFullscreen)
-            if not this.m_isFullscreen and isSome this.requestedSize:
-              this.size = get this.requestedSize
-              this.requestedSize = none tuple[x, y: int]
 
         of MotionNotify:
           let oldPos = this.mouse.pos
@@ -1016,7 +1009,7 @@ when defined(linux):
         this.onRender.invoke ()
         if this of OpenglWindow:
           this.xwin.toDrawable.glxSwapBuffers()
-        display.XSyncSetCounter(this.xSyncCounter, this.lastSync)
+        # display.XSyncSetCounter(this.xSyncCounter, this.lastSync)
 
       if clipboardProcessEvents != nil: clipboardProcessEvents()
 

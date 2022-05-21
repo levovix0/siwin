@@ -6,6 +6,7 @@ srcDir        = "src"
 
 requires "nim >= 1.4"
 requires "chroma >= 0.2.5"
+requires "vmath >= 1.1.4"
 
 when defined linux:
   requires "x11 >= 1.1"
