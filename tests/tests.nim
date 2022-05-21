@@ -77,7 +77,7 @@ test "OpenGL":
 test "pixie":
   var
     image: Image
-    shadowImage: Image
+    # shadowImage: Image
     window = newWindow(title="pixie test", frameless=true, transparent=true)
 
   window.onResize = proc(e: ResizeEvent) =
@@ -86,19 +86,19 @@ test "pixie":
     let ctx = image.newContext
     ctx.fillStyle = rgba(255, 255, 255, 255)
     ctx.fillRoundedRect(rect(vec2(10, 10), vec2(float image.width - 20, float image.height - 20)), 15.0)
-    shadowImage = image.shadow(
-      offset = vec2(0, 0),
-      spread = 2,
-      blur = 10,
-      color = rgba(0, 0, 0, 128)
-    )
+    # shadowImage = image.shadow(
+    #   offset = vec2(0, 0),
+    #   spread = 2,
+    #   blur = 10,
+    #   color = rgba(0, 0, 0, 128)
+    # )
     # note: pixie's shadow is slow
     # todo: use a faster shadow
 
   window.onRender = proc(e: RenderEvent) =
     image.fill(rgba(255, 255, 255, 0))
 
-    image.draw shadowImage
+    # image.draw shadowImage
 
     let ctx = image.newContext
 

@@ -494,6 +494,39 @@ when defined(linux):
       destroy this.ctx
       this.ctx = nil
     procCall destroy this.Window
+
+
+  template invoke(event: proc, args) =
+    when args is tuple:
+      if event != nil: event(args)
+    else:
+      if event != nil: event((args,))
+
+  proc releaseAllKeys(window: Window) =
+    ## release all pressed keys
+    ## needed when window loses focus
+    let pressed = window.keyboard.pressed
+    for k in pressed:
+      window.keyboard.pressed.excl k
+      window.onKeyup.invoke (k, false, false)
+
+    for b in AllMouseButtons:
+      if not window.mouse.pressed[b]:
+        continue
+      window.mouse.pressed[b] = false
+      window.onMouseup.invoke (b, false)
+  
+  proc pressAllKeys(window: Window) =
+    ## press pressed in system keys and mouse buttons
+    ## needed when window gets focus
+    let keys = queryKeyboardState().mapit(xkeyToKey display.XKeycodeToKeysym(it.char, 0))
+    for k in keys: # press pressed in system keys
+      if k == Key.unknown: continue
+      window.keyboard.pressed.incl k
+      window.onKeydown.invoke (k, false, false)
+    
+    # todo: press pressed in system mouse buttons
+
   
   proc `frameless=`*(this: Window, v: bool) =
     case wmForFramelessKind
@@ -593,7 +626,6 @@ when defined(linux):
     let root = defaultRootWindow()
     var vi: XVisualInfo
     discard display.XMatchVisualInfo(this.xscr, if transparent: 32 else: 24, TrueColor, vi.addr)
-    # let vi = glxChooseVisual(0, [GlxRgba, GlxDepthSize, 24, GlxDoublebuffer])
     let cmap = display.XCreateColormap(root, vi.visual, AllocNone)
     var swa = XSetWindowAttributes(colormap: cmap)
     this.xwin = x.newWindow(root, 0, 0, w, h, 0, vi.depth, InputOutput, vi.visual, CwColormap or CwEventMask or CwBorderPixel or CwBackPixel, swa)
@@ -758,6 +790,7 @@ when defined(linux):
   proc `minimized=`*(window: Window, v: bool) =
     ## minimize/unminimize window
     if v:
+      window.releaseAllKeys
       discard display.XIconifyWindow(window.xwin, display.DefaultScreen)
     else:
       discard display.XRaiseWindow(window.xwin)
@@ -765,8 +798,7 @@ when defined(linux):
 
   proc startInteractiveMove*(window: Window) =
     let pos = cursor().pos
-    wasMoved window.mouse.pressed
-    wasMoved window.keyboard.pressed
+    window.releaseAllKeys
     discard display.XUngrabPointer(0)
     discard XFlush display
 
@@ -781,8 +813,7 @@ when defined(linux):
   
   proc startInteractiveResize*(window: Window, edge: Edge) =
     let pos = cursor().pos
-    wasMoved window.mouse.pressed
-    wasMoved window.keyboard.pressed
+    window.releaseAllKeys
     discard display.XUngrabPointer(0)
     discard XFlush display
 
@@ -810,11 +841,6 @@ when defined(linux):
 
   proc run*(this: Window) =
     ## run main loop of window
-    template invoke(event, args) =
-      when args is tuple:
-        if event != nil: event(args)
-      else:
-        if event != nil: event((args,))
 
     var ev: XEvent
 
@@ -921,21 +947,13 @@ when defined(linux):
           this.m_hasFocus = true
           if this.xinContext != nil: XSetICFocus this.xinContext
           this.onFocusChanged.invoke (true)
+          this.pressAllKeys
           
-          let keys = queryKeyboardState().mapit(xkeyToKey display.XKeycodeToKeysym(it.char, 0))
-          for k in keys: # press pressed in system keys
-            if k == Key.unknown: continue
-            this.keyboard.pressed.incl k
-            this.onKeydown.invoke (k, false, false)
         of FocusOut:
           this.m_hasFocus = false
           if this.xinContext != nil: XUnsetICFocus this.xinContext
           this.onFocusChanged.invoke (false)
-
-          let pressed = this.keyboard.pressed
-          for k in pressed: # release all keys
-            this.keyboard.pressed.excl k
-            this.onKeyup.invoke (k, false, false)
+          this.releaseAllKeys
 
         of KeyPress:
           var key = Key.unknown
