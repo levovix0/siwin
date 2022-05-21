@@ -1,4 +1,4 @@
-import os, strutils, strformat, tables, hashes, sets
+import os, strutils, strformat, tables, hashes, sets, vmath
 import x11/[xlib, xutil, xatom, xshm, cursorfont, keysym]
 import x11/x except Window, Pixmap, Cursor
 export xlib, xutil, xatom, xshm, cursorfont, keysym
@@ -151,14 +151,14 @@ proc `=destroy`(this: var GraphicsContext) =
 
 proc syncX*() = discard display.XSync(0)
 
-proc newSimpleWindow*(parent: Window, x, y: int, w, h: int, borderW: int, border: culong, background: culong): Window =
-  result = Window display.XCreateSimpleWindow(parent, x.cint, y.cint, w.cuint, h.cuint, borderW.cuint, border, background)
+proc newSimpleWindow*(parent: Window, pos: IVec2, size: IVec2, borderW: int, border: culong, background: culong): Window =
+  result = Window display.XCreateSimpleWindow(parent, pos.x.cint, pos.y.cint, size.x.cuint, size.y.cuint, borderW.cuint, border, background)
   doassert result != 0
-proc newWindow*(parent: Window, x, y: int, w, h: int, borderW: int, depth: int, class: cuint, visual: PVisual, valuemask: culong, attributes: XSetWindowAttributes): Window =
-  result = Window display.XCreateWindow(parent, x.cint, y.cint, w.cuint, h.cuint, borderW.cuint, depth.cint, class, visual, valuemask, attributes.unsafeAddr)
+proc newWindow*(parent: Window, pos: IVec2, size: IVec2, borderW: int, depth: int, class: cuint, visual: PVisual, valuemask: culong, attributes: XSetWindowAttributes): Window =
+  result = Window display.XCreateWindow(parent, pos.x.cint, pos.y.cint, size.x.cuint, size.y.cuint, borderW.cuint, depth.cint, class, visual, valuemask, attributes.unsafeAddr)
   doassert result != 0
 
-proc geometry*(a: Window): tuple[root: Window; x, y: int; w, h: int; borderW: int, depth: int] =
+proc geometry*(a: Window): tuple[root: Window; pos: IVec2; size: IVec2; borderW: int, depth: int] =
   var
     root: Window
     x, y: cint
@@ -166,11 +166,9 @@ proc geometry*(a: Window): tuple[root: Window; x, y: int; w, h: int; borderW: in
     borderW: cuint
     depth: cuint
   discard display.XGetGeometry(a, root.addr, x.addr, y.addr, w.addr, h.addr, borderW.addr, depth.addr)
-  (root, x.int, y.int, w.int, h.int, borderW.int, depth.int)
-proc size*(a: tuple[root: Window; x, y: int; w, h: int; borderW: int, depth: int]): tuple[x, y: int] = (a.w, a.h)
-proc pos*(a: tuple[root: Window; x, y: int; w, h: int; borderW: int, depth: int]): tuple[x, y: int] = (a.x, a.y)
+  (root, ivec2(x.int32, y.int32), ivec2(w.int32, h.int32), borderW.int, depth.int)
 
-proc cursor*(): tuple[x, y: int; root, child: Window; winX, winY: int; mask: uint; exists: bool] =
+proc cursor*(): tuple[pos: IVec2; root, child: Window; winX, winY: int; mask: uint; exists: bool] =
   ## find cursor and return where it is
   var
     root, child: Window
@@ -179,8 +177,7 @@ proc cursor*(): tuple[x, y: int; root, child: Window; winX, winY: int; mask: uin
     mask: cuint
   for i in 0..display.ScreenCount:
     if display.XQueryPointer(display.XRootWindow(i), root.addr, child.addr, x.addr, y.addr, winX.addr, winY.addr, mask.addr) != 0:
-      return (x.int, y.int, root, child, winX.int, winY.int, mask.uint, true)
-proc pos*(a: tuple[x, y: int; root, child: Window; winX, winY: int; mask: uint; exists: bool]): tuple[x, y: int] = (a.x, a.y)
+      return (ivec2(x.int32, y.int32), root, child, winX.int, winY.int, mask.uint, true)
 
 proc queryKeyboardState*(): set[0..255] =
   var r: array[32, char]
@@ -252,9 +249,9 @@ proc `netWmIconName=`*(a: Window, v: string) =
   discard display.XChangeProperty(a, atom"_NET_WM_ICON_NAME", atom"UTF8_STRING", 8, PropModeReplace, cast[PCUchar](v.dataAddr), v.len.cint)
 
 
-proc `pos=`*(a: Window, v: tuple[x, y: int]) =
+proc `pos=`*(a: Window, v: IVec2) =
   discard display.XMoveWindow(a, v.x.cint, v.y.cint)
-proc `size=`*(a: Window, size: tuple[x, y: int]) =
+proc `size=`*(a: Window, size: IVec2) =
   discard display.XResizeWindow(a, size.x.cuint, size.y.cuint)
 
 
@@ -273,13 +270,13 @@ proc blackPixel*(screen: cint): culong = display.BlackPixel(screen)
 proc whitePixel*(screen: cint): culong = display.WhitePixel(screen)
 
 
-proc newPixmap*(w, h: int, window: Window, depth: cuint): Pixmap =
-  Pixmap display.XCreatePixmap(window, w.cuint, h.cuint, depth)
+proc newPixmap*(size: IVec2, window: Window, depth: cuint): Pixmap =
+  Pixmap display.XCreatePixmap(window, size.x.cuint, size.y.cuint, depth)
 
 
-proc asXImage*(data: openarray[ColorRGBX], w, h: int): XImage = XImage(
-  width: cint w,
-  height: cint h,
+proc asXImage*(data: openarray[ColorRGBX], size: IVec2): XImage = XImage(
+  width: cint size.x,
+  height: cint size.y,
   depth: 24,
   bitsPerPixel: 32,
   format: ZPixmap,
@@ -288,12 +285,12 @@ proc asXImage*(data: openarray[ColorRGBX], w, h: int): XImage = XImage(
   bitmapUnit: display.BitmapUnit,
   bitmapBitOrder: MSBFirst,
   bitmapPad: 32,
-  bytesPerLine: cint w * ColorRGBX.sizeof
+  bytesPerLine: cint size.x * ColorRGBX.sizeof
 )
 
-proc asXImageTransparent*(data: seq[tuple[b, g, r, a: uint8]], w, h: int): XImage = XImage(
-  width: cint w,
-  height: cint h,
+proc asXImageTransparent*(data: seq[tuple[b, g, r, a: uint8]], size: IVec2): XImage = XImage(
+  width: cint size.x,
+  height: cint size.y,
   depth: 32,
   bitsPerPixel: 32,
   format: ZPixmap,
@@ -302,12 +299,12 @@ proc asXImageTransparent*(data: seq[tuple[b, g, r, a: uint8]], w, h: int): XImag
   bitmapUnit: display.BitmapUnit,
   bitmapBitOrder: LSBFirst,
   bitmapPad: 32,
-  bytesPerLine: cint w * ColorRGBX.sizeof
+  bytesPerLine: cint size.x * ColorRGBX.sizeof
 )
 
-proc asXImage*(data: openarray[ColorBgrx], w, h: int, transparent = false): XImage = XImage(
-  width: cint w,
-  height: cint h,
+proc asXImage*(data: openarray[ColorBgrx], size: IVec2, transparent = false): XImage = XImage(
+  width: cint size.x,
+  height: cint size.y,
   depth: if transparent: 32 else: 24,
   bitsPerPixel: 32,
   format: ZPixmap,
@@ -316,7 +313,7 @@ proc asXImage*(data: openarray[ColorBgrx], w, h: int, transparent = false): XIma
   bitmapUnit: display.BitmapUnit,
   bitmapBitOrder: LSBFirst,
   bitmapPad: 32,
-  bytesPerLine: cint w * ColorBgrx.sizeof
+  bytesPerLine: cint size.x * ColorBgrx.sizeof
 )
 
 
@@ -326,10 +323,10 @@ proc newGC*(a: Drawable, mask: culong = GcForeground or GcBackground): GraphicsC
   result.gc = display.XCreateGC(a, mask, result.gcv.addr)
   if result.gc == nil: raise X11Defect.newException("failed to create gc")
 
-proc put*(a: GraphicsContext, image: PXImage, w, h: int, srcPos: tuple[x, y: int] = (0, 0), destPos: tuple[x, y: int] = (0, 0)) =
-  discard display.XPutImage(a.target, a.gc, image, cint srcPos.x, cint srcPos.y, cint destPos.x, cint destPos.y, cuint w, cuint h)
-proc put*(a: GraphicsContext, image: PXImage, srcPos: tuple[x, y: int] = (0, 0), destPos: tuple[x, y: int] = (0, 0)) =
-  a.put(image, image.width, image.height, srcPos, destPos)
+proc put*(a: GraphicsContext, image: PXImage, size: IVec2, srcPos: IVec2 = ivec2(0, 0), destPos: IVec2 = ivec2(0, 0)) =
+  discard display.XPutImage(a.target, a.gc, image, cint srcPos.x, cint srcPos.y, cint destPos.x, cint destPos.y, cuint size.x, cuint size.y)
+proc put*(a: GraphicsContext, image: PXImage, srcPos: IVec2 = ivec2(0, 0), destPos: IVec2 = ivec2(0, 0)) =
+  a.put(image, ivec2(image.width, image.height), srcPos, destPos)
 
 
 proc send*(a: Window, e: XEvent, mask: clong = NoEventMask, propagate: bool = false) =

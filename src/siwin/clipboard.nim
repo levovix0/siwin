@@ -1,6 +1,7 @@
 when defined(linux):
   import utils
   import libx11 as x
+  import vmath
 when defined(windows):
   import libwinapi
 
@@ -78,7 +79,7 @@ when defined(linux):
       else: discard
 
 
-  clipboard.xwin = newSimpleWindow(defaultRootWindow(), 0, 0, 1, 1, 0, 0, 0) # invisible window!
+  clipboard.xwin = newSimpleWindow(defaultRootWindow(), ivec2(), ivec2(1, 1), 0, 0, 0) # invisible window!
   clipboard.xwin.input = [SelectionNotify, SelectionRequest, SelectionClear]
   clipboardProcessEvents = proc() =
     var rsp: bool

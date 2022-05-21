@@ -1,6 +1,7 @@
 import times, os, options
-import chroma
+import chroma, vmath
 import image, utils
+export chroma, vmath
 
 when defined(linux):
   import libx11 as x, libglx, sets
@@ -15,7 +16,7 @@ type
     left right middle forward backward
   AllMouseButtons* = MouseButton.left..MouseButton.backward
   Mouse* = tuple
-    pos: tuple[x, y: int]
+    pos: IVec2
     pressed: array[AllMouseButtons, bool]
 
   Key* {.pure.} = enum
@@ -94,7 +95,7 @@ type
     onKeyup*:       proc(e: KeyEvent)
     onTextInput*:   proc(e: TextInputEvent)
 
-    m_size: tuple[x, y: int]
+    m_size: IVec2
 
     closed: bool
     m_hasFocus: bool
@@ -116,11 +117,9 @@ type
       gc: GraphicsContext
       # xSyncCounter: XSyncCounter
       # lastSync: XSyncValue
-
       xcursor: x.Cursor
 
-      m_pos: tuple[x, y: int]
-      
+      m_pos: IVec2
       bgraPixels: Option[seq[tuple[b, g, r, a: uint8]]]
 
     elif defined(windows):
@@ -143,19 +142,19 @@ type
 
   RenderEvent* = tuple
   ResizeEvent* = tuple
-    oldSize, size: tuple[x, y: int]
+    oldSize, size: IVec2
     initial: bool # is this initial resizing
   WindowMoveEvent* = tuple
-    oldPos, pos: tuple[x, y: int]
+    oldPos, pos: IVec2
 
   MouseMoveEvent* = tuple
-    oldPos, pos: tuple[x, y: int]
+    oldPos, pos: IVec2
   MouseButtonEvent* = tuple
     button: MouseButton
     pressed: bool
   ClickEvent* = tuple
     button: MouseButton
-    pos: tuple[x, y: int]
+    pos: IVec2
     doubleClick: bool
   ScrollEvent* = tuple
     delta: float ## 1: scroll down, -1: scroll up
@@ -438,7 +437,7 @@ elif defined(windows):
   proc h*(this: Screen): int = GetSystemMetrics(SmCyScreen).int
 
 template screenCount*: int = getScreenCount()
-proc size*(this: Screen): tuple[x, y: int] = (this.w, this.h)
+proc size*(this: Screen): IVec2 = ivec2(this.w.int32, this.h.int32)
 
 
 when defined(linux):
@@ -552,9 +551,9 @@ when defined(linux):
 
     else: discard display.XSetTransientForHint(this.xwin, display.RootWindow(this.xscr))
 
-  proc basicInitWindow(this: Window; w, h: int; screen: Screen) =
+  proc basicInitWindow(this: Window; size: IVec2; screen: Screen) =
     this.xscr = screen.id
-    this.m_size = (w, h)
+    this.m_size = size
 
     this.m_hasFocus = true
     this.curCursor = arrow
@@ -594,8 +593,8 @@ when defined(linux):
     #       @[this.xSyncCounter].asString
     #     )
 
-  proc initWindow(this: Window; w, h: int; screen: Screen, fullscreen, frameless, transparent: bool) =
-    this.basicInitWindow w, h, screen
+  proc initWindow(this: Window; size: IVec2; screen: Screen, fullscreen, frameless, transparent: bool) =
+    this.basicInitWindow size, screen
     
     if transparent:
       this.transparent = true
@@ -608,26 +607,26 @@ when defined(linux):
       var swa = XSetWindowAttributes(colormap: cmap)
 
       this.xwin = x.newWindow(
-        root, 0, 0, w, h, 0, vi.depth, InputOutput, vi.visual,
+        root, ivec2(), size, 0, vi.depth, InputOutput, vi.visual,
         CwColormap or CwEventMask or CwBorderPixel or CwBackPixel, swa
       )
     else:
-      this.xwin = newSimpleWindow(defaultRootWindow(), 0, 0, w, h, 0, 0, this.xscr.blackPixel)
+      this.xwin = newSimpleWindow(defaultRootWindow(), ivec2(), size, 0, 0, this.xscr.blackPixel)
 
     this.setupWindow fullscreen, frameless
 
     this.waitForReDraw = true
     this.gc = this.xwin.newGC(GCForeground or GCBackground)
 
-  proc initOpenglWindow(this: OpenglWindow; w, h: int; screen: Screen, fullscreen, frameless, transparent: bool) =
-    this.basicInitWindow w, h, screen
+  proc initOpenglWindow(this: OpenglWindow; size: IVec2; screen: Screen, fullscreen, frameless, transparent: bool) =
+    this.basicInitWindow size, screen
 
     let root = defaultRootWindow()
     var vi: XVisualInfo
     discard display.XMatchVisualInfo(this.xscr, if transparent: 32 else: 24, TrueColor, vi.addr)
     let cmap = display.XCreateColormap(root, vi.visual, AllocNone)
     var swa = XSetWindowAttributes(colormap: cmap)
-    this.xwin = x.newWindow(root, 0, 0, w, h, 0, vi.depth, InputOutput, vi.visual, CwColormap or CwEventMask or CwBorderPixel or CwBackPixel, swa)
+    this.xwin = x.newWindow(root, ivec2(), size, 0, vi.depth, InputOutput, vi.visual, CwColormap or CwEventMask or CwBorderPixel or CwBackPixel, swa)
 
     this.setupWindow fullscreen, frameless
 
@@ -650,7 +649,7 @@ when defined(linux):
   proc redraw*(a: Window) = a.waitForReDraw = true
     ## render request
 
-  proc updateSize(this: Window, v: tuple[x, y: int]) =
+  proc updateSize(this: Window, v: IVec2) =
     let osize = this.m_size
     this.m_size = v
     this.waitForReDraw = true
@@ -668,16 +667,16 @@ when defined(linux):
 
     discard XFlush display
 
-  proc pos*(this: Window): tuple[x, y: int] = this.xwin.geometry.pos
-  proc `pos=`*(this: Window, p: tuple[x, y: int]) =
+  proc pos*(this: Window): IVec2 = this.xwin.geometry.pos
+  proc `pos=`*(this: Window, p: IVec2) =
     ## move window
     ## do nothing if window is fullscreen
     if this.m_isFullscreen: return
     this.xwin.pos = p
     this.m_pos = p
 
-  proc size*(this: Window): tuple[x, y: int] = this.m_size
-  proc `size=`*(this: Window, size: tuple[x, y: int]) =
+  proc size*(this: Window): IVec2 = this.m_size
+  proc `size=`*(this: Window, size: IVec2) =
     ## resize window
     ## exit fullscreen if window is fullscreen
     if this.fullscreen:
@@ -687,8 +686,8 @@ when defined(linux):
     this.updateSize size
 
   proc newPixmap(source: Image, window: Window): Pixmap =
-    result = newPixmap(source.w, source.h, window.xwin, window.xscr.defaultDepth)
-    var image = asXImage(source.data, source.w, source.h)
+    result = newPixmap(ivec2(source.w.int32, source.h.int32), window.xwin, window.xscr.defaultDepth)
+    var image = asXImage(source.data, ivec2(source.w.int32, source.h.int32))
     result.newGC.put image.addr
 
   proc `cursor=`*(this: Window, kind: Cursor) =
@@ -752,9 +751,9 @@ when defined(linux):
         if this.bgraPixels.isNone:
           this.bgraPixels = some newSeq[tuple[b, g, r, a: uint8]](this.size.x * this.size.y)
         for i, v in this.bgraPixels.get.mpairs: v = (pixels[i].b, pixels[i].g, pixels[i].r, pixels[i].a)
-        asXImageTransparent(this.bgraPixels.get, this.size.x, this.size.y)
+        asXImageTransparent(this.bgraPixels.get, this.size)
       else:
-        asXImage(pixels, this.size.x, this.size.y)
+        asXImage(pixels, this.size)
     this.gc.put ximg.addr
 
   method drawImage*(this: OpenglWindow, pixels: openarray[ColorRGBX]) =
@@ -762,7 +761,7 @@ when defined(linux):
 
   method drawImage*(this: Window, pixels: openarray[ColorBgrx]) {.base.} =
     assert pixels.len == this.size.x * this.size.y, "pixels count must be width * height"
-    var ximg = asXImage(pixels, this.size.x, this.size.y, this.transparent)
+    var ximg = asXImage(pixels, this.size, this.transparent)
     this.gc.put ximg.addr
 
   method drawImage*(this: OpenglWindow, pixels: openarray[ColorBgrx]) =
@@ -858,10 +857,9 @@ when defined(linux):
       else: 0
 
     this.m_pos = this.xwin.geometry.pos
-    this.mouse.pos = x.cursor().pos
-    this.mouse.pos = (this.mouse.pos.x - this.m_pos.x, this.mouse.pos.y - this.m_pos.y)
+    this.mouse.pos = x.cursor().pos - this.m_pos
     
-    this.onResize.invoke ((0, 0), this.m_size, true)
+    this.onResize.invoke (ivec2(), this.m_size, true)
 
     var lastClickTime: times.Time
     var lastTickTime = getTime()
@@ -893,12 +891,11 @@ when defined(linux):
 
         of ConfigureNotify:
           if ev.xconfigure.width != this.m_size.x or ev.xconfigure.height != this.m_size.y:
-            this.updateSize (ev.xconfigure.width.int, ev.xconfigure.height.int)
+            this.updateSize ivec2(ev.xconfigure.width.int32, ev.xconfigure.height.int32)
           if ev.xconfigure.x.int != this.m_pos.x or ev.xconfigure.y.int != this.m_pos.y:
             let oldPos = this.m_pos
-            this.m_pos = (ev.xconfigure.x.int, ev.xconfigure.y.int)
-            this.mouse.pos = x.cursor().pos
-            this.mouse.pos = (this.mouse.pos.x - this.m_pos.x, this.mouse.pos.y - this.m_pos.y)
+            this.m_pos = ivec2(ev.xconfigure.x.int32, ev.xconfigure.y.int32)
+            this.mouse.pos = x.cursor().pos - this.m_pos
             this.onWindowMove.invoke (oldPos, this.m_pos)
 
           let state = this.xwin.netWmState
@@ -908,7 +905,7 @@ when defined(linux):
 
         of MotionNotify:
           let oldPos = this.mouse.pos
-          this.mouse.pos = (ev.xmotion.x.int, ev.xmotion.y.int)
+          this.mouse.pos = ivec2(ev.xmotion.x.int32, ev.xmotion.y.int32)
           for v in this.clicking.mitems: v = false
           this.onMouseMove.invoke (oldPos, this.mouse.pos)
 
@@ -932,9 +929,9 @@ when defined(linux):
             this.onMouseUp.invoke (button, false)
 
         of LeaveNotify:
-          this.onMouseLeave.invoke (this.mouse.pos, (ev.xcrossing.x.int, ev.xcrossing.y.int))
+          this.onMouseLeave.invoke (this.mouse.pos, ivec2(ev.xcrossing.x.int32, ev.xcrossing.y.int32))
         of EnterNotify:
-          this.onMouseEnter.invoke (this.mouse.pos, (ev.xcrossing.x.int, ev.xcrossing.y.int))
+          this.onMouseEnter.invoke (this.mouse.pos, ivec2(ev.xcrossing.x.int32, ev.xcrossing.y.int32))
 
         of FocusIn:
           this.m_hasFocus = true
@@ -1484,8 +1481,7 @@ else:
 
 
 proc newWindow*(
-  w = 1280,
-  h = 720,
+  size = ivec2(1280, 720),
   title = "",
   screen = screen(),
   fullscreen = false,
@@ -1495,12 +1491,11 @@ proc newWindow*(
   new result, proc(window: Window) =
     destroy window
 
-  result.initWindow(w, h, screen, fullscreen, frameless, transparent)
+  result.initWindow(size, screen, fullscreen, frameless, transparent)
   result.title = title
 
 proc newOpenglWindow*(
-  w = 1280,
-  h = 720,
+  size = ivec2(1280, 720),
   title = "",
   screen = screen(),
   fullscreen = false,
@@ -1510,5 +1505,5 @@ proc newOpenglWindow*(
   new result, proc(window: OpenglWindow) =
     destroy window
   
-  result.initOpenglWindow(w, h, screen, fullscreen, frameless, transparent)
+  result.initOpenglWindow(size, screen, fullscreen, frameless, transparent)
   result.title = title

@@ -55,7 +55,7 @@ test "OpenGL":
     of Key.f3:
       window.minimized = not window.minimized
     of Key.f4:
-      window.size = (300, 300)
+      window.size = ivec2(300, 300)
     else: discard
   
   window.onDoubleClick = proc(e: ClickEvent) =
