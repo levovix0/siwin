@@ -7,7 +7,6 @@ when defined(linux):
   import libx11 as x, libglx, sets
 
 when defined(windows):
-  import macros
   import libwinapi
 
 
@@ -1015,13 +1014,14 @@ when defined(linux):
 
 
 elif defined(windows):
-  proc poolEvent(a: var SomeWindow, message: Uint, wParam: WParam, lParam: LParam): LResult
+  proc poolEvent(a: Window, message: Uint, wParam: WParam, lParam: LParam): LResult
 
   template wndProc(name; t: typedesc) =
     proc name(handle: HWnd, message: Uint, wParam: WParam, lParam: LParam): LResult {.stdcall.} =
-      let win = if handle != 0: cast[ptr t](GetWindowLongPtr(handle, GwlpUserData)) else: nil
-      
-      if win != nil: win[].poolEvent(message, wParam, lParam)
+      let win = if handle != 0: cast[t](GetWindowLongPtr(handle, GwlpUserData)) else: nil
+      # todo: use methods
+
+      if win != nil: win.poolEvent(message, wParam, lParam)
       else:          DefWindowProc(handle, message, wParam, lParam)
   
   wndProc windowProc, Window
@@ -1046,7 +1046,7 @@ elif defined(windows):
     wcex.lpszClassName = woClassName
     RegisterClassEx(&wcex)
 
-  proc `=destroy`*(this: Window) =
+  method destroy*(this: Window) {.base.} =
     DeleteDC this.hdc
     if this.buffer.pixels != nil:
       DeleteDC this.buffer.hdc
@@ -1054,20 +1054,20 @@ elif defined(windows):
     if this.wicon != 0: DestroyIcon this.wicon
     if this.wcursor != 0: DestroyCursor this.wcursor
   
-  proc `=destroy`*(this: OpenglWindow) =
+  method destroy*(this: OpenglWindow) =
     if wglGetCurrentContext() == this.ctx:
       wglMakeCurrent(0, 0)
     wglDeleteContext this.ctx
-    this.Window.`=destroy`
+    procCall destroy this.Window
 
-  template pushEvent(this: SomeWindow, event, args) =
+  template pushEvent(this: Window, event, args) =
     if this.event != nil:
       this.event(when args is tuple: args else: (args,))
 
   proc updateSize(this: Window) =
     let rect = this.handle.clientRect
     let osize = this.m_size
-    this.m_size = (rect.right.int, rect.bottom.int)
+    this.m_size = ivec2(rect.right.int32, rect.bottom.int32)
     if osize == this.m_size: return
 
     this.pushEvent onResize, (osize, this.m_size, false)
@@ -1085,8 +1085,8 @@ elif defined(windows):
     this.updateSize()
     this.pushEvent onFullscreenChanged, (v)
 
-  proc size*(this: Window): tuple[x, y: int] = this.m_size
-  proc `size=`*(this: Window, size: tuple[x, y: int]) =
+  proc size*(this: Window): IVec2 = this.m_size
+  proc `size=`*(this: Window, size: IVec2) =
     this.fullscreen = false
     let rcClient = this.handle.clientRect
     var rcWind = this.handle.windowRect
@@ -1095,7 +1095,7 @@ elif defined(windows):
     this.handle.MoveWindow(rcWind.left, rcWind.top, (size.x + borderx).int32, (size.y + bordery).int32, True)
     this.updateSize()
 
-  proc initWindow(this: Window; w, h: int; screen: Screen, fullscreen, frameless, transparent: bool, class = wClassName) =
+  proc initWindow(this: Window; size: IVec2; screen: Screen, fullscreen, frameless, transparent: bool, class = wClassName) =
     this.handle = CreateWindow(
       class,
       "",
@@ -1103,7 +1103,7 @@ elif defined(windows):
       else: WsOverlappedWindow,
       CwUseDefault,
       CwUseDefault,
-      w.int32, h.int32,
+      size.x, size.y,
       0, 0,
       hInstance,
       nil
@@ -1111,9 +1111,9 @@ elif defined(windows):
     this.m_hasFocus = true
     this.curCursor = arrow
     this.wcursor = LoadCursor(0, IdcArrow)
-    this.handle.SetWindowLongPtrW(GwlpUserData, cast[LongPtr](this.addr))
+    this.handle.SetWindowLongPtrW(GwlpUserData, cast[LongPtr](this))
     this.handle.trackMouseEvent(TmeHover)
-    this.size = (w, h)
+    this.size = size
     this.hdc = this.handle.GetDC
     
     this.fullscreen = fullscreen
@@ -1131,8 +1131,8 @@ elif defined(windows):
 
       this.handle.DwmEnableBlurBehindWindow(bb.addr)
 
-  proc initOpenglWindow(this: OpenglWindow; w, h: int; screen: Screen, fullscreen, frameless, transparent: bool) =
-    this.initWindow w, h, screen, fullscreen, frameless, transparent, woClassName
+  proc initOpenglWindow(this: OpenglWindow; size: IVec2; screen: Screen, fullscreen, frameless, transparent: bool) =
+    this.initWindow size, screen, fullscreen, frameless, transparent, woClassName
     
     this.waitForReDraw = true
 
@@ -1164,13 +1164,13 @@ elif defined(windows):
   
   proc redraw*(a: OpenglWindow) = a.waitForReDraw = true
 
-  proc pos*(this: Window): tuple[x, y: int] =
+  proc pos*(this: Window): IVec2 =
     let r = this.handle.clientRect
-    (r.left.int, r.top.int)
+    ivec2(r.left.int32, r.top.int32)
   
-  proc `pos=`*(this: Window, v: tuple[x, y: int]) =
+  proc `pos=`*(this: Window, v: IVec2) =
     if this.m_isFullscreen: return
-    this.handle.SetWindowPos(0, v.x.int32, v.y.int32, 0, 0, SwpNoSize)
+    this.handle.SetWindowPos(0, v.x, v.y, 0, 0, SwpNoSize)
 
   proc `cursor=`*(this: Window, kind: Cursor) =
     if kind == this.curCursor: return
@@ -1325,19 +1325,19 @@ elif defined(windows):
     # todo: press all keys and mouse buttons that are pressed after resize
 
 
-  proc displayImpl(this: Window) =
+  method displayImpl(this: Window) {.base.} =
     var ps: PaintStruct
     this.handle.BeginPaint(&ps)
     this.pushEvent onRender, ()
     this.handle.EndPaint(&ps)
 
-  proc displayImpl(this: OpenglWindow) =
+  method displayImpl(this: OpenglWindow) =
     this.pushEvent onRender, ()
 
   proc run*(this: Window) =
     ## run main loop of window
     this.handle.ShowWindow(SwShow)
-    this.pushEvent onResize, ((0, 0), this.m_size, true)
+    this.pushEvent onResize, (ivec2(), this.m_size, true)
     this.waitForRedraw = true
 
     this.handle.UpdateWindow()
@@ -1357,10 +1357,10 @@ elif defined(windows):
       if not catched: sleep(2)
 
       let nows = getTime()
-      this.pushEvent onTick, (this.mouse, this.keyboard, nows - lastTickTime)
+      this.pushEvent onTick, (nows - lastTickTime)
       lastTickTime = nows
 
-  proc poolEvent(a: var SomeWindow, message: Uint, wParam: WParam, lParam: LParam): LResult =
+  proc poolEvent(a: Window, message: Uint, wParam: WParam, lParam: LParam): LResult =
     template button: MouseButton =
       case message
       of WM_lbuttonDown, WM_lbuttonUp, WM_lbuttonDblclk: MouseButton.left
@@ -1386,8 +1386,8 @@ elif defined(windows):
       if a.m_size.x * a.m_size.y > 0:
         a.displayImpl()
         a.waitForRedraw = false
-        when a is OpenglWindow:
-          a.hdc.SwapBuffers
+        if a of OpenglWindow:
+          a.OpenglWindow.hdc.SwapBuffers
 
     of WmDestroy:
       a.pushEvent onClose, ()
@@ -1396,23 +1396,23 @@ elif defined(windows):
 
     of WmMouseMove:
       let opos = a.mouse.pos
-      a.mouse.pos = (lParam.GetX_LParam, lParam.GetY_LParam)
+      a.mouse.pos = ivec2(lParam.GetX_LParam.int32, lParam.GetY_LParam.int32)
       for v in a.clicking.mitems: v = false
-      a.pushEvent onMouseMove, (a.mouse, opos, a.mouse.pos)
+      a.pushEvent onMouseMove, (opos, a.mouse.pos)
 
     of WmMouseLeave:
-      let npos = (lParam.GetX_LParam, lParam.GetY_LParam)
-      a.pushEvent onMouseLeave, (a.mouse, a.mouse.pos, npos)
+      let npos = ivec2(lParam.GetX_LParam.int32, lParam.GetY_LParam.int32)
+      a.pushEvent onMouseLeave, (a.mouse.pos, npos)
       a.handle.trackMouseEvent(TmeHover)
 
     of WmMouseHover:
-      let npos = (lParam.GetX_LParam, lParam.GetY_LParam)
-      a.pushEvent onMouseEnter, (a.mouse, a.mouse.pos, npos)
+      let npos = ivec2(lParam.GetX_LParam.int32, lParam.GetY_LParam.int32)
+      a.pushEvent onMouseEnter, (a.mouse.pos, npos)
       a.handle.trackMouseEvent(TmeLeave)
 
     of WmMouseWheel:
       let delta = if wParam.GetWheelDeltaWParam > 0: -1.0 else: 1.0
-      a.pushEvent onScroll, (a.mouse, delta)
+      a.pushEvent onScroll, (delta)
 
     of WmSetFocus:
       a.m_hasFocus = true
@@ -1422,7 +1422,7 @@ elif defined(windows):
       for k in keys: # press pressed in system keys
         if k == Key.unknown: continue
         a.keyboard.pressed.incl k
-        a.pushEvent onKeydown, (a.keyboard, k, false, false)
+        a.pushEvent onKeydown, (k, false, false)
 
     of WmKillFocus:
       a.m_hasFocus = false
@@ -1430,43 +1430,43 @@ elif defined(windows):
       let pressed = a.keyboard.pressed
       for key in pressed: # release all keys
         a.keyboard.pressed.excl key
-        a.pushEvent onKeyup, (a.keyboard, key, false, false)
+        a.pushEvent onKeyup, (key, false, false)
 
     of WmLButtonDown, WmRButtonDown, WmMButtonDown, WmXButtonDown:
       a.handle.SetCapture()
       a.mouse.pressed[button] = true
       a.clicking[button] = true
-      a.pushEvent onMouseDown, (a.mouse, button, true)
+      a.pushEvent onMouseDown, (button, true)
 
     of WmLButtonUp, WmRButtonUp, WmMButtonUp, WmXButtonUp:
       ReleaseCapture()
       a.mouse.pressed[button] = false
-      if a.clicking[button]: a.pushEvent onClick, (a.mouse, button, a.mouse.pos, false)
+      if a.clicking[button]: a.pushEvent onClick, (button, a.mouse.pos, false)
       a.clicking[button] = false
-      a.pushEvent onMouseDown, (a.mouse, button, false)
+      a.pushEvent onMouseDown, (button, false)
 
     of WmLButtonDblclk, WmRButtonDblclk, WmMButtonDblclk, WmXButtonDblclk:
-      a.pushEvent onDoubleClick, (a.mouse, button, a.mouse.pos, true)
+      a.pushEvent onDoubleClick, (button, a.mouse.pos, true)
 
     of WmKeyDown, WmSysKeyDown:
       let key = wkeyToKey(wParam, lParam)
       if key != Key.unknown:
         let repeated = key in a.keyboard.pressed
         a.keyboard.pressed.incl key
-        a.pushEvent onKeydown, (a.keyboard, key, true, repeated)
+        a.pushEvent onKeydown, (key, true, repeated)
 
     of WmKeyUp, WmSysKeyUp:
       let key = wkeyToKey(wParam, lParam)
       if key != Key.unknown:
         let repeated = key notin a.keyboard.pressed
         a.keyboard.pressed.excl key
-        a.pushEvent onKeyup, (a.keyboard, key, false, repeated)
+        a.pushEvent onKeyup, (key, false, repeated)
 
     of WmChar:
       if (a.keyboard.pressed * {lcontrol, rcontrol, lalt, ralt}).len < 0:
         let s = %$[wParam.WChar]
         if s.len > 0 and s notin ["\u001B"]:
-          a.pushEvent onTextInput, (a.keyboard, s)
+          a.pushEvent onTextInput, (s)
 
     of WmSetCursor:
       if lParam.LoWord == HtClient:
