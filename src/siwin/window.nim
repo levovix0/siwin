@@ -456,7 +456,7 @@ when defined(linux):
     else:
       WmForFramelessKind.unsupported
 
-  method destroy(this: Window) {.base.} =
+  proc `=destroy`(this: var typeof(Window()[])) =
     if this.xinContext != nil:
       destroy this.xinContext
       this.xinContext = nil
@@ -485,12 +485,12 @@ when defined(linux):
     #   display.XSyncDestroyCounter(this.xSyncCounter)
     #   this.xSyncCounter = 0.XSyncCounter
 
-  method destroy(this: OpenglWindow) =
+  proc `=destroy`(this: var typeof(OpenglWindow()[])) =
     0.makeCurrent nil.GlxContext
     if this.ctx != nil:
       destroy this.ctx
       this.ctx = nil
-    procCall destroy this.Window
+    `=destroy` cast[ptr typeof(Window()[])](this.addr)[]
 
 
   template invoke(event: proc, args) =
@@ -1010,7 +1010,10 @@ when defined(linux):
       if clipboardProcessEvents != nil: clipboardProcessEvents()
 
     this.onClose.invoke ()
-    destroy this
+    if this of OpenglWindow:
+      `=destroy` this.OpenglWindow[]
+    else:
+      `=destroy` this[]
 
 
 elif defined(windows):
@@ -1046,7 +1049,7 @@ elif defined(windows):
     wcex.lpszClassName = woClassName
     RegisterClassEx(&wcex)
 
-  method destroy*(this: Window) {.base.} =
+  proc `=destroy`(this: var typeof(Window()[])) =
     DeleteDC this.hdc
     if this.buffer.pixels != nil:
       DeleteDC this.buffer.hdc
@@ -1054,11 +1057,11 @@ elif defined(windows):
     if this.wicon != 0: DestroyIcon this.wicon
     if this.wcursor != 0: DestroyCursor this.wcursor
   
-  method destroy*(this: OpenglWindow) =
+  proc `=destroy`(this: var typeof(OpenglWindow()[])) =
     if wglGetCurrentContext() == this.ctx:
       wglMakeCurrent(0, 0)
     wglDeleteContext this.ctx
-    procCall destroy this.Window
+    `=destroy` cast[ptr typeof(Window()[])](this.addr)[]
 
   template pushEvent(this: Window, event, args) =
     if this.event != nil:
@@ -1487,10 +1490,8 @@ proc newWindow*(
   fullscreen = false,
   frameless = false,
   transparent = false
-  ): Window =
-  new result, proc(window: Window) =
-    destroy window
-
+): Window =
+  new result
   result.initWindow(size, screen, fullscreen, frameless, transparent)
   result.title = title
 
@@ -1501,9 +1502,7 @@ proc newOpenglWindow*(
   fullscreen = false,
   frameless = false,
   transparent = false
-  ): OpenglWindow =
-  new result, proc(window: OpenglWindow) =
-    destroy window
-  
+): OpenglWindow =
+  new result  
   result.initOpenglWindow(size, screen, fullscreen, frameless, transparent)
   result.title = title
