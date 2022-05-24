@@ -14,14 +14,14 @@ Can be used as an alternative to GLFW/GLUT/windy
 
 #### simple window
 ```nim
-import siwin, chroma
+import siwin, siwin/image
 
-const color = parseHex("202020").rgbx
+const color = ColorBgrx(r: 32, g: 32, b: 32, a: 255)
 
 var window = newWindow()
 
 window.onRender = proc(e: RenderEvent) =
-  var image = newSeq[ColorRGBX](window.size.x * window.size.y)
+  var image = newSeq[ColorBgrx](window.size.x * window.size.y)
   for c in image.mitems:
     c = color
   window.drawImage image
@@ -36,10 +36,10 @@ run window
 #### OpenGL
 ![](https://ia.wampi.ru/2021/09/07/31.png)
 ```nim
-import siwin, nimgl/opengl
+import siwin, opengl
 
 var window = newOpenglWindow(title="OpenGL example")
-doassert glInit()
+loadExtensions()
 
 window.onResize = proc(e: ResizeEvent) =
   glViewport 0, 0, e.size.x.GLsizei, e.size.y.GLsizei
@@ -109,12 +109,10 @@ import siwin
 
 var window = newWindow()
 window.onKeydown = proc(e: KeyEvent) =
-  case e.key
-  Key.c:
+  if e.key == Key.c:
     clipboard.text = "some text"
-  Key.v:
+  elif e.key == Key.v:
     echo clipboard.text
-  else: discard
 
   # clipboard $= "text" and $clipboard also works
 
@@ -123,3 +121,4 @@ run window
 
 # TODO
 * Wayland support
+* copy/paste images

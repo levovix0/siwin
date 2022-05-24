@@ -1,3 +1,13 @@
-/.vscode
-/tests/tests
-/tests/tests.exe
+# ignore files without extension
+*
+!*.*
+!*/
+
+# normal ignores
+*.exe
+*.dll
+.*
+
+/build
+/local-*
+/local_*
