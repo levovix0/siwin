@@ -1019,17 +1019,26 @@ when defined(linux):
 elif defined(windows):
   proc poolEvent(a: Window, message: Uint, wParam: WParam, lParam: LParam): LResult
 
-  template wndProc(name; t: typedesc) =
-    proc name(handle: HWnd, message: Uint, wParam: WParam, lParam: LParam): LResult {.stdcall.} =
-      let win = if handle != 0: cast[t](GetWindowLongPtr(handle, GwlpUserData)) else: nil
-      # todo: use methods
-
-      if win != nil: win.poolEvent(message, wParam, lParam)
-      else:          DefWindowProc(handle, message, wParam, lParam)
+  proc `=destroy`(this: var typeof(Window()[])) =
+    DeleteDC this.hdc
+    if this.buffer.pixels != nil:
+      DeleteDC this.buffer.hdc
+      DeleteObject this.buffer.bitmap
+    if this.wicon != 0: DestroyIcon this.wicon
+    if this.wcursor != 0: DestroyCursor this.wcursor
   
-  wndProc windowProc, Window
-  wndProc openglWindowProc, OpenglWindow
+  proc `=destroy`(this: var typeof(OpenglWindow()[])) =
+    if wglGetCurrentContext() == this.ctx:
+      wglMakeCurrent(0, 0)
+    wglDeleteContext this.ctx
+    `=destroy` cast[ptr typeof(Window()[])](this.addr)[]
 
+  proc windowProc(handle: HWnd, message: Uint, wParam: WParam, lParam: LParam): LResult {.stdcall.} =
+    let win = if handle != 0: cast[Window](GetWindowLongPtr(handle, GwlpUserData)) else: nil
+
+    if win != nil: win.poolEvent(message, wParam, lParam)
+    else:          DefWindowProc(handle, message, wParam, lParam)
+  
   const
     wClassName = "w"
     woClassName = "o"
@@ -1045,23 +1054,8 @@ elif defined(windows):
     )
     RegisterClassEx(&wcex)
 
-    wcex.lpfnWndProc   = openglWindowProc
     wcex.lpszClassName = woClassName
     RegisterClassEx(&wcex)
-
-  proc `=destroy`(this: var typeof(Window()[])) =
-    DeleteDC this.hdc
-    if this.buffer.pixels != nil:
-      DeleteDC this.buffer.hdc
-      DeleteObject this.buffer.bitmap
-    if this.wicon != 0: DestroyIcon this.wicon
-    if this.wcursor != 0: DestroyCursor this.wcursor
-  
-  proc `=destroy`(this: var typeof(OpenglWindow()[])) =
-    if wglGetCurrentContext() == this.ctx:
-      wglMakeCurrent(0, 0)
-    wglDeleteContext this.ctx
-    `=destroy` cast[ptr typeof(Window()[])](this.addr)[]
 
   template pushEvent(this: Window, event, args) =
     if this.event != nil:
@@ -1127,10 +1121,10 @@ elif defined(windows):
       let region = CreateRectRgn(0, 0, -1, -1)
       defer: discard DeleteObject(region)
 
-      var bb = DWM_BLURBEHIND()
-      bb.dwFlags = DWM_BB_ENABLE or DWM_BB_BLURREGION
+      var bb = DwmBlurBehind()
+      bb.dwFlags = DwmbbEnable or DwmbbBlurRegion
       bb.hRgnBlur = region
-      bb.fEnable = TRUE
+      bb.fEnable = True
 
       this.handle.DwmEnableBlurBehindWindow(bb.addr)
 
@@ -1140,7 +1134,7 @@ elif defined(windows):
     this.waitForReDraw = true
 
     var pfd = PixelFormatDescriptor(
-      nSize: WORD PixelFormatDescriptor.sizeof,
+      nSize: Word PixelFormatDescriptor.sizeof,
       nVersion: 1,
       dwFlags: Pfd_draw_to_window or Pfd_support_opengl or Pfd_double_buffer,
       iPixelType: Pfd_type_rgba,
