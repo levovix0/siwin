@@ -379,7 +379,7 @@ elif defined(windows):
     of 'B'.ord:         Key.b
     of 'C'.ord:         Key.c
     of 'D'.ord:         Key.d
-    of 'E'.ord:         Key.r
+    of 'E'.ord:         Key.e
     of 'F'.ord:         Key.f
     of 'G'.ord:         Key.g
     of 'H'.ord:         Key.h
