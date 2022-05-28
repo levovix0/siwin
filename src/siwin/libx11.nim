@@ -114,13 +114,11 @@ proc `=destroy`(a: var LibX11GarbageCollector) =
 var libx11gc {.used.}: LibX11GarbageCollector
 
 
-var atoms: Table[Hash, Atom]
-
 proc atom*(name: static string): Atom =
-  const i = hash name
-  if not atoms.hasKey(i):
-    atoms[i] = display.XInternAtom(name, 0)
-  atoms[i]
+  var a {.global.}: Atom
+  if a == 0.Atom:
+    a = display.XInternAtom(name, 0)
+  a
 
 proc atomIfExist*(name: string): Atom =
   display.XInternAtom(name, 1)
@@ -221,19 +219,22 @@ proc property*(a: Window, name: Atom, t: typedesc = typedesc[byte]): tuple[data:
     n: culong
     remainingBytes: culong
     data: ptr UncheckedArray[t]
-  if display.XGetWindowProperty(
+
+  discard display.XGetWindowProperty(
     a, name, 0, clong.high, 0, AnyPropertyType,
     result.kind.addr, format.addr, n.addr, remainingBytes.addr, cast[PPCUchar](data.addr)
-  ) != Success:
-    raise X11Defect.newException("failed to get property " & $name)
-  result.data.setLen n.int
-  for i in 0..<n.int: result.data[i] = data[i]
+  )
+
+  if n != 0:
+    result.data.setLen n.int
+    copyMem(result.data[0].addr, data, n.int * t.sizeof)
+  
   discard XFree data
 
 proc property*(a: Window, name: Atom, t: typedesc[string]): tuple[data: string, kind: Atom] =
   let a = a.property(name, char)
   result.kind = a.kind
-  result.data = $cast[cstring]((a.data & '\0').dataAddr)
+  result.data = cast[string](a.data)
 
 
 proc netWmState*(a: Window): seq[Atom] =
@@ -368,24 +369,6 @@ proc setProperty*(
 
 proc delProperty*(window: Window, property: Atom) =
   discard display.XDeleteProperty(window, property)
-
-proc asSeq*(s: string, T: type = uint8): seq[T] =
-  if s.len == 0:
-    return
-  result = newSeq[T]((s.len + T.sizeof - 1) div T.sizeof)
-  copyMem(result[0].addr, s[0].unsafeaddr, s.len)
-
-proc asString*[T](x: seq[T]|HashSet[T]): string =
-  result = newStringOfCap(x.len * T.sizeof)
-  for v in x:
-    for v in cast[array[T.sizeof, char]](v):
-      result.add v
-
-proc invert*[T](x: var set[T], v: T) =
-  if x.contains v:
-    x.excl v
-  else:
-    x.incl v
 
 proc wmState*(window: Window): HashSet[Atom] =
   window.property(atom"_NET_WM_STATE", Atom).data.toHashSet
