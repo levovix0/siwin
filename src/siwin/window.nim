@@ -1440,7 +1440,7 @@ elif defined(windows):
       a.mouse.pressed[button] = false
       if a.clicking[button]: a.pushEvent onClick, (button, a.mouse.pos, false)
       a.clicking[button] = false
-      a.pushEvent onMouseDown, (button, false)
+      a.pushEvent onMouseUp, (button, false)
 
     of WmLButtonDblclk, WmRButtonDblclk, WmMButtonDblclk, WmXButtonDblclk:
       a.pushEvent onDoubleClick, (button, a.mouse.pos, true)
