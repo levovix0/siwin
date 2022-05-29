@@ -58,20 +58,20 @@ test "OpenGL":
       window.size = ivec2(300, 300)
     else: discard
   
-  window.onDoubleClick = proc(e: ClickEvent) =
-    close window
+  window.onClick = proc(e: ClickEvent) =
+    if e.doubleClick:
+      close window
+    else:
+      case e.button
+      of MouseButton.left, MouseButton.right:
+        g = (e.pos.x / window.size.x * 2).min(2).max(0)
+        redraw window
+      else: discard
   
   window.onMouseMove = proc(e: MouseMoveEvent) =
     if window.mouse.pressed[MouseButton.left]:
       g = (e.pos.x / window.size.x * 2).min(2).max(0)
       redraw window
-  
-  window.onClick = proc(e: ClickEvent) =
-    case e.button
-    of MouseButton.left, MouseButton.right:
-      g = (e.pos.x / window.size.x * 2).min(2).max(0)
-      redraw window
-    else: discard
   
   run window
 
@@ -122,8 +122,9 @@ test "pixie":
       close window
     else: discard
   
-  window.onDoubleClick = proc(e: ClickEvent) =
-    close window
+  window.onClick = proc(e: ClickEvent) =
+    if e.doubleClick:
+      close window
   
   run window
 
@@ -151,8 +152,9 @@ test "bgrx image":
       close window
     else: discard
   
-  window.onDoubleClick = proc(e: ClickEvent) =
-    close window
+  window.onClick = proc(e: ClickEvent) =
+    if e.doubleClick:
+      close window
   
   window.onMouseMove = proc(e: MouseMoveEvent) =
     if e.pos.x in 10..(window.size.x - 10) and e.pos.y in 10..(window.size.y - 10):

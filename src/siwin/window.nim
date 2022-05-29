@@ -86,7 +86,6 @@ type
     onMouseDown*:   proc(e: MouseButtonEvent)
     onMouseUp*:     proc(e: MouseButtonEvent)
     onClick*:       proc(e: ClickEvent)
-    onDoubleClick*: proc(e: ClickEvent)
     onScroll*:      proc(e: ScrollEvent)
 
     keyboard*: Keyboard
@@ -920,8 +919,7 @@ when defined(linux):
             this.mouse.pressed[button] = false
 
             if this.clicking[button]:
-              if (nows - lastClickTime).inMilliseconds < 200: this.onDoubleClick.invoke (button, this.mouse.pos, true)
-              else: this.onClick.invoke (button, this.mouse.pos, false)
+              this.onClick.invoke (button, this.mouse.pos, (nows - lastClickTime).inMilliseconds < 200)
 
             this.mouse.pressed[button] = false
             lastClickTime = nows
@@ -1435,15 +1433,17 @@ elif defined(windows):
       a.clicking[button] = true
       a.pushEvent onMouseDown, (button, true)
 
+    of WmLButtonDblclk, WmRButtonDblclk, WmMButtonDblclk, WmXButtonDblclk:
+      a.handle.SetCapture()
+      a.mouse.pressed[button] = true
+      a.pushEvent onClick, (button, a.mouse.pos, true)
+
     of WmLButtonUp, WmRButtonUp, WmMButtonUp, WmXButtonUp:
       ReleaseCapture()
       a.mouse.pressed[button] = false
       if a.clicking[button]: a.pushEvent onClick, (button, a.mouse.pos, false)
       a.clicking[button] = false
       a.pushEvent onMouseUp, (button, false)
-
-    of WmLButtonDblclk, WmRButtonDblclk, WmMButtonDblclk, WmXButtonDblclk:
-      a.pushEvent onDoubleClick, (button, a.mouse.pos, true)
 
     of WmKeyDown, WmSysKeyDown:
       let key = wkeyToKey(wParam, lParam)
