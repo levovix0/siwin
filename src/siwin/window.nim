@@ -1459,8 +1459,8 @@ elif defined(windows):
         a.keyboard.pressed.excl key
         a.pushEvent onKeyup, (key, false, repeated)
 
-    of WmChar:
-      if (a.keyboard.pressed * {lcontrol, rcontrol, lalt, ralt}).len < 0:
+    of WmChar, WmSyschar, WmUnichar:
+      if (a.keyboard.pressed * {lcontrol, rcontrol, lalt, ralt}).len == 0:
         let s = %$[wParam.WChar]
         if s.len > 0 and s notin ["\u001B"]:
           a.pushEvent onTextInput, (s)
