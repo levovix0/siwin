@@ -1,7 +1,7 @@
 import siwin
 from siwin/image as sim import nil
 import unittest, strformat
-import nimgl/opengl, pixie
+import opengl, pixie
 
 
 test "screen":
@@ -17,7 +17,7 @@ test "screen":
 test "OpenGL":
   var g = 1.0
   let window = newOpenglWindow(title="OpenGL test", transparent=true)
-  doassert glInit()
+  loadExtensions()
 
   window.onResize = proc(e: ResizeEvent) =
     glViewport 0, 0, e.size.x.GLsizei, e.size.y.GLsizei

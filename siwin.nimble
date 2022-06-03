@@ -14,7 +14,7 @@ when defined windows:
   requires "winim >= 3.6"
 
 task testDeps, "install test dependencies":
-  exec "nimble install nimgl"
+  exec "nimble install opengl"
   exec "nimble install pixie"
   exec "nimble install https://github.com/levovix0/wayland"
 
