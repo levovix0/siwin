@@ -1,3 +1,4 @@
+# there is no library for image data type, so it's defined here
 
 type
   ColorBgrx* = object

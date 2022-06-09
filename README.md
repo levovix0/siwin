@@ -71,7 +71,7 @@ run window
 
 #### pixie
 ![](https://ia.wampi.ru/2021/09/07/32.png)
-Note: pixie renders a rgbx image, but compositors usually take bgrx, so it's not so efficient.
+note: pixie renders a rgbx image, but compositors usually take bgrx, so it's not so efficient.
 `drawImage` can take an openarray of rgbx and bgrx, but rgbx will be converted to bgrx.
 ```nim
 import siwin, pixie
@@ -117,6 +117,17 @@ window.onKeydown = proc(e: KeyEvent) =
   # clipboard $= "text" and $clipboard also works
 
 run window
+```
+
+#### offscreen rendering
+note: this will create invisible window. `ctx` mustn't be discarded as its destructor will close the window.
+```nim
+import siwin/offscreen, opengl
+
+let ctx {.used.} = newOpenglContext()
+loadExtensions()
+
+# do any opengl computing
 ```
 
 # TODO

@@ -4,10 +4,11 @@ import image, utils
 export chroma, vmath
 
 when defined(linux):
-  import libx11 as x, libglx, sets
+  import sets
+  import wrappers/x, wrappers/glx
 
 when defined(windows):
-  import libwinapi
+  import wrappers/winapi
 
 
 type
@@ -485,8 +486,9 @@ when defined(linux):
     #   this.xSyncCounter = 0.XSyncCounter
 
   proc `=destroy`(this: var typeof(OpenglWindow()[])) =
-    0.makeCurrent nil.GlxContext
     if this.ctx != nil:
+      if glxCurrentContext() == this.ctx:
+        0.makeCurrent nil.GlxContext
       destroy this.ctx
       this.ctx = nil
     `=destroy` cast[ptr typeof(Window()[])](this.addr)[]
@@ -832,6 +834,10 @@ when defined(linux):
       SubstructureNotifyMask or SubstructureRedirectMask
     )
     # todo: press all keys and mouse buttons that are pressed after resize
+  
+
+  proc makeCurrent*(window: OpenglWindow) =
+    window.xwin.makeCurrent window.ctx
 
 
   proc run*(this: Window) =
@@ -1043,7 +1049,7 @@ elif defined(windows):
   
   block winapiInit:
     var wcex = WndClassEx(
-      cbSize:        WndClasseX.sizeof.int32,
+      cbSize:        WndClassEx.sizeof.int32,
       style:         CsHRedraw or CsVRedraw or CsDblClks,
       hInstance:     hInstance,
       hCursor:       LoadCursor(0, IdcArrow),
@@ -1318,6 +1324,10 @@ elif defined(windows):
       0
     )
     # todo: press all keys and mouse buttons that are pressed after resize
+  
+  
+  proc makeCurrent*(window: OpenglWindow) =
+    doassert window.hdc.wglMakeCurrent(window.ctx)
 
 
   method displayImpl(this: Window) {.base.} =

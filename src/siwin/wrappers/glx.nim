@@ -1,5 +1,5 @@
 import macros, unicode, strutils, sequtils
-import libx11
+import x
 
 type
   GlxContext* = ptr object

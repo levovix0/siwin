@@ -1,9 +1,9 @@
 when defined(linux):
   import utils
-  import libx11 as x
+  import wrappers/x
   import vmath
 when defined(windows):
-  import libwinapi
+  import wrappers/winapi
 
 #TODO: selectionClipboard
 #TODO: image support

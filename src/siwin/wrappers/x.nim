@@ -4,7 +4,7 @@ import x11/x except Window, Pixmap, Cursor
 export xlib, xutil, xatom, xshm, cursorfont, keysym
 export x except Window, Pixmap, Cursor
 import chroma
-import utils, image
+import ../utils, ../image
 
 type
   X11ValueError* = object of CatchableError

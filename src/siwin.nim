@@ -1,3 +1,3 @@
-import siwin/[window, clipboards]
-export window, clipboards
+import siwin/[window, clipboards, offscreen]
+export window, clipboards, offscreen
 

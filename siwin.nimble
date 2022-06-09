@@ -20,10 +20,12 @@ task testDeps, "install test dependencies":
 
 task test, "test":
   withDir "tests":
-    try:    exec "nim c -r tests"
+    try:    exec "nim c --hints:off -r t_offscreen"
+    except: discard
+    try:    exec "nim c --hints:off -r tests"
     except: discard
 
 task testWayland, "test wayland":
   withDir "tests":
-    try:    exec "nim c -d:wayland -r tests"
+    try:    exec "nim c --hints:off -d:wayland -r tests"
     except: discard
