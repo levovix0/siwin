@@ -118,6 +118,7 @@ type
       # lastSync: XSyncValue
       xcursor: x.Cursor
 
+      m_visible: bool
       m_pos: IVec2
       bgraPixels: Option[seq[tuple[b, g, r, a: uint8]]]
 
@@ -125,7 +126,7 @@ type
       handle: HWnd
       wicon: HIcon
       hdc: Hdc
-      buffer: tuple[x, y: int; bitmap: HBitmap, hdc: Hdc, pixels: ptr UncheckedArray[tuple[b, g, r, _: uint8]]]
+      buffer: tuple[x, y: int; bitmap: HBitmap, hdc: Hdc, pixels: ptr UncheckedArray[ColorBgrx]]
 
       wcursor: HCursor
 
@@ -569,7 +570,6 @@ when defined(linux):
       this.xwin.netWmState = [atom"_NET_WM_STATE_FULLSCREEN"]
       this.m_size = window.screen().size
 
-    map this.xwin
     this.xwin.wmProtocols = [atom"WM_DELETE_WINDOW"]
 
     this.xinMethod = display.XOpenIM(nil, nil, nil)
@@ -646,126 +646,127 @@ when defined(linux):
     this.xwin.send this.xwin.newClientMessage(atom"WM_PROTOCOLS", [atom"WM_DELETE_WINDOW", CurrentTime])
     this.closed = true
 
-  proc redraw*(a: Window) = a.waitForReDraw = true
+  proc redraw*(window: Window) = window.waitForReDraw = true
     ## render request
 
-  proc updateSize(this: Window, v: IVec2) =
-    let osize = this.m_size
-    this.m_size = v
-    this.waitForReDraw = true
-    this.bgraPixels = none seq[tuple[b, g, r, a: uint8]]
-    this.onResize.invoke (osize, this.m_size, false)
+  proc updateSize(window: Window, v: IVec2) =
+    let osize = window.m_size
+    window.m_size = v
+    window.waitForReDraw = true
+    window.bgraPixels = none seq[tuple[b, g, r, a: uint8]]
+    window.onResize.invoke (osize, window.m_size, false)
 
-  proc fullscreen*(this: Window): bool = this.m_isFullscreen
-  proc `fullscreen=`*(this: Window, v: bool) =
-    if this.m_isFullscreen == v: return
+  proc fullscreen*(window: Window): bool = window.m_isFullscreen
+  proc `fullscreen=`*(window: Window, v: bool) =
+    if window.m_isFullscreen == v: return
 
-    this.xwin.root.send(
-      this.xwin.newClientMessage(atom"_NET_WM_STATE", [Atom 2, atom"_NET_WM_STATE_FULLSCREEN"]), # 2 - switch, 1 - set true, 0 - set false
+    window.xwin.root.send(
+      window.xwin.newClientMessage(atom"_NET_WM_STATE", [Atom 2, atom"_NET_WM_STATE_FULLSCREEN"]), # 2 - switch, 1 - set true, 0 - set false
       SubstructureNotifyMask or SubstructureRedirectMask
     )
 
     discard XFlush display
 
-  proc pos*(this: Window): IVec2 = this.xwin.geometry.pos
-  proc `pos=`*(this: Window, p: IVec2) =
+  proc pos*(window: Window): IVec2 = window.xwin.geometry.pos
+  proc `pos=`*(window: Window, p: IVec2) =
     ## move window
     ## do nothing if window is fullscreen
-    if this.m_isFullscreen: return
-    this.xwin.pos = p
-    this.m_pos = p
+    if window.m_isFullscreen: return
+    window.xwin.pos = p
+    window.m_pos = p
 
-  proc size*(this: Window): IVec2 = this.m_size
-  proc `size=`*(this: Window, size: IVec2) =
+  proc size*(window: Window): IVec2 = window.m_size
+  proc `size=`*(window: Window, size: IVec2) =
     ## resize window
     ## exit fullscreen if window is fullscreen
-    if this.fullscreen:
-      this.fullscreen = false
+    if window.fullscreen:
+      window.fullscreen = false
     
-    this.xwin.size = size
-    this.updateSize size
+    window.xwin.size = size
+    window.updateSize size
 
   proc newPixmap(source: Image, window: Window): Pixmap =
     result = newPixmap(ivec2(source.w.int32, source.h.int32), window.xwin, window.xscr.defaultDepth)
     var image = asXImage(source.data, ivec2(source.w.int32, source.h.int32))
     result.newGC.put image.addr
 
-  proc `cursor=`*(this: Window, kind: Cursor) =
+  proc `cursor=`*(window: Window, kind: Cursor) =
     ## set cursor font, used when mouse hover window
-    if kind == this.curCursor: return
-    if this.xcursor != 0: destroy this.xcursor
+    # todo: set cursor to image
+    if kind == window.curCursor: return
+    if window.xcursor != 0: destroy window.xcursor
     case kind
-    of Cursor.arrow:           this.xcursor = cursorFromFont XcLeftPtr
-    of Cursor.arrowUp:         this.xcursor = cursorFromFont XcCenterPtr
-    of Cursor.arrowRight:      this.xcursor = cursorFromFont XcRightPtr
-    of Cursor.wait:            this.xcursor = cursorFromFont XcWatch
-    of Cursor.arrowWait:       this.xcursor = cursorFromFont XcWatch #! no needed cursor
-    of Cursor.pointingHand:    this.xcursor = cursorFromFont XcHand1
-    of Cursor.grab:            this.xcursor = cursorFromFont XcHand2
-    of Cursor.text:            this.xcursor = cursorFromFont XcXterm
-    of Cursor.cross:           this.xcursor = cursorFromFont XcTCross
-    of Cursor.sizeAll:         this.xcursor = cursorFromFont XcFleur
-    of Cursor.sizeVertical:    this.xcursor = cursorFromFont XcSb_v_doubleArrow
-    of Cursor.sizeHorisontal:  this.xcursor = cursorFromFont XcSb_h_doubleArrow
-    of Cursor.sizeTopLeft:     this.xcursor = cursorFromFont XC_ul_angle
-    of Cursor.sizeTopRight:    this.xcursor = cursorFromFont XC_ur_angle
-    of Cursor.sizeBottomLeft:  this.xcursor = cursorFromFont XC_ll_angle
-    of Cursor.sizeBottomRight: this.xcursor = cursorFromFont XC_lr_angle
+    of Cursor.arrow:           window.xcursor = cursorFromFont XcLeftPtr
+    of Cursor.arrowUp:         window.xcursor = cursorFromFont XcCenterPtr
+    of Cursor.arrowRight:      window.xcursor = cursorFromFont XcRightPtr
+    of Cursor.wait:            window.xcursor = cursorFromFont XcWatch
+    of Cursor.arrowWait:       window.xcursor = cursorFromFont XcWatch #! no needed cursor
+    of Cursor.pointingHand:    window.xcursor = cursorFromFont XcHand1
+    of Cursor.grab:            window.xcursor = cursorFromFont XcHand2
+    of Cursor.text:            window.xcursor = cursorFromFont XcXterm
+    of Cursor.cross:           window.xcursor = cursorFromFont XcTCross
+    of Cursor.sizeAll:         window.xcursor = cursorFromFont XcFleur
+    of Cursor.sizeVertical:    window.xcursor = cursorFromFont XcSb_v_doubleArrow
+    of Cursor.sizeHorisontal:  window.xcursor = cursorFromFont XcSb_h_doubleArrow
+    of Cursor.sizeTopLeft:     window.xcursor = cursorFromFont XC_ul_angle
+    of Cursor.sizeTopRight:    window.xcursor = cursorFromFont XC_ur_angle
+    of Cursor.sizeBottomLeft:  window.xcursor = cursorFromFont XC_ll_angle
+    of Cursor.sizeBottomRight: window.xcursor = cursorFromFont XC_lr_angle
     of Cursor.hided:
       var data: array[1, char]
       let blank = display.XCreateBitmapFromData(rootWindow(0), data[0].addr, 1, 1)
       var pass: XColor
-      this.xcursor = x.Cursor display.XCreatePixmapCursor(blank, blank, pass.addr, pass.addr, 0, 0)
+      window.xcursor = x.Cursor display.XCreatePixmapCursor(blank, blank, pass.addr, pass.addr, 0, 0)
       discard display.XFreePixmap blank
-    this.xwin.cursor = this.xcursor
+    window.xwin.cursor = window.xcursor
     syncX()
-    this.curCursor = kind
+    window.curCursor = kind
 
-  proc `icon=`*(this: Window, image: Image) =
+  proc `icon=`*(window: Window, image: Image) =
     ## set window icon
-    if this.xicon != 0: destroy this.xicon
-    if this.xiconMask != 0: destroy this.xiconMask
+    if window.xicon != 0: destroy window.xicon
+    if window.xiconMask != 0: destroy window.xiconMask
 
-    this.xicon = newPixmap(image, this)
+    window.xicon = newPixmap(image, window)
 
     # convert alpha channel to bit mask (semi-transparency is not supported)
     var mask = newImage(image.w, image.h)
     for i in 0..<(image.w * image.h):
       mask.data[i] = if image.data[i].a > 127: ColorBgrx(b: 0, g: 0, r: 0, a: 255) else: ColorBgrx(b: 255, g: 255, r: 255, a: 255)
-    this.xiconMask = newPixmap(mask, this)
+    window.xiconMask = newPixmap(mask, window)
 
-    this.xwin.setWmHints(IconPixmapHint or IconMaskHint, this.xicon, this.xiconMask)
+    window.xwin.setWmHints(IconPixmapHint or IconMaskHint, window.xicon, window.xiconMask)
   
-  proc `icon=`*(this: Window, _: nil.typeof) =
+  proc `icon=`*(window: Window, _: nil.typeof) =
     ## clear window icon
-    if this.xicon != 0: destroy this.xicon
-    if this.xiconMask != 0: destroy this.xiconMask
-    this.xicon = 0.Pixmap
-    this.xiconMask = 0.Pixmap
-    this.xwin.setWmHints(IconPixmapHint or IconMaskHint, 0.Pixmap, 0.Pixmap)
+    if window.xicon != 0: destroy window.xicon
+    if window.xiconMask != 0: destroy window.xiconMask
+    window.xicon = 0.Pixmap
+    window.xiconMask = 0.Pixmap
+    window.xwin.setWmHints(IconPixmapHint or IconMaskHint, 0.Pixmap, 0.Pixmap)
 
-  method drawImage*(this: Window, pixels: openarray[ColorRGBX]) {.base.} =
-    assert pixels.len == this.size.x * this.size.y, "pixels count must be width * height"
+  method drawImage*(window: Window, pixels: openarray[ColorRGBX]) {.base.} =
+    assert pixels.len == window.size.x * window.size.y, "pixels count must be width * height"
     var ximg =
-      if this.transparent:
-        if this.bgraPixels.isNone:
-          this.bgraPixels = some newSeq[tuple[b, g, r, a: uint8]](this.size.x * this.size.y)
-        for i, v in this.bgraPixels.get.mpairs: v = (pixels[i].b, pixels[i].g, pixels[i].r, pixels[i].a)
-        asXImageTransparent(this.bgraPixels.get, this.size)
+      if window.transparent:
+        if window.bgraPixels.isNone:
+          window.bgraPixels = some newSeq[tuple[b, g, r, a: uint8]](window.size.x * window.size.y)
+        for i, v in window.bgraPixels.get.mpairs: v = (pixels[i].b, pixels[i].g, pixels[i].r, pixels[i].a)
+        asXImageTransparent(window.bgraPixels.get, window.size)
       else:
-        asXImage(pixels, this.size)
-    this.gc.put ximg.addr
+        asXImage(pixels, window.size)
+    window.gc.put ximg.addr
 
   method drawImage*(this: OpenglWindow, pixels: openarray[ColorRGBX]) =
-    ## draw image on OpenglWindow is impossible, so this proc do nothing
+    ## todo
 
-  method drawImage*(this: Window, pixels: openarray[ColorBgrx]) {.base.} =
-    assert pixels.len == this.size.x * this.size.y, "pixels count must be width * height"
-    var ximg = asXImage(pixels, this.size, this.transparent)
-    this.gc.put ximg.addr
+  method drawImage*(window: Window, pixels: openarray[ColorBgrx]) {.base.} =
+    assert pixels.len == window.size.x * window.size.y, "pixels count must be width * height"
+    var ximg = asXImage(pixels, window.size, window.transparent)
+    window.gc.put ximg.addr
 
-  method drawImage*(this: OpenglWindow, pixels: openarray[ColorBgrx]) =
-    ## draw image on OpenglWindow is impossible, so this proc do nothing
+  method drawImage*(window: OpenglWindow, pixels: openarray[ColorBgrx]) =
+    ## todo
 
 
   proc maximized*(window: Window): bool =
@@ -791,6 +792,17 @@ when defined(linux):
       discard display.XIconifyWindow(window.xwin, display.DefaultScreen)
     else:
       discard display.XRaiseWindow(window.xwin)
+  
+
+  proc visible*(window: Window): bool = window.m_visible
+  proc `visible=`*(window: Window, v: bool) =
+    ## show/hide window
+    if v == window.m_visible: return
+    window.m_visible = v
+    if v:
+      discard display.XMapRaised(window.xwin)
+    else:
+      discard display.XUnmapWindow(window.xwin)
   
 
   proc startInteractiveMove*(window: Window) =
@@ -840,8 +852,12 @@ when defined(linux):
     window.xwin.makeCurrent window.ctx
 
 
-  proc run*(this: Window) =
+  proc run*(this: Window, makeVisible = true) =
     ## run main loop of window
+    # todo: run multiple windows
+
+    if makeVisible:
+      this.visible = true
 
     var ev: XEvent
 
@@ -1109,7 +1125,9 @@ elif defined(windows):
       hInstance,
       nil
     )
-    this.m_hasFocus = true
+    discard ShowWindow(this.handle, SwHide)
+
+    this.m_hasFocus = true  #? is it correct?
     this.curCursor = arrow
     this.wcursor = LoadCursor(0, IdcArrow)
     this.handle.SetWindowLongPtrW(GwlpUserData, cast[LongPtr](this))
@@ -1218,10 +1236,7 @@ elif defined(windows):
     this.handle.SendMessageW(WmSetIcon, IconBig, 0)
     this.handle.SendMessageW(WmSetIcon, IconSmall, 0)
 
-  proc drawImage*(this: Window, pixels: openarray[ColorRGBX]) =
-    doassert pixels.len == this.size.x * this.size.y, "pixels count must be width * height"
-    if this.size.x * this.size.y == 0: return
-    
+  proc resizeBufferIfNeeded(this: Window) =
     if this.size.x != this.buffer.x or this.size.y != this.buffer.y:
       if this.buffer.pixels != nil:
         DeleteDC this.buffer.hdc
@@ -1239,46 +1254,35 @@ elif defined(windows):
       this.buffer.bitmap = CreateDibSection(0, &bmi, Dib_rgb_colors, cast[ptr pointer](this.buffer.pixels.addr), 0, 0)
       this.buffer.hdc = CreateCompatibleDC(0)
       this.buffer.hdc.SelectObject this.buffer.bitmap
-    
-    let rect = this.handle.clientRect
-    for i, c in pixels:
-      this.buffer.pixels[i] = (c.b, c.g, c.r, c.a)
-      
-    this.hdc.BitBlt(0, 0, rect.right, rect.bottom, this.buffer.hdc, 0, 0, SrcCopy)
 
-  proc drawImage*(this: OpenglWindow, pixels: openarray[ColorRGBX]) =
-    ## draw image on OpenglWindow is impossible, so this proc do nothing
-
-  proc drawImage*(this: Window, pixels: openarray[ColorBgrx]) =
-    doassert pixels.len == this.size.x * this.size.y, "pixels count must be width * height"
+  method drawImage*(this: Window, pixels: openarray[ColorRGBX]) {.base.} =
+    assert pixels.len == this.size.x * this.size.y, "pixels count must be width * height"
     if this.size.x * this.size.y == 0: return
     
-    if this.size.x != this.buffer.x or this.size.y != this.buffer.y:
-      if this.buffer.pixels != nil:
-        DeleteDC this.buffer.hdc
-        DeleteObject this.buffer.bitmap
-      
-      this.buffer.x = this.size.x
-      this.buffer.y = this.size.y
-    
-      var bmi = BitmapInfo(
-        bmiHeader: BitmapInfoHeader(
-          biSize: BitmapInfoHeader.sizeof.int32, biWidth: this.size.x.Long, biHeight: -this.size.y.Long,
-          biPlanes: 1, biBitCount: 32, biCompression: Bi_rgb
-        )
-      )
-      this.buffer.bitmap = CreateDibSection(0, &bmi, Dib_rgb_colors, cast[ptr pointer](this.buffer.pixels.addr), 0, 0)
-      this.buffer.hdc = CreateCompatibleDC(0)
-      this.buffer.hdc.SelectObject this.buffer.bitmap
+    resizeBufferIfNeeded this
     
     let rect = this.handle.clientRect
     for i, c in pixels:
-      this.buffer.pixels[i] = (c.b, c.g, c.r, c.a)
+      this.buffer.pixels[i] = ColorBgrx(b: c.b, g: c.g, r: c.r, a: c.a)
       
     this.hdc.BitBlt(0, 0, rect.right, rect.bottom, this.buffer.hdc, 0, 0, SrcCopy)
 
-  proc drawImage*(this: OpenglWindow, pixels: openarray[ColorBgrx]) =
-    ## draw image on OpenglWindow is impossible, so this proc do nothing
+  method drawImage*(this: OpenglWindow, pixels: openarray[ColorRGBX]) =
+    ## todo
+
+  method drawImage*(this: Window, pixels: openarray[ColorBgrx]) {.base.} =
+    assert pixels.len == this.size.x * this.size.y, "pixels count must be width * height"
+    if this.size.x * this.size.y == 0: return
+    
+    resizeBufferIfNeeded this
+    
+    let rect = this.handle.clientRect
+    copyMem(this.buffer.pixels, pixels.dataAddr, pixels.len * ColorBgrx.sizeof)
+
+    this.hdc.BitBlt(0, 0, rect.right, rect.bottom, this.buffer.hdc, 0, 0, SrcCopy)
+
+  method drawImage*(this: OpenglWindow, pixels: openarray[ColorBgrx]) =
+    ## todo
 
 
   proc maximized*(window: Window): bool =
@@ -1295,7 +1299,15 @@ elif defined(windows):
   proc `minimized=`*(window: Window, v: bool) =
     ## minimize/unminimize window
     discard ShowWindow(window.handle, if v: SwMinimize else: SwRestore)
+
+
+  proc visible*(window: Window): bool =
+    IsWindowVisible(window.handle) != 0
   
+  proc `visible=`*(window: Window, v: bool) =
+    ## show/hide window
+    discard ShowWindow(window.handle, if v: SwShow else: SwHide)
+
 
   proc startInteractiveMove*(window: Window) =
     wasMoved window.mouse.pressed
@@ -1304,7 +1316,7 @@ elif defined(windows):
 
     window.handle.PostMessage(WmSysCommand, 0xF012, 0)
     # todo: press all keys and mouse buttons that are pressed after move
-  
+
   proc startInteractiveResize*(window: Window, edge: Edge) =
     wasMoved window.mouse.pressed
     wasMoved window.keyboard.pressed
@@ -1324,8 +1336,8 @@ elif defined(windows):
       0
     )
     # todo: press all keys and mouse buttons that are pressed after resize
-  
-  
+
+
   proc makeCurrent*(window: OpenglWindow) =
     doassert window.hdc.wglMakeCurrent(window.ctx)
 
@@ -1339,9 +1351,12 @@ elif defined(windows):
   method displayImpl(this: OpenglWindow) =
     this.pushEvent onRender, ()
 
-  proc run*(this: Window) =
+  proc run*(this: Window, makeVisible = true) =
     ## run main loop of window
-    this.handle.ShowWindow(SwShow)
+    
+    if makeVisible:
+      this.visible = true
+
     this.pushEvent onResize, (ivec2(), this.m_size, true)
     this.waitForRedraw = true
 
