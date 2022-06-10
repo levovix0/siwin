@@ -128,6 +128,7 @@ type
       hdc: Hdc
       buffer: tuple[x, y: int; bitmap: HBitmap, hdc: Hdc, pixels: ptr UncheckedArray[ColorBgrx]]
 
+      m_minSize, m_maxSize: Option[IVec2]
       wcursor: HCursor
 
   OpenglWindow* = ref object of Window
@@ -805,6 +806,54 @@ when defined(linux):
       discard display.XUnmapWindow(window.xwin)
   
 
+  proc resizable*(window: Window): bool =
+    var hints: XSizeHints
+    discard display.XGetNormalHints(window.xwin, hints.addr)
+    (hints.flags and 0b110000) != 0b110000
+  
+  proc `resizable=`*(window: Window, v: bool) =
+    ## enable/disable resizing
+    let size = window.size
+
+    var hints: XSizeHints
+    discard display.XGetNormalHints(window.xwin, hints.addr)
+    if v: hints.flags = hints.flags and not 0b110000
+    else: hints.flags = hints.flags or 0b110000
+    (hints.minWidth, hints.minHeight) = size
+    (hints.maxWidth, hints.maxHeight) = size
+    discard display.XSetNormalHints(window.xwin, hints.addr)
+  
+
+  proc minSize*(window: Window): IVec2 =
+    var hints: XSizeHints
+    discard display.XGetNormalHints(window.xwin, hints.addr)
+    ivec2(hints.minWidth, hints.minHeight)
+  
+  proc `minSize=`*(window: Window, v: IVec2) =
+    ## set minimum size
+    ## window.resizable=true will disable this
+    var hints: XSizeHints
+    discard display.XGetNormalHints(window.xwin, hints.addr)
+    hints.flags = hints.flags or 0b010000
+    (hints.minWidth, hints.minHeight) = v
+    discard display.XSetNormalHints(window.xwin, hints.addr)
+
+  
+  proc maxSize*(window: Window): IVec2 =
+    var hints: XSizeHints
+    discard display.XGetNormalHints(window.xwin, hints.addr)
+    ivec2(hints.maxWidth, hints.maxHeight)
+  
+  proc `maxSize=`*(window: Window, v: IVec2) =
+    ## set maximum size
+    ## window.resizable=true will disable this
+    var hints: XSizeHints
+    discard display.XGetNormalHints(window.xwin, hints.addr)
+    hints.flags = hints.flags or 0b100000
+    (hints.maxWidth, hints.maxHeight) = v
+    discard display.XSetNormalHints(window.xwin, hints.addr)
+  
+
   proc startInteractiveMove*(window: Window) =
     let pos = cursor().pos
     window.releaseAllKeys
@@ -1309,6 +1358,37 @@ elif defined(windows):
     discard ShowWindow(window.handle, if v: SwShow else: SwHide)
 
 
+  proc resizable*(window: Window): bool =
+    let style = GetWindowLongW(window.handle, GwlStyle)
+    (style and WsThickframe) != 0
+  
+  proc `resizable=`*(window: Window, v: bool) =
+    let style = GetWindowLongW(window.handle, GwlStyle)
+    discard SetWindowLongW(window.handle, GwlStyle, if v: style or WsThickframe else: style and not WsThickframe)
+    window.m_minSize = none IVec2
+    window.m_maxSize = none IVec2
+
+
+  proc minSize*(window: Window): IVec2 =
+    if window.m_minSize.isNone: ivec2()
+    else: window.m_minSize.get
+
+  proc `minSize=`*(window: Window, v: IVec2) =
+    window.m_minSize = some v
+    let style = GetWindowLongW(window.handle, GwlStyle)
+    discard SetWindowLongW(window.handle, GwlStyle, style or WsThickframe)
+  
+
+  proc maxSize*(window: Window): IVec2 =
+    if window.m_maxSize.isNone: ivec2()
+    else: window.m_maxSize.get
+
+  proc `maxSize=`*(window: Window, v: IVec2) =
+    window.m_maxSize = some v
+    let style = GetWindowLongW(window.handle, GwlStyle)
+    discard SetWindowLongW(window.handle, GwlStyle, style or WsThickframe)
+
+
   proc startInteractiveMove*(window: Window) =
     wasMoved window.mouse.pressed
     wasMoved window.keyboard.pressed
@@ -1495,6 +1575,13 @@ elif defined(windows):
         SetCursor a.wcursor
         return 1
       return a.handle.DefWindowProc(message, wParam, lParam)
+    
+    of WmGetMinMaxInfo:
+      let info = cast[LpMinMaxInfo](lParam)
+      if a.m_minSize.isSome:
+        (info[].ptMinTrackSize.x, info[].ptMinTrackSize.y) = a.m_minSize.get
+      if a.m_maxSize.isSome:
+        (info[].ptMaxTrackSize.x, info[].ptMaxTrackSize.y) = a.m_maxSize.get
 
     else: return a.handle.DefWindowProc(message, wParam, lParam)
 

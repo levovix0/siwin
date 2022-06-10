@@ -19,6 +19,8 @@ test "OpenGL":
   let window = newOpenglWindow(title="OpenGL test", transparent=true)
   loadExtensions()
 
+  window.resizable = false
+
   window.onResize = proc(e: ResizeEvent) =
     glViewport 0, 0, e.size.x.GLsizei, e.size.y.GLsizei
     glMatrixMode GlProjection
@@ -66,6 +68,9 @@ test "OpenGL":
       of MouseButton.left, MouseButton.right:
         g = (e.pos.x / window.size.x * 2).min(2).max(0)
         redraw window
+      of MouseButton.middle:
+        window.maxSize = ivec2(600, 600)
+        window.minSize = ivec2(300, 300)
       else: discard
   
   window.onMouseMove = proc(e: MouseMoveEvent) =
