@@ -560,7 +560,7 @@ when defined(linux):
     this.m_hasFocus = true
     this.curCursor = arrow
 
-  proc setupWindow(this: Window, fullscreen, frameless: bool) =
+  proc setupWindow(this: Window, fullscreen, frameless: bool, class: string) =
     this.xwin.input = [
       ExposureMask, KeyPressMask, KeyReleaseMask, PointerMotionMask, ButtonPressMask,
       ButtonReleaseMask, StructureNotifyMask, EnterWindowMask, LeaveWindowMask, FocusChangeMask
@@ -581,6 +581,7 @@ when defined(linux):
     
     this.frameless = frameless
 
+    # todo: enable xsync (sync render and display for window manager)
     # block xsync:
     #   var vEv, vEr: cint
     #   if display.XSyncQueryExtension(vEv.addr, vEr.addr):
@@ -594,7 +595,18 @@ when defined(linux):
     #       @[this.xSyncCounter].asString
     #     )
 
-  proc initWindow(this: Window; size: IVec2; screen: Screen, fullscreen, frameless, transparent: bool) =
+    # todo: enable vsync
+    
+    # set window VM class (can be used by window managers)
+    block vmHint:
+      var hint: XClassHint
+      let name = getAppFilename()
+      hint.res_name = name.cstring    # use filename as application name
+      hint.res_class = class.cstring  # use class (same as title by default) as window class
+      discard display.XSetClassHint(this.xwin, hint.addr)
+
+
+  proc initWindow(this: Window; size: IVec2; screen: Screen, fullscreen, frameless, transparent: bool, class: string) =
     this.basicInitWindow size, screen
     
     if transparent:
@@ -614,12 +626,12 @@ when defined(linux):
     else:
       this.xwin = newSimpleWindow(defaultRootWindow(), ivec2(), size, 0, 0, this.xscr.blackPixel)
 
-    this.setupWindow fullscreen, frameless
+    this.setupWindow fullscreen, frameless, class
 
     this.waitForReDraw = true
     this.gc = this.xwin.newGC(GCForeground or GCBackground)
 
-  proc initOpenglWindow(this: OpenglWindow; size: IVec2; screen: Screen, fullscreen, frameless, transparent: bool) =
+  proc initOpenglWindow(this: OpenglWindow; size: IVec2; screen: Screen, fullscreen, frameless, transparent: bool, class: string) =
     this.basicInitWindow size, screen
 
     let root = defaultRootWindow()
@@ -629,7 +641,7 @@ when defined(linux):
     var swa = XSetWindowAttributes(colormap: cmap)
     this.xwin = x.newWindow(root, ivec2(), size, 0, vi.depth, InputOutput, vi.visual, CwColormap or CwEventMask or CwBorderPixel or CwBackPixel, swa)
 
-    this.setupWindow fullscreen, frameless
+    this.setupWindow fullscreen, frameless, class
 
     this.ctx = newGlxContext(vi.addr)
     this.xwin.makeCurrent this.ctx
@@ -1595,10 +1607,15 @@ proc newWindow*(
   screen = screen(),
   fullscreen = false,
   frameless = false,
-  transparent = false
+  transparent = false,
+
+  class = "", # window class (used in x11), equals to title if not specified
 ): Window =
   new result
-  result.initWindow(size, screen, fullscreen, frameless, transparent)
+  when defined(linux):
+    result.initWindow(size, screen, fullscreen, frameless, transparent, (if class == "": title else: class))
+  else:
+    result.initWindow(size, screen, fullscreen, frameless, transparent)
   result.title = title
 
 proc newOpenglWindow*(
@@ -1607,8 +1624,13 @@ proc newOpenglWindow*(
   screen = screen(),
   fullscreen = false,
   frameless = false,
-  transparent = false
+  transparent = false,
+
+  class = "", # window class (used in x11), equals to title if not specified
 ): OpenglWindow =
-  new result  
-  result.initOpenglWindow(size, screen, fullscreen, frameless, transparent)
+  new result
+  when defined(linux):
+    result.initOpenglWindow(size, screen, fullscreen, frameless, transparent, (if class == "": title else: class))
+  else:
+    result.initOpenglWindow(size, screen, fullscreen, frameless, transparent)
   result.title = title
