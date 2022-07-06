@@ -1463,6 +1463,10 @@ elif defined(windows):
         TranslateMessage(&msg)
         DispatchMessage(&msg)
 
+        # force make tick if windows decided to spam events to us
+        if (getTime() - lastTickTime) > initDuration(milliseconds=10):
+          break
+
         if this.closed: break
       if this.closed: break
 
