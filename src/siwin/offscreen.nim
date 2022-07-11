@@ -108,7 +108,7 @@ elif defined(windows):
     result.ctx = wglCreateContext(result.hdc)
     discard result.hdc.wglMakeCurrent(result.ctx)
   
-  proc makeCurrent(w: InvisibleOpenglWindow) =
+  proc makeCurrent*(w: InvisibleOpenglWindow) =
     w.hdc.wglMakeCurrent(w.ctx)
 
 

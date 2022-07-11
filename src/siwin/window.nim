@@ -1,7 +1,7 @@
 import times, os, options
 import chroma, vmath
-import image, utils
-export chroma, vmath
+import bgrx, utils
+export chroma, vmath, bgrx
 
 when defined(linux):
   import sets
@@ -175,6 +175,7 @@ type
     repeated: bool
   TextInputEvent* = tuple
     text: string # one utf-8 encoded letter
+
 
 when defined(linux):
   proc xkeyToKey(sym: KeySym): Key =
@@ -698,9 +699,9 @@ when defined(linux):
     window.xwin.size = size
     window.updateSize size
 
-  proc newPixmap(source: Image, window: Window): Pixmap =
-    result = newPixmap(ivec2(source.w.int32, source.h.int32), window.xwin, window.xscr.defaultDepth)
-    var image = asXImage(source.data, ivec2(source.w.int32, source.h.int32))
+  proc newPixmap(source: tuple[data: openarray[ColorBgrx], size: IVec2], window: Window): Pixmap =
+    result = newPixmap(ivec2(source.size.x, source.size.y), window.xwin, window.xscr.defaultDepth)
+    var image = asXImage(source.data, ivec2(source.size.x, source.size.y))
     result.newGC.put image.addr
 
   proc `cursor=`*(window: Window, kind: Cursor) =
@@ -735,7 +736,7 @@ when defined(linux):
     syncX()
     window.curCursor = kind
 
-  proc `icon=`*(window: Window, image: Image) =
+  proc `icon=`*(window: Window, image: tuple[data: openarray[ColorBgrx], size: IVec2]) =
     ## set window icon
     if window.xicon != 0: destroy window.xicon
     if window.xiconMask != 0: destroy window.xiconMask
@@ -743,10 +744,10 @@ when defined(linux):
     window.xicon = newPixmap(image, window)
 
     # convert alpha channel to bit mask (semi-transparency is not supported)
-    var mask = newImage(image.w, image.h)
-    for i in 0..<(image.w * image.h):
-      mask.data[i] = if image.data[i].a > 127: ColorBgrx(b: 0, g: 0, r: 0, a: 255) else: ColorBgrx(b: 255, g: 255, r: 255, a: 255)
-    window.xiconMask = newPixmap(mask, window)
+    var mask =  newSeq[ColorBgrx](image.size.x * image.size.y)
+    for i in 0..<(image.size.x * image.size.y):
+      mask[i] = if image.data[i].a > 127: ColorBgrx(b: 0, g: 0, r: 0, a: 255) else: ColorBgrx(b: 255, g: 255, r: 255, a: 255)
+    window.xiconMask = newPixmap((mask.toOpenarray(0, mask.high), image.size), window)
 
     window.xwin.setWmHints(IconPixmapHint or IconMaskHint, window.xicon, window.xiconMask)
   
@@ -758,7 +759,7 @@ when defined(linux):
     window.xiconMask = 0.Pixmap
     window.xwin.setWmHints(IconPixmapHint or IconMaskHint, 0.Pixmap, 0.Pixmap)
 
-  method drawImage*(window: Window, pixels: openarray[ColorRGBX]) {.base.} =
+  method drawImage*(window: Window, pixels: openarray[ColorRGBX]) {.base, deprecated: "use toBgrx to convert pixels into bgrx format".} =
     assert pixels.len == window.size.x * window.size.y, "pixels count must be width * height"
     var ximg =
       if window.transparent:
@@ -770,7 +771,7 @@ when defined(linux):
         asXImage(pixels, window.size)
     window.gc.put ximg.addr
 
-  method drawImage*(this: OpenglWindow, pixels: openarray[ColorRGBX]) =
+  method drawImage*(this: OpenglWindow, pixels: openarray[ColorRGBX]) {.deprecated: "use toBgrx to convert pixels into bgrx format".} =
     ## todo
 
   method drawImage*(window: Window, pixels: openarray[ColorBgrx]) {.base.} =
@@ -1280,11 +1281,11 @@ elif defined(windows):
       this.wcursor = cu
     this.curCursor = kind
 
-  proc `icon=`*(this: Window, img: Image) =
+  proc `icon=`*(this: Window, img: tuple[data: openarray[ColorBgrx], size: IVec2]) =
     if this.wicon != 0: DestroyIcon this.wicon
     
     var pixels = img.data.mapit((it.b, it.g, it.r, 0'u8))
-    this.wicon = CreateIcon(hInstance, img.w.int32, img.h.int32, 1, 32, nil, cast[ptr Byte](pixels.dataAddr))
+    this.wicon = CreateIcon(hInstance, img.size.x, img.size.y, 1, 32, nil, cast[ptr Byte](pixels.dataAddr))
     this.handle.SendMessageW(WmSetIcon, IconBig, this.wicon)
     this.handle.SendMessageW(WmSetIcon, IconSmall, this.wicon)
   
@@ -1316,7 +1317,7 @@ elif defined(windows):
       this.buffer.hdc = CreateCompatibleDC(0)
       this.buffer.hdc.SelectObject this.buffer.bitmap
 
-  method drawImage*(this: Window, pixels: openarray[ColorRGBX]) {.base.} =
+  method drawImage*(this: Window, pixels: openarray[ColorRGBX]) {.base, deprecated: "use toBgrx to convert pixels into bgrx format".} =
     assert pixels.len == this.size.x * this.size.y, "pixels count must be width * height"
     if this.size.x * this.size.y == 0: return
     
@@ -1328,7 +1329,7 @@ elif defined(windows):
       
     this.hdc.BitBlt(0, 0, rect.right, rect.bottom, this.buffer.hdc, 0, 0, SrcCopy)
 
-  method drawImage*(this: OpenglWindow, pixels: openarray[ColorRGBX]) =
+  method drawImage*(this: OpenglWindow, pixels: openarray[ColorRGBX]) = {.deprecated: "use toBgrx to convert pixels into bgrx format".}
     ## todo
 
   method drawImage*(this: Window, pixels: openarray[ColorBgrx]) {.base.} =

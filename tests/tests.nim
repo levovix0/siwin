@@ -1,5 +1,4 @@
 import siwin
-from siwin/image as sim import nil
 import unittest, strformat
 import opengl, pixie
 
@@ -119,7 +118,7 @@ test "pixie":
     ctx.fillStyle = rgba(50, 50, 255, 255)
     ctx.fillRoundedRect(rect(pos, wh), 25.0)
     
-    window.drawImage image.data
+    window.drawImage image.data.toBgrx
 
   window.onKeyup = proc(e: KeyEvent) =
     case e.key
@@ -136,20 +135,20 @@ test "pixie":
 
 test "bgrx image":
   var
-    image: sim.Image
+    image: seq[ColorBgrx]
     window = newWindow(title="bgrx image test", frameless=true, transparent=true)
 
   window.onResize = proc(e: ResizeEvent) =
-    image = sim.newImage(e.size.x, e.size.y)
+    image.setLen(e.size.x * e.size.y)
 
   window.onRender = proc(e: RenderEvent) =
-    for y in 0..<image.h:
-      let a = round(y / image.h * 255).byte
-      let c = sim.ColorBgrx(b: a, g: a, r: a, a: a)
-      for x in 0..<image.w:
-        sim.`[]=`(image, x, y, c)
+    for y in 0..<window.size.y:
+      let a = round(y / window.size.y * 255).byte
+      let c = ColorBgrx(b: a, g: a, r: a, a: a)
+      for x in 0..<window.size.x:
+        image[y * window.size.x + x] = c
     
-    window.drawImage image.data
+    window.drawImage image
 
   window.onKeyup = proc(e: KeyEvent) =
     case e.key
