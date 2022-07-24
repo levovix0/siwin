@@ -1,11 +1,11 @@
-version       = "0.6.6"
+version       = "0.7"
 author        = "levovix0"
 description   = "Simple Window Maker"
 license       = "MIT"
 srcDir        = "src"
 
-requires "nim >= 1.4"
-requires "chroma >= 0.2.5"
+requires "nim >= 1.6.6"
+requires "chroma >= 0.2.6"
 requires "vmath >= 1.1.4"
 
 when defined linux:
