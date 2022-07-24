@@ -122,13 +122,15 @@ const libXCursor* = "libXcursor.so(|.1)"
 
 
 var display*: PDisplay
-display = XOpenDisplay(getEnv("DISPLAY").cstring)
-if display == nil: raise X11Defect.newException("failed to open X11 display, make sure the DISPLAY environment variable is set correctly")
 
-type LibX11GarbageCollector = object
-proc `=destroy`(a: var LibX11GarbageCollector) =
+proc init* =
+  if display != nil: return
+  display = XOpenDisplay(getEnv("DISPLAY").cstring)
+  if display == nil: raise X11Defect.newException("failed to open X11 display, make sure the DISPLAY environment variable is set correctly")
+
+proc uninit* =
+  if display == nil: return
   discard XCloseDisplay display
-var libx11gc {.used.}: LibX11GarbageCollector
 
 
 proc atom*(name: static string): Atom =

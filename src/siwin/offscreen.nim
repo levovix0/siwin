@@ -28,6 +28,7 @@ when defined(linux):
     wasMoved w
   
   proc newOpenglContext*: InvisibleOpenglWindow =
+    x.init()
     let root = defaultRootWindow()
 
     var vi: XVisualInfo

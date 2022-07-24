@@ -5,8 +5,8 @@ when defined(linux):
 when defined(windows):
   import wrappers/winapi
 
-#TODO: selectionClipboard
-#TODO: image support
+# todo: selectionClipboard
+# todo: image support
 
 type Clipboard = object
   when defined(linux):
@@ -79,14 +79,17 @@ when defined(linux):
       else: discard
 
 
-  clipboard.xwin = newSimpleWindow(defaultRootWindow(), ivec2(), ivec2(1, 1), 0, 0, 0) # invisible window!
-  clipboard.xwin.input = [SelectionNotify, SelectionRequest, SelectionClear]
-  clipboardProcessEvents = proc() =
-    var rsp: bool
-    discard clipboard.processEvents(rsp)
+  proc init =
+    x.init()
+    clipboard.xwin = newSimpleWindow(defaultRootWindow(), ivec2(), ivec2(1, 1), 0, 0, 0) # invisible window!
+    clipboard.xwin.input = [SelectionNotify, SelectionRequest, SelectionClear]
+    clipboardProcessEvents = proc() =
+      var rsp: bool
+      discard clipboard.processEvents(rsp)
 
 
   proc text*(this: var Clipboard): string =
+    init()
     if display.XGetSelectionOwner(atom"CLIPBOARD") == None:
       return ""
     
@@ -100,6 +103,7 @@ when defined(linux):
       result = this.processEvents(respond)
 
   proc `text=`*(this: var Clipboard, s: string) =
+    init()
     this.content = s
     discard display.XSetSelectionOwner(atom"CLIPBOARD", this.xwin, CurrentTime)
 

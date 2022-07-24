@@ -289,7 +289,9 @@ when defined(linux):
     of Xk_9:            Key.n9
     else:               Key.unknown
 
-  proc getScreenCount*(): int = display.ScreenCount.int
+  proc getScreenCount*(): int =
+    x.init()
+    display.ScreenCount.int
 
   proc screen*(n: int): Screen =
     if n notin 0..<getScreenCount(): raise IndexDefect.newException(&"screen {n} is not exist")
@@ -449,15 +451,19 @@ when defined(linux):
     kwm
     other
   var framelessAtom: Atom
-  var wmForFramelessKind =
-    if (framelessAtom = atomIfExist"_MOTIF_WM_HINTS"; framelessAtom != 0):
-      WmForFramelessKind.motiv
-    elif (framelessAtom = atomIfExist"KWM_WIN_DECORATION"; framelessAtom != 0):
-      WmForFramelessKind.kwm
-    elif (framelessAtom = atomIfExist"_WIN_HINTS"; framelessAtom != 0):
-      WmForFramelessKind.other
-    else:
-      WmForFramelessKind.unsupported
+  var wmForFramelessKind: WmForFramelessKind
+
+  proc init =
+    x.init()
+    wmForFramelessKind =
+      if (framelessAtom = atomIfExist"_MOTIF_WM_HINTS"; framelessAtom != 0):
+        WmForFramelessKind.motiv
+      elif (framelessAtom = atomIfExist"KWM_WIN_DECORATION"; framelessAtom != 0):
+        WmForFramelessKind.kwm
+      elif (framelessAtom = atomIfExist"_WIN_HINTS"; framelessAtom != 0):
+        WmForFramelessKind.other
+      else:
+        WmForFramelessKind.unsupported
 
   proc `=destroy`(this: var typeof(Window()[])) =
     if this.xinContext != nil:
@@ -608,6 +614,7 @@ when defined(linux):
 
 
   proc initWindow(this: Window; size: IVec2; screen: Screen, fullscreen, frameless, transparent: bool, class: string) =
+    init()
     this.basicInitWindow size, screen
     
     if transparent:
@@ -633,6 +640,7 @@ when defined(linux):
     this.gc = this.xwin.newGC(GCForeground or GCBackground)
 
   proc initOpenglWindow(this: OpenglWindow; size: IVec2; screen: Screen, fullscreen, frameless, transparent: bool, class: string) =
+    init()
     this.basicInitWindow size, screen
 
     let root = defaultRootWindow()
