@@ -25,6 +25,22 @@ type
   
   XSyncCounter* = distinct XID
 
+  ColorArgb* = object
+    a*, r*, g*, b*: byte
+
+  CursorImage* = object
+    ver*: uint32
+    normalSize*: uint32
+    size*: IVec2
+    origin*: IVec2
+    delay*: uint32
+    pixels*: ptr ColorArgb
+
+proc toArgb*(x: openarray[ColorBgrx]): seq[ColorArgb] =
+  result = newSeq[ColorArgb](x.len)
+  for i, v in result.mpairs:
+    v = ColorArgb(b: x[i].b, g: x[i].g, r: x[i].r, a: x[i].a)
+
 const
   xaPrimary* = Atom 1
   xaSecondary* = Atom 2
@@ -102,6 +118,7 @@ const libXExt* =
     "libXext.dylib"
   else:
     "libXext.so(|.6)"
+const libXCursor* = "libXcursor.so(|.1)"
 
 
 var display*: PDisplay
@@ -390,5 +407,12 @@ proc XSyncCreateCounter*(d: ptr Display, v: XSyncValue): XSyncCounter
 proc XSyncDestroyCounter*(d: ptr Display, c: XSyncCounter)
 
 proc XSyncSetCounter*(d: ptr Display, c: XSyncCounter; v: XSyncValue)
+
+{.pop.}
+
+
+{.push, cdecl, dynlib: libXCursor, importc.}
+
+proc XcursorImageLoadCursor*(d: ptr Display, image: ptr CursorImage): Cursor
 
 {.pop.}

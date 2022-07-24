@@ -103,7 +103,7 @@ type
     clicking: array[AllMouseButtons, bool]
     
     waitForReDraw: bool
-    curCursor: Cursor
+    curCursor: Option[Cursor]
     transparent: bool
 
     when defined(linux):
@@ -559,7 +559,7 @@ when defined(linux):
     this.m_size = size
 
     this.m_hasFocus = true
-    this.curCursor = arrow
+    this.curCursor = some arrow
 
   proc setupWindow(this: Window, fullscreen, frameless: bool, class: string) =
     this.xwin.input = [
@@ -699,15 +699,14 @@ when defined(linux):
     window.xwin.size = size
     window.updateSize size
 
-  proc newPixmap(source: tuple[data: openarray[ColorBgrx], size: IVec2], window: Window): Pixmap =
+  proc newPixmap(source: tuple[pixels: openarray[ColorBgrx], size: IVec2], window: Window): Pixmap =
     result = newPixmap(ivec2(source.size.x, source.size.y), window.xwin, window.xscr.defaultDepth)
-    var image = asXImage(source.data, ivec2(source.size.x, source.size.y))
+    var image = asXImage(source.pixels, ivec2(source.size.x, source.size.y))
     result.newGC.put image.addr
 
   proc `cursor=`*(window: Window, kind: Cursor) =
     ## set cursor font, used when mouse hover window
-    # todo: set cursor to image
-    if kind == window.curCursor: return
+    if window.curCursor.isSome and kind == window.curCursor.get: return
     if window.xcursor != 0: destroy window.xcursor
     case kind
     of Cursor.arrow:           window.xcursor = cursorFromFont XcLeftPtr
@@ -734,22 +733,25 @@ when defined(linux):
       discard display.XFreePixmap blank
     window.xwin.cursor = window.xcursor
     syncX()
-    window.curCursor = kind
+    window.curCursor = some kind
 
-  proc `icon=`*(window: Window, image: tuple[data: openarray[ColorBgrx], size: IVec2]) =
-    ## set window icon
-    if window.xicon != 0: destroy window.xicon
-    if window.xiconMask != 0: destroy window.xiconMask
-
-    window.xicon = newPixmap(image, window)
-
-    # convert alpha channel to bit mask (semi-transparency is not supported)
-    var mask =  newSeq[ColorBgrx](image.size.x * image.size.y)
-    for i in 0..<(image.size.x * image.size.y):
-      mask[i] = if image.data[i].a > 127: ColorBgrx(b: 0, g: 0, r: 0, a: 255) else: ColorBgrx(b: 255, g: 255, r: 255, a: 255)
-    window.xiconMask = newPixmap((mask.toOpenarray(0, mask.high), image.size), window)
-
-    window.xwin.setWmHints(IconPixmapHint or IconMaskHint, window.xicon, window.xiconMask)
+  proc `cursor=`*(window: Window, image: tuple[pixels: openarray[ColorBgrx], size: IVec2, origin: IVec2]) =
+    # todo: animated cursors
+    if image.size.x * image.size.y == 0: window.cursor = Cursor.hided
+    assert image.pixels.len >= image.size.x * image.size.y, "not enougth pixels"
+    if window.xcursor != 0: destroy window.xcursor
+    var pixels = image.pixels.toArgb
+    var ci = CursorImage(
+      ver: 1,
+      normalSize: (if image.size.x > image.size.y: image.size.x.uint32 else: image.size.y.uint32),
+      size: image.size,
+      origin: image.origin,
+      pixels: pixels[0].addr
+    )
+    window.xcursor = display.XcursorImageLoadCursor(ci.addr)
+    window.xwin.cursor = window.xcursor
+    syncX()
+    window.curCursor = none Cursor
   
   proc `icon=`*(window: Window, _: nil.typeof) =
     ## clear window icon
@@ -758,6 +760,23 @@ when defined(linux):
     window.xicon = 0.Pixmap
     window.xiconMask = 0.Pixmap
     window.xwin.setWmHints(IconPixmapHint or IconMaskHint, 0.Pixmap, 0.Pixmap)
+
+  proc `icon=`*(window: Window, image: tuple[pixels: openarray[ColorBgrx], size: IVec2]) =
+    ## set window icon
+    if image.size.x * image.size.y == 0: window.icon = nil
+    assert image.pixels.len >= image.size.x * image.size.y, "not enougth pixels"
+    if window.xicon != 0: destroy window.xicon
+    if window.xiconMask != 0: destroy window.xiconMask
+
+    window.xicon = newPixmap(image, window)
+
+    # convert alpha channel to bit mask (semi-transparency is not supported)
+    var mask =  newSeq[ColorBgrx](image.size.x * image.size.y)
+    for i in 0..<(image.size.x * image.size.y):
+      mask[i] = if image.pixels[i].a > 127: ColorBgrx(b: 0, g: 0, r: 0, a: 255) else: ColorBgrx(b: 255, g: 255, r: 255, a: 255)
+    window.xiconMask = newPixmap((mask.toOpenarray(0, mask.high), image.size), window)
+
+    window.xwin.setWmHints(IconPixmapHint or IconMaskHint, window.xicon, window.xiconMask)
 
   method drawImage*(window: Window, pixels: openarray[ColorRGBX]) {.base, deprecated: "use toBgrx to convert pixels into bgrx format".} =
     assert pixels.len == window.size.x * window.size.y, "pixels count must be width * height"
@@ -1198,7 +1217,7 @@ elif defined(windows):
     discard ShowWindow(this.handle, SwHide)
 
     this.m_hasFocus = true  #? is it correct?
-    this.curCursor = arrow
+    this.curCursor = some arrow
     this.wcursor = LoadCursor(0, IdcArrow)
     this.handle.SetWindowLongPtrW(GwlpUserData, cast[LongPtr](this))
     this.handle.trackMouseEvent(TmeHover)
@@ -1262,7 +1281,7 @@ elif defined(windows):
     this.handle.SetWindowPos(0, v.x, v.y, 0, 0, SwpNoSize)
 
   proc `cursor=`*(this: Window, kind: Cursor) =
-    if kind == this.curCursor: return
+    if this.curCursor.isSome and kind == this.curCursor.get: return
     if this.wcursor != 0: DestroyCursor this.wcursor
     
     var cu: HCursor = case kind
@@ -1287,18 +1306,24 @@ elif defined(windows):
     if cu != 0:
       SetCursor cu
       this.wcursor = cu
-    this.curCursor = kind
-
-  proc `icon=`*(this: Window, img: tuple[data: openarray[ColorBgrx], size: IVec2]) =
-    if this.wicon != 0: DestroyIcon this.wicon
-    
-    var pixels = img.data.mapit((it.b, it.g, it.r, 0'u8))
-    this.wicon = CreateIcon(hInstance, img.size.x, img.size.y, 1, 32, nil, cast[ptr Byte](pixels.dataAddr))
-    this.handle.SendMessageW(WmSetIcon, IconBig, this.wicon)
-    this.handle.SendMessageW(WmSetIcon, IconSmall, this.wicon)
+    this.curCursor = some kind
+  
+  proc `cursor=`*(window: Window, image: tuple[pixels: openarray[ColorBgrx], size: IVec2, origin: IVec2]) =
+    if image.size.x * image.size.y == 0: window.cursor = Cursor.hided
+    assert image.pixels.len >= image.size.x * image.size.y, "not enougth pixels"
+    if window.wcursor != 0: DestroyCursor window.wcursor
+    let pixels = image.pixels.mapit (
+      (it.b.float / it.a.float * 255).byte,
+      (it.g.float / it.a.float * 255).byte,
+      (it.r.float / it.a.float * 255).byte,
+      it.a
+    )
+    window.wcursor = CreateIcon(hInstance, image.size.x, image.size.y, 1, 32, nil, cast[ptr Byte](pixels.dataAddr))
+    SetCursor window.wcursor
+    window.curCursor = none Cursor
   
   proc `icon=`*(this: Window, _: nil.typeof) =
-    # clear icon
+    ## clear icon
     if this.wicon != 0:
       DestroyIcon this.wicon
       this.wicon = 0
@@ -1306,18 +1331,34 @@ elif defined(windows):
     this.handle.SendMessageW(WmSetIcon, IconBig, 0)
     this.handle.SendMessageW(WmSetIcon, IconSmall, 0)
 
-  proc resizeBufferIfNeeded(this: Window) =
-    if this.size.x != this.buffer.x or this.size.y != this.buffer.y:
+  proc `icon=`*(this: Window, image: tuple[pixels: openarray[ColorBgrx], size: IVec2]) =
+    ## set icon
+    if image.size.x * image.size.y == 0: this.icon = nil
+    assert image.pixels.len >= image.size.x * image.size.y, "not enougth pixels"
+    if this.wicon != 0: DestroyIcon this.wicon
+    
+    let pixels = image.pixels.mapit (
+      (it.b.float / it.a.float * 255).byte,
+      (it.g.float / it.a.float * 255).byte,
+      (it.r.float / it.a.float * 255).byte,
+      it.a
+    )
+    this.wicon = CreateIcon(hInstance, image.size.x, image.size.y, 1, 32, nil, cast[ptr Byte](pixels.dataAddr))
+    this.handle.SendMessageW(WmSetIcon, IconBig, this.wicon)
+    this.handle.SendMessageW(WmSetIcon, IconSmall, this.wicon)
+
+  proc resizeBufferIfNeeded(this: Window, size: IVec2) =
+    if size.x != this.buffer.x or size.y != this.buffer.y:
       if this.buffer.pixels != nil:
         DeleteDC this.buffer.hdc
         DeleteObject this.buffer.bitmap
       
-      this.buffer.x = this.size.x
-      this.buffer.y = this.size.y
+      this.buffer.x = size.x
+      this.buffer.y = size.y
     
       var bmi = BitmapInfo(
         bmiHeader: BitmapInfoHeader(
-          biSize: BitmapInfoHeader.sizeof.int32, biWidth: this.size.x.Long, biHeight: -this.size.y.Long,
+          biSize: BitmapInfoHeader.sizeof.int32, biWidth: size.x.Long, biHeight: -size.y.Long,
           biPlanes: 1, biBitCount: 32, biCompression: Bi_rgb
         )
       )
@@ -1329,7 +1370,7 @@ elif defined(windows):
     assert pixels.len == this.size.x * this.size.y, "pixels count must be width * height"
     if this.size.x * this.size.y == 0: return
     
-    resizeBufferIfNeeded this
+    resizeBufferIfNeeded this, this.size
     
     let rect = this.handle.clientRect
     for i, c in pixels:
@@ -1338,21 +1379,30 @@ elif defined(windows):
     this.hdc.BitBlt(0, 0, rect.right, rect.bottom, this.buffer.hdc, 0, 0, SrcCopy)
 
   method drawImage*(this: OpenglWindow, pixels: openarray[ColorRGBX]) = {.deprecated: "use toBgrx to convert pixels into bgrx format".}
-    ## todo
+    ## do nothing
 
-  method drawImage*(this: Window, pixels: openarray[ColorBgrx]) {.base.} =
+  method drawImage*(this: Window, pixels: openarray[ColorBgrx]) {.base, deprecated: "you must explicitly pass size of image, use drawImage(window, pixels, size)".} =
     assert pixels.len == this.size.x * this.size.y, "pixels count must be width * height"
     if this.size.x * this.size.y == 0: return
     
-    resizeBufferIfNeeded this
+    resizeBufferIfNeeded this, this.size
     
     let rect = this.handle.clientRect
     copyMem(this.buffer.pixels, pixels.dataAddr, pixels.len * ColorBgrx.sizeof)
 
     this.hdc.BitBlt(0, 0, rect.right, rect.bottom, this.buffer.hdc, 0, 0, SrcCopy)
 
-  method drawImage*(this: OpenglWindow, pixels: openarray[ColorBgrx]) =
-    ## todo
+  method drawImage*(this: OpenglWindow, pixels: openarray[ColorBgrx]) {.deprecated: "you must explicitly pass size of image, use drawImage(window, pixels, size)".} =
+    ## do nothing
+
+  proc drawImage*(window: Window, pixels: openarray[ColorBgrx], size: IVec2, pos: IVec2 = ivec2(), srcPos: IVec2 = ivec2()) =
+    ## put pixels into window
+    ## note: no blending is performed, even if image or/and window is transparent
+    assert not(window of OpenglWindow), "drawImage is not allowed on Opengl windows. Create texture from image and use Opengl to draw it"
+    assert pixels.len >= size.x * size.y, "not enougth pixels"    
+    resizeBufferIfNeeded window, size
+    copyMem(window.buffer.pixels, pixels.dataAddr, pixels.len * ColorBgrx.sizeof)
+    window.hdc.BitBlt(pos.x, pos.y, size.x, size.y, window.buffer.hdc, srcPos.x, srcPos.y, SrcCopy)
 
 
   proc maximized*(window: Window): bool =

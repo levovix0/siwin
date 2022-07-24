@@ -86,6 +86,14 @@ test "pixie":
     image: Image
     # shadowImage: Image
     window = newWindow(title="pixie test", frameless=true, transparent=true)
+  
+  window.cursor = block:
+    var image = newImage(32, 32)
+    image.fill(rgba(0, 0, 0, 0))
+    let ctx = image.newContext
+    ctx.fillStyle = rgba(100, 100, 255, 100)
+    ctx.fillPolygon(vec2(16, 16), 16, 5)
+    (image.data.toBgrx.toOpenarray(0, image.data.high), ivec2(image.width.int32, image.height.int32), ivec2(16, 16))
 
   window.onResize = proc(e: ResizeEvent) =
     image = newImage(e.size.x, e.size.y)
@@ -96,8 +104,6 @@ test "pixie":
 
   window.onRender = proc(e: RenderEvent) =
     image.fill(rgba(255, 255, 255, 0))
-
-    # image.draw shadowImage
 
     let ctx = image.newContext
 
