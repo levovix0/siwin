@@ -15,6 +15,7 @@ test "screen":
 
 test "OpenGL":
   var g = 1.0
+  
   let window = newOpenglWindow(title="OpenGL test", transparent=true)
   loadExtensions()
 
@@ -44,7 +45,7 @@ test "OpenGL":
     glColor3f g - 1, g - 1, 1 * g
     glVertex2f 0, 30
     glEnd()
-  
+
   window.onKeyup = proc(e: KeyEvent) =
     case e.key
     of Key.escape:
@@ -92,14 +93,6 @@ test "pixie":
     let ctx = image.newContext
     ctx.fillStyle = rgba(255, 255, 255, 255)
     ctx.fillRoundedRect(rect(vec2(10, 10), vec2(float image.width - 20, float image.height - 20)), 15.0)
-    # shadowImage = image.shadow(
-    #   offset = vec2(0, 0),
-    #   spread = 2,
-    #   blur = 10,
-    #   color = rgba(0, 0, 0, 128)
-    # )
-    # note: pixie's shadow is slow
-    # todo: use a faster shadow
 
   window.onRender = proc(e: RenderEvent) =
     image.fill(rgba(255, 255, 255, 0))
@@ -118,7 +111,7 @@ test "pixie":
     ctx.fillStyle = rgba(50, 50, 255, 255)
     ctx.fillRoundedRect(rect(pos, wh), 25.0)
     
-    window.drawImage image.data.toBgrx
+    window.drawImage image.data.toBgrx, ivec2(image.width.int32, image.height.int32)
 
   window.onKeyup = proc(e: KeyEvent) =
     case e.key
@@ -148,7 +141,7 @@ test "bgrx image":
       for x in 0..<window.size.x:
         image[y * window.size.x + x] = c
     
-    window.drawImage image
+    window.drawImage image, window.size
 
   window.onKeyup = proc(e: KeyEvent) =
     case e.key

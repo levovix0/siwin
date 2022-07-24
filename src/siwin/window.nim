@@ -772,15 +772,23 @@ when defined(linux):
     window.gc.put ximg.addr
 
   method drawImage*(this: OpenglWindow, pixels: openarray[ColorRGBX]) {.deprecated: "use toBgrx to convert pixels into bgrx format".} =
-    ## todo
+    ## do nothing
 
-  method drawImage*(window: Window, pixels: openarray[ColorBgrx]) {.base.} =
+  method drawImage*(window: Window, pixels: openarray[ColorBgrx]) {.base, deprecated: "you must explicitly pass size of image, use drawImage(window, pixels, size)".} =
     assert pixels.len == window.size.x * window.size.y, "pixels count must be width * height"
     var ximg = asXImage(pixels, window.size, window.transparent)
     window.gc.put ximg.addr
 
-  method drawImage*(window: OpenglWindow, pixels: openarray[ColorBgrx]) =
-    ## todo
+  method drawImage*(window: OpenglWindow, pixels: openarray[ColorBgrx]) {.deprecated: "you must explicitly pass size of image, use drawImage(window, pixels, size)".} =
+    ## do nothing
+
+  proc drawImage*(window: Window, pixels: openarray[ColorBgrx], size: IVec2, pos: IVec2 = ivec2(), srcPos: IVec2 = ivec2()) =
+    ## put pixels into window
+    ## note: no blending is performed, even if image or/and window is transparent
+    assert not(window of OpenglWindow), "drawImage is not allowed on Opengl windows. Create texture from image and use Opengl to draw it"
+    assert pixels.len >= size.x * size.y, "not enougth pixels"
+    var ximg = asXImage(pixels, size, window.transparent)
+    window.gc.put(ximg.addr, srcPos=srcPos, destPos=pos)
 
 
   proc maximized*(window: Window): bool =
