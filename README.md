@@ -24,7 +24,7 @@ window.onRender = proc(e: RenderEvent) =
   var image = newSeq[ColorBgrx](window.size.x * window.size.y)
   for c in image.mitems:
     c = color
-  window.drawImage image
+  window.drawImage image, window.size
 
 window.onKeyup = proc(e: KeyEvent) =
   if e.key == Key.escape:
@@ -92,7 +92,7 @@ window.onRender = proc(e: RenderEvent) =
   
   ctx.fillRoundedRect(rect(pos, wh), 25.0)
   
-  window.drawImage image.data.toBgrx
+  window.drawImage image.data.toBgrx, ivec2(image.width.int32, image.height.int32)
 
 window.onKeyup = proc(e: KeyEvent) =
   if e.key == Key.escape:

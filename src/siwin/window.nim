@@ -14,10 +14,9 @@ when defined(windows):
 type
   MouseButton* {.pure.} = enum
     left right middle forward backward
-  AllMouseButtons* = MouseButton.left..MouseButton.backward
   Mouse* = tuple
     pos: IVec2
-    pressed: array[AllMouseButtons, bool]
+    pressed: set[MouseButton]
 
   Key* {.pure.} = enum
     unknown = 0
@@ -37,7 +36,6 @@ type
 
     pause
 
-  AllKeysRange* = Key.a..Key.pause
   Keyboard* = tuple
     pressed: set[Key]
 
@@ -60,15 +58,11 @@ type
     bottomLeft
     bottomRight
 
-const AllKeys* = {Key.a..Key.pause}
-
-type
   Screen* = object
     when defined(linux):
       id: cint
       handle: PScreen
 
-type
   Window* = ref object of RootObj
     onClose*:       proc(e: CloseEvent)
 
@@ -100,7 +94,7 @@ type
     m_hasFocus: bool
     m_isFullscreen: bool
 
-    clicking: array[AllMouseButtons, bool]
+    clicking: set[MouseButton]
     
     waitForReDraw: bool
     curCursor: Option[Cursor]
@@ -517,10 +511,8 @@ when defined(linux):
       window.keyboard.pressed.excl k
       window.onKeyup.invoke (k, false, false)
 
-    for b in AllMouseButtons:
-      if not window.mouse.pressed[b]:
-        continue
-      window.mouse.pressed[b] = false
+    for b in window.mouse.pressed:
+      window.mouse.pressed.excl b
       window.onMouseup.invoke (b, false)
   
   proc pressAllKeys(window: Window) =
@@ -1023,30 +1015,32 @@ when defined(linux):
         of MotionNotify:
           let oldPos = this.mouse.pos
           this.mouse.pos = ivec2(ev.xmotion.x.int32, ev.xmotion.y.int32)
-          for v in this.clicking.mitems: v = false
+          this.clicking = {}
           this.onMouseMove.invoke (oldPos, this.mouse.pos)
 
         of ButtonPress:
           if not isScroll:
-            this.mouse.pressed[button] = true
-            this.clicking[button] = true
+            this.mouse.pressed.incl button
+            this.clicking.incl button
             this.onMouseDown.invoke (button, true)
           elif scrollDelta != 0: this.onScroll.invoke (scrollDelta)
         of ButtonRelease:
           if not isScroll:
             let nows = getTime()
-            this.mouse.pressed[button] = false
+            this.mouse.pressed.excl button
 
-            if this.clicking[button]:
+            if button in this.clicking:
               this.onClick.invoke (button, this.mouse.pos, (nows - lastClickTime).inMilliseconds < 200)
 
-            this.mouse.pressed[button] = false
+            this.mouse.pressed.excl button
             lastClickTime = nows
             this.onMouseUp.invoke (button, false)
 
         of LeaveNotify:
+          this.clicking = {}
           this.onMouseLeave.invoke (this.mouse.pos, ivec2(ev.xcrossing.x.int32, ev.xcrossing.y.int32))
         of EnterNotify:
+          this.clicking = {}
           this.onMouseEnter.invoke (this.mouse.pos, ivec2(ev.xcrossing.x.int32, ev.xcrossing.y.int32))
 
         of FocusIn:
@@ -1076,7 +1070,7 @@ when defined(linux):
             this.keyboard.pressed.incl key
             this.onKeydown.invoke (key, true, repeated)
 
-          if this.xinContext != nil and (this.keyboard.pressed * {lcontrol, rcontrol, lalt, ralt}).len == 0:
+          if this.onTextInput != nil and this.xinContext != nil and (this.keyboard.pressed * {lcontrol, rcontrol, lalt, ralt}).len == 0:
             var status: Status
             var buffer: array[16, char]
             let length = this.xinContext.Xutf8LookupString(ev.xkey.addr, cast[cstring](buffer.addr), buffer.sizeof.cint, nil, status.addr)
@@ -1580,16 +1574,18 @@ elif defined(windows):
     of WmMouseMove:
       let opos = a.mouse.pos
       a.mouse.pos = ivec2(lParam.GetX_LParam.int32, lParam.GetY_LParam.int32)
-      for v in a.clicking.mitems: v = false
+      a.clicking = {}
       a.pushEvent onMouseMove, (opos, a.mouse.pos)
 
     of WmMouseLeave:
       let npos = ivec2(lParam.GetX_LParam.int32, lParam.GetY_LParam.int32)
+      a.clicking = {}
       a.pushEvent onMouseLeave, (a.mouse.pos, npos)
       a.handle.trackMouseEvent(TmeHover)
 
     of WmMouseHover:
       let npos = ivec2(lParam.GetX_LParam.int32, lParam.GetY_LParam.int32)
+      a.clicking = {}
       a.pushEvent onMouseEnter, (a.mouse.pos, npos)
       a.handle.trackMouseEvent(TmeLeave)
 
@@ -1617,20 +1613,19 @@ elif defined(windows):
 
     of WmLButtonDown, WmRButtonDown, WmMButtonDown, WmXButtonDown:
       a.handle.SetCapture()
-      a.mouse.pressed[button] = true
-      a.clicking[button] = true
+      a.mouse.pressed.incl button
+      a.clicking.incl button
       a.pushEvent onMouseDown, (button, true)
 
     of WmLButtonDblclk, WmRButtonDblclk, WmMButtonDblclk, WmXButtonDblclk:
       a.handle.SetCapture()
-      a.mouse.pressed[button] = true
+      a.mouse.pressed.incl button
       a.pushEvent onClick, (button, a.mouse.pos, true)
 
     of WmLButtonUp, WmRButtonUp, WmMButtonUp, WmXButtonUp:
       ReleaseCapture()
-      a.mouse.pressed[button] = false
-      if a.clicking[button]: a.pushEvent onClick, (button, a.mouse.pos, false)
-      a.clicking[button] = false
+      a.mouse.pressed.excl button
+      if button in a.clicking: a.pushEvent onClick, (button, a.mouse.pos, false)
       a.pushEvent onMouseUp, (button, false)
 
     of WmKeyDown, WmSysKeyDown:
@@ -1648,6 +1643,7 @@ elif defined(windows):
         a.pushEvent onKeyup, (key, false, repeated)
 
     of WmChar, WmSyschar, WmUnichar:
+      if a.onTextInput == nil: return 1  # no need to handle
       if (a.keyboard.pressed * {lcontrol, rcontrol, lalt, ralt}).len == 0:
         let s = %$[wParam.WChar]
         if s.len > 0 and s notin ["\u001B"]:

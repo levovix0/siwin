@@ -74,7 +74,7 @@ test "OpenGL":
       else: discard
   
   window.onMouseMove = proc(e: MouseMoveEvent) =
-    if window.mouse.pressed[MouseButton.left]:
+    if MouseButton.left in window.mouse.pressed:
       g = (e.pos.x / window.size.x * 2).min(2).max(0)
       redraw window
   
@@ -179,7 +179,7 @@ test "bgrx image":
     elif e.pos.y in (window.size.y - 10)..window.size.y:
       window.cursor = Cursor.sizeVertical
 
-    if window.mouse.pressed[MouseButton.left]:
+    if MouseButton.left in window.mouse.pressed:
       if e.pos.x in 10..(window.size.x - 10) and e.pos.y in 10..(window.size.y - 10):
         window.startInteractiveMove
       elif e.pos.x in 0..10 and e.pos.y in 0..10:
