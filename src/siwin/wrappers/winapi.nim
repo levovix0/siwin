@@ -6,6 +6,8 @@ type
 
 var hInstance* = GetModuleHandle(nil)
 
+var wglSwapIntervalEXT*: proc(interval: int32): Bool {.stdcall.}
+
 proc trackMouseEvent*(handle: HWnd, e: DWord) =
   var ev = TTrackMouseEvent(cbSize: TTrackMouseEvent.sizeof.DWord, dwFlags: e, hwndTrack: handle, dwHoverTime: 0)
   TrackMouseEvent(ev.addr)

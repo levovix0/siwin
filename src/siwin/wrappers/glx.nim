@@ -1,4 +1,4 @@
-import macros, unicode, strutils, sequtils
+import macros, unicode, strutils, sequtils, dynlib
 import x
 
 type
@@ -44,3 +44,8 @@ proc glxCurrentContext*(): GlxContext {.glx: "getCurrentContext".}
 proc glxSwapBuffers*(d: Drawable) =
   proc impl(dpy: PDisplay, drawable: Drawable) {.glx: "swapBuffers".}
   display.impl(d)
+
+let lib = loadLib dllname
+let glxSwapIntervalExt* = cast[proc(d: ptr Display, drawable: Drawable, interval: cint) {.stdcall.}](lib.symAddr("glXSwapIntervalEXT"))
+let glxSwapIntervalMesa* = cast[proc(interval: cint) {.stdcall.}](lib.symAddr("glXSwapIntervalMESA"))
+let glxSwapIntervalSgi* = cast[proc(interval: cint) {.stdcall.}](lib.symAddr("glXSwapIntervalSGI"))

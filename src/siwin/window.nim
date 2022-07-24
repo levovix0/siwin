@@ -593,8 +593,6 @@ when defined(linux):
     #       32,
     #       @[this.xSyncCounter].asString
     #     )
-
-    # todo: enable vsync
     
     # set window VM class (can be used by window managers)
     block vmHint:
@@ -939,6 +937,17 @@ when defined(linux):
 
   proc makeCurrent*(window: OpenglWindow) =
     window.xwin.makeCurrent window.ctx
+
+  proc `vsync=`*(window: OpenglWindow, v: bool, silent = false) =
+    if glxSwapIntervalExt != nil:
+      display.glxSwapIntervalExt(window.xwin, if v: 1 else: 0)
+    elif glxSwapIntervalMesa != nil:
+      glxSwapIntervalMesa(if v: 1 else: 0)
+    elif glxSwapIntervalSgi != nil:
+      glxSwapIntervalSgi(if v: 1 else: 0)
+    else:
+      if not silent:
+        raise OSError.newException("VSync is not supported")
 
 
   proc run*(this: Window, makeVisible = true) =
@@ -1494,6 +1503,12 @@ elif defined(windows):
   proc makeCurrent*(window: OpenglWindow) =
     doassert window.hdc.wglMakeCurrent(window.ctx)
 
+  proc `vsync=`*(window: OpenglWindow, v: bool, silent = false) =
+    if wglSwapIntervalExt == nil:
+      wglSwapIntervalExt = cast[typeof wglSwapIntervalExt](wglGetProcAddress("wglSwapIntervalEXT"))
+    if wglSwapIntervalExt == nil or wglSwapIntervalExt(if v: 1 else: 0) == 0:
+      if not silent:
+        raise OSError.newException("failed to " & (if v: "enable" else: "disable") & " vsync")
 
   method displayImpl(this: Window) {.base.} =
     var ps: PaintStruct
@@ -1692,6 +1707,7 @@ proc newOpenglWindow*(
   fullscreen = false,
   frameless = false,
   transparent = false,
+  vsync = true,
 
   class = "", # window class (used in x11), equals to title if not specified
 ): OpenglWindow =
@@ -1701,3 +1717,4 @@ proc newOpenglWindow*(
   else:
     result.initOpenglWindow(size, screen, fullscreen, frameless, transparent)
   result.title = title
+  result.`vsync=`(vsync, silent=true)
