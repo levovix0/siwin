@@ -114,7 +114,6 @@ type
 
       m_visible: bool
       m_pos: IVec2
-      bgraPixels: Option[seq[tuple[b, g, r, a: uint8]]]
 
     elif defined(windows):
       handle: HWnd
@@ -667,7 +666,6 @@ when defined(linux):
     let osize = window.m_size
     window.m_size = v
     window.waitForReDraw = true
-    window.bgraPixels = none seq[tuple[b, g, r, a: uint8]]
     window.onResize.invoke (osize, window.m_size, false)
 
   proc fullscreen*(window: Window): bool = window.m_isFullscreen
@@ -777,29 +775,6 @@ when defined(linux):
     window.xiconMask = newPixmap((mask.toOpenarray(0, mask.high), image.size), window)
 
     window.xwin.setWmHints(IconPixmapHint or IconMaskHint, window.xicon, window.xiconMask)
-
-  method drawImage*(window: Window, pixels: openarray[ColorRGBX]) {.base, deprecated: "use toBgrx to convert pixels into bgrx format".} =
-    assert pixels.len == window.size.x * window.size.y, "pixels count must be width * height"
-    var ximg =
-      if window.transparent:
-        if window.bgraPixels.isNone:
-          window.bgraPixels = some newSeq[tuple[b, g, r, a: uint8]](window.size.x * window.size.y)
-        for i, v in window.bgraPixels.get.mpairs: v = (pixels[i].b, pixels[i].g, pixels[i].r, pixels[i].a)
-        asXImageTransparent(window.bgraPixels.get, window.size)
-      else:
-        asXImage(pixels, window.size)
-    window.gc.put ximg.addr
-
-  method drawImage*(this: OpenglWindow, pixels: openarray[ColorRGBX]) {.deprecated: "use toBgrx to convert pixels into bgrx format".} =
-    ## do nothing
-
-  method drawImage*(window: Window, pixels: openarray[ColorBgrx]) {.base, deprecated: "you must explicitly pass size of image, use drawImage(window, pixels, size)".} =
-    assert pixels.len == window.size.x * window.size.y, "pixels count must be width * height"
-    var ximg = asXImage(pixels, window.size, window.transparent)
-    window.gc.put ximg.addr
-
-  method drawImage*(window: OpenglWindow, pixels: openarray[ColorBgrx]) {.deprecated: "you must explicitly pass size of image, use drawImage(window, pixels, size)".} =
-    ## do nothing
 
   proc drawImage*(window: Window, pixels: openarray[ColorBgrx], size: IVec2, pos: IVec2 = ivec2(), srcPos: IVec2 = ivec2()) =
     ## put pixels into window
@@ -1378,35 +1353,6 @@ elif defined(windows):
       this.buffer.bitmap = CreateDibSection(0, &bmi, Dib_rgb_colors, cast[ptr pointer](this.buffer.pixels.addr), 0, 0)
       this.buffer.hdc = CreateCompatibleDC(0)
       this.buffer.hdc.SelectObject this.buffer.bitmap
-
-  method drawImage*(this: Window, pixels: openarray[ColorRGBX]) {.base, deprecated: "use toBgrx to convert pixels into bgrx format".} =
-    assert pixels.len == this.size.x * this.size.y, "pixels count must be width * height"
-    if this.size.x * this.size.y == 0: return
-    
-    resizeBufferIfNeeded this, this.size
-    
-    let rect = this.handle.clientRect
-    for i, c in pixels:
-      this.buffer.pixels[i] = ColorBgrx(b: c.b, g: c.g, r: c.r, a: c.a)
-      
-    this.hdc.BitBlt(0, 0, rect.right, rect.bottom, this.buffer.hdc, 0, 0, SrcCopy)
-
-  method drawImage*(this: OpenglWindow, pixels: openarray[ColorRGBX]) = {.deprecated: "use toBgrx to convert pixels into bgrx format".}
-    ## do nothing
-
-  method drawImage*(this: Window, pixels: openarray[ColorBgrx]) {.base, deprecated: "you must explicitly pass size of image, use drawImage(window, pixels, size)".} =
-    assert pixels.len == this.size.x * this.size.y, "pixels count must be width * height"
-    if this.size.x * this.size.y == 0: return
-    
-    resizeBufferIfNeeded this, this.size
-    
-    let rect = this.handle.clientRect
-    copyMem(this.buffer.pixels, pixels.dataAddr, pixels.len * ColorBgrx.sizeof)
-
-    this.hdc.BitBlt(0, 0, rect.right, rect.bottom, this.buffer.hdc, 0, 0, SrcCopy)
-
-  method drawImage*(this: OpenglWindow, pixels: openarray[ColorBgrx]) {.deprecated: "you must explicitly pass size of image, use drawImage(window, pixels, size)".} =
-    ## do nothing
 
   proc drawImage*(window: Window, pixels: openarray[ColorBgrx], size: IVec2, pos: IVec2 = ivec2(), srcPos: IVec2 = ivec2()) =
     ## put pixels into window
