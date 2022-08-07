@@ -292,7 +292,9 @@ when defined(linux):
     result.id = n.cint
     result.handle = display.ScreenOfDisplay(result.id)
 
-  proc defaultScreen*(): Screen = screen(display.DefaultScreen.int)
+  proc defaultScreen*(): Screen =
+    x.init()
+    screen(display.DefaultScreen.int)
   proc screen*: Screen = defaultScreen()
 
   proc n*(a: Screen): int = a.id.int
