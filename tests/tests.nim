@@ -201,6 +201,49 @@ test "bgrx image":
   
   run window
 
+test "2 windows at once":
+  let win1 = newOpenglWindow(title="1", transparent=true)
+  let win2 = newOpenglWindow(title="2", size=ivec2(800, 600))
+  loadExtensions()
+
+  win1.onResize = proc(e: ResizeEvent) =
+    makeCurrent win1
+    glViewport 0, 0, e.size.x.GLsizei, e.size.y.GLsizei
+    glMatrixMode GlProjection
+    glLoadIdentity()
+    glOrtho -30, 30, -30, 30, -30, 30
+    glMatrixMode GlModelView
+
+  win2.onResize = proc(e: ResizeEvent) =
+    makeCurrent win2
+    glViewport 0, 0, e.size.x.GLsizei, e.size.y.GLsizei
+    glMatrixMode GlProjection
+    glLoadIdentity()
+    glOrtho -30, 30, -30, 30, -30, 30
+    glMatrixMode GlModelView
+  
+  win1.onRender = proc(e: RenderEvent) =
+    makeCurrent win1
+    glClearColor 0.3, 0.3, 0.3, 0.7
+    glClear GlColorBufferBit or GlDepthBufferBit
+
+  win2.onRender = proc(e: RenderEvent) =
+    makeCurrent win2
+    glClearColor 0.7, 0.7, 0.7, 1
+    glClear GlColorBufferBit or GlDepthBufferBit
+
+  win1.onClick = proc(e: ClickEvent) =
+    if e.doubleClick:
+      close (if win2.opened: win2 else: win1)
+
+  win2.onClick = proc(e: ClickEvent) =
+    if e.doubleClick:
+      close (if win1.opened: win1 else: win2)
+  
+  runMultiple win1, win2
+  
+  
+
 when defined(wayland):
   import wayland/client
 

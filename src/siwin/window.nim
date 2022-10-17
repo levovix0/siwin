@@ -100,6 +100,8 @@ type
     curCursor: Option[Cursor]
     transparent: bool
 
+    lastTickTime: times.Time
+
     when defined(linux):
       xscr: cint
       xwin: x.Window
@@ -114,6 +116,7 @@ type
 
       m_visible: bool
       m_pos: IVec2
+      lastClickTime: times.Time
 
     elif defined(windows):
       handle: HWnd
@@ -460,7 +463,9 @@ when defined(linux):
       else:
         WmForFramelessKind.unsupported
 
-  proc `=destroy`(this: var typeof(Window()[])) =
+  method destroy(this: Window) {.base.} =
+    defer: this.closed = true
+
     if this.xinContext != nil:
       destroy this.xinContext
       this.xinContext = nil
@@ -489,13 +494,14 @@ when defined(linux):
     #   display.XSyncDestroyCounter(this.xSyncCounter)
     #   this.xSyncCounter = 0.XSyncCounter
 
-  proc `=destroy`(this: var typeof(OpenglWindow()[])) =
+  method destroy(this: OpenglWindow) =
+    defer: procCall destroy this.Window
+
     if this.ctx != nil:
       if glxCurrentContext() == this.ctx:
         0.makeCurrent nil.GlxContext
       destroy this.ctx
       this.ctx = nil
-    `=destroy` cast[ptr typeof(Window()[])](this.addr)[]
 
 
   template invoke(event: proc, args) =
@@ -646,18 +652,17 @@ when defined(linux):
     this.ctx = newGlxContext(vi.addr)
     this.xwin.makeCurrent this.ctx
 
-  proc `title=`*(this: Window, title: string) =
+  proc `title=`*(window: Window, title: string) =
     ## set window title
-    this.xwin.netWmName = title
-    this.xwin.netWmIconName = title
-    display.Xutf8SetWMProperties(this.xwin, title, title, nil, 0, nil, nil, nil)
+    window.xwin.netWmName = title
+    window.xwin.netWmIconName = title
+    display.Xutf8SetWMProperties(window.xwin, title, title, nil, 0, nil, nil, nil)
 
-  proc opened*(this: Window): bool = not this.closed
-  proc close*(this: Window) =
-    ## close request
-    if this.closed: return
-    this.xwin.send this.xwin.newClientMessage(atom"WM_PROTOCOLS", [atom"WM_DELETE_WINDOW", CurrentTime])
-    this.closed = true
+  proc opened*(window: Window): bool = not window.closed
+  proc close*(window: Window) =
+    if window.closed: return
+    window.onClose.invoke ()
+    destroy window
 
   proc redraw*(window: Window) = window.waitForReDraw = true
     ## render request
@@ -927,15 +932,19 @@ when defined(linux):
         raise OSError.newException("VSync is not supported")
 
 
-  proc run*(this: Window, makeVisible = true) =
-    ## run main loop of window
-    # todo: run multiple windows
-
+  proc firstStep*(this: Window, makeVisible = true) =
+    ## init window main loop
     if makeVisible:
       this.visible = true
 
-    var ev: XEvent
+    this.m_pos = this.xwin.geometry.pos
+    this.mouse.pos = x.cursor().pos - this.m_pos
+    
+    this.onResize.invoke (ivec2(), this.m_size, true)
+    this.lastTickTime = getTime()
 
+  proc step*(this: Window) =
+    ## make window main loop step
     template button: MouseButton =
       case ev.xbutton.button
       of 1: MouseButton.left
@@ -951,184 +960,188 @@ when defined(linux):
       of 5: 1
       else: 0
 
-    this.m_pos = this.xwin.geometry.pos
-    this.mouse.pos = x.cursor().pos - this.m_pos
+    var ev: XEvent
+    var xevents: seq[XEvent]
+
+    proc checkEvent(_: PDisplay, event: PXEvent, userData: XPointer): XBool {.cdecl.} =
+      if cast[int](event.xany.window) == cast[int](userData): 1 else: 0
+    while display.XCheckIfEvent(ev.addr, checkEvent, cast[XPointer](this.xwin)) == 1:
+      xevents.add ev
     
-    this.onResize.invoke (ivec2(), this.m_size, true)
+    let catched = xevents.len > 0
 
-    var lastClickTime: times.Time
-    var lastTickTime = getTime()
+    for ev in xevents.mitems:
+      case ev.theType
+      of Expose:
+        redraw this
 
-    while not this.closed:
-      var xevents: seq[XEvent]
+      of ClientMessage:
+        if ev.xclient.data.l[0] == atom"WM_DELETE_WINDOW".clong:
+          close this
 
-      proc checkEvent(_: PDisplay, event: PXEvent, userData: XPointer): XBool {.cdecl.} =
-        if cast[int](event.xany.window) == cast[int](userData): 1 else: 0
-      while display.XCheckIfEvent(ev.addr, checkEvent, cast[XPointer](this.xwin)) == 1:
-        xevents.add ev
-      
-      let catched = xevents.len > 0
+        # elif ev.xclient.data.l[0] == atom"_NET_WM_SYNC_REQUEST".clong:
+        #   this.lastSync = XSyncValue(
+        #     lo: cast[uint32](ev.xclient.data.l[2]),
+        #     hi: cast[int32](ev.xclient.data.l[3])
+        #   )
 
-      for ev in xevents.mitems:
-        case ev.theType
-        of Expose:
-          redraw this
+      of ConfigureNotify:
+        if ev.xconfigure.width != this.m_size.x or ev.xconfigure.height != this.m_size.y:
+          this.updateSize ivec2(ev.xconfigure.width.int32, ev.xconfigure.height.int32)
+        if ev.xconfigure.x.int != this.m_pos.x or ev.xconfigure.y.int != this.m_pos.y:
+          let oldPos = this.m_pos
+          this.m_pos = ivec2(ev.xconfigure.x.int32, ev.xconfigure.y.int32)
+          this.mouse.pos = x.cursor().pos - this.m_pos
+          this.onWindowMove.invoke (oldPos, this.m_pos)
 
-        of ClientMessage:
-          if ev.xclient.data.l[0] == atom"WM_DELETE_WINDOW".clong:
-            this.closed = true
+        let state = this.xwin.netWmState
+        if atom"_NET_WM_STATE_FULLSCREEN" in state != this.m_isFullscreen:
+          this.m_isFullscreen = not this.m_isFullscreen
+          this.onFullscreenChanged.invoke (this.m_isFullscreen)
 
-          # elif ev.xclient.data.l[0] == atom"_NET_WM_SYNC_REQUEST".clong:
-          #   this.lastSync = XSyncValue(
-          #     lo: cast[uint32](ev.xclient.data.l[2]),
-          #     hi: cast[int32](ev.xclient.data.l[3])
-          #   )
+      of MotionNotify:
+        let oldPos = this.mouse.pos
+        this.mouse.pos = ivec2(ev.xmotion.x.int32, ev.xmotion.y.int32)
+        this.clicking = {}
+        this.onMouseMove.invoke (oldPos, this.mouse.pos)
 
-        of ConfigureNotify:
-          if ev.xconfigure.width != this.m_size.x or ev.xconfigure.height != this.m_size.y:
-            this.updateSize ivec2(ev.xconfigure.width.int32, ev.xconfigure.height.int32)
-          if ev.xconfigure.x.int != this.m_pos.x or ev.xconfigure.y.int != this.m_pos.y:
-            let oldPos = this.m_pos
-            this.m_pos = ivec2(ev.xconfigure.x.int32, ev.xconfigure.y.int32)
-            this.mouse.pos = x.cursor().pos - this.m_pos
-            this.onWindowMove.invoke (oldPos, this.m_pos)
+      of ButtonPress:
+        if not isScroll:
+          this.mouse.pressed.incl button
+          this.clicking.incl button
+          this.onMouseDown.invoke (button, true)
+        elif scrollDelta != 0: this.onScroll.invoke (scrollDelta)
+      of ButtonRelease:
+        if not isScroll:
+          let nows = getTime()
+          this.mouse.pressed.excl button
 
-          let state = this.xwin.netWmState
-          if atom"_NET_WM_STATE_FULLSCREEN" in state != this.m_isFullscreen:
-            this.m_isFullscreen = not this.m_isFullscreen
-            this.onFullscreenChanged.invoke (this.m_isFullscreen)
+          if button in this.clicking:
+            this.onClick.invoke (button, this.mouse.pos, (nows - this.lastClickTime).inMilliseconds < 200)
 
-        of MotionNotify:
-          let oldPos = this.mouse.pos
-          this.mouse.pos = ivec2(ev.xmotion.x.int32, ev.xmotion.y.int32)
-          this.clicking = {}
-          this.onMouseMove.invoke (oldPos, this.mouse.pos)
+          this.mouse.pressed.excl button
+          this.lastClickTime = nows
+          this.onMouseUp.invoke (button, false)
 
-        of ButtonPress:
-          if not isScroll:
-            this.mouse.pressed.incl button
-            this.clicking.incl button
-            this.onMouseDown.invoke (button, true)
-          elif scrollDelta != 0: this.onScroll.invoke (scrollDelta)
-        of ButtonRelease:
-          if not isScroll:
-            let nows = getTime()
-            this.mouse.pressed.excl button
+      of LeaveNotify:
+        this.clicking = {}
+        this.onMouseLeave.invoke (this.mouse.pos, ivec2(ev.xcrossing.x.int32, ev.xcrossing.y.int32))
+      of EnterNotify:
+        this.clicking = {}
+        this.onMouseEnter.invoke (this.mouse.pos, ivec2(ev.xcrossing.x.int32, ev.xcrossing.y.int32))
 
-            if button in this.clicking:
-              this.onClick.invoke (button, this.mouse.pos, (nows - lastClickTime).inMilliseconds < 200)
+      of FocusIn:
+        this.m_hasFocus = true
+        if this.xinContext != nil: XSetICFocus this.xinContext
+        this.onFocusChanged.invoke (true)
+        this.pressAllKeys
+        
+      of FocusOut:
+        this.m_hasFocus = false
+        if this.xinContext != nil: XUnsetICFocus this.xinContext
+        this.onFocusChanged.invoke (false)
+        this.releaseAllKeys
 
-            this.mouse.pressed.excl button
-            lastClickTime = nows
-            this.onMouseUp.invoke (button, false)
+      of KeyPress:
+        var key = Key.unknown
+        block:
+          var i = 0
+          while i < 4 and key == Key.unknown:
+            key = xkeyToKey(XLookupKeysym(ev.xkey.addr, i.cint))
+            inc i
+        if key != Key.unknown:
+          let ev = ev
+          let repeated = xevents.findBy(proc (a: XEvent): bool =
+            a.theType == KeyRelease and a.xkey.keycode == ev.xkey.keycode and a.xkey.time - ev.xkey.time < 2
+          ) >= 0
+          this.keyboard.pressed.incl key
+          this.onKeydown.invoke (key, true, repeated)
 
-        of LeaveNotify:
-          this.clicking = {}
-          this.onMouseLeave.invoke (this.mouse.pos, ivec2(ev.xcrossing.x.int32, ev.xcrossing.y.int32))
-        of EnterNotify:
-          this.clicking = {}
-          this.onMouseEnter.invoke (this.mouse.pos, ivec2(ev.xcrossing.x.int32, ev.xcrossing.y.int32))
+        if this.onTextInput != nil and this.xinContext != nil and (this.keyboard.pressed * {lcontrol, rcontrol, lalt, ralt}).len == 0:
+          var status: Status
+          var buffer: array[16, char]
+          let length = this.xinContext.Xutf8LookupString(ev.xkey.addr, cast[cstring](buffer.addr), buffer.sizeof.cint, nil, status.addr)
 
-        of FocusIn:
-          this.m_hasFocus = true
-          if this.xinContext != nil: XSetICFocus this.xinContext
-          this.onFocusChanged.invoke (true)
-          this.pressAllKeys
-          
-        of FocusOut:
-          this.m_hasFocus = false
-          if this.xinContext != nil: XUnsetICFocus this.xinContext
-          this.onFocusChanged.invoke (false)
-          this.releaseAllKeys
+          proc toString(str: openArray[char]): string =
+            result = newStringOfCap(len(str))
+            for ch in str:
+              result.add ch
 
-        of KeyPress:
-          var key = Key.unknown
-          block:
-            var i = 0
-            while i < 4 and key == Key.unknown:
-              key = xkeyToKey(XLookupKeysym(ev.xkey.addr, i.cint))
-              inc i
-          if key != Key.unknown:
-            let ev = ev
-            let repeated = xevents.findBy(proc (a: XEvent): bool =
-              a.theType == KeyRelease and a.xkey.keycode == ev.xkey.keycode and a.xkey.time - ev.xkey.time < 2
-            ) >= 0
-            this.keyboard.pressed.incl key
-            this.onKeydown.invoke (key, true, repeated)
+          if length > 0:
+            let s = buffer[0..<length].toString()
+            if s notin ["\u001B"]:
+              this.onTextInput.invoke (s)
 
-          if this.onTextInput != nil and this.xinContext != nil and (this.keyboard.pressed * {lcontrol, rcontrol, lalt, ralt}).len == 0:
-            var status: Status
-            var buffer: array[16, char]
-            let length = this.xinContext.Xutf8LookupString(ev.xkey.addr, cast[cstring](buffer.addr), buffer.sizeof.cint, nil, status.addr)
+      of KeyRelease:
+        var key = Key.unknown
+        block:
+          var i = 0
+          while i < 4 and key == Key.unknown:
+            key = xkeyToKey(XLookupKeysym(ev.xkey.addr, i.cint))
+            inc i
+        if key != Key.unknown:
+          let ev = ev
+          let repeated = xevents.findBy(proc (a: XEvent): bool =
+            a.theType == KeyPress and a.xkey.keycode == ev.xkey.keycode and a.xkey.time - ev.xkey.time < 2
+          ) >= 0
+          this.keyboard.pressed.excl key
+          this.onKeyup.invoke (key, false, repeated)
 
-            proc toString(str: openArray[char]): string =
-              result = newStringOfCap(len(str))
-              for ch in str:
-                result.add ch
+      else: discard
 
-            if length > 0:
-              let s = buffer[0..<length].toString()
-              if s notin ["\u001B"]:
-                this.onTextInput.invoke (s)
+      if this.closed: return
 
-        of KeyRelease:
-          var key = Key.unknown
-          block:
-            var i = 0
-            while i < 4 and key == Key.unknown:
-              key = xkeyToKey(XLookupKeysym(ev.xkey.addr, i.cint))
-              inc i
-          if key != Key.unknown:
-            let ev = ev
-            let repeated = xevents.findBy(proc (a: XEvent): bool =
-              a.theType == KeyPress and a.xkey.keycode == ev.xkey.keycode and a.xkey.time - ev.xkey.time < 2
-            ) >= 0
-            this.keyboard.pressed.excl key
-            this.onKeyup.invoke (key, false, repeated)
+      # force make tick if linux decided to spam events to us
+      if (getTime() - this.lastTickTime) > initDuration(milliseconds=10):
+        break
 
-        else: discard
+    if not catched: sleep(1)
 
-        if this.closed: break
-      if this.closed: break
+    let nows = getTime()
+    this.onTick.invoke (nows - this.lastTickTime)
+    this.lastTickTime = nows
 
-      if not catched: sleep(2)
+    if this.waitForReDraw:
+      this.waitForReDraw = false
+      this.onRender.invoke ()
+      if this of OpenglWindow:
+        this.xwin.toDrawable.glxSwapBuffers()
+      # display.XSyncSetCounter(this.xSyncCounter, this.lastSync)
 
-      let nows = getTime()
-      this.onTick.invoke (nows - lastTickTime)
-      lastTickTime = nows
-
-      if this.waitForReDraw:
-        this.waitForReDraw = false
-        this.onRender.invoke ()
-        if this of OpenglWindow:
-          this.xwin.toDrawable.glxSwapBuffers()
-        # display.XSyncSetCounter(this.xSyncCounter, this.lastSync)
-
-      if clipboardProcessEvents != nil: clipboardProcessEvents()
-
-    this.onClose.invoke ()
-    if this of OpenglWindow:
-      `=destroy` this.OpenglWindow[]
-    else:
-      `=destroy` this[]
+    if clipboardProcessEvents != nil: clipboardProcessEvents()
 
 
 elif defined(windows):
   proc poolEvent(a: Window, message: Uint, wParam: WParam, lParam: LParam): LResult
 
-  proc `=destroy`(this: var typeof(Window()[])) =
-    DeleteDC this.hdc
+  method destroy(this: Window) {.base.} =
+    defer: this.closed = true
+    if this.hdc != 0:
+      DeleteDC this.hdc
+      this.hdc = 0
+
     if this.buffer.pixels != nil:
       DeleteDC this.buffer.hdc
       DeleteObject this.buffer.bitmap
-    if this.wicon != 0: DestroyIcon this.wicon
-    if this.wcursor != 0: DestroyCursor this.wcursor
+      this.buffer.hdc = 0
+      this.buffer.bitmap = 0
+      this.buffer.pixels = nil
+
+    if this.wicon != 0:
+      DestroyIcon this.wicon
+      this.wicon = 0
+
+    if this.wcursor != 0:
+      DestroyCursor this.wcursor
+      this.wcursor = 0
   
-  proc `=destroy`(this: var typeof(OpenglWindow()[])) =
-    if wglGetCurrentContext() == this.ctx:
-      wglMakeCurrent(0, 0)
-    wglDeleteContext this.ctx
-    `=destroy` cast[ptr typeof(Window()[])](this.addr)[]
+  method destroy(this: OpenglWindow) =
+    defer: procCall destroy this.Window
+    if this.ctx != 0:
+      if wglGetCurrentContext() == this.ctx:
+        wglMakeCurrent(0, 0)
+      wglDeleteContext this.ctx
+      this.ctx = 0
 
   proc windowProc(handle: HWnd, message: Uint, wParam: WParam, lParam: LParam): LResult {.stdcall.} =
     let win = if handle != 0: cast[Window](GetWindowLongPtr(handle, GwlpUserData)) else: nil
@@ -1467,7 +1480,7 @@ elif defined(windows):
   method displayImpl(this: OpenglWindow) =
     this.pushEvent onRender, ()
 
-  proc run*(this: Window, makeVisible = true) =
+  proc firstStep*(this: Window, makeVisible = true) =
     ## run main loop of window
     
     if makeVisible:
@@ -1478,27 +1491,27 @@ elif defined(windows):
 
     this.handle.UpdateWindow()
 
-    var lastTickTime = getTime()
+    this.lastTickTime = getTime()
+
+  proc step*(this: Window) =
     var msg: Msg
-    while not this.closed:
-      var catched = false
-      while PeekMessage(&msg, 0, 0, 0, PmRemove):
-        catched = true
-        TranslateMessage(&msg)
-        DispatchMessage(&msg)
+    var catched = false
+    while PeekMessage(&msg, 0, 0, 0, PmRemove):
+      catched = true
+      TranslateMessage(&msg)
+      DispatchMessage(&msg)
 
-        # force make tick if windows decided to spam events to us
-        if (getTime() - lastTickTime) > initDuration(milliseconds=10):
-          break
+      # force make tick if windows decided to spam events to us
+      if (getTime() - this.lastTickTime) > initDuration(milliseconds=10):
+        break
 
-        if this.closed: break
-      if this.closed: break
+      if this.closed: return
 
-      if not catched: sleep(2)
+    if not catched: sleep(1)
 
-      let nows = getTime()
-      this.pushEvent onTick, (nows - lastTickTime)
-      lastTickTime = nows
+    let nows = getTime()
+    this.pushEvent onTick, (nows - this.lastTickTime)
+    this.lastTickTime = nows
 
   proc poolEvent(a: Window, message: Uint, wParam: WParam, lParam: LParam): LResult =
     template button: MouseButton =
@@ -1531,7 +1544,7 @@ elif defined(windows):
 
     of WmDestroy:
       a.pushEvent onClose, ()
-      a.closed = true
+      destroy a
       PostQuitMessage(0)
 
     of WmMouseMove:
@@ -1641,7 +1654,7 @@ proc newWindow*(
 
   class = "", # window class (used in x11), equals to title if not specified
 ): Window =
-  new result
+  new result, proc(x: Window) = close x
   when defined(linux):
     result.initWindow(size, screen, fullscreen, frameless, transparent, (if class == "": title else: class))
   else:
@@ -1659,10 +1672,32 @@ proc newOpenglWindow*(
 
   class = "", # window class (used in x11), equals to title if not specified
 ): OpenglWindow =
-  new result
+  new result, proc(x: OpenglWindow) = close x
   when defined(linux):
     result.initOpenglWindow(size, screen, fullscreen, frameless, transparent, (if class == "": title else: class))
   else:
     result.initOpenglWindow(size, screen, fullscreen, frameless, transparent)
   result.title = title
   result.`vsync=`(vsync, silent=true)
+
+
+proc run*(window: Window, makeVisible = true) =
+  ## run whole window main loops
+  window.firstStep makeVisible
+  while window.opened:
+    window.step
+
+proc runMultiple*(windows: varargs[Window]) =
+  ## run for multiple windows
+  for window in windows:
+    window.firstStep
+
+  var windows = windows.toSeq
+  while windows.len > 0:
+    var i = 0
+    while i < windows.len:
+      windows[i].step
+      if windows[i].closed:
+        windows.del i
+      else:
+        inc i
