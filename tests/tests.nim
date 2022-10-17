@@ -49,34 +49,34 @@ test "OpenGL":
   window.onKeyup = proc(e: KeyEvent) =
     case e.key
     of Key.escape:
-      close window
+      close e.window
     of Key.f1:
-      window.fullscreen = not window.fullscreen
+      e.window.fullscreen = not e.window.fullscreen
     of Key.f2:
-      window.maximized = not window.maximized
+      e.window.maximized = not e.window.maximized
     of Key.f3:
-      window.minimized = not window.minimized
+      e.window.minimized = not e.window.minimized
     of Key.f4:
-      window.size = ivec2(300, 300)
+      e.window.size = ivec2(300, 300)
     else: discard
   
   window.onClick = proc(e: ClickEvent) =
     if e.doubleClick:
-      close window
+      close e.window
     else:
       case e.button
       of MouseButton.left, MouseButton.right:
-        g = (e.pos.x / window.size.x * 2).min(2).max(0)
-        redraw window
+        g = (e.pos.x / e.window.size.x * 2).min(2).max(0)
+        redraw e.window
       of MouseButton.middle:
-        window.maxSize = ivec2(600, 600)
-        window.minSize = ivec2(300, 300)
+        e.window.maxSize = ivec2(600, 600)
+        e.window.minSize = ivec2(300, 300)
       else: discard
   
   window.onMouseMove = proc(e: MouseMoveEvent) =
-    if MouseButton.left in window.mouse.pressed:
-      g = (e.pos.x / window.size.x * 2).min(2).max(0)
-      redraw window
+    if MouseButton.left in e.window.mouse.pressed:
+      g = (e.pos.x / e.window.size.x * 2).min(2).max(0)
+      redraw e.window
   
   run window
 
@@ -117,17 +117,17 @@ test "pixie":
     ctx.fillStyle = rgba(50, 50, 255, 255)
     ctx.fillRoundedRect(rect(pos, wh), 25.0)
     
-    window.drawImage image.data.toBgrx, ivec2(image.width.int32, image.height.int32)
+    e.window.drawImage image.data.toBgrx, ivec2(image.width.int32, image.height.int32)
 
   window.onKeyup = proc(e: KeyEvent) =
     case e.key
     of Key.escape:
-      close window
+      close e.window
     else: discard
   
   window.onClick = proc(e: ClickEvent) =
     if e.doubleClick:
-      close window
+      close e.window
   
   run window
 
@@ -201,34 +201,29 @@ test "bgrx image":
   
   run window
 
+
 test "2 windows at once":
   let win1 = newOpenglWindow(title="1", transparent=true)
   let win2 = newOpenglWindow(title="2", size=ivec2(800, 600))
   loadExtensions()
 
   win1.onResize = proc(e: ResizeEvent) =
-    makeCurrent win1
+    makeCurrent e.window.OpenglWindow
     glViewport 0, 0, e.size.x.GLsizei, e.size.y.GLsizei
     glMatrixMode GlProjection
     glLoadIdentity()
     glOrtho -30, 30, -30, 30, -30, 30
     glMatrixMode GlModelView
 
-  win2.onResize = proc(e: ResizeEvent) =
-    makeCurrent win2
-    glViewport 0, 0, e.size.x.GLsizei, e.size.y.GLsizei
-    glMatrixMode GlProjection
-    glLoadIdentity()
-    glOrtho -30, 30, -30, 30, -30, 30
-    glMatrixMode GlModelView
+  win2.onResize = win1.onResize
   
   win1.onRender = proc(e: RenderEvent) =
-    makeCurrent win1
+    makeCurrent e.window.OpenglWindow
     glClearColor 0.3, 0.3, 0.3, 0.7
     glClear GlColorBufferBit or GlDepthBufferBit
 
   win2.onRender = proc(e: RenderEvent) =
-    makeCurrent win2
+    makeCurrent e.window.OpenglWindow
     glClearColor 0.7, 0.7, 0.7, 1
     glClear GlColorBufferBit or GlDepthBufferBit
 
@@ -241,8 +236,7 @@ test "2 windows at once":
       close (if win1.opened: win1 else: win2)
   
   runMultiple win1, win2
-  
-  
+
 
 when defined(wayland):
   import wayland/client

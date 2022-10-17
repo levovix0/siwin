@@ -136,40 +136,60 @@ type
 
 
   CloseEvent* = tuple
+    window: Window
 
   RenderEvent* = tuple
+    window: Window
+  
   ResizeEvent* = tuple
+    window: Window
     oldSize, size: IVec2
     initial: bool # is this initial resizing
+
   WindowMoveEvent* = tuple
+    window: Window
     oldPos, pos: IVec2
 
   MouseMoveEvent* = tuple
+    window: Window
     oldPos, pos: IVec2
+  
   MouseButtonEvent* = tuple
+    window: Window
     button: MouseButton
     pressed: bool
+  
   ClickEvent* = tuple
+    window: Window
     button: MouseButton
     pos: IVec2
     doubleClick: bool
+  
   ScrollEvent* = tuple
+    window: Window
     delta: float ## 1: scroll down, -1: scroll up
 
   FocusEvent* = tuple
+    window: Window
     focused: bool
+  
   StateChangedEvent* = tuple
+    window: Window
     state: bool
 
   TickEvent* = tuple
+    window: Window
     deltaTime: Duration
   # todo: FixedTickEvent
 
   KeyEvent* = tuple
+    window: Window
     key: Key
     pressed: bool
     repeated: bool
+
   TextInputEvent* = tuple
+    window: Window
     text: string # one utf-8 encoded letter
 
 
@@ -516,11 +536,11 @@ when defined(linux):
     let pressed = window.keyboard.pressed
     for k in pressed:
       window.keyboard.pressed.excl k
-      window.onKeyup.invoke (k, false, false)
+      window.onKeyup.invoke (window, k, false, false)
 
     for b in window.mouse.pressed:
       window.mouse.pressed.excl b
-      window.onMouseup.invoke (b, false)
+      window.onMouseup.invoke (window, b, false)
   
   proc pressAllKeys(window: Window) =
     ## press pressed in system keys and mouse buttons
@@ -529,7 +549,7 @@ when defined(linux):
     for k in keys: # press pressed in system keys
       if k == Key.unknown: continue
       window.keyboard.pressed.incl k
-      window.onKeydown.invoke (k, false, false)
+      window.onKeydown.invoke (window, k, false, false)
     
     # todo: press pressed in system mouse buttons
 
@@ -661,7 +681,7 @@ when defined(linux):
   proc opened*(window: Window): bool = not window.closed
   proc close*(window: Window) =
     if window.closed: return
-    window.onClose.invoke ()
+    window.onClose.invoke (window)
     destroy window
 
   proc redraw*(window: Window) = window.waitForReDraw = true
@@ -671,7 +691,7 @@ when defined(linux):
     let osize = window.m_size
     window.m_size = v
     window.waitForReDraw = true
-    window.onResize.invoke (osize, window.m_size, false)
+    window.onResize.invoke (window, osize, window.m_size, false)
 
   proc fullscreen*(window: Window): bool = window.m_isFullscreen
   proc `fullscreen=`*(window: Window, v: bool) =
@@ -940,7 +960,7 @@ when defined(linux):
     this.m_pos = this.xwin.geometry.pos
     this.mouse.pos = x.cursor().pos - this.m_pos
     
-    this.onResize.invoke (ivec2(), this.m_size, true)
+    this.onResize.invoke (this, ivec2(), this.m_size, true)
     this.lastTickTime = getTime()
 
   proc step*(this: Window) =
@@ -992,54 +1012,54 @@ when defined(linux):
           let oldPos = this.m_pos
           this.m_pos = ivec2(ev.xconfigure.x.int32, ev.xconfigure.y.int32)
           this.mouse.pos = x.cursor().pos - this.m_pos
-          this.onWindowMove.invoke (oldPos, this.m_pos)
+          this.onWindowMove.invoke (this, oldPos, this.m_pos)
 
         let state = this.xwin.netWmState
         if atom"_NET_WM_STATE_FULLSCREEN" in state != this.m_isFullscreen:
           this.m_isFullscreen = not this.m_isFullscreen
-          this.onFullscreenChanged.invoke (this.m_isFullscreen)
+          this.onFullscreenChanged.invoke (this, this.m_isFullscreen)
 
       of MotionNotify:
         let oldPos = this.mouse.pos
         this.mouse.pos = ivec2(ev.xmotion.x.int32, ev.xmotion.y.int32)
         this.clicking = {}
-        this.onMouseMove.invoke (oldPos, this.mouse.pos)
+        this.onMouseMove.invoke (this, oldPos, this.mouse.pos)
 
       of ButtonPress:
         if not isScroll:
           this.mouse.pressed.incl button
           this.clicking.incl button
-          this.onMouseDown.invoke (button, true)
-        elif scrollDelta != 0: this.onScroll.invoke (scrollDelta)
+          this.onMouseDown.invoke (this, button, true)
+        elif scrollDelta != 0: this.onScroll.invoke (this, scrollDelta)
       of ButtonRelease:
         if not isScroll:
           let nows = getTime()
           this.mouse.pressed.excl button
 
           if button in this.clicking:
-            this.onClick.invoke (button, this.mouse.pos, (nows - this.lastClickTime).inMilliseconds < 200)
+            this.onClick.invoke (this, button, this.mouse.pos, (nows - this.lastClickTime).inMilliseconds < 200)
 
           this.mouse.pressed.excl button
           this.lastClickTime = nows
-          this.onMouseUp.invoke (button, false)
+          this.onMouseUp.invoke (this, button, false)
 
       of LeaveNotify:
         this.clicking = {}
-        this.onMouseLeave.invoke (this.mouse.pos, ivec2(ev.xcrossing.x.int32, ev.xcrossing.y.int32))
+        this.onMouseLeave.invoke (this, this.mouse.pos, ivec2(ev.xcrossing.x.int32, ev.xcrossing.y.int32))
       of EnterNotify:
         this.clicking = {}
-        this.onMouseEnter.invoke (this.mouse.pos, ivec2(ev.xcrossing.x.int32, ev.xcrossing.y.int32))
+        this.onMouseEnter.invoke (this, this.mouse.pos, ivec2(ev.xcrossing.x.int32, ev.xcrossing.y.int32))
 
       of FocusIn:
         this.m_hasFocus = true
         if this.xinContext != nil: XSetICFocus this.xinContext
-        this.onFocusChanged.invoke (true)
+        this.onFocusChanged.invoke (this, true)
         this.pressAllKeys
         
       of FocusOut:
         this.m_hasFocus = false
         if this.xinContext != nil: XUnsetICFocus this.xinContext
-        this.onFocusChanged.invoke (false)
+        this.onFocusChanged.invoke (this, false)
         this.releaseAllKeys
 
       of KeyPress:
@@ -1055,7 +1075,7 @@ when defined(linux):
             a.theType == KeyRelease and a.xkey.keycode == ev.xkey.keycode and a.xkey.time - ev.xkey.time < 2
           ) >= 0
           this.keyboard.pressed.incl key
-          this.onKeydown.invoke (key, true, repeated)
+          this.onKeydown.invoke (this, key, true, repeated)
 
         if this.onTextInput != nil and this.xinContext != nil and (this.keyboard.pressed * {lcontrol, rcontrol, lalt, ralt}).len == 0:
           var status: Status
@@ -1070,7 +1090,7 @@ when defined(linux):
           if length > 0:
             let s = buffer[0..<length].toString()
             if s notin ["\u001B"]:
-              this.onTextInput.invoke (s)
+              this.onTextInput.invoke (this, s)
 
       of KeyRelease:
         var key = Key.unknown
@@ -1085,7 +1105,7 @@ when defined(linux):
             a.theType == KeyPress and a.xkey.keycode == ev.xkey.keycode and a.xkey.time - ev.xkey.time < 2
           ) >= 0
           this.keyboard.pressed.excl key
-          this.onKeyup.invoke (key, false, repeated)
+          this.onKeyup.invoke (this, key, false, repeated)
 
       else: discard
 
@@ -1098,12 +1118,12 @@ when defined(linux):
     if not catched: sleep(1)
 
     let nows = getTime()
-    this.onTick.invoke (nows - this.lastTickTime)
+    this.onTick.invoke (this, nows - this.lastTickTime)
     this.lastTickTime = nows
 
     if this.waitForReDraw:
       this.waitForReDraw = false
-      this.onRender.invoke ()
+      this.onRender.invoke (this)
       if this of OpenglWindow:
         this.xwin.toDrawable.glxSwapBuffers()
       # display.XSyncSetCounter(this.xSyncCounter, this.lastSync)
@@ -1177,7 +1197,7 @@ elif defined(windows):
     this.m_size = ivec2(rect.right.int32, rect.bottom.int32)
     if osize == this.m_size: return
 
-    this.pushEvent onResize, (osize, this.m_size, false)
+    this.pushEvent onResize, (this, osize, this.m_size, false)
 
   proc fullscreen*(a: Window): bool = a.m_isFullscreen
   proc `fullscreen=`*(this: Window, v: bool) =
@@ -1190,7 +1210,7 @@ elif defined(windows):
       this.handle.ShowWindow(SwShowNormal)
       discard this.handle.SetWindowLongPtr(GwlStyle, WsVisible or WsOverlappedWindow)
     this.updateSize()
-    this.pushEvent onFullscreenChanged, (v)
+    this.pushEvent onFullscreenChanged, (this, v)
 
   proc size*(this: Window): IVec2 = this.m_size
   proc `size=`*(this: Window, size: IVec2) =
@@ -1474,11 +1494,11 @@ elif defined(windows):
   method displayImpl(this: Window) {.base.} =
     var ps: PaintStruct
     this.handle.BeginPaint(&ps)
-    this.pushEvent onRender, ()
+    this.pushEvent onRender, (this)
     this.handle.EndPaint(&ps)
 
   method displayImpl(this: OpenglWindow) =
-    this.pushEvent onRender, ()
+    this.pushEvent onRender, (this)
 
   proc firstStep*(this: Window, makeVisible = true) =
     ## run main loop of window
@@ -1486,7 +1506,7 @@ elif defined(windows):
     if makeVisible:
       this.visible = true
 
-    this.pushEvent onResize, (ivec2(), this.m_size, true)
+    this.pushEvent onResize, (this, ivec2(), this.m_size, true)
     this.waitForRedraw = true
 
     this.handle.UpdateWindow()
@@ -1510,7 +1530,7 @@ elif defined(windows):
     if not catched: sleep(1)
 
     let nows = getTime()
-    this.pushEvent onTick, (nows - this.lastTickTime)
+    this.pushEvent onTick, (this, nows - this.lastTickTime)
     this.lastTickTime = nows
 
   proc poolEvent(a: Window, message: Uint, wParam: WParam, lParam: LParam): LResult =
@@ -1543,7 +1563,7 @@ elif defined(windows):
           a.OpenglWindow.hdc.SwapBuffers
 
     of WmDestroy:
-      a.pushEvent onClose, ()
+      a.pushEvent onClose, (a)
       destroy a
       PostQuitMessage(0)
 
@@ -1551,79 +1571,79 @@ elif defined(windows):
       let opos = a.mouse.pos
       a.mouse.pos = ivec2(lParam.GetX_LParam.int32, lParam.GetY_LParam.int32)
       a.clicking = {}
-      a.pushEvent onMouseMove, (opos, a.mouse.pos)
+      a.pushEvent onMouseMove, (a, opos, a.mouse.pos)
 
     of WmMouseLeave:
       let npos = ivec2(lParam.GetX_LParam.int32, lParam.GetY_LParam.int32)
       a.clicking = {}
-      a.pushEvent onMouseLeave, (a.mouse.pos, npos)
+      a.pushEvent onMouseLeave, (a, a.mouse.pos, npos)
       a.handle.trackMouseEvent(TmeHover)
 
     of WmMouseHover:
       let npos = ivec2(lParam.GetX_LParam.int32, lParam.GetY_LParam.int32)
       a.clicking = {}
-      a.pushEvent onMouseEnter, (a.mouse.pos, npos)
+      a.pushEvent onMouseEnter, (a, a.mouse.pos, npos)
       a.handle.trackMouseEvent(TmeLeave)
 
     of WmMouseWheel:
       let delta = if wParam.GetWheelDeltaWParam > 0: -1.0 else: 1.0
-      a.pushEvent onScroll, (delta)
+      a.pushEvent onScroll, (a, delta)
 
     of WmSetFocus:
       a.m_hasFocus = true
-      a.pushEvent onFocusChanged, (a.m_hasFocus)
+      a.pushEvent onFocusChanged, (a, a.m_hasFocus)
 
       let keys = getKeyboardState().mapit(wkeyToKey(it))
       for k in keys: # press pressed in system keys
         if k == Key.unknown: continue
         a.keyboard.pressed.incl k
-        a.pushEvent onKeydown, (k, false, false)
+        a.pushEvent onKeydown, (a, k, false, false)
 
     of WmKillFocus:
       a.m_hasFocus = false
-      a.pushEvent onFocusChanged, (a.m_hasFocus)
+      a.pushEvent onFocusChanged, (a, a.m_hasFocus)
       let pressed = a.keyboard.pressed
       for key in pressed: # release all keys
         a.keyboard.pressed.excl key
-        a.pushEvent onKeyup, (key, false, false)
+        a.pushEvent onKeyup, (a, key, false, false)
 
     of WmLButtonDown, WmRButtonDown, WmMButtonDown, WmXButtonDown:
       a.handle.SetCapture()
       a.mouse.pressed.incl button
       a.clicking.incl button
-      a.pushEvent onMouseDown, (button, true)
+      a.pushEvent onMouseDown, (a, button, true)
 
     of WmLButtonDblclk, WmRButtonDblclk, WmMButtonDblclk, WmXButtonDblclk:
       a.handle.SetCapture()
       a.mouse.pressed.incl button
-      a.pushEvent onClick, (button, a.mouse.pos, true)
+      a.pushEvent onClick, (a, button, a.mouse.pos, true)
 
     of WmLButtonUp, WmRButtonUp, WmMButtonUp, WmXButtonUp:
       ReleaseCapture()
       a.mouse.pressed.excl button
-      if button in a.clicking: a.pushEvent onClick, (button, a.mouse.pos, false)
-      a.pushEvent onMouseUp, (button, false)
+      if button in a.clicking: a.pushEvent onClick, (a, button, a.mouse.pos, false)
+      a.pushEvent onMouseUp, (a, button, false)
 
     of WmKeyDown, WmSysKeyDown:
       let key = wkeyToKey(wParam, lParam)
       if key != Key.unknown:
         let repeated = key in a.keyboard.pressed
         a.keyboard.pressed.incl key
-        a.pushEvent onKeydown, (key, true, repeated)
+        a.pushEvent onKeydown, (a, key, true, repeated)
 
     of WmKeyUp, WmSysKeyUp:
       let key = wkeyToKey(wParam, lParam)
       if key != Key.unknown:
         let repeated = key notin a.keyboard.pressed
         a.keyboard.pressed.excl key
-        a.pushEvent onKeyup, (key, false, repeated)
+        a.pushEvent onKeyup, (a, key, false, repeated)
 
     of WmChar, WmSyschar, WmUnichar:
       if a.onTextInput == nil: return 1  # no need to handle
       if (a.keyboard.pressed * {lcontrol, rcontrol, lalt, ralt}).len == 0:
         let s = %$[wParam.WChar]
         if s.len > 0 and s notin ["\u001B"]:
-          a.pushEvent onTextInput, (s)
+          a.pushEvent onTextInput, (a, s)
 
     of WmSetCursor:
       if lParam.LoWord == HtClient:
