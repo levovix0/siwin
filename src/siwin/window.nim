@@ -752,7 +752,7 @@ when defined(linux):
     of Cursor.sizeBottomRight: window.xcursor = cursorFromFont XC_lr_angle
     of Cursor.hided:
       var data: array[1, char]
-      let blank = display.XCreateBitmapFromData(rootWindow(0), data[0].addr, 1, 1)
+      let blank = display.XCreateBitmapFromData(rootWindow(0), cast[cstring](data[0].addr), 1, 1)
       var pass: XColor
       window.xcursor = x.Cursor display.XCreatePixmapCursor(blank, blank, pass.addr, pass.addr, 0, 0)
       discard display.XFreePixmap blank
@@ -897,6 +897,10 @@ when defined(linux):
   
 
   proc startInteractiveMove*(window: Window) =
+    ## allow user to move window interactivly
+    ## useful to create client-side decorated windows
+    ## it's recomended to start interactive move after user grabbed window header and started to move mouse
+    ## todo: specifying initial mouse position as arg
     let pos = cursor().pos
     window.releaseAllKeys
     discard display.XUngrabPointer(0)
@@ -912,6 +916,10 @@ when defined(linux):
     # todo: press all keys and mouse buttons that are pressed after move
   
   proc startInteractiveResize*(window: Window, edge: Edge) =
+    ## allow user to resize window interactivly
+    ## useful to create client-side decorated windows
+    ## it's recomended to start interactive move after user grabbed window border and started to move mouse
+    ## todo: specifying initial mouse position as arg
     let pos = cursor().pos
     window.releaseAllKeys
     discard display.XUngrabPointer(0)
@@ -942,6 +950,7 @@ when defined(linux):
   proc makeCurrent*(window: OpenglWindow) =
     window.xwin.makeCurrent window.ctx
 
+
   proc `vsync=`*(window: OpenglWindow, v: bool, silent = false) =
     if glxSwapIntervalExt != nil:
       display.glxSwapIntervalExt(window.xwin, if v: 1 else: 0)
@@ -956,6 +965,7 @@ when defined(linux):
 
   proc firstStep*(this: Window, makeVisible = true) =
     ## init window main loop
+    ## don't call this proc if you will manage window events via run()
     if makeVisible:
       this.visible = true
 
@@ -967,6 +977,7 @@ when defined(linux):
 
   proc step*(this: Window) =
     ## make window main loop step
+    ## ! don't forget to call firstStep()
     template button: MouseButton =
       case ev.xbutton.button
       of 1: MouseButton.left

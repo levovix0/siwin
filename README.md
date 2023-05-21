@@ -14,7 +14,7 @@ Can be used as an alternative to GLFW/GLUT/windy
 
 #### simple window
 ```nim
-import siwin, siwin/image
+import siwin, siwin/bgrx
 
 const color = ColorBgrx(r: 32, g: 32, b: 32, a: 255)
 
