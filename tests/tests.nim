@@ -235,6 +235,14 @@ test "2 windows at once":
     if e.doubleClick:
       close (if win1.opened: win1 else: win2)
   
+  win1.onKeyup = proc(e: KeyEvent) =
+    case e.key
+    of Key.escape:
+      close win1
+      close win2
+    else: discard
+  win2.onKeyup = win1.onKeyup
+  
   runMultiple win1, win2
 
 

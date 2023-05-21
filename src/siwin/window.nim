@@ -63,7 +63,8 @@ type
       id: cint
       handle: PScreen
 
-  Window* = ref object of RootObj
+  Window* = ref WindowObj
+  WindowObj* = object of RootObj
     onClose*:       proc(e: CloseEvent)
 
     onRender*:      proc(e: RenderEvent)
@@ -127,7 +128,8 @@ type
       m_minSize, m_maxSize: Option[IVec2]
       wcursor: HCursor
 
-  OpenglWindow* = ref object of Window
+  OpenglWindow* = ref OpenglWindowObj
+  OpenglWindowObj* = object of Window
     when defined(linux):
       ctx: GlxContext
     
@@ -483,7 +485,7 @@ when defined(linux):
       else:
         WmForFramelessKind.unsupported
 
-  method destroy(this: Window) {.base.} =
+  proc `=destroy`(this: var WindowObj) =
     defer: this.closed = true
 
     if this.xinContext != nil:
@@ -514,8 +516,8 @@ when defined(linux):
     #   display.XSyncDestroyCounter(this.xSyncCounter)
     #   this.xSyncCounter = 0.XSyncCounter
 
-  method destroy(this: OpenglWindow) =
-    defer: procCall destroy this.Window
+  proc `=destroy`(this: var OpenglWindowObj) =
+    defer: `=destroy` this.WindowObj
 
     if this.ctx != nil:
       if glxCurrentContext() == this.ctx:
@@ -682,7 +684,7 @@ when defined(linux):
   proc close*(window: Window) =
     if window.closed: return
     window.onClose.invoke (window)
-    destroy window
+    `=destroy` window[]
 
   proc redraw*(window: Window) = window.waitForReDraw = true
     ## render request
@@ -1134,7 +1136,7 @@ when defined(linux):
 elif defined(windows):
   proc poolEvent(a: Window, message: Uint, wParam: WParam, lParam: LParam): LResult
 
-  method destroy(this: Window) {.base.} =
+  proc `=destroy`(this: var WindowObj) =
     defer: this.closed = true
     if this.hdc != 0:
       DeleteDC this.hdc
@@ -1155,8 +1157,8 @@ elif defined(windows):
       DestroyCursor this.wcursor
       this.wcursor = 0
   
-  method destroy(this: OpenglWindow) =
-    defer: procCall destroy this.Window
+  proc `=destroy`(this: var OpenglWindowObj) =
+    defer: `=destroy` this.WindowObj
     if this.ctx != 0:
       if wglGetCurrentContext() == this.ctx:
         wglMakeCurrent(0, 0)
@@ -1564,7 +1566,7 @@ elif defined(windows):
 
     of WmDestroy:
       a.pushEvent onClose, (a)
-      destroy a
+      `=destroy` a[]
       PostQuitMessage(0)
 
     of WmMouseMove:
@@ -1674,7 +1676,7 @@ proc newWindow*(
 
   class = "", # window class (used in x11), equals to title if not specified
 ): Window =
-  new result, proc(x: Window) = close x
+  new result
   when defined(linux):
     result.initWindow(size, screen, fullscreen, frameless, transparent, (if class == "": title else: class))
   else:
@@ -1692,7 +1694,7 @@ proc newOpenglWindow*(
 
   class = "", # window class (used in x11), equals to title if not specified
 ): OpenglWindow =
-  new result, proc(x: OpenglWindow) = close x
+  new result
   when defined(linux):
     result.initOpenglWindow(size, screen, fullscreen, frameless, transparent, (if class == "": title else: class))
   else:

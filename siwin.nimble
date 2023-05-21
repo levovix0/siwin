@@ -18,14 +18,31 @@ task testDeps, "install test dependencies":
   exec "nimble install pixie"
   exec "nimble install https://github.com/levovix0/wayland"
 
-task test, "test":
+template runTests(args: string) =
   withDir "tests":
-    try:    exec "nim c --hints:off -r t_offscreen"
+    try:    exec "nim c " & args & " --hints:off -r t_offscreen"
     except: discard
-    try:    exec "nim c --hints:off -r tests"
+    try:    exec "nim c " & args & " --hints:off -r tests"
     except: discard
 
+task test, "test":
+  runTests ""
+
 task testWayland, "test wayland":
-  withDir "tests":
-    try:    exec "nim c --hints:off -d:wayland -r tests"
-    except: discard
+  runTests "-d:wayland"
+
+task testOrc, "test with --mm:orc":
+  runTests "--mm:orc"
+
+task testWindows, "test windows version with wine on linux":
+  runTests "-d:mingw --os:windows --cc:gcc --gcc.exe:/usr/bin/x86_64-w64-mingw32-gcc --gcc.linkerexe:/usr/bin/x86_64-w64-mingw32-gcc"
+
+task testOrcWindows, "test windows version with wine on linux with --mm:orc":
+  runTests "-d:mingw --os:windows --cc:gcc --gcc.exe:/usr/bin/x86_64-w64-mingw32-gcc --gcc.linkerexe:/usr/bin/x86_64-w64-mingw32-gcc --mm:orc"
+
+task testAll, "run all tests":
+  runTests ""
+  runTests "-d:wayland"
+  runTests "--mm:orc"
+  runTests "-d:mingw --os:windows --cc:gcc --gcc.exe:/usr/bin/x86_64-w64-mingw32-gcc --gcc.linkerexe:/usr/bin/x86_64-w64-mingw32-gcc"
+  runTests "-d:mingw --os:windows --cc:gcc --gcc.exe:/usr/bin/x86_64-w64-mingw32-gcc --gcc.linkerexe:/usr/bin/x86_64-w64-mingw32-gcc --mm:orc"
