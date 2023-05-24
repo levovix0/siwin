@@ -1,7 +1,7 @@
 import sequtils, algorithm, strutils, strformat, sugar, unicode
 export sequtils, algorithm, strutils, strformat, sugar, unicode
 
-func dataAddr*[T: string|seq|array|openarray|cstring](a: T): auto =
+func dataAddr*[T: string|seq|array|openarray|cstring](a: T): pointer =
   ## same as C++ `data` that works with std::string, std::vector etc
   ## Note: safe to use when a.len == 0 but whether the result is nil or not is implementation defined
   when T is string|seq|openarray:
