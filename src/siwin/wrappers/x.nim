@@ -6,6 +6,8 @@ export x except Window, Pixmap, Cursor
 import chroma
 import ../utils, ../bgrx
 
+# todo: refactor to use native x11 procs instead of simple wrappers
+
 type
   X11ValueError* = object of CatchableError
   X11Defect* = object of Defect
@@ -35,6 +37,11 @@ type
     origin*: IVec2
     delay*: uint32
     pixels*: ptr ColorArgb
+  
+  SyncState* = enum
+    none
+    syncRecieved
+    syncAndConfigureRecieved
 
 proc toArgb*(x: openarray[ColorBgrx]): seq[ColorArgb] =
   result = newSeq[ColorArgb](x.len)
@@ -134,6 +141,7 @@ proc uninit* =
 
 
 proc atom*(name: static string): Atom =
+  # todo: refactor to init atoms centalized
   var a {.global.}: Atom
   if a == 0.Atom:
     a = display.XInternAtom(name, 0)
@@ -220,7 +228,7 @@ proc wmProtocols*(a: Window): seq[Atom] =
   discard XFree protocols
 
 proc `wmProtocols=`*(a: Window, v: openarray[Atom]) =
-  discard display.XSetWMProtocols(a, v.dataAddr, v.len.cint)
+  discard display.XSetWMProtocols(a, cast[PAtom](v.dataAddr), v.len.cint)
 
 proc setWmHints*(a: Window, flags: clong, icon: Pixmap = 0.Pixmap, iconMask: Pixmap = 0.Pixmap) =
   var hints = XWmHints(flags: flags, iconPixmap: icon, iconMask: iconMask)

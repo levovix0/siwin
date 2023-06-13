@@ -19,8 +19,6 @@ test "OpenGL":
   let window = newOpenglWindow(title="OpenGL test", transparent=true)
   loadExtensions()
 
-  window.resizable = false
-
   window.onResize = proc(e: ResizeEvent) =
     glViewport 0, 0, e.size.x.GLsizei, e.size.y.GLsizei
     glMatrixMode GlProjection
@@ -84,7 +82,6 @@ test "OpenGL":
 test "pixie":
   var
     image: Image
-    # shadowImage: Image
     window = newWindow(title="pixie test", frameless=true, transparent=true)
   
   window.cursor = block:
@@ -97,10 +94,6 @@ test "pixie":
 
   window.onResize = proc(e: ResizeEvent) =
     image = newImage(e.size.x, e.size.y)
-
-    let ctx = image.newContext
-    ctx.fillStyle = rgba(255, 255, 255, 255)
-    ctx.fillRoundedRect(rect(vec2(10, 10), vec2(float image.width - 20, float image.height - 20)), 15.0)
 
   window.onRender = proc(e: RenderEvent) =
     image.fill(rgba(255, 255, 255, 0))

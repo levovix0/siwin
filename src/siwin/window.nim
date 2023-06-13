@@ -10,6 +10,7 @@ when defined(linux):
 when defined(windows):
   import wrappers/winapi
 
+# todo: use siaud-like file structure
 
 type
   MouseButton* {.pure.} = enum
@@ -111,9 +112,11 @@ type
       xinContext: XIC
       xinMethod: XIM
       gc: GraphicsContext
-      # xSyncCounter: XSyncCounter
-      # lastSync: XSyncValue
       xcursor: x.Cursor
+      xSyncCounter: XSyncCounter
+      syncState: SyncState
+      lastSync: XSyncValue
+      vsyncEnabled: bool
 
       m_visible: bool
       m_pos: IVec2
@@ -512,9 +515,9 @@ when defined(linux):
       destroy this.xwin
       this.xwin = x.Window(0)
     
-    # if this.xSyncCounter.int != 0:
-    #   display.XSyncDestroyCounter(this.xSyncCounter)
-    #   this.xSyncCounter = 0.XSyncCounter
+    if this.xSyncCounter.int != 0:
+      display.XSyncDestroyCounter(this.xSyncCounter)
+      this.xSyncCounter = 0.XSyncCounter
 
   proc `=destroy`(this: var OpenglWindowObj) =
     defer: `=destroy` this.WindowObj
@@ -599,7 +602,7 @@ when defined(linux):
       this.xwin.netWmState = [atom"_NET_WM_STATE_FULLSCREEN"]
       this.m_size = window.screen().size
 
-    this.xwin.wmProtocols = [atom"WM_DELETE_WINDOW"]
+    this.xwin.wmProtocols = [atom"WM_DELETE_WINDOW", atom"_NET_WM_SYNC_REQUEST"]
 
     this.xinMethod = display.XOpenIM(nil, nil, nil)
     if this.xinMethod != nil:
@@ -609,19 +612,19 @@ when defined(linux):
     
     this.frameless = frameless
 
-    # todo: enable xsync (sync render and display for window manager)
-    # block xsync:
-    #   var vEv, vEr: cint
-    #   if display.XSyncQueryExtension(vEv.addr, vEr.addr):
-    #     var vMaj, vMin: cint
-    #     display.XSyncInitialize(vMaj.addr, vMin.addr)
-    #     this.xSyncCounter = display.XSyncCreateCounter(XSyncValue())
-    #     this.xwin.setProperty(
-    #       atom"_NET_WM_SYNC_REQUEST_COUNTER",
-    #       xaCardinal,
-    #       32,
-    #       @[this.xSyncCounter].asString
-    #     )
+    # init sync counter
+    block xsync:
+      var vEv, vEr: cint
+      if display.XSyncQueryExtension(vEv.addr, vEr.addr):
+        var vMaj, vMin: cint
+        display.XSyncInitialize(vMaj.addr, vMin.addr)
+        this.xSyncCounter = display.XSyncCreateCounter(XSyncValue())
+        this.xwin.setProperty(
+          atom"_NET_WM_SYNC_REQUEST_COUNTER",
+          xaCardinal,
+          32,
+          cast[array[XSyncCounter.sizeof, char]]([this.xSyncCounter]).join
+        )
     
     # set window VM class (can be used by window managers)
     block vmHint:
@@ -655,7 +658,6 @@ when defined(linux):
 
     this.setupWindow fullscreen, frameless, class
 
-    this.waitForReDraw = true
     this.gc = this.xwin.newGC(GCForeground or GCBackground)
 
   proc initOpenglWindow(this: OpenglWindow; size: IVec2; screen: Screen, fullscreen, frameless, transparent: bool, class: string) =
@@ -692,7 +694,6 @@ when defined(linux):
   proc updateSize(window: Window, v: IVec2) =
     let osize = window.m_size
     window.m_size = v
-    window.waitForReDraw = true
     window.onResize.invoke (window, osize, window.m_size, false)
 
   proc fullscreen*(window: Window): bool = window.m_isFullscreen
@@ -952,6 +953,7 @@ when defined(linux):
 
 
   proc `vsync=`*(window: OpenglWindow, v: bool, silent = false) =
+    window.vsyncEnabled = v
     if glxSwapIntervalExt != nil:
       display.glxSwapIntervalExt(window.xwin, if v: 1 else: 0)
     elif glxSwapIntervalMesa != nil:
@@ -992,31 +994,32 @@ when defined(linux):
       of 4: -1
       of 5: 1
       else: 0
-
-    var ev: XEvent
-    var xevents: seq[XEvent]
-
-    proc checkEvent(_: PDisplay, event: PXEvent, userData: XPointer): XBool {.cdecl.} =
-      if cast[int](event.xany.window) == cast[int](userData): 1 else: 0
-    while display.XCheckIfEvent(ev.addr, checkEvent, cast[XPointer](this.xwin)) == 1:
-      xevents.add ev
     
-    let catched = xevents.len > 0
+    proc extractKey(xkey: XKeyEvent): Key =
+      var i = 0
+      while i < 4 and result == Key.unknown:
+        result = xkeyToKey(XLookupKeysym(xkey.unsafeaddr, i.cint))
+        inc i
 
-    for ev in xevents.mitems:
+    var prevEventIsKeyUpRepeated = false
+    proc handleEvent(ev: var XEvent, nextEv: var XEvent, hasNextEvent: bool) =
+      prevEventIsKeyUpRepeated = false
+
       case ev.theType
       of Expose:
-        redraw this
-
+        ##
+      
       of ClientMessage:
         if ev.xclient.data.l[0] == atom"WM_DELETE_WINDOW".clong:
           close this
 
-        # elif ev.xclient.data.l[0] == atom"_NET_WM_SYNC_REQUEST".clong:
-        #   this.lastSync = XSyncValue(
-        #     lo: cast[uint32](ev.xclient.data.l[2]),
-        #     hi: cast[int32](ev.xclient.data.l[3])
-        #   )
+        elif ev.xclient.data.l[0] == atom"_NET_WM_SYNC_REQUEST".clong:
+          this.lastSync = XSyncValue(
+            lo: cast[uint32](ev.xclient.data.l[2]),
+            hi: cast[int32](ev.xclient.data.l[3])
+          )
+          this.syncState = SyncState.syncRecieved
+          this.waitForReDraw = false  # hold on, wait for ConfigureNotify
 
       of ConfigureNotify:
         if ev.xconfigure.width != this.m_size.x or ev.xconfigure.height != this.m_size.y:
@@ -1031,6 +1034,11 @@ when defined(linux):
         if atom"_NET_WM_STATE_FULLSCREEN" in state != this.m_isFullscreen:
           this.m_isFullscreen = not this.m_isFullscreen
           this.onFullscreenChanged.invoke (this, this.m_isFullscreen)
+        
+        if this.syncState == SyncState.syncRecieved:
+          this.syncState = SyncState.syncAndConfigureRecieved
+
+        this.waitForReDraw = true
 
       of MotionNotify:
         let oldPos = this.mouse.pos
@@ -1076,19 +1084,10 @@ when defined(linux):
         this.releaseAllKeys
 
       of KeyPress:
-        var key = Key.unknown
-        block:
-          var i = 0
-          while i < 4 and key == Key.unknown:
-            key = xkeyToKey(XLookupKeysym(ev.xkey.addr, i.cint))
-            inc i
+        var key = ev.xkey.extractKey
         if key != Key.unknown:
-          let ev = ev
-          let repeated = xevents.findBy(proc (a: XEvent): bool =
-            a.theType == KeyRelease and a.xkey.keycode == ev.xkey.keycode and a.xkey.time - ev.xkey.time < 2
-          ) >= 0
           this.keyboard.pressed.incl key
-          this.onKeydown.invoke (this, key, true, repeated)
+          this.onKeydown.invoke (this, key, true, prevEventIsKeyUpRepeated)
 
         if this.onTextInput != nil and this.xinContext != nil and (this.keyboard.pressed * {lcontrol, rcontrol, lalt, ralt}).len == 0:
           var status: Status
@@ -1106,29 +1105,48 @@ when defined(linux):
               this.onTextInput.invoke (this, s)
 
       of KeyRelease:
-        var key = Key.unknown
-        block:
-          var i = 0
-          while i < 4 and key == Key.unknown:
-            key = xkeyToKey(XLookupKeysym(ev.xkey.addr, i.cint))
-            inc i
+        var key = ev.xkey.extractKey
         if key != Key.unknown:
-          let ev = ev
-          let repeated = xevents.findBy(proc (a: XEvent): bool =
-            a.theType == KeyPress and a.xkey.keycode == ev.xkey.keycode and a.xkey.time - ev.xkey.time < 2
-          ) >= 0
+          let repeated = hasNextEvent and nextEv.theType == KeyPress and nextEv.xkey.extractKey == key
+          if repeated: prevEventIsKeyUpRepeated = true
+
           this.keyboard.pressed.excl key
           this.onKeyup.invoke (this, key, false, repeated)
 
       else: discard
 
+
+    block nextEvent:
+      var
+        ev: XEvent
+        nextEv: XEvent
+        catched = false
+
+      proc checkEvent(_: PDisplay, event: PXEvent, userData: XPointer): XBool {.cdecl.} =
+        if cast[int](event.xany.window) == cast[int](userData): 1 else: 0
+      
+      while display.XCheckIfEvent(nextEv.addr, checkEvent, cast[XPointer](this.xwin)) == 1:
+        if not catched:
+          ev = nextEv
+          catched = true
+          continue
+        
+        handleEvent(ev, nextEv, true)
+        ev = nextEv
+      
+        if this.closed: return
+
+        # force make tick if server decided to spam events to us
+        if (getTime() - this.lastTickTime) > initDuration(milliseconds=10):
+          break
+
+        discard XFlush display
+
+      if catched:
+        handleEvent(ev, nextEv, false)
+
       if this.closed: return
-
-      # force make tick if linux decided to spam events to us
-      if (getTime() - this.lastTickTime) > initDuration(milliseconds=10):
-        break
-
-    if not catched: sleep(1)
+      if not catched: sleep(1)
 
     let nows = getTime()
     this.onTick.invoke (this, nows - this.lastTickTime)
@@ -1137,9 +1155,21 @@ when defined(linux):
     if this.waitForReDraw:
       this.waitForReDraw = false
       this.onRender.invoke (this)
+
+      if this of OpenglWindow and this.vsyncEnabled and this.syncState == SyncState.syncAndConfigureRecieved:
+        this.OpenglWindow.vsync = false  # temporary disable vsync to avoid flickering
+      
       if this of OpenglWindow:
         this.xwin.toDrawable.glxSwapBuffers()
-      # display.XSyncSetCounter(this.xSyncCounter, this.lastSync)
+
+      if this.syncState == SyncState.syncAndConfigureRecieved:
+        display.XSyncSetCounter(this.xSyncCounter, this.lastSync)
+        this.syncState = SyncState.none
+
+        if this of OpenglWindow and this.vsyncEnabled:
+          this.OpenglWindow.vsync = true  # re-enable vsync
+
+      discard XFlush display
 
     if clipboardProcessEvents != nil: clipboardProcessEvents()
 
