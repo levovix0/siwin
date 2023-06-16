@@ -68,6 +68,7 @@ window.onRender = proc(e: RenderEvent) =
 
 run window
 ```
+note: call redraw(window) every time you want window.render to be called. siwin will automatically call window.render only when window resizes.
 
 #### pixie
 ![](https://ia.wampi.ru/2021/09/07/32.png)
@@ -129,6 +130,21 @@ loadExtensions()
 # do any opengl computing
 ```
 
-# TODO
+## Contributions
+If you want to support this project, here is some tasks to do:
+* See [issues](https://github.com/levovix0/siwin/issues)
+* Any bugfixes is always accepted, just describe somewhere what you fixed
+* Refactoring (my code is bad, i know it)
+  * if you doing very big refactoring, first create issue to ask is all your changes needed, and if it is, refactor
+* Documentation
+* Optimization
+* Vulkan support
 * Wayland support
+* MacOS support
+* Android/IOS support
+* Web support
 * copy/paste images
+* Make cool site that adverts siwin
+
+Just fork levovix0/siwin to your account, make changes and submit a pull request.  
+*Or if it requires new repository to be created, create it and add an "change dependency" issue.*
