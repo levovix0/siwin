@@ -116,7 +116,6 @@ type
       xSyncCounter: XSyncCounter
       syncState: SyncState
       lastSync: XSyncValue
-      vsyncEnabled: bool
 
       m_visible: bool
       m_pos: IVec2
@@ -135,6 +134,7 @@ type
   OpenglWindowObj* = object of Window
     when defined(linux):
       ctx: GlxContext
+      vsyncEnabled: bool
     
     elif defined(windows):
       ctx: WglContext
@@ -1156,7 +1156,7 @@ when defined(linux):
       this.waitForReDraw = false
       this.onRender.invoke (this)
 
-      if this of OpenglWindow and this.vsyncEnabled and this.syncState == SyncState.syncAndConfigureRecieved:
+      if this of OpenglWindow and this.OpenglWindow.vsyncEnabled and this.syncState == SyncState.syncAndConfigureRecieved:
         this.OpenglWindow.vsync = false  # temporary disable vsync to avoid flickering
       
       if this of OpenglWindow:
@@ -1166,7 +1166,7 @@ when defined(linux):
         display.XSyncSetCounter(this.xSyncCounter, this.lastSync)
         this.syncState = SyncState.none
 
-        if this of OpenglWindow and this.vsyncEnabled:
+        if this of OpenglWindow and this.OpenglWindow.vsyncEnabled:
           this.OpenglWindow.vsync = true  # re-enable vsync
 
       discard XFlush display
