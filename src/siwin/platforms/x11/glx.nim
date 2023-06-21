@@ -1,8 +1,10 @@
 import macros, unicode, strutils, sequtils, dynlib
-import x
+import x11/[x, xlib, xutil]
+import globalDisplay
 
 type
-  GlxContext* = ptr object
+  GlxContext* = object
+    raw: pointer
 
 const
   GlxRgba* = 4'i32
@@ -23,23 +25,28 @@ macro glx(f: static[string], def: untyped) =
 
 
 proc glxChooseVisual*(screen: int, attr: openarray[int32]): PXVisualInfo =
-  proc impl(dpy: PDisplay, screen: cint, attribList: ptr int32): PXVisualInfo {.glx: "chooseVisual".}
+  proc impl(dpy: ptr Display, screen: cint, attribList: ptr int32): PXVisualInfo {.glx: "chooseVisual".}
   let attr = attr.toSeq & 0
   result = display.impl(screen.cint, attr[0].unsafeAddr)
 
-proc newGlxContext*(vis: PXVisualInfo, direct: bool = true, shareList: GlxContext = nil): GlxContext =
+proc cGlxCurrentContext*(): pointer {.glx: "getCurrentContext".}
+proc glxCurrentContext*(): GlxContext {.glx: "getCurrentContext".}
+
+proc cMakeCurrent(dpy: PDisplay, drawable: Drawable, ctx: pointer): cint {.glx: "makeCurrent".}
+proc makeCurrent*(a: Drawable, ctx: GlxContext) =
+  proc impl(dpy: PDisplay, drawable: Drawable, ctx: pointer): cint {.glx: "makeCurrent".}
+  discard display.impl(a, ctx.raw)
+
+proc `=destroy`*(context: var GlxContext) =
+  proc impl(dpy: PDisplay, ctx: GlxContext) {.glx: "destroyContext".}
+  if context.raw == nil: return
+  if cGlxCurrentContext() == context.raw:
+    discard display.cMakeCurrent(0, nil)
+  if context.raw != nil: display.impl(context)
+
+proc newGlxContext*(vis: PXVisualInfo, direct: bool = true, shareList: GlxContext = GlxContext()): GlxContext =
   proc impl(dpy: PDisplay, vis: PXVisualInfo, shareList: GlxContext, direct: cint): GlxContext {.glx: "createContext".}
   display.impl(vis, shareList, direct.cint)
-
-proc destroy*(this: GlxContext) =
-  proc impl(dpy: PDisplay, ctx: GlxContext) {.glx: "destroyContext".}
-  display.impl(this)
-
-proc makeCurrent*(a: Drawable, ctx: GlxContext) =
-  proc impl(dpy: PDisplay, drawable: Drawable, ctx: GlxContext): cint {.glx: "makeCurrent".}
-  discard display.impl(a, ctx)
-
-proc glxCurrentContext*(): GlxContext {.glx: "getCurrentContext".}
 
 proc glxSwapBuffers*(d: Drawable) =
   proc impl(dpy: PDisplay, drawable: Drawable) {.glx: "swapBuffers".}

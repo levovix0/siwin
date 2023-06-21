@@ -1,0 +1,699 @@
+import times, os, options, std/importutils
+import vmath
+import winapi
+import ../../utils, ../../bgrx
+import ../any/window {.all.}
+
+privateAccess Window
+
+{.experimental: "overloadableEnums".}
+
+type
+  ScreenWinapi* = object
+  
+  Buffer = object
+    x, y: int
+    bitmap: HBitmap
+    hdc: Hdc
+    pixels: ptr UncheckedArray[ColorBgrx]
+
+  WindowWinapi* = ref WindowWinapiObj
+  WindowWinapiObj = object of Window
+    handle: HWnd
+    wicon: HIcon
+    hdc: Hdc
+    wcursor: HCursor
+    releaseKeysRequested: bool
+    fullscreenChanged: bool
+    eventsHandler: ptr WindowEventsHandler
+
+  WindowWinapiSoftwareRendering* = ref object of WindowWinapi
+    buffer: Buffer
+
+  WindowWinapiOpengl* = ref object of WindowWinapi
+    ctx: WglContext
+
+
+proc wkeyToKey(key: WParam): Key =
+  case key
+  of Vk_lshift:       Key.lshift
+  of Vk_rshift:       Key.rshift
+  of Vk_lmenu:        Key.lalt
+  of Vk_rmenu:        Key.ralt
+  of Vk_lcontrol:     Key.lcontrol
+  of Vk_rcontrol:     Key.rcontrol
+  of Vk_lwin:         Key.lsystem
+  of Vk_rwin:         Key.rsystem
+  of Vk_apps:         Key.menu
+  of Vk_escape:       Key.escape
+  of Vk_oem1:         Key.semicolon
+  of Vk_oem2:         Key.slash
+  of Vk_oem_plus:     Key.equal
+  of Vk_oem_minus:    Key.minus
+  of Vk_oem4:         Key.lbracket
+  of Vk_oem6:         Key.rbracket
+  of Vk_oem_comma:    Key.comma
+  of Vk_oem_period:   Key.dot
+  of Vk_oem7:         Key.quote
+  of Vk_oem5:         Key.backslash
+  of Vk_oem3:         Key.tilde
+  of Vk_space:        Key.space
+  of Vk_return:       Key.enter
+  of Vk_back:         Key.backspace
+  of Vk_tab:          Key.tab
+  of Vk_prior:        Key.page_up
+  of Vk_next:         Key.page_down
+  of Vk_end:          Key.End
+  of Vk_home:         Key.home
+  of Vk_insert:       Key.insert
+  of Vk_delete:       Key.del
+  of Vk_add:          Key.add
+  of Vk_subtract:     Key.subtract
+  of Vk_multiply:     Key.multiply
+  of Vk_divide:       Key.divide
+  of Vk_capital:      Key.capsLock
+  of Vk_numLock:      Key.numLock
+  of Vk_scroll:       Key.scrollLock
+  of Vk_snapshot:     Key.printScreen
+  of Vk_print:        Key.printScreen
+  of Vk_decimal:      Key.npadDot
+  of Vk_pause:        Key.pause
+  of Vk_f1:           Key.f1
+  of Vk_f2:           Key.f2
+  of Vk_f3:           Key.f3
+  of Vk_f4:           Key.f4
+  of Vk_f5:           Key.f5
+  of Vk_f6:           Key.f6
+  of Vk_f7:           Key.f7
+  of Vk_f8:           Key.f8
+  of Vk_f9:           Key.f9
+  of Vk_f10:          Key.f10
+  of Vk_f11:          Key.f11
+  of Vk_f12:          Key.f12
+  of Vk_f13:          Key.f13
+  of Vk_f14:          Key.f14
+  of Vk_f15:          Key.f15
+  of Vk_left:         Key.left
+  of Vk_right:        Key.right
+  of Vk_up:           Key.up
+  of Vk_down:         Key.down
+  of Vk_numpad0:      Key.npad0
+  of Vk_numpad1:      Key.npad1
+  of Vk_numpad2:      Key.npad2
+  of Vk_numpad3:      Key.npad3
+  of Vk_numpad4:      Key.npad4
+  of Vk_numpad5:      Key.npad5
+  of Vk_numpad6:      Key.npad6
+  of Vk_numpad7:      Key.npad7
+  of Vk_numpad8:      Key.npad8
+  of Vk_numpad9:      Key.npad9
+  of 'A'.ord:         Key.a
+  of 'B'.ord:         Key.b
+  of 'C'.ord:         Key.c
+  of 'D'.ord:         Key.d
+  of 'E'.ord:         Key.e
+  of 'F'.ord:         Key.f
+  of 'G'.ord:         Key.g
+  of 'H'.ord:         Key.h
+  of 'I'.ord:         Key.i
+  of 'J'.ord:         Key.j
+  of 'K'.ord:         Key.k
+  of 'L'.ord:         Key.l
+  of 'M'.ord:         Key.m
+  of 'N'.ord:         Key.n
+  of 'O'.ord:         Key.o
+  of 'P'.ord:         Key.p
+  of 'Q'.ord:         Key.q
+  of 'R'.ord:         Key.r
+  of 'S'.ord:         Key.s
+  of 'T'.ord:         Key.t
+  of 'U'.ord:         Key.u
+  of 'V'.ord:         Key.v
+  of 'W'.ord:         Key.w
+  of 'X'.ord:         Key.x
+  of 'Y'.ord:         Key.y
+  of 'Z'.ord:         Key.z
+  of '0'.ord:         Key.n0
+  of '1'.ord:         Key.n1
+  of '2'.ord:         Key.n2
+  of '3'.ord:         Key.n3
+  of '4'.ord:         Key.n4
+  of '5'.ord:         Key.n5
+  of '6'.ord:         Key.n6
+  of '7'.ord:         Key.n7
+  of '8'.ord:         Key.n8
+  of '9'.ord:         Key.n9
+  else:               Key.unknown
+
+proc wkeyToKey(key: WParam, flags: LParam): Key =
+  let scancode = ((flags and 0xff0000) shr 16).Uint
+  case key
+  of Vk_shift:
+    let key = MapVirtualKey(scancode, Map_vkVsc_to_vkEx)
+    if key == Vk_lshift: Key.lshift else: Key.rshift
+  of Vk_menu:
+    if (flags and 0x1000000) != 0: Key.ralt else: Key.lalt
+  of Vk_control:
+    if (flags and 0x1000000) != 0: Key.rcontrol else: Key.lcontrol
+  else: wkeyToKey(key)
+
+
+# todo: multiscreen support
+proc getScreenCountWinapi*(): int = 1
+
+proc screenWinapi*(number: int32): ScreenWinapi = discard
+proc defaultScreenWinapi*(): ScreenWinapi = screenWinapi(0)
+proc number*(screen: ScreenWinapi): int = 0
+
+proc width*(window: ScreenWinapi): int = GetSystemMetrics(SmCxScreen).int
+proc height*(window: ScreenWinapi): int = GetSystemMetrics(SmCyScreen).int
+
+
+proc `=destroy`(buffer: var Buffer) =
+  if buffer.pixels != nil:
+    DeleteDC buffer.hdc
+    DeleteObject buffer.bitmap
+    buffer.hdc = 0
+    buffer.bitmap = 0
+    buffer.pixels = nil
+
+
+proc `=destroy`(window: var WindowWinapiObj) =
+  defer: window.m_closed = true
+  if window.hdc != 0:
+    DeleteDC window.hdc
+    window.hdc = 0
+
+  if window.wicon != 0:
+    DestroyIcon window.wicon
+    window.wicon = 0
+
+  if window.wcursor != 0:
+    DestroyCursor window.wcursor
+    window.wcursor = 0
+
+
+proc poolEvent(window: WindowWinapi, message: Uint, wParam: WParam, lParam: LParam): LResult
+
+proc windowProc(handle: HWnd, message: Uint, wParam: WParam, lParam: LParam): LResult {.stdcall.} =
+  let win = if handle != 0: cast[WindowWinapi](GetWindowLongPtr(handle, GwlpUserData)) else: nil
+
+  if win != nil: win.poolEvent(message, wParam, lParam)
+  else:          DefWindowProc(handle, message, wParam, lParam)
+
+const
+  wClassName = L"w"
+  woClassName = L"o"
+
+block winapiInit:
+  var wcex = WndClassEx(
+    cbSize:        WndClassEx.sizeof.int32,
+    style:         CsHRedraw or CsVRedraw or CsDblClks,
+    hInstance:     hInstance,
+    hCursor:       LoadCursor(0, IdcArrow),
+    lpfnWndProc:   windowProc,
+    lpszClassName: wClassName,
+  )
+  RegisterClassEx(wcex.addr)
+
+  wcex.lpszClassName = woClassName
+  RegisterClassEx(wcex.addr)
+
+template pushEvent(eventsHandler: ptr WindowEventsHandler, event, args) =
+  if eventsHandler != nil:
+    if eventsHandler[].event != nil:
+      eventsHandler[].event(args)
+
+method `fullscreen=`*(window: WindowWinapi, v: bool) =
+  if window.m_fullscreen == v: return
+  window.fullscreenChanged = true
+  window.m_fullscreen = v
+  if v:
+    window.handle.SetWindowLongPtr(GwlStyle, WsVisible)
+    discard window.handle.ShowWindow(SwMaximize)
+  else:
+    window.handle.ShowWindow(SwShowNormal)
+    discard window.handle.SetWindowLongPtr(GwlStyle, WsVisible or WsOverlappedWindow)
+
+method `size=`*(window: WindowWinapi, size: IVec2) =
+  window.fullscreen = false
+  let rcClient = window.handle.clientRect
+  var rcWind = window.handle.windowRect
+  let borderx = (rcWind.right - rcWind.left) - rcClient.right
+  let bordery = (rcWind.bottom - rcWind.top) - rcClient.bottom
+  window.handle.MoveWindow(rcWind.left, rcWind.top, (size.x + borderx).int32, (size.y + bordery).int32, True)
+
+proc initWindow(window: WindowWinapi; size: IVec2; screen: ScreenWinapi, fullscreen, frameless, transparent: bool, class = wClassName) =
+  window.handle = CreateWindow(
+    class,
+    "",
+    if frameless: WsPopup or WsSysMenu
+    else: WsOverlappedWindow,
+    CwUseDefault,
+    CwUseDefault,
+    size.x, size.y,
+    0, 0,
+    hInstance,
+    nil
+  )
+  discard ShowWindow(window.handle, SwHide)
+
+  window.m_focused = true  #? is it correct?
+  window.wcursor = LoadCursor(0, IdcArrow)
+  window.handle.SetWindowLongPtrW(GwlpUserData, cast[LongPtr](window))
+  window.handle.trackMouseEvent(TmeHover)
+  window.hdc = window.handle.GetDC
+  
+  window.m_size = size
+  if fullscreen:
+    window.m_fullscreen = true
+    window.handle.SetWindowLongPtr(GwlStyle, WsVisible)
+    discard window.handle.ShowWindow(SwMaximize)
+
+  if transparent:
+    window.m_transparent = true
+
+    let region = CreateRectRgn(0, 0, -1, -1)
+    defer: discard DeleteObject(region)
+
+    var bb = DwmBlurBehind()
+    bb.dwFlags = DwmbbEnable or DwmbbBlurRegion
+    bb.hRgnBlur = region
+    bb.fEnable = True
+
+    window.handle.DwmEnableBlurBehindWindow(bb.addr)
+
+proc initWindowWinapiOpengl(window: WindowWinapiOpengl; size: IVec2; screen: ScreenWinapi, fullscreen, frameless, transparent: bool) =
+  window.initWindow size, screen, fullscreen, frameless, transparent, woClassName
+  
+  var pfd = PixelFormatDescriptor(
+    nSize: Word PixelFormatDescriptor.sizeof,
+    nVersion: 1,
+    dwFlags: Pfd_draw_to_window or Pfd_support_opengl or Pfd_double_buffer,
+    iPixelType: Pfd_type_rgba,
+    cColorBits: 32,
+    cDepthBits: 24,
+    cStencilBits: 8,
+    iLayerType: Pfd_main_plane,
+  )
+  window.hdc.SetPixelFormat(window.hdc.ChoosePixelFormat(pfd.addr), pfd.addr)
+  window.ctx = WglContext(raw: wglCreateContext(window.hdc))
+  discard window.hdc.wglMakeCurrent(window.ctx.raw)
+
+
+method `title=`*(window: WindowWinapi, title: string) =
+  window.handle.SetWindowText(title)
+
+method close*(window: WindowWinapi) =
+  if not window.m_closed: window.handle.SendMessage(WmClose, 0, 0)
+
+method redraw*(window: WindowWinapi) =
+  var cr = window.handle.clientRect
+  window.handle.InvalidateRect(cr.addr, false.WinBool)
+
+method `pos=`*(window: WindowWinapi, v: IVec2) =
+  if window.m_fullscreen: return
+  window.handle.SetWindowPos(0, v.x, v.y, 0, 0, SwpNoSize)
+
+method `cursor=`*(window: WindowWinapi, v: Cursor) =
+  if window.m_cursor.kind == builtin and v.kind == builtin and v.builtin == window.m_cursor.builtin: return
+  if window.wcursor != 0: DestroyCursor window.wcursor
+  window.m_cursor = v
+
+  case v.kind
+  of builtin:
+    var cu: HCursor = case v.builtin
+    of BuiltinCursor.arrow:           LoadCursor(0, IdcArrow)
+    of BuiltinCursor.arrowUp:         LoadCursor(0, IdcUpArrow)
+    of BuiltinCursor.pointingHand:    LoadCursor(0, IdcHand)
+    of BuiltinCursor.arrowRight:      LoadCursor(0, IdcArrow) #! no needed cursor
+    of BuiltinCursor.wait:            LoadCursor(0, IdcWait)
+    of BuiltinCursor.arrowWait:       LoadCursor(0, IdcAppStarting)
+    of BuiltinCursor.grab:            LoadCursor(0, IdcHand) #! no needed cursor
+    of BuiltinCursor.text:            LoadCursor(0, IdcIBeam)
+    of BuiltinCursor.cross:           LoadCursor(0, IdcCross)
+    of BuiltinCursor.sizeAll:         LoadCursor(0, IdcSizeAll)
+    of BuiltinCursor.sizeVertical:    LoadCursor(0, IdcSizens)
+    of BuiltinCursor.sizeHorisontal:  LoadCursor(0, IdcSizewe)
+    of BuiltinCursor.sizeTopLeft:     LoadCursor(0, IdcSizenwse)
+    of BuiltinCursor.sizeTopRight:    LoadCursor(0, IdcSizenesw)
+    of BuiltinCursor.sizeBottomLeft:  LoadCursor(0, IdcSizenesw)
+    of BuiltinCursor.sizeBottomRight: LoadCursor(0, IdcSizenwse)
+    of BuiltinCursor.hided:           LoadCursor(0, IdcNo)
+
+    if cu != 0:
+      SetCursor cu
+      window.wcursor = cu
+  
+  of image:
+    if v.image.size.x * v.image.size.y == 0:
+      window.cursor = Cursor(kind: builtin, builtin: BuiltinCursor.hided)
+      return
+    assert v.image.data.len >= v.image.size.x * v.image.size.y, "not enougth pixels"
+    if window.wcursor != 0: DestroyCursor window.wcursor
+    let pixels = v.image.data.mapit (
+      (it.b.float / it.a.float * 255).byte,
+      (it.g.float / it.a.float * 255).byte,
+      (it.r.float / it.a.float * 255).byte,
+      it.a
+    )
+    window.wcursor = CreateIcon(hInstance, v.image.size.x, v.image.size.y, 1, 32, nil, cast[ptr Byte](pixels.dataAddr))
+    SetCursor window.wcursor
+  
+
+method `icon=`*(window: WindowWinapi, _: nil.typeof) =
+  ## clear icon
+  if window.wicon != 0:
+    DestroyIcon window.wicon
+    window.wicon = 0
+  
+  window.handle.SendMessageW(WmSetIcon, IconBig, 0)
+  window.handle.SendMessageW(WmSetIcon, IconSmall, 0)
+
+method `icon=`*(window: WindowWinapi, image: tuple[pixels: openarray[ColorBgrx], size: IVec2]) {.locks: "unknown".} =
+  ## set icon
+  if image.size.x * image.size.y == 0: window.icon = nil
+  assert image.pixels.len >= image.size.x * image.size.y, "not enougth pixels"
+  if window.wicon != 0: DestroyIcon window.wicon
+  
+  let pixels = image.pixels.mapit (
+    (it.b.float / it.a.float * 255).byte,
+    (it.g.float / it.a.float * 255).byte,
+    (it.r.float / it.a.float * 255).byte,
+    it.a
+  )
+  window.wicon = CreateIcon(hInstance, image.size.x, image.size.y, 1, 32, nil, cast[ptr Byte](pixels.dataAddr))
+  window.handle.SendMessageW(WmSetIcon, IconBig, window.wicon)
+  window.handle.SendMessageW(WmSetIcon, IconSmall, window.wicon)
+
+proc resizeBufferIfNeeded(buffer: var Buffer, size: IVec2) =
+  if size.x != buffer.x or size.y != buffer.y:
+    if buffer.pixels != nil:
+      DeleteDC buffer.hdc
+      DeleteObject buffer.bitmap
+    
+    buffer.x = size.x
+    buffer.y = size.y
+  
+    var bmi = BitmapInfo(
+      bmiHeader: BitmapInfoHeader(
+        biSize: BitmapInfoHeader.sizeof.int32, biWidth: size.x.Long, biHeight: -size.y.Long,
+        biPlanes: 1, biBitCount: 32, biCompression: Bi_rgb
+      )
+    )
+    buffer.bitmap = CreateDibSection(0, bmi.addr, Dib_rgb_colors, cast[ptr pointer](buffer.pixels.addr), 0, 0)
+    buffer.hdc = CreateCompatibleDC(0)
+    buffer.hdc.SelectObject buffer.bitmap
+
+method drawImage*(window: WindowWinapiSoftwareRendering, pixels: openarray[ColorBgrx], size: IVec2, pos: IVec2 = ivec2(), srcPos: IVec2 = ivec2()) =
+  assert pixels.len >= size.x * size.y, "not enougth pixels"    
+  resizeBufferIfNeeded window.buffer, size
+  copyMem(window.buffer.pixels, pixels.dataAddr, pixels.len * ColorBgrx.sizeof)
+  window.hdc.BitBlt(pos.x, pos.y, size.x, size.y, window.buffer.hdc, srcPos.x, srcPos.y, SrcCopy)
+
+
+method `maximized=`*(window: WindowWinapi, v: bool) {.locks: "unknown".} =
+  window.m_maximized = v
+  discard ShowWindow(window.handle, if v: SwMaximize else: SwRestore)
+
+method `minimized=`*(window: WindowWinapi, v: bool) =
+  window.m_minimized = v
+  discard ShowWindow(window.handle, if v: SwMinimize else: SwRestore)
+
+method `visible=`*(window: WindowWinapi, v: bool) =
+  window.m_visible = v
+  discard ShowWindow(window.handle, if v: SwShow else: SwHide)
+
+
+method `resizable=`*(window: WindowWinapi, v: bool) =
+  let style = GetWindowLongW(window.handle, GwlStyle)
+  discard SetWindowLongW(window.handle, GwlStyle, if v: style or WsThickframe else: style and not WsThickframe)
+  window.m_minSize = ivec2()
+  window.m_maxSize = ivec2()
+
+
+method `minSize=`*(window: WindowWinapi, v: IVec2) =
+  window.m_minSize = v
+  let style = GetWindowLongW(window.handle, GwlStyle)
+  discard SetWindowLongW(window.handle, GwlStyle, style or WsThickframe)
+
+method `maxSize=`*(window: WindowWinapi, v: IVec2) =
+  window.m_maxSize = v
+  let style = GetWindowLongW(window.handle, GwlStyle)
+  discard SetWindowLongW(window.handle, GwlStyle, style or WsThickframe)
+
+
+method startInteractiveMove*(window: WindowWinapi, pos: Option[IVec2]) {.locks: "unknown".} =
+  window.releaseKeysRequested = true
+  ReleaseCapture()
+
+  window.handle.PostMessage(WmSysCommand, 0xF012, 0)
+  # todo: press all keys and mouse buttons that are pressed after move
+
+method startInteractiveResize*(window: WindowWinapi, edge: Edge, pos: Option[IVec2]) {.locks: "unknown".} =
+  window.releaseKeysRequested = true
+  ReleaseCapture()
+
+  window.handle.PostMessage(
+    WmSysCommand,
+    case edge
+    of Edge.left: 0xf001
+    of Edge.right: 0xf002
+    of Edge.top: 0xf003
+    of Edge.topLeft: 0xf004
+    of Edge.topRight: 0xf005
+    of Edge.bottom: 0xf006
+    of Edge.bottomLeft: 0xf007
+    of Edge.bottomRight: 0xf008,
+    0
+  )
+  # todo: press all keys and mouse buttons that are pressed after resize
+
+
+method makeCurrent*(window: WindowWinapiOpengl) =
+  discard window.hdc.wglMakeCurrent(window.ctx.raw)
+
+method `vsync=`*(window: WindowWinapiOpengl, v: bool, silent = false) =
+  if wglSwapIntervalExt == nil:
+    wglSwapIntervalExt = cast[typeof wglSwapIntervalExt](wglGetProcAddress("wglSwapIntervalEXT"))
+  if wglSwapIntervalExt == nil or wglSwapIntervalExt(if v: 1 else: 0) == 0:
+    if not silent:
+      raise OSError.newException("failed to " & (if v: "enable" else: "disable") & " vsync")
+
+method displayImpl(window: WindowWinapi, eventsHandler: ptr WindowEventsHandler) {.base.} =
+  var ps: PaintStruct
+  window.handle.BeginPaint(ps.addr)
+  eventsHandler.pushEvent onRender, RenderEvent(window: window)
+  window.handle.EndPaint(ps.addr)
+
+method displayImpl(window: WindowWinapiOpengl, eventsHandler: ptr WindowEventsHandler) =
+  eventsHandler.pushEvent onRender, RenderEvent(window: window)
+  window.hdc.SwapBuffers
+
+method firstStep*(window: WindowWinapi, eventsHandler: WindowEventsHandler, makeVisible = true) =
+  if makeVisible:
+    window.visible = true
+
+  window.eventsHandler = eventsHandler.unsafeaddr
+  eventsHandler.unsafeaddr.pushEvent onResize, ResizeEvent(window: window, size: window.m_size, initial: true)
+
+  window.handle.UpdateWindow()
+
+  window.lastTickTime = getTime()
+
+method step*(window: WindowWinapi, eventsHandler: WindowEventsHandler) {.locks: "unknown".} =
+  window.eventsHandler = eventsHandler.unsafeaddr
+  var msg: Msg
+  var catched = false
+
+  while PeekMessage(msg.addr, 0, 0, 0, PmRemove).bool:
+    catched = true
+    TranslateMessage(msg.addr)
+    DispatchMessage(msg.addr)
+
+    # force make tick if windows decided to spam events to us
+    if (getTime() - window.lastTickTime) > initDuration(milliseconds=10):
+      break
+
+    if window.m_closed: return
+
+  window.m_maximized = IsZoomed(window.handle) != 0
+  window.m_minimized = IsIconic(window.handle) != 0
+  window.m_visible = IsWindowVisible(window.handle) != 0
+  window.m_resizable = (GetWindowLongW(window.handle, GwlStyle) and WsThickframe) != 0
+
+  if not catched: sleep(1)
+
+  let nows = getTime()
+  eventsHandler.unsafeaddr.pushEvent onTick, TickEvent(window: window, deltaTime: nows - window.lastTickTime)
+  window.lastTickTime = nows
+
+proc poolEvent(window: WindowWinapi, message: Uint, wParam: WParam, lParam: LParam): LResult =
+  template button: MouseButton =
+    case message
+    of WM_lbuttonDown, WM_lbuttonUp, WM_lbuttonDblclk: MouseButton.left
+    of WM_rbuttonDown, WM_rbuttonUp, WM_rbuttonDblclk: MouseButton.right
+    of WM_mbuttonDown, WM_mbuttonUp, WM_mbuttonDblclk: MouseButton.middle
+    of WM_xbuttonDown, WM_xbuttonUp, WM_xbuttonDblclk:
+      let button = wParam.GetXButtonWParam()
+      case button
+      of MkXButton1: MouseButton.backward
+      of MkXButton2: MouseButton.forward
+      else: MouseButton.left
+    else: MouseButton.left
+
+  result = 0
+
+  if window.fullscreenChanged:
+    window.fullscreenChanged = false
+    window.eventsHandler.pushEvent onFullscreenChanged, FullscreenChangedEvent(window: window, fullscreen: window.m_fullscreen)
+  
+  if window.releaseKeysRequested:
+    window.releaseKeysRequested = false
+    let pressed = window.keyboard.pressed
+    for key in pressed:
+      window.keyboard.pressed.excl key
+      window.eventsHandler.pushEvent onKey, KeyEvent(window: window, key: key, pressed: false, repeated: false)
+    
+    let pressedButtons = window.mouse.pressed
+    for button in pressedButtons:
+      window.mouse.pressed.excl button
+      window.eventsHandler.pushEvent onMouseButton, MouseButtonEvent(window: window, button: button, pressed: false)
+
+  case message
+  of WmPaint:
+    let rect = window.handle.clientRect
+    if rect.right != window.m_size.x or rect.bottom != window.m_size.y:
+      window.m_size = ivec2(rect.right, rect.bottom)
+      window.eventsHandler.pushEvent onResize, ResizeEvent(window: window, size: window.m_size, initial: false)
+
+    if window.m_size.x * window.m_size.y > 0:
+      assert window.eventsHandler != nil
+      window.displayImpl(window.eventsHandler)
+
+  of WmDestroy:
+    window.eventsHandler.pushEvent onClose, CloseEvent(window: window)
+    if window of WindowWinapiSoftwareRendering: `=destroy` window.WindowWinapiSoftwareRendering.buffer
+    if window of WindowWinapiOpengl: `=destroy` window.WindowWinapiOpengl.ctx
+    `=destroy` window[]
+    PostQuitMessage(0)
+
+  of WmMouseMove:
+    window.mouse.pos = ivec2(lParam.GetX_LParam.int32, lParam.GetY_LParam.int32)
+    window.clicking = {}
+    window.eventsHandler.pushEvent onMouseMove, MouseMoveEvent(window: window, pos: window.mouse.pos, kind: move)
+
+  of WmMouseLeave:
+    window.mouse.pos = ivec2(lParam.GetX_LParam.int32, lParam.GetY_LParam.int32)
+    window.clicking = {}
+    window.eventsHandler.pushEvent onMouseMove, MouseMoveEvent(window: window, pos: window.mouse.pos, kind: leave)
+    window.handle.trackMouseEvent(TmeHover)
+
+  of WmMouseHover:
+    window.mouse.pos = ivec2(lParam.GetX_LParam.int32, lParam.GetY_LParam.int32)
+    window.clicking = {}
+    window.eventsHandler.pushEvent onMouseMove, MouseMoveEvent(window: window, pos: window.mouse.pos, kind: enter)
+    window.handle.trackMouseEvent(TmeLeave)
+
+  of WmMouseWheel:
+    let delta = if wParam.GetWheelDeltaWParam > 0: -1.0 else: 1.0
+    window.eventsHandler.pushEvent onScroll, ScrollEvent(window: window, delta: delta)
+
+  of WmSetFocus:
+    window.m_focused = true
+    window.eventsHandler.pushEvent onFocusChanged, FocusChangedEvent(window: window, focus: true)
+
+    let keys = getKeyboardState().mapit(wkeyToKey(it))
+    for k in keys: # press pressed in system keys
+      if k == Key.unknown: continue
+      window.keyboard.pressed.incl k
+      window.eventsHandler.pushEvent onKey, KeyEvent(window: window, key: k, pressed: false, repeated: false)
+
+  of WmKillFocus:
+    window.m_focused = false
+    window.eventsHandler.pushEvent onFocusChanged, FocusChangedEvent(window: window, focus: false)
+    let pressed = window.keyboard.pressed
+    for key in pressed: # release all keys
+      window.keyboard.pressed.excl key
+      window.eventsHandler.pushEvent onKey, KeyEvent(window: window, key: key, pressed: false, repeated: false)
+
+  of WmLButtonDown, WmRButtonDown, WmMButtonDown, WmXButtonDown:
+    window.handle.SetCapture()
+    window.mouse.pressed.incl button
+    window.clicking.incl button
+    window.eventsHandler.pushEvent onMouseButton, MouseButtonEvent(window: window, button: button, pressed: true)
+
+  of WmLButtonDblclk, WmRButtonDblclk, WmMButtonDblclk, WmXButtonDblclk:
+    window.handle.SetCapture()
+    window.mouse.pressed.incl button
+    window.eventsHandler.pushEvent onClick, ClickEvent(window: window, button: button, pos: window.mouse.pos, double: true)
+
+  of WmLButtonUp, WmRButtonUp, WmMButtonUp, WmXButtonUp:
+    ReleaseCapture()
+    window.mouse.pressed.excl button
+    if button in window.clicking:
+      window.eventsHandler.pushEvent onClick, ClickEvent(window: window, button: button, pos: window.mouse.pos, double: false)
+    window.eventsHandler.pushEvent onMouseButton, MouseButtonEvent(window: window, button: button, pressed: false)
+
+  of WmKeyDown, WmSysKeyDown:
+    let key = wkeyToKey(wParam, lParam)
+    if key != Key.unknown:
+      let repeated = key in window.keyboard.pressed
+      window.keyboard.pressed.incl key
+      window.eventsHandler.pushEvent onKey, KeyEvent(window: window, key: key, pressed: true, repeated: repeated)
+
+  of WmKeyUp, WmSysKeyUp:
+    let key = wkeyToKey(wParam, lParam)
+    if key != Key.unknown:
+      let repeated = key notin window.keyboard.pressed
+      window.keyboard.pressed.excl key
+      window.eventsHandler.pushEvent onKey, KeyEvent(window: window, key: key, pressed: false, repeated: repeated)
+
+  of WmChar, WmSyschar, WmUnichar:
+    if window.eventsHandler.onTextInput == nil: return 1  # no need to handle
+    if (window.keyboard.pressed * {lcontrol, rcontrol, lalt, ralt}).len == 0:
+      let s = %$[wParam.WChar]
+      if s.len > 0 and s notin ["\u001B"]:
+        window.eventsHandler.pushEvent onTextInput, TextInputEvent(window: window, text: s)
+
+  of WmSetCursor:
+    if lParam.LoWord == HtClient:
+      SetCursor window.wcursor
+      return 1
+    return window.handle.DefWindowProc(message, wParam, lParam)
+  
+  of WmGetMinMaxInfo:
+    let info = cast[LpMinMaxInfo](lParam)
+    if window.m_minSize != ivec2():
+      (info[].ptMinTrackSize.x, info[].ptMinTrackSize.y) = window.m_minSize
+    if window.m_maxSize != ivec2():
+      (info[].ptMaxTrackSize.x, info[].ptMaxTrackSize.y) = window.m_maxSize
+
+  else: return window.handle.DefWindowProc(message, wParam, lParam)
+
+
+proc newSoftwareRenderingWindowWinapi*(
+  size = ivec2(1280, 720),
+  title = "",
+  screen = defaultScreenWinapi(),
+  fullscreen = false,
+  frameless = false,
+  transparent = false,
+): WindowWinapiSoftwareRendering =
+  new result
+  result.initWindow(size, screen, fullscreen, frameless, transparent)
+  result.title = title
+
+proc newOpenglWindowWinapi*(
+  size = ivec2(1280, 720),
+  title = "",
+  screen = defaultScreenWinapi(),
+  fullscreen = false,
+  frameless = false,
+  transparent = false,
+  vsync = true,
+): WindowWinapiOpengl =
+  new result
+  result.initWindowWinapiOpengl(size, screen, fullscreen, frameless, transparent)
+  result.title = title
+  result.`vsync=`(vsync, silent=true)

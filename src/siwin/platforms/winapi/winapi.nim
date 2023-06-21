@@ -1,8 +1,18 @@
-import winim
-export winim
+import winim/inc/[windef, winbase, wingdi, winuser, dwmapi], winim/winstr
+export windef, winbase, wingdi, winuser, winstr, dwmapi
 
 type
-  WglContext* = HGlRc
+  WglContext* = object
+    raw*: HGlRc
+
+
+proc `=destroy`*(context: var WglContext) =
+  if context.raw != 0:
+    if wglGetCurrentContext() == context.raw:
+      wglMakeCurrent(0, 0)
+    wglDeleteContext context.raw
+    context.raw = 0
+
 
 var hInstance* = GetModuleHandle(nil)
 
@@ -11,8 +21,8 @@ var wglSwapIntervalEXT*: proc(interval: int32): Bool {.stdcall.}
 proc trackMouseEvent*(handle: HWnd, e: DWord) =
   var ev = TTrackMouseEvent(cbSize: TTrackMouseEvent.sizeof.DWord, dwFlags: e, hwndTrack: handle, dwHoverTime: 0)
   TrackMouseEvent(ev.addr)
-proc clientRect*(handle: HWnd): Rect = discard handle.GetClientRect(&result)
-proc windowRect*(handle: HWnd): Rect = discard handle.GetWindowRect(&result)
+proc clientRect*(handle: HWnd): Rect = discard handle.GetClientRect(result.addr)
+proc windowRect*(handle: HWnd): Rect = discard handle.GetWindowRect(result.addr)
 
 proc getKeyboardState*(): set[0..255] =
   var r: array[256, Byte]

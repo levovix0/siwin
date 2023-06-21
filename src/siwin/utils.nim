@@ -13,15 +13,3 @@ func dataAddr*[T: string|seq|array|openarray|cstring](a: T): pointer =
   elif T is cstring:
     cast[pointer](a)
   else: {.error.}
-
-func del*[T](a: var seq[T], item: T) =
-  let i = a.find(item)
-  if i != -1: a.del i
-func delete*[T](a: var seq[T], item: T) =
-  let i = a.find(item)
-  if i != -1: a.delete i
-
-proc findBy*[T](a: openarray[T], f: proc(a: T): bool): int =
-  result = -1
-  for i, b in a:
-    if f(b): return i
