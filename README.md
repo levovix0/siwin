@@ -200,7 +200,7 @@ run window, WindowEventsHandler(
 see [siwin/platforms/any/window](https://github.com/levovix0/siwin/blob/master/src/siwin/platforms/any/window.nim)
 
 #### I want to get system handle of window and do some magic, but it is private?
-```
+```nim
 import std/importutils
 import siwin/platforms/x11/window {.all.}
 privateAccess WindowX11Obj
