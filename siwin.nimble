@@ -24,6 +24,8 @@ template runTests(args: string) =
     except: discard
     try:    exec "nim c " & args & " --hints:off -r tests"
     except: discard
+    try:    exec "nim c " & args & " --hints:off -r t_vulkan"
+    except: discard
 
 task test, "test":
   runTests ""

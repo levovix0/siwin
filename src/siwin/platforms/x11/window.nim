@@ -5,7 +5,7 @@ import pkg/x11/x except Window, Cursor, Time
 import pkg/x11/[xutil, xatom, cursorfont, keysym]
 import ../../utils, ../../bgrx
 import ../any/window {.all.}
-import globalDisplay, glx
+import globalDisplay
 
 {.experimental: "overloadableEnums".}
 
@@ -46,7 +46,7 @@ type
 
 
   WindowX11* = ref WindowX11Obj
-  WindowX11Obj = object of Window
+  WindowX11Obj* = object of Window
     handle: x.Window
     screen: cint
     xIcon: Pixmap
@@ -62,12 +62,8 @@ type
 
     releaseKeysRequested: bool
   
-  WindowX11SoftwareRendering = ref object of WindowX11
+  WindowX11SoftwareRendering* = ref object of WindowX11
     gc: GraphicsContext
-
-  WindowX11Opengl = ref object of WindowX11
-    glxContext: GlxContext
-    vsyncEnabled: bool
 
 
 const libXExt* =
@@ -267,6 +263,10 @@ proc cursor: tuple[pos: IVec2; root, child: x.Window; winX, winY: int; mask: uin
       return (ivec2(x.int32, y.int32), root, child, winX.int, winY.int, mask.uint, true)
 
 
+method beginSwapBuffers(window: WindowX11) {.base, locks: "unknown".} = discard
+method endSwapBuffers(window: WindowX11) {.base, locks: "unknown".} = discard
+
+
 proc screenCountX11*: int32 =
   globalDisplay.init()
   display.ScreenCount.int32
@@ -411,30 +411,6 @@ proc initSoftwareRenderingWindow(
 
   window.gc.gc = display.XCreateGC(window.handle, GCForeground or GCBackground, window.gc.gcv.addr)
 
-proc initOpenglWindow(
-  window: WindowX11Opengl,
-  size: IVec2, screen: ScreenX11,
-  fullscreen, frameless, transparent: bool, class: string
-) =
-  globalDisplay.init()
-  window.basicInitWindow size, screen
-
-  window.m_transparent = transparent
-  let root = display.DefaultRootWindow
-  var vi: XVisualInfo
-  discard display.XMatchVisualInfo(window.screen, if transparent: 32 else: 24, TrueColor, vi.addr)
-  let cmap = display.XCreateColormap(root, vi.visual, AllocNone)
-  var swa = XSetWindowAttributes(colormap: cmap)
-  window.handle = display.XCreateWindow(
-    root, 0, 0, size.x.cuint, size.y.cuint, 0, vi.depth, InputOutput, vi.visual,
-    CwColormap or CwEventMask or CwBorderPixel or CwBackPixel, swa.addr
-  )
-
-  window.setupWindow fullscreen, frameless, class
-
-  window.glxContext = newGlxContext(vi.addr)
-  window.handle.makeCurrent window.glxContext
-
 
 method `title=`*(window: WindowX11, v: string) =
   discard display.XChangeProperty(
@@ -460,6 +436,7 @@ method `fullscreen=`*(window: WindowX11, v: bool) =
 
 
 method `frameless=`*(window: WindowX11, v: bool) =
+  if window.m_frameless == v: return
   defer: window.m_frameless = v
   
   case wmForFramelessKind
@@ -703,23 +680,6 @@ method startInteractiveResize*(window: WindowX11, edge: Edge, pos: Option[IVec2]
   # todo: press all keys and mouse buttons that are pressed after resize
 
 
-method makeCurrent*(window: WindowX11Opengl) =
-  window.handle.makeCurrent window.glxContext
-
-
-method `vsync=`*(window: WindowX11Opengl, v: bool, silent = false) =
-  window.vsyncEnabled = v
-  if glxSwapIntervalExt != nil:
-    display.glxSwapIntervalExt(window.handle, if v: 1 else: 0)
-  elif glxSwapIntervalMesa != nil:
-    glxSwapIntervalMesa(if v: 1 else: 0)
-  elif glxSwapIntervalSgi != nil:
-    glxSwapIntervalSgi(if v: 1 else: 0)
-  else:
-    if not silent:
-      raise OSError.newException("VSync is not supported")
-
-
 method firstStep*(window: WindowX11, eventsHandler: WindowEventsHandler, makeVisible = true) =
   if makeVisible:
     window.visible = true
@@ -832,7 +792,7 @@ method step*(window: WindowX11, eventsHandler: WindowEventsHandler) =
     of MotionNotify:
       window.mouse.pos = ivec2(ev.xmotion.x.int32, ev.xmotion.y.int32)
       window.clicking = {}
-      eventsHandler.pushEvent onMouseMove, MouseMoveEvent(window: window, pos: window.mouse.pos, kind: move)
+      eventsHandler.pushEvent onMouseMove, MouseMoveEvent(window: window, pos: window.mouse.pos, kind: MouseMoveKind.move)
 
     of ButtonPress:
       if not isScroll:
@@ -859,10 +819,10 @@ method step*(window: WindowX11, eventsHandler: WindowEventsHandler) =
 
     of LeaveNotify:
       window.clicking = {}
-      eventsHandler.pushEvent onMouseMove, MouseMoveEvent(window: window, pos: window.mouse.pos, kind: leave)
+      eventsHandler.pushEvent onMouseMove, MouseMoveEvent(window: window, pos: window.mouse.pos, kind: MouseMoveKind.leave)
     of EnterNotify:
       window.clicking = {}
-      eventsHandler.pushEvent onMouseMove, MouseMoveEvent(window: window, pos: window.mouse.pos, kind: enter)
+      eventsHandler.pushEvent onMouseMove, MouseMoveEvent(window: window, pos: window.mouse.pos, kind: MouseMoveKind.enter)
 
     of FocusIn:
       window.m_focused = true
@@ -912,8 +872,7 @@ method step*(window: WindowX11, eventsHandler: WindowEventsHandler) =
   block nextEvent:
     template closeAndExit =
       eventsHandler.pushEvent onClose, CloseEvent(window: window)
-      if window of WindowX11Opengl: `=destroy` window.WindowX11Opengl.glxContext
-      `=destroy` window[]
+      `=destroy` window[]  # is this enough?
       return
     
     var
@@ -956,18 +915,13 @@ method step*(window: WindowX11, eventsHandler: WindowEventsHandler) =
     window.redrawRequested = false
     eventsHandler.pushEvent onRender, RenderEvent(window: window)
 
-    if window of WindowX11Opengl and window.WindowX11Opengl.vsyncEnabled and window.syncState == SyncState.syncAndConfigureRecieved:
-      window.WindowX11Opengl.vsync = false  # temporary disable vsync to avoid flickering
-    
-    if window of WindowX11Opengl:
-      window.handle.glxSwapBuffers()
+    window.beginSwapBuffers()
 
     if window.syncState == SyncState.syncAndConfigureRecieved:
       display.XSyncSetCounter(window.xSyncCounter, window.lastSync)
       window.syncState = SyncState.none
 
-      if window of WindowX11Opengl and window.WindowX11Opengl.vsyncEnabled:
-        window.WindowX11Opengl.vsync = true  # re-enable vsync
+    window.endSwapBuffers()
 
     discard XFlush display
 
@@ -978,6 +932,7 @@ proc newSoftwareRenderingWindowX11*(
   size = ivec2(1280, 720),
   title = "",
   screen = defaultScreenX11(),
+  resizable = true,
   fullscreen = false,
   frameless = false,
   transparent = false,
@@ -987,19 +942,4 @@ proc newSoftwareRenderingWindowX11*(
   new result
   result.initSoftwareRenderingWindow(size, screen, fullscreen, frameless, transparent, (if class == "": title else: class))
   result.title = title
-
-proc newOpenglWindowX11*(
-  size = ivec2(1280, 720),
-  title = "",
-  screen = defaultScreenX11(),
-  fullscreen = false,
-  frameless = false,
-  transparent = false,
-  vsync = true,
-
-  class = "", # window class (used in x11), equals to title if not specified
-): WindowX11Opengl =
-  new result
-  result.initOpenglWindow(size, screen, fullscreen, frameless, transparent, (if class == "": title else: class))
-  result.title = title
-  result.`vsync=`(vsync, silent=true)
+  if not resizable: result.resizable = false

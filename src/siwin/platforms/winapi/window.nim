@@ -18,7 +18,7 @@ type
     pixels: ptr UncheckedArray[ColorBgrx]
 
   WindowWinapi* = ref WindowWinapiObj
-  WindowWinapiObj = object of Window
+  WindowWinapiObj* = object of Window
     handle: HWnd
     wicon: HIcon
     hdc: Hdc
@@ -29,9 +29,6 @@ type
 
   WindowWinapiSoftwareRendering* = ref object of WindowWinapi
     buffer: Buffer
-
-  WindowWinapiOpengl* = ref object of WindowWinapi
-    ctx: WglContext
 
 
 proc wkeyToKey(key: WParam): Key =
@@ -283,23 +280,6 @@ proc initWindow(window: WindowWinapi; size: IVec2; screen: ScreenWinapi, fullscr
 
     window.handle.DwmEnableBlurBehindWindow(bb.addr)
 
-proc initWindowWinapiOpengl(window: WindowWinapiOpengl; size: IVec2; screen: ScreenWinapi, fullscreen, frameless, transparent: bool) =
-  window.initWindow size, screen, fullscreen, frameless, transparent, woClassName
-  
-  var pfd = PixelFormatDescriptor(
-    nSize: Word PixelFormatDescriptor.sizeof,
-    nVersion: 1,
-    dwFlags: Pfd_draw_to_window or Pfd_support_opengl or Pfd_double_buffer,
-    iPixelType: Pfd_type_rgba,
-    cColorBits: 32,
-    cDepthBits: 24,
-    cStencilBits: 8,
-    iLayerType: Pfd_main_plane,
-  )
-  window.hdc.SetPixelFormat(window.hdc.ChoosePixelFormat(pfd.addr), pfd.addr)
-  window.ctx = WglContext(raw: wglCreateContext(window.hdc))
-  discard window.hdc.wglMakeCurrent(window.ctx.raw)
-
 
 method `title=`*(window: WindowWinapi, title: string) =
   window.handle.SetWindowText(title)
@@ -469,26 +449,11 @@ method startInteractiveResize*(window: WindowWinapi, edge: Edge, pos: Option[IVe
   )
   # todo: press all keys and mouse buttons that are pressed after resize
 
-
-method makeCurrent*(window: WindowWinapiOpengl) =
-  discard window.hdc.wglMakeCurrent(window.ctx.raw)
-
-method `vsync=`*(window: WindowWinapiOpengl, v: bool, silent = false) =
-  if wglSwapIntervalExt == nil:
-    wglSwapIntervalExt = cast[typeof wglSwapIntervalExt](wglGetProcAddress("wglSwapIntervalEXT"))
-  if wglSwapIntervalExt == nil or wglSwapIntervalExt(if v: 1 else: 0) == 0:
-    if not silent:
-      raise OSError.newException("failed to " & (if v: "enable" else: "disable") & " vsync")
-
 method displayImpl(window: WindowWinapi, eventsHandler: ptr WindowEventsHandler) {.base.} =
   var ps: PaintStruct
   window.handle.BeginPaint(ps.addr)
   eventsHandler.pushEvent onRender, RenderEvent(window: window)
   window.handle.EndPaint(ps.addr)
-
-method displayImpl(window: WindowWinapiOpengl, eventsHandler: ptr WindowEventsHandler) =
-  eventsHandler.pushEvent onRender, RenderEvent(window: window)
-  window.hdc.SwapBuffers
 
 method firstStep*(window: WindowWinapi, eventsHandler: WindowEventsHandler, makeVisible = true) =
   if makeVisible:
@@ -573,26 +538,24 @@ proc poolEvent(window: WindowWinapi, message: Uint, wParam: WParam, lParam: LPar
 
   of WmDestroy:
     window.eventsHandler.pushEvent onClose, CloseEvent(window: window)
-    if window of WindowWinapiSoftwareRendering: `=destroy` window.WindowWinapiSoftwareRendering.buffer
-    if window of WindowWinapiOpengl: `=destroy` window.WindowWinapiOpengl.ctx
-    `=destroy` window[]
+    `=destroy` window[]  # is this enough?
     PostQuitMessage(0)
 
   of WmMouseMove:
     window.mouse.pos = ivec2(lParam.GetX_LParam.int32, lParam.GetY_LParam.int32)
     window.clicking = {}
-    window.eventsHandler.pushEvent onMouseMove, MouseMoveEvent(window: window, pos: window.mouse.pos, kind: move)
+    window.eventsHandler.pushEvent onMouseMove, MouseMoveEvent(window: window, pos: window.mouse.pos, kind: MouseMoveKind.move)
 
   of WmMouseLeave:
     window.mouse.pos = ivec2(lParam.GetX_LParam.int32, lParam.GetY_LParam.int32)
     window.clicking = {}
-    window.eventsHandler.pushEvent onMouseMove, MouseMoveEvent(window: window, pos: window.mouse.pos, kind: leave)
+    window.eventsHandler.pushEvent onMouseMove, MouseMoveEvent(window: window, pos: window.mouse.pos, kind: MouseMoveKind.leave)
     window.handle.trackMouseEvent(TmeHover)
 
   of WmMouseHover:
     window.mouse.pos = ivec2(lParam.GetX_LParam.int32, lParam.GetY_LParam.int32)
     window.clicking = {}
-    window.eventsHandler.pushEvent onMouseMove, MouseMoveEvent(window: window, pos: window.mouse.pos, kind: enter)
+    window.eventsHandler.pushEvent onMouseMove, MouseMoveEvent(window: window, pos: window.mouse.pos, kind: MouseMoveKind.enter)
     window.handle.trackMouseEvent(TmeLeave)
 
   of WmMouseWheel:
@@ -676,6 +639,7 @@ proc newSoftwareRenderingWindowWinapi*(
   size = ivec2(1280, 720),
   title = "",
   screen = defaultScreenWinapi(),
+  resizable = true,
   fullscreen = false,
   frameless = false,
   transparent = false,
@@ -683,17 +647,4 @@ proc newSoftwareRenderingWindowWinapi*(
   new result
   result.initWindow(size, screen, fullscreen, frameless, transparent)
   result.title = title
-
-proc newOpenglWindowWinapi*(
-  size = ivec2(1280, 720),
-  title = "",
-  screen = defaultScreenWinapi(),
-  fullscreen = false,
-  frameless = false,
-  transparent = false,
-  vsync = true,
-): WindowWinapiOpengl =
-  new result
-  result.initWindowWinapiOpengl(size, screen, fullscreen, frameless, transparent)
-  result.title = title
-  result.`vsync=`(vsync, silent=true)
+  if not resizable: result.resizable = false

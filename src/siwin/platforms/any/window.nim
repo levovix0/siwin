@@ -5,10 +5,10 @@ import ../../bgrx
 {.experimental: "overloadableEnums".}
 
 type
-  MouseButton* = enum
+  MouseButton* {.pure.} = enum
     left right middle forward backward
 
-  Key* = enum
+  Key* {.pure.} = enum
     unknown = 0
 
     a b c d e f g h i j k l m n o p q r s t u v w x y z
@@ -34,7 +34,7 @@ type
     pressed*: set[Key]
 
   
-  CursorKind* = enum
+  CursorKind* {.pure.} = enum
     builtin
     image
 
@@ -43,7 +43,7 @@ type
     of builtin: builtin*: BuiltinCursor
     of image: image*: ImageCursor
 
-  BuiltinCursor* = enum
+  BuiltinCursor* {.pure.} = enum
     arrow arrowUp arrowRight
     wait arrowWait
     pointingHand grab
@@ -57,7 +57,7 @@ type
     data*: seq[ColorBgrx]
   
 
-  Edge* = enum
+  Edge* {.pure.} = enum
     left
     right
     top
@@ -68,7 +68,7 @@ type
     bottomRight
 
 
-  MouseMoveKind* = enum
+  MouseMoveKind* {.pure.} = enum
     move
     enter
     leave
@@ -240,10 +240,6 @@ method `icon=`*(window: Window, v: nil.typeof) {.base.} = discard
 method `icon=`*(window: Window, v: tuple[pixels: openarray[ColorBgrx], size: IVec2]) {.base, locks: "unknown".} = discard
   ## set window icon
 
-method drawImage*(window: Window, pixels: openarray[ColorBgrx], size: IVec2, pos: IVec2 = ivec2(), srcPos: IVec2 = ivec2()) {.base.} = discard
-  ## put pixels into window
-  ## note: no blending is performed, even if image or/and window is transparent
-
 method startInteractiveMove*(window: Window, pos: Option[IVec2] = none IVec2) {.base, locks: "unknown".} = discard
   ## allow user to move window interactivly
   ## useful to create client-side decorated windows
@@ -254,11 +250,21 @@ method startInteractiveResize*(window: Window, edge: Edge, pos: Option[IVec2] = 
   ## useful to create client-side decorated windows
   ## it's recomended to start interactive move after user grabbed window border and started to move mouse
 
+
+method drawImage*(window: Window, pixels: openarray[ColorBgrx], size: IVec2, pos: IVec2 = ivec2(), srcPos: IVec2 = ivec2()) {.base.} = discard
+  ## put pixels into window
+  ## note: no blending is performed, even if image or/and window is transparent
+
+
 method makeCurrent*(window: Window) {.base.} = discard
   ## set window as current opengl rendering target
 
 method `vsync=`*(window: Window, v: bool, silent = false) {.base, locks: "unknown".} = discard
   ## enable/disable vsync
+
+
+method vulkanSurface*(window: Window): pointer {.base.} = discard
+  ## get a VkSurfaceKHR attached to window
 
 
 method firstStep*(window: Window, evetnsHandler: WindowEventsHandler, makeVisible = true) {.base, locks: "unknown".} = discard
@@ -269,7 +275,7 @@ method step*(window: Window, evetnsHandler: WindowEventsHandler) {.base, locks: 
   ## make window main loop step
   ## ! don't forget to call firstStep()
 
-proc run*(window: Window, evetnsHandler: WindowEventsHandler, makeVisible = true) =
+proc run*(window: sink Window, evetnsHandler: WindowEventsHandler, makeVisible = true) =
   ## run whole window main loops
   window.firstStep(evetnsHandler, makeVisible)
   while window.opened:

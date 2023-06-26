@@ -6,8 +6,8 @@ Can be used as an alternative to GLFW/GLUT/windy
 
 
 # Features
-* OpenGL and software rendering support
-* Linux(X11) and Windows support
+* **OpenGL**, **Vulkan** and **software rendering** support
+* Linux(**X11**) and **Windows** support
 * clipboard, offscreen rendering
 
 # Examples
@@ -67,6 +67,51 @@ run window, WindowEventsHandler(
 ```
 note: call redraw(window) every time you want window.render to be called. siwin will automatically call window.render only when window resizes.
 
+#### Vulkan
+see [t_vulkan.nim](https://github.com/levovix0/siwin/blob/master/tests/t_vulkan.nim)
+```nim
+import siwin, nimgl/vulkan, sequtils
+
+doassert vkInit()
+
+let exts = getRequiredVulkanExtensions()
+var cexts = exts.mapit(it[0].unsafeaddr)
+
+var appInfo = newVkApplicationInfo(
+  pApplicationName = "siwin Vulkan example",
+  applicationVersion = vkMakeVersion(1, 0, 0),
+  pEngineName = "No Engine",
+  engineVersion = vkMakeVersion(1, 0, 0),
+  apiVersion = vkApiVersion1_1
+)
+
+var instanceCreateInfo = newVkInstanceCreateInfo(
+  pApplicationInfo = appInfo.addr,
+  enabledExtensionCount = exts.len,
+  ppEnabledExtensionNames = cast[cstringArray](cexts[0].addr),
+  enabledLayerCount = 0,
+  ppEnabledLayerNames = nil,
+)
+
+var instance: VkInstance
+doassert vkCreateInstance(instanceCreateInfo.addr, nil, result.addr) == VKSuccess
+
+let window = newVulkanWindow(cast[pointer](instance), title="Vulkan example")
+let surface = cast[VkSurfaceKHR](window.vulkanSurface)
+
+# do other initialization using instance and surface...
+
+run window, WindowEventsHandler(
+  onRender: proc(e: RenderEvent) =
+    ## do rendering...
+  ,
+  onClose: proc(e: CloseEvent) =
+    ## uninitialize before surface destruction
+)
+
+# surface already destroyed, continue uninitializing...
+```
+
 #### pixie
 ![](https://ia.wampi.ru/2021/09/07/32.png)
 
@@ -107,17 +152,12 @@ run newSoftwareRenderingWindow(title="pixie example"), WindowEventsHandler(
 ```nim
 import siwin
 
-var window = newWindow()
-window.onKeydown = proc(e: KeyEvent) =
-  if e.key == Key.c:
-    clipboard.text = "some text"
-  elif e.key == Key.v:
-    echo clipboard.text
+let clipboard = clipboard()
 
-  # clipboard $= "text" and $clipboard also works
-
-run window
+echo clipboard.text
+clipboard.text = "some text"
 ```
+note: on x11 setting cliboard text requires creating window
 
 #### offscreen rendering
 note: this will create invisible window. `ctx` mustn't be discarded as its destructor will close the window.  
@@ -202,7 +242,7 @@ see [siwin/platforms/any/window](https://github.com/levovix0/siwin/blob/master/s
 #### I want to get system handle of window and do some magic, but it is private?
 ```nim
 import std/importutils
-import siwin/platforms/x11/window {.all.}
+import siwin/platforms/x11/window
 privateAccess WindowX11Obj
 # ...
 window.handle
