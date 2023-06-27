@@ -14,7 +14,7 @@ Can be used as an alternative to GLFW/GLUT/windy
 
 #### simple window
 ```nim
-import siwin
+import siwin, vmath
 
 run newSoftwareRenderingWindow(), WindowEventsHandler(
   onRender: proc(e: RenderEvent) =
@@ -22,7 +22,7 @@ run newSoftwareRenderingWindow(), WindowEventsHandler(
     var image = newSeq[ColorBgrx](e.window.size.x * e.window.size.y)
     for c in image.mitems:
       c = color
-    e.window.drawImage image, e.window.size
+    e.window.drawImage(image, e.window.size)
   ,
   onKey: proc(e: KeyEvent) =
     if (not e.pressed) and e.key == Key.escape:
@@ -33,7 +33,7 @@ run newSoftwareRenderingWindow(), WindowEventsHandler(
 #### OpenGL
 ![](https://ia.wampi.ru/2021/09/07/31.png)
 ```nim
-import siwin, opengl
+import siwin, opengl, vmath
 
 var window = newOpenglWindow(title="OpenGL example")
 loadExtensions()  # init opengl
@@ -128,7 +128,7 @@ run newSoftwareRenderingWindow(title="pixie example"), WindowEventsHandler(
     image = newImage(e.size.x, e.size.y)
   ,
   onRender: proc(e: RenderEvent) =
-    if e.size.x * e.size.y <= 0: return
+    if e.window.size.x * e.window.size.y <= 0: return
     image.fill(rgba(255, 255, 255, 255))
 
     let ctx = image.newContext
@@ -140,7 +140,7 @@ run newSoftwareRenderingWindow(title="pixie example"), WindowEventsHandler(
     
     ctx.fillRoundedRect(rect(pos, wh), 25.0)
     
-    e.window.drawImage image.data.toBgrx, ivec2(image.width.int32, image.height.int32)
+    e.window.drawImage(image.data.toBgrx, ivec2(image.width.int32, image.height.int32))
   ,
   onKey: proc(e: KeyEvent) =
     if (not e.pressed) and e.key == Key.escape:
