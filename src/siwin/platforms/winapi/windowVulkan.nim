@@ -55,8 +55,8 @@ proc initWindowWinapiVulkan(window: WindowWinapiVulkan; vkInstance: pointer, siz
     raise OSError.newException("Failed to create Vulkan surface, error: " & $res)
 
 
-method displayImpl(window: WindowWinapiVulkan, eventsHandler: ptr WindowEventsHandler) =
-  eventsHandler.pushEvent onRender, RenderEvent(window: window)
+method displayImpl(window: WindowWinapiVulkan) =
+  window.eventsHandler.pushEvent onRender, RenderEvent(window: window)
   window.hdc.SwapBuffers
 
 

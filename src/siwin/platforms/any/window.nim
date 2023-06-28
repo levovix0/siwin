@@ -141,6 +141,7 @@ type
   Window* = ref object of RootObj
     mouse*: Mouse
     keyboard*: Keyboard
+    eventsHandler*: WindowEventsHandler
 
     clicking: set[MouseButton]
     
@@ -190,6 +191,9 @@ proc maxSize*(window: Window): IVec2 = window.m_maxSize
 proc focused*(window: Window): bool = window.m_focused
 
 
+# note: locks: "unknown" usualy means that function can cause event outside of event loop
+
+
 method redraw*(window: Window) {.base.} = window.redrawRequested = true
   ## request render
 
@@ -199,7 +203,7 @@ method `cursor=`*(window: Window, v: Cursor) {.base, locks: "unknown".} = discar
   ## set cursor
   ## used when mouse hover window
 
-method `size=`*(window: Window, v: IVec2) {.base.} = discard
+method `size=`*(window: Window, v: IVec2) {.base, locks: "unknown".} = discard
   ## resize window
   ## exit fullscreen if window is fullscreen
 
@@ -207,17 +211,17 @@ method `pos=`*(window: Window, v: IVec2) {.base.} = discard
   ## move window
   ## do nothing if window is fullscreen
 
-method `title=`*(window: Window, v: string) {.base.} = discard
+method `title=`*(window: Window, v: string) {.base, locks: "unknown".} = discard
   ## set window title
 
-method `fullscreen=`*(window: Window, v: bool) {.base.} = discard
+method `fullscreen=`*(window: Window, v: bool) {.base, locks: "unknown".} = discard
   ## fullscreen/unfullscreen window
 
 method `maximized=`*(window: Window, v: bool) {.base, locks: "unknown".} = discard
   ## maximize/unmaximize window
   ## exit fullscreen if window is fullscreen
 
-method `minimized=`*(window: Window, v: bool) {.base.} = discard
+method `minimized=`*(window: Window, v: bool) {.base, locks: "unknown".} = discard
   ## minimize/unminimize window
 
 method `visible=`*(window: Window, v: bool) {.base.} = discard
@@ -267,32 +271,34 @@ method vulkanSurface*(window: Window): pointer {.base.} = discard
   ## get a VkSurfaceKHR attached to window
 
 
-method firstStep*(window: Window, evetnsHandler: WindowEventsHandler, makeVisible = true) {.base, locks: "unknown".} = discard
+method firstStep*(window: Window, makeVisible = true) {.base, locks: "unknown".} = discard
   ## init window main loop
   ## don't call window proc if you will manage window events via run()
 
-method step*(window: Window, evetnsHandler: WindowEventsHandler) {.base, locks: "unknown".} = discard
+method step*(window: Window) {.base, locks: "unknown".} = discard
   ## make window main loop step
   ## ! don't forget to call firstStep()
 
-proc run*(window: sink Window, evetnsHandler: WindowEventsHandler, makeVisible = true) =
+proc run*(window: sink Window, eventsHandler: WindowEventsHandler, makeVisible = true) =
   ## run whole window main loops
-  window.firstStep(evetnsHandler, makeVisible)
+  window.eventsHandler = eventsHandler
+  window.firstStep(makeVisible)
   while window.opened:
-    window.step(evetnsHandler)
+    window.step()
 
-proc runMultiple*(windows: varargs[tuple[window: Window, evetnsHandler: WindowEventsHandler, makeVisible: bool]]) =
+proc runMultiple*(windows: varargs[tuple[window: Window, eventsHandler: WindowEventsHandler, makeVisible: bool]]) =
   ## run for multiple windows
   for (window, eventsHandler, makeVisible) in windows:
-    window.firstStep(eventsHandler, makeVisible)
+    window.eventsHandler = eventsHandler
+    window.firstStep(makeVisible)
 
-  var windows = windows.toSeq
+  var windows = windows.mapit(it.window)
   while windows.len > 0:
     var i = 0
     while i < windows.len:
-      let (window, eventsHandler, _) = windows[i]
+      let window = windows[i]
       if window.closed:
         windows.del i
         continue
-      window.step(eventsHandler)
+      window.step()
       inc i

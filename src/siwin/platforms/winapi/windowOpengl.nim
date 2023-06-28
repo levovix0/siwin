@@ -39,8 +39,8 @@ method `vsync=`*(window: WindowWinapiOpengl, v: bool, silent = false) =
     if not silent:
       raise OSError.newException("failed to " & (if v: "enable" else: "disable") & " vsync")
 
-method displayImpl(window: WindowWinapiOpengl, eventsHandler: ptr WindowEventsHandler) =
-  eventsHandler.pushEvent onRender, RenderEvent(window: window)
+method displayImpl(window: WindowWinapiOpengl) =
+  window.eventsHandler.pushEvent onRender, RenderEvent(window: window)
   window.hdc.SwapBuffers
 
 

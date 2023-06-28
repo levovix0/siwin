@@ -59,8 +59,6 @@ type
     lastSync: XSyncValue
 
     lastClickTime: Time
-
-    releaseKeysRequested: bool
   
   WindowX11SoftwareRendering* = ref object of WindowX11
     gc: GraphicsContext
@@ -412,7 +410,7 @@ proc initSoftwareRenderingWindow(
   window.gc.gc = display.XCreateGC(window.handle, GCForeground or GCBackground, window.gc.gcv.addr)
 
 
-method `title=`*(window: WindowX11, v: string) =
+method `title=`*(window: WindowX11, v: string) {.locks: "unknown".} =
   discard display.XChangeProperty(
     window.handle, atoms.netWmName, atoms.utf8String, 8,
     PropModeReplace, cast[PCUchar](v.dataAddr), v.len.cint
@@ -424,7 +422,7 @@ method `title=`*(window: WindowX11, v: string) =
   display.Xutf8SetWMProperties(window.handle, v, v, nil, 0, nil, nil, nil)
 
 
-method `fullscreen=`*(window: WindowX11, v: bool) =
+method `fullscreen=`*(window: WindowX11, v: bool) {.locks: "unknown".} =
   if window.m_fullscreen == v: return
 
   var event = window.handle.newClientMessage(atoms.netWmState, [Atom 2, atoms.netWmStateFullscreen])
@@ -464,7 +462,7 @@ method `frameless=`*(window: WindowX11, v: bool) =
   else: discard display.XSetTransientForHint(window.handle, display.RootWindow(window.screen))
 
 
-method `size=`*(window: WindowX11, v: IVec2) =
+method `size=`*(window: WindowX11, v: IVec2) {.locks: "unknown".} =
   if window.fullscreen:
     window.fullscreen = false
   
@@ -588,12 +586,25 @@ method `maximized=`*(window: WindowX11, v: bool) =
   )
 
 
+proc releaseAllKeys(window: WindowX11) =
+  ## release all pressed keys
+  ## needed when window loses focus
+  let pressed = window.keyboard.pressed
+  for k in pressed:
+    window.keyboard.pressed.excl k
+    window.eventsHandler.pushEvent onKey, KeyEvent(window: window, key: k, pressed: false, repeated: false)
+
+  for b in window.mouse.pressed:
+    window.mouse.pressed.excl b
+    window.eventsHandler.pushEvent onMouseButton, MouseButtonEvent(window: window, button: b, pressed: false)
+
+
 method `minimized=`*(window: WindowX11, v: bool) =
   window.m_minimized = v
   if not v:
     discard display.XRaiseWindow(window.handle)
   else:
-    window.releaseKeysRequested = true
+    window.releaseAllKeys()
     discard display.XIconifyWindow(window.handle, display.DefaultScreen)
 
 
@@ -638,7 +649,7 @@ method `maxSize=`*(window: WindowX11, v: IVec2) =
 
 
 method startInteractiveMove*(window: WindowX11, pos: Option[IVec2]) =
-  window.releaseKeysRequested = true
+  window.releaseAllKeys()
   let pos = pos.get(cursor().pos)
   discard display.XUngrabPointer(0)
   discard XFlush display
@@ -653,7 +664,7 @@ method startInteractiveMove*(window: WindowX11, pos: Option[IVec2]) =
   # todo: press all keys and mouse buttons that are pressed after move
 
 method startInteractiveResize*(window: WindowX11, edge: Edge, pos: Option[IVec2]) =
-  window.releaseKeysRequested = true
+  window.releaseAllKeys()
   let pos = pos.get(cursor().pos)
   discard display.XUngrabPointer(0)
   discard XFlush display
@@ -680,18 +691,18 @@ method startInteractiveResize*(window: WindowX11, edge: Edge, pos: Option[IVec2]
   # todo: press all keys and mouse buttons that are pressed after resize
 
 
-method firstStep*(window: WindowX11, eventsHandler: WindowEventsHandler, makeVisible = true) =
+method firstStep*(window: WindowX11, makeVisible = true) =
   if makeVisible:
     window.visible = true
 
   window.m_pos = window.handle.geometry.pos
   window.mouse.pos = cursor().pos - window.m_pos
   
-  eventsHandler.pushEvent onResize, ResizeEvent(window: window, size: window.m_size, initial: true)
+  window.eventsHandler.pushEvent onResize, ResizeEvent(window: window, size: window.m_size, initial: true)
   window.lastTickTime = getTime()
 
 
-method step*(window: WindowX11, eventsHandler: WindowEventsHandler) =
+method step*(window: WindowX11) =
   ## make window main loop step
   ## ! don't forget to call firstStep()
   template button: MouseButton =
@@ -717,19 +728,7 @@ method step*(window: WindowX11, eventsHandler: WindowEventsHandler) =
       result = xkeyToKey(XLookupKeysym(xkey.unsafeaddr, i.cint))
       inc i
 
-  proc releaseAllKeys(window: WindowX11, eventsHadler: WindowEventsHandler) =
-    ## release all pressed keys
-    ## needed when window loses focus
-    let pressed = window.keyboard.pressed
-    for k in pressed:
-      window.keyboard.pressed.excl k
-      eventsHadler.pushEvent onKey, KeyEvent(window: window, key: k, pressed: false, repeated: false)
-
-    for b in window.mouse.pressed:
-      window.mouse.pressed.excl b
-      eventsHadler.pushEvent onMouseButton, MouseButtonEvent(window: window, button: b, pressed: false)
-
-  proc pressAllKeys(window: WindowX11, eventsHadler: WindowEventsHandler) =
+  proc pressAllKeys(window: WindowX11) =
     ## press pressed in system keys and mouse buttons
     ## needed when window gets focus
     proc queryKeyboardState: set[0..255] =
@@ -741,13 +740,9 @@ method step*(window: WindowX11, eventsHandler: WindowEventsHandler) =
     for k in keys: # press pressed in system keys
       if k == Key.unknown: continue
       window.keyboard.pressed.incl k
-      eventsHadler.pushEvent onKey, KeyEvent(window: window, pressed: false, repeated: false)
+      window.eventsHandler.pushEvent onKey, KeyEvent(window: window, pressed: false, repeated: false)
     
     # todo: press pressed in system mouse buttons
-
-  if window.releaseKeysRequested:
-    releaseAllKeys(window, eventsHandler)
-    window.releaseKeysRequested = false
 
 
   var prevEventIsKeyUpRepeated = false
@@ -773,16 +768,16 @@ method step*(window: WindowX11, eventsHandler: WindowEventsHandler) =
     of ConfigureNotify:
       if ev.xconfigure.width != window.m_size.x or ev.xconfigure.height != window.m_size.y:
         window.m_size = ivec2(ev.xconfigure.width.int32, ev.xconfigure.height.int32)
-        eventsHandler.pushEvent onResize, ResizeEvent(window: window, size: window.m_size, initial: false)
+        window.eventsHandler.pushEvent onResize, ResizeEvent(window: window, size: window.m_size, initial: false)
       if ev.xconfigure.x.int != window.m_pos.x or ev.xconfigure.y.int != window.m_pos.y:
         window.m_pos = ivec2(ev.xconfigure.x.int32, ev.xconfigure.y.int32)
         window.mouse.pos = cursor().pos - window.m_pos
-        eventsHandler.pushEvent onWindowMove, WindowMoveEvent(window: window, pos: window.m_pos)
+        window.eventsHandler.pushEvent onWindowMove, WindowMoveEvent(window: window, pos: window.m_pos)
 
       let state = (let (kind, data) = window.handle.property(atoms.netWmState, Atom); if kind == XaAtom: data else: @[])
       if atoms.netWmStateFullscreen in state != window.m_fullscreen:
         window.m_fullscreen = not window.m_fullscreen
-        eventsHandler.pushEvent onFullscreenChanged, FullscreenChangedEvent(window: window, fullscreen: window.m_fullscreen)
+        window.eventsHandler.pushEvent onFullscreenChanged, FullscreenChangedEvent(window: window, fullscreen: window.m_fullscreen)
       
       if window.syncState == SyncState.syncRecieved:
         window.syncState = SyncState.syncAndConfigureRecieved
@@ -792,15 +787,15 @@ method step*(window: WindowX11, eventsHandler: WindowEventsHandler) =
     of MotionNotify:
       window.mouse.pos = ivec2(ev.xmotion.x.int32, ev.xmotion.y.int32)
       window.clicking = {}
-      eventsHandler.pushEvent onMouseMove, MouseMoveEvent(window: window, pos: window.mouse.pos, kind: MouseMoveKind.move)
+      window.eventsHandler.pushEvent onMouseMove, MouseMoveEvent(window: window, pos: window.mouse.pos, kind: MouseMoveKind.move)
 
     of ButtonPress:
       if not isScroll:
         window.mouse.pressed.incl button
         window.clicking.incl button
-        eventsHandler.pushEvent onMouseButton, MouseButtonEvent(window: window, button: button, pressed: true)
+        window.eventsHandler.pushEvent onMouseButton, MouseButtonEvent(window: window, button: button, pressed: true)
       elif scrollDelta != 0:
-        eventsHandler.pushEvent onScroll, ScrollEvent(window: window, delta: scrollDelta)
+        window.eventsHandler.pushEvent onScroll, ScrollEvent(window: window, delta: scrollDelta)
 
     of ButtonRelease:
       if not isScroll:
@@ -808,41 +803,41 @@ method step*(window: WindowX11, eventsHandler: WindowEventsHandler) =
         window.mouse.pressed.excl button
 
         if button in window.clicking:
-          eventsHandler.pushEvent onClick, ClickEvent(
+          window.eventsHandler.pushEvent onClick, ClickEvent(
             window: window, button: button, pos: window.mouse.pos,
             double: (nows - window.lastClickTime).inMilliseconds < 200
           )
 
         window.mouse.pressed.excl button
         window.lastClickTime = nows
-        eventsHandler.pushEvent onMouseButton, MouseButtonEvent(window: window, button: button, pressed: false)
+        window.eventsHandler.pushEvent onMouseButton, MouseButtonEvent(window: window, button: button, pressed: false)
 
     of LeaveNotify:
       window.clicking = {}
-      eventsHandler.pushEvent onMouseMove, MouseMoveEvent(window: window, pos: window.mouse.pos, kind: MouseMoveKind.leave)
+      window.eventsHandler.pushEvent onMouseMove, MouseMoveEvent(window: window, pos: window.mouse.pos, kind: MouseMoveKind.leave)
     of EnterNotify:
       window.clicking = {}
-      eventsHandler.pushEvent onMouseMove, MouseMoveEvent(window: window, pos: window.mouse.pos, kind: MouseMoveKind.enter)
+      window.eventsHandler.pushEvent onMouseMove, MouseMoveEvent(window: window, pos: window.mouse.pos, kind: MouseMoveKind.enter)
 
     of FocusIn:
       window.m_focused = true
       if window.xinContext != nil: XSetICFocus window.xinContext
-      eventsHandler.pushEvent onFocusChanged, FocusChangedEvent(window: window, focus: true)
-      window.pressAllKeys(eventsHandler)
-      
+      window.eventsHandler.pushEvent onFocusChanged, FocusChangedEvent(window: window, focus: true)
+      window.pressAllKeys()
+
     of FocusOut:
       window.m_focused = false
       if window.xinContext != nil: XUnsetICFocus window.xinContext
-      eventsHandler.pushEvent onFocusChanged, FocusChangedEvent(window: window, focus: false)
-      window.releaseAllKeys(eventsHandler)
+      window.eventsHandler.pushEvent onFocusChanged, FocusChangedEvent(window: window, focus: false)
+      window.releaseAllKeys()
 
     of KeyPress:
       var key = ev.xkey.extractKey
       if key != Key.unknown:
         window.keyboard.pressed.incl key
-        eventsHandler.pushEvent onKey, KeyEvent(window: window, key: key, pressed: true, repeated: prevEventIsKeyUpRepeated)
+        window.eventsHandler.pushEvent onKey, KeyEvent(window: window, key: key, pressed: true, repeated: prevEventIsKeyUpRepeated)
 
-      if eventsHandler.onTextInput != nil and window.xinContext != nil and (window.keyboard.pressed * {lcontrol, rcontrol, lalt, ralt}).len == 0:
+      if window.eventsHandler.onTextInput != nil and window.xinContext != nil and (window.keyboard.pressed * {lcontrol, rcontrol, lalt, ralt}).len == 0:
         var status: Status
         var buffer: array[16, char]
         let length = window.xinContext.Xutf8LookupString(ev.xkey.addr, cast[cstring](buffer.addr), buffer.sizeof.cint, nil, status.addr)
@@ -855,7 +850,7 @@ method step*(window: WindowX11, eventsHandler: WindowEventsHandler) =
         if length > 0:
           let s = buffer[0..<length].toString()
           if s notin ["\u001B"]:
-            eventsHandler.onTextInput TextInputEvent(window: window, text: s)
+            window.eventsHandler.onTextInput TextInputEvent(window: window, text: s)
 
     of KeyRelease:
       var key = ev.xkey.extractKey
@@ -864,14 +859,14 @@ method step*(window: WindowX11, eventsHandler: WindowEventsHandler) =
         if repeated: prevEventIsKeyUpRepeated = true
 
         window.keyboard.pressed.excl key
-        eventsHandler.pushEvent onKey, KeyEvent(window: window, key: key, pressed: false, repeated: repeated)
+        window.eventsHandler.pushEvent onKey, KeyEvent(window: window, key: key, pressed: false, repeated: repeated)
 
     else: discard
 
 
   block nextEvent:
     template closeAndExit =
-      eventsHandler.pushEvent onClose, CloseEvent(window: window)
+      window.eventsHandler.pushEvent onClose, CloseEvent(window: window)
       `=destroy` window[]  # is this enough?
       return
     
@@ -908,12 +903,12 @@ method step*(window: WindowX11, eventsHandler: WindowEventsHandler) =
 
 
   let nows = getTime()
-  eventsHandler.pushEvent onTick, TickEvent(window: window, deltaTime: nows - window.lastTickTime)
+  window.eventsHandler.pushEvent onTick, TickEvent(window: window, deltaTime: nows - window.lastTickTime)
   window.lastTickTime = nows
 
   if window.redrawRequested:
     window.redrawRequested = false
-    eventsHandler.pushEvent onRender, RenderEvent(window: window)
+    window.eventsHandler.pushEvent onRender, RenderEvent(window: window)
 
     window.beginSwapBuffers()
 

@@ -23,9 +23,6 @@ type
     wicon: HIcon
     hdc: Hdc
     wcursor: HCursor
-    releaseKeysRequested: bool
-    fullscreenChanged: bool
-    eventsHandler: ptr WindowEventsHandler
 
   WindowWinapiSoftwareRendering* = ref object of WindowWinapi
     buffer: Buffer
@@ -216,14 +213,12 @@ block winapiInit:
   wcex.lpszClassName = woClassName
   RegisterClassEx(wcex.addr)
 
-template pushEvent(eventsHandler: ptr WindowEventsHandler, event, args) =
-  if eventsHandler != nil:
-    if eventsHandler[].event != nil:
-      eventsHandler[].event(args)
+template pushEvent(eventsHandler: WindowEventsHandler, event, args) =
+  if eventsHandler.event != nil:
+    eventsHandler.event(args)
 
 method `fullscreen=`*(window: WindowWinapi, v: bool) =
   if window.m_fullscreen == v: return
-  window.fullscreenChanged = true
   window.m_fullscreen = v
   if v:
     window.handle.SetWindowLongPtr(GwlStyle, WsVisible)
@@ -231,6 +226,7 @@ method `fullscreen=`*(window: WindowWinapi, v: bool) =
   else:
     window.handle.ShowWindow(SwShowNormal)
     discard window.handle.SetWindowLongPtr(GwlStyle, WsVisible or WsOverlappedWindow)
+  window.eventsHandler.pushEvent onFullscreenChanged, FullscreenChangedEvent(window: window, fullscreen: v)
 
 method `size=`*(window: WindowWinapi, size: IVec2) =
   window.fullscreen = false
@@ -281,7 +277,7 @@ proc initWindow(window: WindowWinapi; size: IVec2; screen: ScreenWinapi, fullscr
     window.handle.DwmEnableBlurBehindWindow(bb.addr)
 
 
-method `title=`*(window: WindowWinapi, title: string) =
+method `title=`*(window: WindowWinapi, title: string) {.locks: "unknown".} =
   window.handle.SetWindowText(title)
 
 method close*(window: WindowWinapi) =
@@ -392,11 +388,24 @@ method drawImage*(window: WindowWinapiSoftwareRendering, pixels: openarray[Color
   window.hdc.BitBlt(pos.x, pos.y, size.x, size.y, window.buffer.hdc, srcPos.x, srcPos.y, SrcCopy)
 
 
+proc releaseAllKeys(window: WindowWinapi) =
+  let pressed = window.keyboard.pressed
+  for key in pressed:
+    window.keyboard.pressed.excl key
+    window.eventsHandler.pushEvent onKey, KeyEvent(window: window, key: key, pressed: false, repeated: false)
+
+  let pressedButtons = window.mouse.pressed
+  for button in pressedButtons:
+    window.mouse.pressed.excl button
+    window.eventsHandler.pushEvent onMouseButton, MouseButtonEvent(window: window, button: button, pressed: false)
+
+
 method `maximized=`*(window: WindowWinapi, v: bool) {.locks: "unknown".} =
   window.m_maximized = v
   discard ShowWindow(window.handle, if v: SwMaximize else: SwRestore)
 
-method `minimized=`*(window: WindowWinapi, v: bool) =
+method `minimized=`*(window: WindowWinapi, v: bool) {.locks: "unknown".} =
+  window.releaseAllKeys()
   window.m_minimized = v
   discard ShowWindow(window.handle, if v: SwMinimize else: SwRestore)
 
@@ -424,14 +433,14 @@ method `maxSize=`*(window: WindowWinapi, v: IVec2) =
 
 
 method startInteractiveMove*(window: WindowWinapi, pos: Option[IVec2]) {.locks: "unknown".} =
-  window.releaseKeysRequested = true
+  window.releaseAllKeys()
   ReleaseCapture()
 
   window.handle.PostMessage(WmSysCommand, 0xF012, 0)
   # todo: press all keys and mouse buttons that are pressed after move
 
 method startInteractiveResize*(window: WindowWinapi, edge: Edge, pos: Option[IVec2]) {.locks: "unknown".} =
-  window.releaseKeysRequested = true
+  window.releaseAllKeys()
   ReleaseCapture()
 
   window.handle.PostMessage(
@@ -449,25 +458,23 @@ method startInteractiveResize*(window: WindowWinapi, edge: Edge, pos: Option[IVe
   )
   # todo: press all keys and mouse buttons that are pressed after resize
 
-method displayImpl(window: WindowWinapi, eventsHandler: ptr WindowEventsHandler) {.base.} =
+method displayImpl(window: WindowWinapi) {.base.} =
   var ps: PaintStruct
   window.handle.BeginPaint(ps.addr)
-  eventsHandler.pushEvent onRender, RenderEvent(window: window)
+  window.eventsHandler.pushEvent onRender, RenderEvent(window: window)
   window.handle.EndPaint(ps.addr)
 
-method firstStep*(window: WindowWinapi, eventsHandler: WindowEventsHandler, makeVisible = true) =
+method firstStep*(window: WindowWinapi, makeVisible = true) =
   if makeVisible:
     window.visible = true
 
-  window.eventsHandler = eventsHandler.unsafeaddr
-  eventsHandler.unsafeaddr.pushEvent onResize, ResizeEvent(window: window, size: window.m_size, initial: true)
+  window.eventsHandler.pushEvent onResize, ResizeEvent(window: window, size: window.m_size, initial: true)
 
   window.handle.UpdateWindow()
 
   window.lastTickTime = getTime()
 
-method step*(window: WindowWinapi, eventsHandler: WindowEventsHandler) {.locks: "unknown".} =
-  window.eventsHandler = eventsHandler.unsafeaddr
+method step*(window: WindowWinapi) {.locks: "unknown".} =
   var msg: Msg
   var catched = false
 
@@ -490,7 +497,7 @@ method step*(window: WindowWinapi, eventsHandler: WindowEventsHandler) {.locks: 
   if not catched: sleep(1)
 
   let nows = getTime()
-  eventsHandler.unsafeaddr.pushEvent onTick, TickEvent(window: window, deltaTime: nows - window.lastTickTime)
+  window.eventsHandler.pushEvent onTick, TickEvent(window: window, deltaTime: nows - window.lastTickTime)
   window.lastTickTime = nows
 
 proc poolEvent(window: WindowWinapi, message: Uint, wParam: WParam, lParam: LParam): LResult =
@@ -509,22 +516,6 @@ proc poolEvent(window: WindowWinapi, message: Uint, wParam: WParam, lParam: LPar
 
   result = 0
 
-  if window.fullscreenChanged:
-    window.fullscreenChanged = false
-    window.eventsHandler.pushEvent onFullscreenChanged, FullscreenChangedEvent(window: window, fullscreen: window.m_fullscreen)
-  
-  if window.releaseKeysRequested:
-    window.releaseKeysRequested = false
-    let pressed = window.keyboard.pressed
-    for key in pressed:
-      window.keyboard.pressed.excl key
-      window.eventsHandler.pushEvent onKey, KeyEvent(window: window, key: key, pressed: false, repeated: false)
-    
-    let pressedButtons = window.mouse.pressed
-    for button in pressedButtons:
-      window.mouse.pressed.excl button
-      window.eventsHandler.pushEvent onMouseButton, MouseButtonEvent(window: window, button: button, pressed: false)
-
   case message
   of WmPaint:
     let rect = window.handle.clientRect
@@ -533,8 +524,7 @@ proc poolEvent(window: WindowWinapi, message: Uint, wParam: WParam, lParam: LPar
       window.eventsHandler.pushEvent onResize, ResizeEvent(window: window, size: window.m_size, initial: false)
 
     if window.m_size.x * window.m_size.y > 0:
-      assert window.eventsHandler != nil
-      window.displayImpl(window.eventsHandler)
+      window.displayImpl()
 
   of WmDestroy:
     window.eventsHandler.pushEvent onClose, CloseEvent(window: window)

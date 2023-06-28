@@ -211,8 +211,8 @@ test "bgrx image":
 
 
 test "2 windows at once":
-  let win1 = newOpenglWindow(title="1", transparent=true)
-  let win2 = newOpenglWindow(title="2", size=ivec2(800, 600))
+  let win1 = newOpenglWindow(title="1", transparent=true, class="siwin example")
+  let win2 = newOpenglWindow(title="2", size=ivec2(800, 600), class="siwin example")
   loadExtensions()
 
   let win1eh = WindowEventsHandler(

@@ -2,6 +2,7 @@
 
 Simple window creation library.  
 Can be used as an alternative to GLFW/GLUT/windy  
+
 ![Language](https://img.shields.io/badge/language-Nim-orange.svg?style=flat-square) ![Code size](https://img.shields.io/github/languages/code-size/levovix0/siwin?style=flat-square) ![Total Lines](https://img.shields.io/tokei/lines/github/levovix0/siwin?color=purple&style=flat-square)
 
 
@@ -12,7 +13,7 @@ Can be used as an alternative to GLFW/GLUT/windy
 
 # Examples
 
-#### simple window
+### simple window
 ```nim
 import siwin, vmath
 
@@ -30,7 +31,7 @@ run newSoftwareRenderingWindow(), WindowEventsHandler(
 )
 ```
 
-#### OpenGL
+### OpenGL
 ![](https://ia.wampi.ru/2021/09/07/31.png)
 ```nim
 import siwin, opengl, vmath
@@ -67,7 +68,7 @@ run window, WindowEventsHandler(
 ```
 note: call redraw(window) every time you want window.render to be called. siwin will automatically call window.render only when window resizes.
 
-#### Vulkan
+### Vulkan
 see [t_vulkan.nim](https://github.com/levovix0/siwin/blob/master/tests/t_vulkan.nim)
 ```nim
 import siwin, nimgl/vulkan, sequtils
@@ -112,7 +113,7 @@ run window, WindowEventsHandler(
 # surface already destroyed, continue uninitializing...
 ```
 
-#### pixie
+### pixie
 ![](https://ia.wampi.ru/2021/09/07/32.png)
 
 note: very slow, but better than render frames to opengl image if you realy want to use only pixie
@@ -148,7 +149,7 @@ run newSoftwareRenderingWindow(title="pixie example"), WindowEventsHandler(
 )
 ```
 
-#### clipboard
+### clipboard
 ```nim
 import siwin
 
@@ -159,7 +160,7 @@ clipboard.text = "some text"
 ```
 note: on x11 setting cliboard text requires creating window
 
-#### offscreen rendering
+### offscreen rendering
 note: this will create invisible window. `ctx` mustn't be discarded as its destructor will close the window.  
 If you have multiple contexts, use `makeCurrent` to select.
 ```nim
@@ -171,7 +172,7 @@ loadExtensions()
 # do any opengl computing
 ```
 
-#### manual main cycle
+### manual main cycle
 ```nim
 import siwin
 
@@ -188,7 +189,7 @@ while window.opened:
 
 ```
 
-#### running multiple windows
+### running multiple windows
 ```nim
 import siwin
 
@@ -221,7 +222,7 @@ runMultiple(
 )
 ```
 
-#### client-side decorations
+### client-side decorations
 ```nim
 import siwin
 
@@ -236,10 +237,10 @@ run window, WindowEventsHandler(
 )
 ```
 
-#### all methods and events
+### all methods and events
 see [siwin/platforms/any/window](https://github.com/levovix0/siwin/blob/master/src/siwin/platforms/any/window.nim)
 
-#### I want to get system handle of window and do some magic, but it is private?
+### I want to get system handle of window and do some magic, but it is private?
 ```nim
 import std/importutils
 import siwin/platforms/x11/window
