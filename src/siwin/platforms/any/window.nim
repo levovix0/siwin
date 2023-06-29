@@ -66,6 +66,9 @@ type
     topRight
     bottomLeft
     bottomRight
+  
+
+  Screen* = ref object of RootObj
 
 
   MouseMoveKind* {.pure.} = enum
@@ -165,6 +168,14 @@ type
     m_resizable: bool
     m_minSize: IVec2
     m_maxSize: IVec2
+
+
+method number*(screen: Screen): int32 {.base.} = discard
+
+method width*(screen: Screen): int32 {.base.} = discard
+method height*(screen: Screen): int32 {.base.} = discard
+
+proc size*(screen: Screen): IVec2 = ivec2(screen.width, screen.height)
 
 
 proc closed*(window: Window): bool = window.m_closed
@@ -278,6 +289,7 @@ method firstStep*(window: Window, makeVisible = true) {.base, locks: "unknown".}
 method step*(window: Window) {.base, locks: "unknown".} = discard
   ## make window main loop step
   ## ! don't forget to call firstStep()
+
 
 proc run*(window: sink Window, eventsHandler: WindowEventsHandler, makeVisible = true) =
   ## run whole window main loops

@@ -40,7 +40,7 @@ type
     pixels: ptr ColorArgb
   
 
-  ScreenX11* = object
+  ScreenX11* = ref object of Screen
     id: cint
     handle: PScreen
 
@@ -270,6 +270,8 @@ proc screenCountX11*: int32 =
   display.ScreenCount.int32
 
 proc screenX11*(number: int32): ScreenX11 =
+  new result
+  globalDisplay.init()
   if number notin 0..<screenCountX11(): raise IndexDefect.newException(&"screen {number} doesn't exist")
   result.id = number.cint
   result.handle = display.ScreenOfDisplay(result.id)
@@ -278,12 +280,10 @@ proc defaultScreenX11*: ScreenX11 =
   globalDisplay.init()
   screenX11(display.DefaultScreen.int32)
 
-proc number*(screen: ScreenX11): int = screen.id.int
+method number*(screen: ScreenX11): int32 = screen.id
 
-proc width*(screen: ScreenX11): int32 = screen.handle.width.int32
-proc height*(screen: ScreenX11): int32 = screen.handle.height.int32
-
-proc size*(screen: ScreenX11): IVec2 = ivec2(screen.width, screen.height)
+method width*(screen: ScreenX11): int32 = screen.handle.width.int32
+method height*(screen: ScreenX11): int32 = screen.handle.height.int32
 
 
 proc `=destroy`(window: var WindowX11Obj) =

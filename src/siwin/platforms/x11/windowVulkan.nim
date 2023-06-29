@@ -20,7 +20,8 @@ type
 proc `=destroy`*(surface: var Surface) =
   if surface.instance != nil and surface.raw != nil:
     vkDestroySurfaceKHR(surface.instance, surface.raw, nil)
-    surface = Surface()
+    surface.instance = nil
+    surface.raw = nil
 
 
 method destruct(window: WindowX11Vulkan) =

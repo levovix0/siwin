@@ -9,7 +9,7 @@ privateAccess Window
 {.experimental: "overloadableEnums".}
 
 type
-  ScreenWinapi* = object
+  ScreenWinapi* = ref object of Screen
   
   Buffer = object
     x, y: int
@@ -153,14 +153,14 @@ proc wkeyToKey(key: WParam, flags: LParam): Key =
 
 
 # todo: multiscreen support
-proc getScreenCountWinapi*(): int = 1
+proc screenCountWinapi*(): int32 = 1
 
-proc screenWinapi*(number: int32): ScreenWinapi = discard
+proc screenWinapi*(number: int32): ScreenWinapi = new result
 proc defaultScreenWinapi*(): ScreenWinapi = screenWinapi(0)
-proc number*(screen: ScreenWinapi): int = 0
+method number*(screen: ScreenWinapi): int32 = 0
 
-proc width*(window: ScreenWinapi): int = GetSystemMetrics(SmCxScreen).int
-proc height*(window: ScreenWinapi): int = GetSystemMetrics(SmCyScreen).int
+method width*(screen: ScreenWinapi): int32 = GetSystemMetrics(SmCxScreen)
+method height*(screen: ScreenWinapi): int32 = GetSystemMetrics(SmCyScreen)
 
 
 proc `=destroy`(buffer: var Buffer) =

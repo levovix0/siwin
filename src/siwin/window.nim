@@ -7,9 +7,24 @@ when defined(linux):
 elif defined(windows):
   import ./platforms/winapi/window as winapiWindow
 
+
+proc screenCount*(preferedPlatform = defaultPreferedPlatform): int32 =
+  when defined(linux): screenCountX11()
+  elif defined(windows): screenCountWinapi()
+
+proc screen*(number: int32, preferedPlatform = defaultPreferedPlatform): Screen =
+  when defined(linux): screenX11(number)
+  elif defined(windows): screenWinapi(number)
+
+proc defaultScreen*(preferedPlatform = defaultPreferedPlatform): Screen =
+  when defined(linux): defaultScreenX11()
+  elif defined(windows): defaultScreenWinapi()
+
+
 proc newSoftwareRenderingWindow*(
   size = ivec2(1280, 720),
   title = "",
+  screen: int32 = -1,
   fullscreen = false,
   resizable = true,
   frameless = false,
@@ -21,13 +36,13 @@ proc newSoftwareRenderingWindow*(
   when defined(linux):
     newSoftwareRenderingWindowX11(
       size, title,
-      defaultScreenX11(),
+      (if screen == -1: defaultScreenX11() else: screenX11(screen)),
       resizable, fullscreen, frameless, transparent,
       (if class == "": title else: class)
     )
   elif defined(windows):
     newSoftwareRenderingWindowWinapi(
       size, title,
-      defaultScreenWinapi(),
+      (if screen == -1: defaultScreenWinapi() else: screenWinapi(screen)),
       resizable, fullscreen, frameless, transparent
     )

@@ -13,6 +13,7 @@ proc newVulkanWindow*(
   vkInstance: pointer,
   size = ivec2(1280, 720),
   title = "",
+  screen: int32 = -1,
   resizable = true,
   fullscreen = false,
   frameless = false,
@@ -27,7 +28,7 @@ proc newVulkanWindow*(
       newVulkanWindowX11(
         vkInstance,
         size, title,
-        defaultScreenX11(),
+        (if screen == -1: defaultScreenX11() else: screenX11(screen)),
         resizable, fullscreen, frameless, transparent,
         (if class == "": title else: class)
       )
@@ -40,7 +41,7 @@ proc newVulkanWindow*(
       newVulkanWindowWinapi(
         vkInstance,
         size, title,
-        defaultScreenWinapi(),
+        (if screen == -1: defaultScreenWinapi() else: screenWinapi(screen)),
         resizable, fullscreen, frameless, transparent
       )
     else:

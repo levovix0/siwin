@@ -12,6 +12,7 @@ elif defined(windows):
 proc newOpenglWindow*(
   size = ivec2(1280, 720),
   title = "",
+  screen: int32 = -1,
   resizable = true,
   fullscreen = false,
   frameless = false,
@@ -24,13 +25,13 @@ proc newOpenglWindow*(
   when defined(linux):
     newOpenglWindowX11(
       size, title,
-      defaultScreenX11(),
+      (if screen == -1: defaultScreenX11() else: screenX11(screen)),
       resizable, fullscreen, frameless, transparent, vsync,
       (if class == "": title else: class)
     )
   elif defined(windows):
     newOpenglWindowWinapi(
       size, title,
-      defaultScreenWinapi(),
+      (if screen == -1: defaultScreenWinapi() else: screenWinapi(screen)),
       resizable, fullscreen, frameless, transparent, vsync
     )

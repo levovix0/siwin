@@ -614,7 +614,6 @@ proc deinit*() =
     vkDestroyImageView(device, imageView, nil)
   vkDestroySwapchainKHR(device, swapChain.swapChain, nil)
   vkDestroyDevice(device, nil)
-  vkDestroySurfaceKHR(instance, surface, nil)
   vkDestroyInstance(instance, nil)
 
 test "Vulkan":

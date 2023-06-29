@@ -18,7 +18,8 @@ proc `=destroy`*(surface: var Surface) =
   if surface.instance != nil and surface.raw != nil:
     let vkDestroySurfaceKHR = cast[VkDestroySurfaceKHR](surface.instance.vkGetInstanceProcAddr("vkDestroySurfaceKHR"))
     vkDestroySurfaceKHR(surface.instance, surface.raw, nil)
-    surface = Surface()
+    surface.instance = nil
+    surface.raw = nil
 
 
 method destruct(window: WindowWinapiVulkan) =

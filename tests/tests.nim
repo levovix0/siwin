@@ -1,21 +1,17 @@
-import siwin
-import unittest
+import unittest, strformat
 import opengl, pixie
+import siwin
 
 {.experimental: "overloadableEnums".}
 
-when defined(linux):
-  import strformat
-  import siwin/platforms/x11/window
-  
-  test "screen":
-    if screenCountX11() == 1:
-      let size = defaultScreenX11().size
-      echo &"screen().size: {size.x}x{size.y}"
-    else:
-      for i in 0..<screenCountX11():
-        let size = screenX11(i).size
-        echo &"screen({i}).size: {size.x}x{size.y}"
+test "screen":
+  if screenCount() == 1:
+    let size = defaultScreen().size
+    echo &"screen().size: {size.x}x{size.y}"
+  else:
+    for i in 0..<screenCount():
+      let size = screen(i).size
+      echo &"screen({i}).size: {size.x}x{size.y}"
 
 
 test "OpenGL":
