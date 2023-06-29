@@ -186,6 +186,10 @@ proc `=destroy`(window: var WindowWinapiObj) =
     DestroyCursor window.wcursor
     window.wcursor = 0
 
+method destruct(window: WindowWinapi) {.base.} =
+  ## to call destructor explicitly
+  `=destroy` window[]
+
 
 proc poolEvent(window: WindowWinapi, message: Uint, wParam: WParam, lParam: LParam): LResult
 
@@ -528,7 +532,7 @@ proc poolEvent(window: WindowWinapi, message: Uint, wParam: WParam, lParam: LPar
 
   of WmDestroy:
     window.eventsHandler.pushEvent onClose, CloseEvent(window: window)
-    `=destroy` window[]  # is this enough?
+    destruct window
     PostQuitMessage(0)
 
   of WmMouseMove:

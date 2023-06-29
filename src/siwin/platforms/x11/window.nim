@@ -317,6 +317,10 @@ proc `=destroy`(window: var WindowX11Obj) =
     display.XSyncDestroyCounter(window.xSyncCounter)
     window.xSyncCounter = 0.XSyncCounter
 
+method destruct(window: WindowX11) {.base.} =
+  ## to call destructor explicitly
+  `=destroy` window[]
+
 
 template pushEvent(eventsHandler: WindowEventsHandler, event, args) =
   if eventsHandler.event != nil:
@@ -867,7 +871,7 @@ method step*(window: WindowX11) =
   block nextEvent:
     template closeAndExit =
       window.eventsHandler.pushEvent onClose, CloseEvent(window: window)
-      `=destroy` window[]  # is this enough?
+      destruct window
       return
     
     var

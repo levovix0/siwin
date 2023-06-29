@@ -11,6 +11,10 @@ type
     ctx: WglContext
 
 
+method destruct(window: WindowWinapiOpengl) =
+  `=destroy` window[]
+
+
 proc initWindowWinapiOpengl(window: WindowWinapiOpengl; size: IVec2; screen: ScreenWinapi, fullscreen, frameless, transparent: bool) =
   window.initWindow size, screen, fullscreen, frameless, transparent, woClassName
   

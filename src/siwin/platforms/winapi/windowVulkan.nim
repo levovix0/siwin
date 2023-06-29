@@ -21,6 +21,10 @@ proc `=destroy`*(surface: var Surface) =
     surface = Surface()
 
 
+method destruct(window: WindowWinapiVulkan) =
+  `=destroy` window[]
+
+
 method vulkanSurface*(window: WindowWinapiVulkan): pointer =
   window.surface.raw
 

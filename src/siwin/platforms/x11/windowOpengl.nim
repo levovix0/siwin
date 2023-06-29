@@ -14,6 +14,10 @@ type
     vsyncEnabled: bool
 
 
+method destruct(window: WindowX11Opengl) =
+  `=destroy` window[]
+
+
 proc initOpenglWindow(
   window: WindowX11Opengl,
   size: IVec2, screen: ScreenX11,
