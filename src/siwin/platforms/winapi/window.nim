@@ -393,13 +393,11 @@ method drawImage*(window: WindowWinapiSoftwareRendering, pixels: openarray[Color
 
 
 proc releaseAllKeys(window: WindowWinapi) =
-  let pressed = window.keyboard.pressed
-  for key in pressed:
+  for key in window.keyboard.pressed:
     window.keyboard.pressed.excl key
     window.eventsHandler.pushEvent onKey, KeyEvent(window: window, key: key, pressed: false, repeated: false)
 
-  let pressedButtons = window.mouse.pressed
-  for button in pressedButtons:
+  for button in window.mouse.pressed:
     window.mouse.pressed.excl button
     window.eventsHandler.pushEvent onMouseButton, MouseButtonEvent(window: window, button: button, pressed: false)
 

@@ -289,29 +289,17 @@ proc size*(screen: ScreenX11): IVec2 = ivec2(screen.width, screen.height)
 proc `=destroy`(window: var WindowX11Obj) =
   defer: window.m_closed = true
 
-  if window.xInContext != nil:
-    XDestroyIC window.xInContext
-    window.xInContext = nil
-  
-  if window.xInMethod != nil:
-    discard XCloseIM(window.xInMethod)
-    window.xInMethod = nil
-  
-  if window.xCursor != 0:
-    discard display.XFreeCursor(window.xCursor)
-    window.xCursor = x.Cursor(0)
-  
-  if window.xIcon != 0:
-    discard display.XFreePixmap(window.xIcon)
-    window.xIcon = 0.Pixmap
+  template destroy(x, f) =
+    if x != typeof(x).default:
+      f
+      x = typeof(x).default
 
-  if window.xIconMask != 0:
-    discard display.XFreePixmap(window.xIconMask)
-    window.xiconMask = 0.Pixmap
-  
-  if window.handle != 0:
-    discard display.XDestroyWindow(window.handle)
-    window.handle = x.Window(0)
+  destroy window.xInContext: XDestroyIC window.xInContext
+  destroy window.xInMethod:  discard XCloseIM window.xInMethod
+  destroy window.xCursor:    discard display.XFreeCursor window.xCursor
+  destroy window.xIcon:      discard display.XFreePixmap window.xIcon
+  destroy window.xIconMask:  discard display.XFreePixmap window.xIconMask
+  destroy window.handle:     discard display.XDestroyWindow window.handle
   
   if window.xSyncCounter.int != 0:
     display.XSyncDestroyCounter(window.xSyncCounter)
@@ -584,7 +572,7 @@ method `maximized=`*(window: WindowX11, v: bool) =
   discard display.XSendEvent(
     display.DefaultRootWindow, 0, SubstructureNotifyMask or SubstructureRedirectMask, event.addr
   )
-  event = window.handle.newClientMessage(atoms.netWmState, [Atom v, atoms.netWmStateMaximizedVert])
+  event.xclient.data.l[1] = atoms.netWmStateMaximizedVert.int
   discard display.XSendEvent(
     display.DefaultRootWindow, 0, SubstructureNotifyMask or SubstructureRedirectMask, event.addr
   )
@@ -593,8 +581,7 @@ method `maximized=`*(window: WindowX11, v: bool) =
 proc releaseAllKeys(window: WindowX11) =
   ## release all pressed keys
   ## needed when window loses focus
-  let pressed = window.keyboard.pressed
-  for k in pressed:
+  for k in window.keyboard.pressed.items:
     window.keyboard.pressed.excl k
     window.eventsHandler.pushEvent onKey, KeyEvent(window: window, key: k, pressed: false, repeated: false)
 
