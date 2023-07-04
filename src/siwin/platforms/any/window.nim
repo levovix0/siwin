@@ -108,6 +108,7 @@ type
   
   ScrollEvent* = object of AnyWindowEvent
     delta*: float
+    deltaX*: float
   
   ClickEvent* = object of AnyWindowEvent
     button*: MouseButton

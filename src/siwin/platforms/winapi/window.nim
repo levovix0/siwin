@@ -588,6 +588,7 @@ proc poolEvent(window: WindowWinapi, message: Uint, wParam: WParam, lParam: LPar
     window.mouse.pressed.excl button
     if button in window.clicking:
       window.eventsHandler.pushEvent onClick, ClickEvent(window: window, button: button, pos: window.mouse.pos, double: false)
+      window.clicking.excl button
     window.eventsHandler.pushEvent onMouseButton, MouseButtonEvent(window: window, button: button, pressed: false)
 
   of WmKeyDown, WmSysKeyDown:

@@ -4,6 +4,7 @@ type
     x11
     # wayland
     winapi
+    # cocoa
   
   PlatformSupportDefect* = object of Defect
   PlatformMatchError* = object of CatchableError

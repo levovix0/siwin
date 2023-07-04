@@ -13,19 +13,39 @@ requires "x11 >= 1.1"
 requires "winim >= 3.6"
 
 
+import strformat
+
 task testDeps, "install test dependencies":
   exec "nimble install opengl"
   exec "nimble install pixie"
   exec "nimble install https://github.com/levovix0/wayland"
 
-template runTests(args: string) =
+const testTargets = ["t_offscreen", "tests", "t_vulkan"]
+
+proc runTests(args: string) =
   withDir "tests":
-    try:    exec "nim c " & args & " --hints:off -r t_offscreen"
-    except: discard
-    try:    exec "nim c " & args & " --hints:off -r tests"
-    except: discard
-    try:    exec "nim c " & args & " --hints:off -r t_vulkan"
-    except: discard
+    for target in testTargets:
+      try:    exec "nim c " & args & " --hints:off -r " & target
+      except: discard
+
+proc createZigccIfNeeded =
+  let code = """
+import std/osproc
+import std/os
+
+proc main =
+  var args = @["cc"]
+  args.add(commandLineParams())
+  var p = startProcess("/usr/bin/zig", args = args, options = {poParentStreams})
+  defer: p.close()
+  quit p.waitForExit()
+
+main()
+  """
+  if not fileExists("build/zigcc.nim"):
+    writeFile "build/zigcc.nim", code
+  if not fileExists("build/zigcc"):
+    exec "nim c build/zigcc.nim"
 
 task test, "test":
   runTests ""
@@ -41,6 +61,17 @@ task testWindows, "test windows version with wine on linux":
 
 task testOrcWindows, "test windows version with wine on linux with --mm:orc":
   runTests "-d:mingw --os:windows --cc:gcc --gcc.exe:/usr/bin/x86_64-w64-mingw32-gcc --gcc.linkerexe:/usr/bin/x86_64-w64-mingw32-gcc --mm:orc"
+
+task testMacos, "test macos":
+  createZigccIfNeeded()
+  let pwd = getCurrentDir()
+  let target = "x86_64-macos-none"
+  withDir "tests":
+    for file in testTargets:
+      try:
+        exec &"nim c --os:macosx --cc:clang --clang.exe:{pwd}/build/zigcc --clang.linkerexe:{pwd}/build/zigcc --passc:--target={target} --passl:--target={target} --hints:off -o:{file}-macos {file}"
+        exec &"echo ./{file}-macos | darling shell"
+      except: discard
 
 task testAll, "run all tests":
   runTests ""

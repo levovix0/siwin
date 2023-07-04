@@ -707,10 +707,16 @@ method step*(window: WindowX11) =
 
   template isScroll: bool = ev.xbutton.button.int in 4..7
 
-  template scrollDelta: float =
+  template scrollDeltaY: float =
     case ev.xbutton.button
     of 4: -1
     of 5: 1
+    else: 0
+
+  template scrollDeltaX: float =
+    case ev.xbutton.button
+    of 6: -1
+    of 7: 1
     else: 0
   
   proc extractKey(xkey: XKeyEvent): Key =
@@ -785,8 +791,8 @@ method step*(window: WindowX11) =
         window.mouse.pressed.incl button
         window.clicking.incl button
         window.eventsHandler.pushEvent onMouseButton, MouseButtonEvent(window: window, button: button, pressed: true)
-      elif scrollDelta != 0:
-        window.eventsHandler.pushEvent onScroll, ScrollEvent(window: window, delta: scrollDelta)
+      elif scrollDeltaX != 0 or scrollDeltaY != 0:
+        window.eventsHandler.pushEvent onScroll, ScrollEvent(window: window, delta: scrollDeltaY, deltaX: scrollDeltaX)
 
     of ButtonRelease:
       if not isScroll:
@@ -798,8 +804,8 @@ method step*(window: WindowX11) =
             window: window, button: button, pos: window.mouse.pos,
             double: (nows - window.lastClickTime).inMilliseconds < 200
           )
+          window.clicking.excl button
 
-        window.mouse.pressed.excl button
         window.lastClickTime = nows
         window.eventsHandler.pushEvent onMouseButton, MouseButtonEvent(window: window, button: button, pressed: false)
 
