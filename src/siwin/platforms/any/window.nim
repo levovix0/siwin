@@ -292,17 +292,39 @@ method step*(window: Window) {.base, locks: "unknown".} = discard
   ## ! don't forget to call firstStep()
 
 
-proc run*(window: sink Window, eventsHandler: WindowEventsHandler, makeVisible = true) =
+proc run*(window: sink Window, makeVisible = true) =
   ## run whole window main loops
-  window.eventsHandler = eventsHandler
   window.firstStep(makeVisible)
   while window.opened:
     window.step()
 
+proc run*(window: sink Window, eventsHandler: WindowEventsHandler, makeVisible = true) =
+  ## set window eventsHandler and run whole window main loops
+  if eventsHandler != WindowEventsHandler():
+    window.eventsHandler = eventsHandler
+  run(window, makeVisible)
+
+proc runMultiple*(windows: varargs[tuple[window: Window, makeVisible: bool]]) =
+  ## run for multiple windows
+  for (window, makeVisible) in windows:
+    window.firstStep(makeVisible)
+
+  var windows = windows.mapit(it.window)
+  while windows.len > 0:
+    var i = 0
+    while i < windows.len:
+      let window = windows[i]
+      if window.closed:
+        windows.del i
+        continue
+      window.step()
+      inc i
+
 proc runMultiple*(windows: varargs[tuple[window: Window, eventsHandler: WindowEventsHandler, makeVisible: bool]]) =
   ## run for multiple windows
   for (window, eventsHandler, makeVisible) in windows:
-    window.eventsHandler = eventsHandler
+    if eventsHandler != WindowEventsHandler():
+      window.eventsHandler = eventsHandler
     window.firstStep(makeVisible)
 
   var windows = windows.mapit(it.window)
