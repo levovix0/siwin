@@ -45,7 +45,7 @@ run window, WindowEventsHandler(
     glMatrixMode GlProjection
     glLoadIdentity()
     glOrtho -30, 30, -30, 30, -30, 30
-    glMatrixMode GlModelView
+    glMatrixMode(GlModelView)
   ,
   onRender: proc(e: RenderEvent) =
     glClearColor 0.3, 0.3, 0.3, 0
