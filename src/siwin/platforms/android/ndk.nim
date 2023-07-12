@@ -1,33 +1,39 @@
 import jnim
-
-{.push, warning[CStringConv]: off.}
-
-jclassDef android.os.Bundle of JVMObject
-
-
-jclass android.View of JVMObject:
-  proc hasFocus(): bool
+import android/os/bundle
+import jnim/java/lang # for Runnable
+import android / content / [ context_wrapper, intent ]
+import android/app/application
+import android/view/window_manager
 
 
-jclassDef javax.microedition.khronos.opengles.GL10 of JVMObject
-jclassDef javax.microedition.khronos.egl.EGLConfig of JVMObject
+{.push, warning[Spacing]: off.}
+
+jclassDef android.View* of JVMObject
+jclassDef javax.microedition.khronos.opengles.GL10* of JVMObject
+jclassDef javax.microedition.khronos.egl.EGLConfig* of JVMObject
 
 
-jclass android.opengl.GLSurfaceView$Renderer of JVMObject:
-  proc onSurfaceCreated(surface: GL10, config: EGLConfig)
-  proc onSurfaceChanged(surface: GL10, width: jint, height: jint)
-  proc onDrawFrame(surface: GL10)
+jclass android.opengl.GLSurfaceView$Renderer* of JVMObject:
+  proc onSurfaceCreated*(surface: GL10, config: EGLConfig)
+  proc onSurfaceChanged*(surface: GL10, width: jint, height: jint)
+  proc onDrawFrame*(surface: GL10)
 
 
-jclass android.opengl.GLSurfaceView of View:
-  proc setRenderer(renderer: Renderer)
-  proc setEGLContextClientVersion(version: jint)
-  proc setRenderMode(mode: jint)
+jclass android.opengl.GLSurfaceView* of View:
+  proc setRenderer*(renderer: Renderer)
+  proc setEGLContextClientVersion*(version: jint)
+  proc setRenderMode*(mode: jint)
 
 
-jclass android.app.Activity of JVMObject:
-  proc onCreate(savedState: Bundle)
-  proc setContentView(view: View)
+jclass android.app.Activity* of ContextWrapper:
+  proc runOnUiThread*(r: Runnable)
+  proc getIntent*(): Intent
+  proc getApplication*(): Application
+  proc getWindowManager*(): WindowManager
+  proc onCreate*(savedInstanceState: Bundle)
+  proc setContentView*(view: View)
+
+{.pop.}
 
 
 type
@@ -46,19 +52,21 @@ jexport SiwinRenderer extends Renderer:
   proc onDrawFrame(surface: GL10) =
     ##
 
-
 jexport SiwinActivity extends Activity:
-  proc new = super()
+  proc new* =
+    # proc NimMain {.importc.}
+    # NimMain()
+    # initJNI()
+    # initJNIThread()
+    super()
   
-  proc onCreate(savedState: Bundle) =
-    this.super.onCreate(savedState)
+  proc onCreate(b: Bundle) =
+    this.super.onCreate(b)
     this.view = GLSurfaceView.new
     this.renderer = SiwinRenderer.new
     this.view.setRenderer(this.renderer)
     this.setContentView(this.view)
     this.view.setRenderMode(0)  # RENDERMODE_WHEN_DIRTY
-
-{.pop.}
 
 
 when defined(jnimGenDex):
