@@ -209,13 +209,13 @@ proc focused*(window: Window): bool = window.m_focused
 method redraw*(window: Window) {.base.} = window.redrawRequested = true
   ## request render
 
-method `frameless=`*(window: Window, v: bool) {.base, locks: "unknown".} = discard
+method `frameless=`*(window: Window, v: bool) {.base.} = discard
 
-method `cursor=`*(window: Window, v: Cursor) {.base, locks: "unknown".} = discard
+method `cursor=`*(window: Window, v: Cursor) {.base.} = discard
   ## set cursor
   ## used when mouse hover window
 
-method `size=`*(window: Window, v: IVec2) {.base, locks: "unknown".} = discard
+method `size=`*(window: Window, v: IVec2) {.base.} = discard
   ## resize window
   ## exit fullscreen if window is fullscreen
 
@@ -223,17 +223,17 @@ method `pos=`*(window: Window, v: IVec2) {.base.} = discard
   ## move window
   ## do nothing if window is fullscreen
 
-method `title=`*(window: Window, v: string) {.base, locks: "unknown".} = discard
+method `title=`*(window: Window, v: string) {.base.} = discard
   ## set window title
 
-method `fullscreen=`*(window: Window, v: bool) {.base, locks: "unknown".} = discard
+method `fullscreen=`*(window: Window, v: bool) {.base.} = discard
   ## fullscreen/unfullscreen window
 
-method `maximized=`*(window: Window, v: bool) {.base, locks: "unknown".} = discard
+method `maximized=`*(window: Window, v: bool) {.base.} = discard
   ## maximize/unmaximize window
   ## exit fullscreen if window is fullscreen
 
-method `minimized=`*(window: Window, v: bool) {.base, locks: "unknown".} = discard
+method `minimized=`*(window: Window, v: bool) {.base.} = discard
   ## minimize/unminimize window
 
 method `visible=`*(window: Window, v: bool) {.base.} = discard
@@ -253,15 +253,15 @@ method `maxSize=`*(window: Window, v: IVec2) {.base.} = discard
 method `icon=`*(window: Window, v: nil.typeof) {.base.} = discard
   ## clear window icon
 
-method `icon=`*(window: Window, v: tuple[pixels: openarray[ColorBgrx], size: IVec2]) {.base, locks: "unknown".} = discard
+method `icon=`*(window: Window, v: tuple[pixels: openarray[ColorBgrx], size: IVec2]) {.base.} = discard
   ## set window icon
 
-method startInteractiveMove*(window: Window, pos: Option[IVec2] = none IVec2) {.base, locks: "unknown".} = discard
+method startInteractiveMove*(window: Window, pos: Option[IVec2] = none IVec2) {.base.} = discard
   ## allow user to move window interactivly
   ## useful to create client-side decorated windows
   ## it's recomended to start interactive move after user grabbed window header and started to move mouse
 
-method startInteractiveResize*(window: Window, edge: Edge, pos: Option[IVec2] = none IVec2) {.base, locks: "unknown".} = discard
+method startInteractiveResize*(window: Window, edge: Edge, pos: Option[IVec2] = none IVec2) {.base.} = discard
   ## allow user to resize window interactivly
   ## useful to create client-side decorated windows
   ## it's recomended to start interactive move after user grabbed window border and started to move mouse
@@ -275,7 +275,7 @@ method drawImage*(window: Window, pixels: openarray[ColorBgrx], size: IVec2, pos
 method makeCurrent*(window: Window) {.base.} = discard
   ## set window as current opengl rendering target
 
-method `vsync=`*(window: Window, v: bool, silent = false) {.base, locks: "unknown".} = discard
+method `vsync=`*(window: Window, v: bool, silent = false) {.base.} = discard
   ## enable/disable vsync
 
 
@@ -283,11 +283,11 @@ method vulkanSurface*(window: Window): pointer {.base.} = discard
   ## get a VkSurfaceKHR attached to window
 
 
-method firstStep*(window: Window, makeVisible = true) {.base, locks: "unknown".} = discard
+method firstStep*(window: Window, makeVisible = true) {.base.} = discard
   ## init window main loop
   ## don't call window proc if you will manage window events via run()
 
-method step*(window: Window) {.base, locks: "unknown".} = discard
+method step*(window: Window) {.base.} = discard
   ## make window main loop step
   ## ! don't forget to call firstStep()
 

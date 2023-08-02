@@ -4,7 +4,7 @@ description   = "Simple Window Maker"
 license       = "MIT"
 srcDir        = "src"
 
-requires "nim >= 1.6.10"
+requires "nim >= 2.0"
 requires "chroma >= 0.2.6"
 requires "vmath >= 1.1.4"
 

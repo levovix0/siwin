@@ -92,8 +92,9 @@ proc XcursorImageLoadCursor(d: ptr Display, image: ptr CursorImage): x.Cursor
 {.pop.}
 
 
-proc `=destroy`(gc: var GraphicsContext) =
-  if gc.gc != nil: discard display.XFreeGC(gc.gc)
+proc `=destroy`(gc: GraphicsContext) =
+  if gc.gc != nil:
+    discard display.XFreeGC(gc.gc)
 
 
 proc xkeyToKey(sym: KeySym): Key =
@@ -261,8 +262,8 @@ proc cursor: tuple[pos: IVec2; root, child: x.Window; winX, winY: int; mask: uin
       return (ivec2(x.int32, y.int32), root, child, winX.int, winY.int, mask.uint, true)
 
 
-method beginSwapBuffers(window: WindowX11) {.base, locks: "unknown".} = discard
-method endSwapBuffers(window: WindowX11) {.base, locks: "unknown".} = discard
+method beginSwapBuffers(window: WindowX11) {.base.} = discard
+method endSwapBuffers(window: WindowX11) {.base.} = discard
 
 
 proc screenCountX11*: int32 =
@@ -286,13 +287,10 @@ method width*(screen: ScreenX11): int32 = screen.handle.width.int32
 method height*(screen: ScreenX11): int32 = screen.handle.height.int32
 
 
-proc `=destroy`(window: var WindowX11Obj) =
-  defer: window.m_closed = true
-
+proc `=destroy`(window: WindowX11Obj) =
   template destroy(x, f) =
     if x != typeof(x).default:
       f
-      x = typeof(x).default
 
   destroy window.xInContext: XDestroyIC window.xInContext
   destroy window.xInMethod:  discard XCloseIM window.xInMethod
@@ -303,11 +301,6 @@ proc `=destroy`(window: var WindowX11Obj) =
   
   if window.xSyncCounter.int != 0:
     display.XSyncDestroyCounter(window.xSyncCounter)
-    window.xSyncCounter = 0.XSyncCounter
-
-method destruct(window: WindowX11) {.base.} =
-  ## to call destructor explicitly
-  `=destroy` window[]
 
 
 template pushEvent(eventsHandler: WindowEventsHandler, event, args) =
@@ -402,7 +395,7 @@ proc initSoftwareRenderingWindow(
   window.gc.gc = display.XCreateGC(window.handle, GCForeground or GCBackground, window.gc.gcv.addr)
 
 
-method `title=`*(window: WindowX11, v: string) {.locks: "unknown".} =
+method `title=`*(window: WindowX11, v: string) =
   discard display.XChangeProperty(
     window.handle, atoms.netWmName, atoms.utf8String, 8,
     PropModeReplace, cast[PCUchar](v.dataAddr), v.len.cint
@@ -414,7 +407,7 @@ method `title=`*(window: WindowX11, v: string) {.locks: "unknown".} =
   display.Xutf8SetWMProperties(window.handle, v, v, nil, 0, nil, nil, nil)
 
 
-method `fullscreen=`*(window: WindowX11, v: bool) {.locks: "unknown".} =
+method `fullscreen=`*(window: WindowX11, v: bool) =
   if window.m_fullscreen == v: return
 
   var event = window.handle.newClientMessage(atoms.netWmState, [Atom 2, atoms.netWmStateFullscreen])
@@ -454,7 +447,7 @@ method `frameless=`*(window: WindowX11, v: bool) =
   else: discard display.XSetTransientForHint(window.handle, display.RootWindow(window.screen))
 
 
-method `size=`*(window: WindowX11, v: IVec2) {.locks: "unknown".} =
+method `size=`*(window: WindowX11, v: IVec2) =
   if window.fullscreen:
     window.fullscreen = false
   
@@ -616,8 +609,10 @@ method `resizable=`*(window: WindowX11, v: bool) =
   discard display.XGetNormalHints(window.handle, hints.addr)
   if v: hints.flags = hints.flags and not 0b110000
   else: hints.flags = hints.flags or 0b110000
-  (hints.minWidth, hints.minHeight) = size
-  (hints.maxWidth, hints.maxHeight) = size
+  hints.minWidth = size.x
+  hints.minHeight = size.y
+  hints.maxWidth = size.x
+  hints.maxHeight = size.y
   discard display.XSetNormalHints(window.handle, hints.addr)
 
 
@@ -626,7 +621,8 @@ method `minSize=`*(window: WindowX11, v: IVec2) =
   var hints: XSizeHints
   discard display.XGetNormalHints(window.handle, hints.addr)
   hints.flags = hints.flags or 0b010000
-  (hints.minWidth, hints.minHeight) = v
+  hints.minWidth = v.x
+  hints.minHeight = v.y
   discard display.XSetNormalHints(window.handle, hints.addr)
 
 
@@ -635,7 +631,8 @@ method `maxSize=`*(window: WindowX11, v: IVec2) =
   var hints: XSizeHints
   discard display.XGetNormalHints(window.handle, hints.addr)
   hints.flags = hints.flags or 0b100000
-  (hints.maxWidth, hints.maxHeight) = v
+  hints.maxWidth = v.x
+  hints.maxHeight = v.y
   discard display.XSetNormalHints(window.handle, hints.addr)
 
 
@@ -864,7 +861,6 @@ method step*(window: WindowX11) =
   block nextEvent:
     template closeAndExit =
       window.eventsHandler.pushEvent onClose, CloseEvent(window: window)
-      destruct window
       return
     
     var

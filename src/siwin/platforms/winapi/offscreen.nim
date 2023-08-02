@@ -9,13 +9,11 @@ type
     ctx: WglContext
 
 
-proc `=destroy`(windows: var InvisibleOpenglWindowWinapiObj) =
+proc `=destroy`(windows: InvisibleOpenglWindowWinapiObj) =
   if windows.hdc != 0:
     DeleteDC windows.hdc
   if windows.handle != 0:
     DestroyWindow(windows.handle)
-  
-  wasMoved windows
 
 proc newOpenglContextWinapi*: InvisibleOpenglWindowWinapi =
   new result

@@ -17,15 +17,10 @@ type
     surface: Surface
 
 
-proc `=destroy`*(surface: var Surface) =
+proc `=destroy`*(surface: Surface) =
   if surface.instance != nil and surface.raw != nil:
-    vkDestroySurfaceKHR(surface.instance, surface.raw, nil)
-    surface.instance = nil
-    surface.raw = nil
-
-
-method destruct(window: WindowX11Vulkan) =
-  `=destroy` window[]
+    # vkDestroySurfaceKHR(surface.instance, surface.raw, nil)  #? causes crash
+    discard
 
 
 method vulkanSurface*(window: WindowX11Vulkan): pointer =

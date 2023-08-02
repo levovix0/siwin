@@ -6,12 +6,11 @@ type
     raw*: HGlRc
 
 
-proc `=destroy`*(context: var WglContext) =
+proc `=destroy`*(context: WglContext) =
   if context.raw != 0:
     if wglGetCurrentContext() == context.raw:
       wglMakeCurrent(0, 0)
     wglDeleteContext context.raw
-    context.raw = 0
 
 
 var hInstance* = GetModuleHandle(nil)

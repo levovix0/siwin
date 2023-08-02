@@ -14,16 +14,11 @@ type
   WindowWinapiVulkan* = ref object of WindowWinapi
     surface: Surface
 
-proc `=destroy`*(surface: var Surface) =
+proc `=destroy`*(surface: Surface) =
   if surface.instance != nil and surface.raw != nil:
-    let vkDestroySurfaceKHR = cast[VkDestroySurfaceKHR](surface.instance.vkGetInstanceProcAddr("vkDestroySurfaceKHR"))
-    vkDestroySurfaceKHR(surface.instance, surface.raw, nil)
-    surface.instance = nil
-    surface.raw = nil
-
-
-method destruct(window: WindowWinapiVulkan) =
-  `=destroy` window[]
+    discard
+    # let vkDestroySurfaceKHR = cast[VkDestroySurfaceKHR](surface.instance.vkGetInstanceProcAddr("vkDestroySurfaceKHR"))
+    # vkDestroySurfaceKHR(surface.instance, surface.raw, nil)  #? causes crash
 
 
 method vulkanSurface*(window: WindowWinapiVulkan): pointer =

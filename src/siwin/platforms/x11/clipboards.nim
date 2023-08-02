@@ -48,7 +48,7 @@ proc processEvents(clipboard: ClipboardX11, responded: var bool): string =
           )
           continue
 
-        elif e.target in {XaString, atoms.text, atoms.utf8String}:
+        elif e.target in [XaString, atoms.text, atoms.utf8String]:
           # clipboard data request
           resp.target = if e.target == atoms.utf8String: atoms.utf8String else: XaString
           discard display.XChangeProperty(
@@ -70,6 +70,7 @@ proc processEvents(clipboard: ClipboardX11, responded: var bool): string =
     else: discard
 
 
+{.push, warning[Deprecated]: off.}
 proc clipboardX11*(kind: ClipboardKind = user): ClipboardX11 =
   new result, proc(clipboard: ClipboardX11) =
     clipboardProcessEvents.del cast[int](clipboard)
@@ -87,6 +88,7 @@ proc clipboardX11*(kind: ClipboardKind = user): ClipboardX11 =
     var rsp: bool
     discard clipboard.processEvents(rsp)
   )
+{.pop.}
 
 
 method text*(clipboard: ClipboardX11): string =

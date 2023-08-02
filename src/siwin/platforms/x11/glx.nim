@@ -37,7 +37,7 @@ proc makeCurrent*(a: Drawable, ctx: GlxContext) =
   proc impl(dpy: PDisplay, drawable: Drawable, ctx: pointer): cint {.glx: "makeCurrent".}
   discard display.impl(a, ctx.raw)
 
-proc `=destroy`*(context: var GlxContext) =
+proc `=destroy`*(context: GlxContext) =
   proc impl(dpy: PDisplay, ctx: GlxContext) {.glx: "destroyContext".}
   if context.raw == nil: return
   if cGlxCurrentContext() == context.raw:

@@ -12,10 +12,9 @@ type
     ctx: GlxContext
 
 
-proc `=destroy`(windows: var InvisibleOpenglWindowX11Obj) =
-  if windows.handle != 0:
-    discard display.XDestroyWindow(windows.handle)
-    windows.handle = 0
+proc `=destroy`(window: InvisibleOpenglWindowX11Obj) =
+  if window.handle != 0:
+    discard display.XDestroyWindow(window.handle)
 
 proc newOpenglContextX11*: InvisibleOpenglWindowX11 =
   new result

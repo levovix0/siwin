@@ -163,32 +163,21 @@ method width*(screen: ScreenWinapi): int32 = GetSystemMetrics(SmCxScreen)
 method height*(screen: ScreenWinapi): int32 = GetSystemMetrics(SmCyScreen)
 
 
-proc `=destroy`(buffer: var Buffer) =
+proc `=destroy`(buffer: Buffer) =
   if buffer.pixels != nil:
     DeleteDC buffer.hdc
     DeleteObject buffer.bitmap
-    buffer.hdc = 0
-    buffer.bitmap = 0
-    buffer.pixels = nil
 
 
-proc `=destroy`(window: var WindowWinapiObj) =
-  defer: window.m_closed = true
+proc `=destroy`(window: WindowWinapiObj) =
   if window.hdc != 0:
     DeleteDC window.hdc
-    window.hdc = 0
 
   if window.wicon != 0:
     DestroyIcon window.wicon
-    window.wicon = 0
 
   if window.wcursor != 0:
     DestroyCursor window.wcursor
-    window.wcursor = 0
-
-method destruct(window: WindowWinapi) {.base.} =
-  ## to call destructor explicitly
-  `=destroy` window[]
 
 
 proc poolEvent(window: WindowWinapi, message: Uint, wParam: WParam, lParam: LParam): LResult
@@ -281,7 +270,7 @@ proc initWindow(window: WindowWinapi; size: IVec2; screen: ScreenWinapi, fullscr
     window.handle.DwmEnableBlurBehindWindow(bb.addr)
 
 
-method `title=`*(window: WindowWinapi, title: string) {.locks: "unknown".} =
+method `title=`*(window: WindowWinapi, title: string) =
   window.handle.SetWindowText(title)
 
 method close*(window: WindowWinapi) =
@@ -350,7 +339,7 @@ method `icon=`*(window: WindowWinapi, _: nil.typeof) =
   window.handle.SendMessageW(WmSetIcon, IconBig, 0)
   window.handle.SendMessageW(WmSetIcon, IconSmall, 0)
 
-method `icon=`*(window: WindowWinapi, image: tuple[pixels: openarray[ColorBgrx], size: IVec2]) {.locks: "unknown".} =
+method `icon=`*(window: WindowWinapi, image: tuple[pixels: openarray[ColorBgrx], size: IVec2]) =
   ## set icon
   if image.size.x * image.size.y == 0: window.icon = nil
   assert image.pixels.len >= image.size.x * image.size.y, "not enougth pixels"
@@ -402,11 +391,11 @@ proc releaseAllKeys(window: WindowWinapi) =
     window.eventsHandler.pushEvent onMouseButton, MouseButtonEvent(window: window, button: button, pressed: false)
 
 
-method `maximized=`*(window: WindowWinapi, v: bool) {.locks: "unknown".} =
+method `maximized=`*(window: WindowWinapi, v: bool) =
   window.m_maximized = v
   discard ShowWindow(window.handle, if v: SwMaximize else: SwRestore)
 
-method `minimized=`*(window: WindowWinapi, v: bool) {.locks: "unknown".} =
+method `minimized=`*(window: WindowWinapi, v: bool) =
   window.releaseAllKeys()
   window.m_minimized = v
   discard ShowWindow(window.handle, if v: SwMinimize else: SwRestore)
@@ -434,14 +423,14 @@ method `maxSize=`*(window: WindowWinapi, v: IVec2) =
   discard SetWindowLongW(window.handle, GwlStyle, style or WsThickframe)
 
 
-method startInteractiveMove*(window: WindowWinapi, pos: Option[IVec2]) {.locks: "unknown".} =
+method startInteractiveMove*(window: WindowWinapi, pos: Option[IVec2]) =
   window.releaseAllKeys()
   ReleaseCapture()
 
   window.handle.PostMessage(WmSysCommand, 0xF012, 0)
   # todo: press all keys and mouse buttons that are pressed after move
 
-method startInteractiveResize*(window: WindowWinapi, edge: Edge, pos: Option[IVec2]) {.locks: "unknown".} =
+method startInteractiveResize*(window: WindowWinapi, edge: Edge, pos: Option[IVec2]) =
   window.releaseAllKeys()
   ReleaseCapture()
 
@@ -476,7 +465,7 @@ method firstStep*(window: WindowWinapi, makeVisible = true) =
 
   window.lastTickTime = getTime()
 
-method step*(window: WindowWinapi) {.locks: "unknown".} =
+method step*(window: WindowWinapi) =
   var msg: Msg
   var catched = false
 
@@ -529,8 +518,8 @@ proc poolEvent(window: WindowWinapi, message: Uint, wParam: WParam, lParam: LPar
       window.displayImpl()
 
   of WmDestroy:
+    window.m_closed = true
     window.eventsHandler.pushEvent onClose, CloseEvent(window: window)
-    destruct window
     PostQuitMessage(0)
 
   of WmMouseMove:
@@ -621,9 +610,11 @@ proc poolEvent(window: WindowWinapi, message: Uint, wParam: WParam, lParam: LPar
   of WmGetMinMaxInfo:
     let info = cast[LpMinMaxInfo](lParam)
     if window.m_minSize != ivec2():
-      (info[].ptMinTrackSize.x, info[].ptMinTrackSize.y) = window.m_minSize
+      info[].ptMinTrackSize.x = window.m_minSize.x
+      info[].ptMinTrackSize.y = window.m_minSize.y
     if window.m_maxSize != ivec2():
-      (info[].ptMaxTrackSize.x, info[].ptMaxTrackSize.y) = window.m_maxSize
+      info[].ptMaxTrackSize.x = window.m_maxSize.x
+      info[].ptMaxTrackSize.y = window.m_maxSize.y
 
   else: return window.handle.DefWindowProc(message, wParam, lParam)
 
