@@ -46,7 +46,7 @@ task installTestDeps, "install test dependencies":
 
 task installAndroidDeps, "install android dependencies":
   exec "nimble install dali"
-  exec "nimble install https://github.com/levovix0/marco@0.1.1"
+  exec "nimble install https://github.com/levovix0/marco@0.1.2"
   downloadAndroidNdkIfNeeded()
   # note: requires androids sdk also!
   buildBasiaIfNeeded()
