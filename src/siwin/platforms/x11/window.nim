@@ -59,6 +59,7 @@ type
     lastSync: XSyncValue
 
     lastClickTime: Time
+    doubleClickHandled: bool
   
   WindowX11SoftwareRendering* = ref object of WindowX11
     gc: GraphicsContext
@@ -785,8 +786,18 @@ method step*(window: WindowX11) =
 
     of ButtonPress:
       if not isScroll:
+        let nows = getTime()
         window.mouse.pressed.incl button
         window.clicking.incl button
+
+        if (nows - window.lastClickTime).inMilliseconds < 200:
+          window.eventsHandler.pushEvent onClick, ClickEvent(
+            window: window, button: button, pos: window.mouse.pos, double: true
+          )
+          window.doubleClickHandled = true
+        else:
+          window.doubleClickHandled = false
+        
         window.eventsHandler.pushEvent onMouseButton, MouseButtonEvent(window: window, button: button, pressed: true)
       elif scrollDeltaX != 0 or scrollDeltaY != 0:
         window.eventsHandler.pushEvent onScroll, ScrollEvent(window: window, delta: scrollDeltaY, deltaX: scrollDeltaX)
@@ -797,13 +808,13 @@ method step*(window: WindowX11) =
         window.mouse.pressed.excl button
 
         if button in window.clicking:
-          window.eventsHandler.pushEvent onClick, ClickEvent(
-            window: window, button: button, pos: window.mouse.pos,
-            double: (nows - window.lastClickTime).inMilliseconds < 200
-          )
+          if not window.doubleClickHandled:
+            window.eventsHandler.pushEvent onClick, ClickEvent(
+              window: window, button: button, pos: window.mouse.pos, double: false
+            )
+            window.lastClickTime = nows
           window.clicking.excl button
 
-        window.lastClickTime = nows
         window.eventsHandler.pushEvent onMouseButton, MouseButtonEvent(window: window, button: button, pressed: false)
 
     of LeaveNotify:
