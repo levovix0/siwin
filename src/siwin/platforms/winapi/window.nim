@@ -393,7 +393,10 @@ proc releaseAllKeys(window: WindowWinapi) =
 
 
 method `maximized=`*(window: WindowWinapi, v: bool) =
+  if window.m_maximized == v: return
   discard ShowWindow(window.handle, if v: SwMaximize else: SwRestore)
+  window.m_maximized = v
+  window.eventsHandler.pushEvent onMaximizedChanged, MaximizedChangedEvent(window: window, maximized: window.m_maximized)
 
 method `minimized=`*(window: WindowWinapi, v: bool) =
   window.releaseAllKeys()

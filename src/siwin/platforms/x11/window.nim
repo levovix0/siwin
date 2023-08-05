@@ -557,6 +557,7 @@ method drawImage*(window: WindowX11SoftwareRendering, pixels: openarray[ColorBgr
 
 
 method `maximized=`*(window: WindowX11, v: bool) =
+  if window.m_maximized == v: return
   if window.fullscreen:
     window.fullscreen = false
   var event = window.handle.newClientMessage(atoms.netWmState, [Atom v, atoms.netWmStateMaximizedHorz])
@@ -567,6 +568,8 @@ method `maximized=`*(window: WindowX11, v: bool) =
   discard display.XSendEvent(
     display.DefaultRootWindow, 0, SubstructureNotifyMask or SubstructureRedirectMask, event.addr
   )
+  window.m_maximized = v
+  window.eventsHandler.pushEvent onMaximizedChanged, MaximizedChangedEvent(window: window, maximized: window.m_maximized)
 
 
 proc releaseAllKeys(window: WindowX11) =
