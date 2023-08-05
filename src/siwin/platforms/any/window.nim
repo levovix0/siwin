@@ -97,6 +97,9 @@ type
   
   FullscreenChangedEvent* = object of AnyWindowEvent
     fullscreen*: bool
+  
+  MaximizedChangedEvent* = object of AnyWindowEvent
+    maximized*: bool
 
   MouseMoveEvent* = object of AnyWindowEvent
     pos*: IVec2
@@ -131,7 +134,8 @@ type
     onWindowMove*:  proc(e: WindowMoveEvent)
 
     onFocusChanged*:       proc(e: FocusChangedEvent)
-    onFullscreenChanged*:  proc(e: FullscreenChangedEvent)
+    onFullscreenChanged*:  proc(e: FullscreenChangedEvent)  ## note: sends BEFORE ResizeEvent
+    onMaximizedChanged*:   proc(e: MaximizedChangedEvent)  ## note: sends BEFORE ResizeEvent
 
     onMouseMove*:    proc(e: MouseMoveEvent)
     onMouseButton*:  proc(e: MouseButtonEvent)

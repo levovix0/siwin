@@ -79,6 +79,8 @@ test "OpenGL":
         g = (e.pos.x / e.window.size.x * 2).min(2).max(0)
         redraw e.window
     ,
+    onMaximizedChanged: proc(e: MaximizedChangedEvent) =
+      echo "maximized: ", e.maximized
   )
 
 

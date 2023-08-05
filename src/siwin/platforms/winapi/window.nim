@@ -392,7 +392,6 @@ proc releaseAllKeys(window: WindowWinapi) =
 
 
 method `maximized=`*(window: WindowWinapi, v: bool) =
-  window.m_maximized = v
   discard ShowWindow(window.handle, if v: SwMaximize else: SwRestore)
 
 method `minimized=`*(window: WindowWinapi, v: bool) =
@@ -469,7 +468,17 @@ method step*(window: WindowWinapi) =
   var msg: Msg
   var catched = false
 
+  proc checkStateChanged =
+    if IsZoomed(window.handle).bool != window.m_maximized:
+      window.m_maximized = not window.m_maximized
+      window.eventsHandler.pushEvent onMaximizedChanged, MaximizedChangedEvent(window: window, maximized: window.m_maximized)
+    
+    window.m_minimized = IsIconic(window.handle) != 0
+    window.m_visible = IsWindowVisible(window.handle) != 0
+    window.m_resizable = (GetWindowLongW(window.handle, GwlStyle) and WsThickframe) != 0
+
   while PeekMessage(msg.addr, 0, 0, 0, PmRemove).bool:
+    checkStateChanged()
     catched = true
     TranslateMessage(msg.addr)
     DispatchMessage(msg.addr)
@@ -479,11 +488,6 @@ method step*(window: WindowWinapi) =
       break
 
     if window.m_closed: return
-
-  window.m_maximized = IsZoomed(window.handle) != 0
-  window.m_minimized = IsIconic(window.handle) != 0
-  window.m_visible = IsWindowVisible(window.handle) != 0
-  window.m_resizable = (GetWindowLongW(window.handle, GwlStyle) and WsThickframe) != 0
 
   if not catched: sleep(1)
 

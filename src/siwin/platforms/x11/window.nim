@@ -409,8 +409,6 @@ method `title=`*(window: WindowX11, v: string) =
 
 
 method `fullscreen=`*(window: WindowX11, v: bool) =
-  if window.m_fullscreen == v: return
-
   var event = window.handle.newClientMessage(atoms.netWmState, [Atom 2, atoms.netWmStateFullscreen])
   discard display.XSendEvent(
     window.handle, 0, SubstructureNotifyMask or SubstructureRedirectMask, event.addr
@@ -559,7 +557,6 @@ method drawImage*(window: WindowX11SoftwareRendering, pixels: openarray[ColorBgr
 
 
 method `maximized=`*(window: WindowX11, v: bool) =
-  window.m_maximized = v
   if window.fullscreen:
     window.fullscreen = false
   var event = window.handle.newClientMessage(atoms.netWmState, [Atom v, atoms.netWmStateMaximizedHorz])
@@ -742,6 +739,7 @@ method step*(window: WindowX11) =
 
   var prevEventIsKeyUpRepeated = false
   proc handleEvent(ev: var XEvent, nextEv: var XEvent, hasNextEvent: bool) =
+    let repeated = prevEventIsKeyUpRepeated
     prevEventIsKeyUpRepeated = false
 
     case ev.theType
@@ -761,6 +759,14 @@ method step*(window: WindowX11) =
         window.redrawRequested = false  # hold on, wait for ConfigureNotify
 
     of ConfigureNotify:
+      let state = (let (kind, data) = window.handle.property(atoms.netWmState, Atom); if kind == XaAtom: data else: @[])
+      if atoms.netWmStateFullscreen in state != window.m_fullscreen:
+        window.m_fullscreen = not window.m_fullscreen
+        window.eventsHandler.pushEvent onFullscreenChanged, FullscreenChangedEvent(window: window, fullscreen: window.m_fullscreen)
+      if (atoms.netWmStateMaximizedHorz in state and atoms.netWmStateMaximizedVert in state) != window.m_maximized:
+        window.m_maximized = not window.m_maximized
+        window.eventsHandler.pushEvent onMaximizedChanged, MaximizedChangedEvent(window: window, maximized: window.m_maximized)
+
       if ev.xconfigure.width != window.m_size.x or ev.xconfigure.height != window.m_size.y:
         window.m_size = ivec2(ev.xconfigure.width.int32, ev.xconfigure.height.int32)
         window.eventsHandler.pushEvent onResize, ResizeEvent(window: window, size: window.m_size, initial: false)
@@ -768,11 +774,6 @@ method step*(window: WindowX11) =
         window.m_pos = ivec2(ev.xconfigure.x.int32, ev.xconfigure.y.int32)
         window.mouse.pos = cursor().pos - window.m_pos
         window.eventsHandler.pushEvent onWindowMove, WindowMoveEvent(window: window, pos: window.m_pos)
-
-      let state = (let (kind, data) = window.handle.property(atoms.netWmState, Atom); if kind == XaAtom: data else: @[])
-      if atoms.netWmStateFullscreen in state != window.m_fullscreen:
-        window.m_fullscreen = not window.m_fullscreen
-        window.eventsHandler.pushEvent onFullscreenChanged, FullscreenChangedEvent(window: window, fullscreen: window.m_fullscreen)
       
       if window.syncState == SyncState.syncRecieved:
         window.syncState = SyncState.syncAndConfigureRecieved
@@ -840,7 +841,7 @@ method step*(window: WindowX11) =
       var key = ev.xkey.extractKey
       if key != Key.unknown:
         window.keyboard.pressed.incl key
-        window.eventsHandler.pushEvent onKey, KeyEvent(window: window, key: key, pressed: true, repeated: prevEventIsKeyUpRepeated)
+        window.eventsHandler.pushEvent onKey, KeyEvent(window: window, key: key, pressed: true, repeated: repeated)
 
       if window.eventsHandler.onTextInput != nil and window.xinContext != nil and (window.keyboard.pressed * {lcontrol, rcontrol, lalt, ralt}).len == 0:
         var status: Status
