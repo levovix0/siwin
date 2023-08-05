@@ -574,11 +574,11 @@ proc releaseAllKeys(window: WindowX11) =
   ## needed when window loses focus
   for k in window.keyboard.pressed.items:
     window.keyboard.pressed.excl k
-    window.eventsHandler.pushEvent onKey, KeyEvent(window: window, key: k, pressed: false, repeated: false)
+    window.eventsHandler.pushEvent onKey, KeyEvent(window: window, key: k, pressed: false, repeated: false, generated: true)
 
   for b in window.mouse.pressed:
     window.mouse.pressed.excl b
-    window.eventsHandler.pushEvent onMouseButton, MouseButtonEvent(window: window, button: b, pressed: false)
+    window.eventsHandler.pushEvent onMouseButton, MouseButtonEvent(window: window, button: b, pressed: false, generated: true)
 
 
 method `minimized=`*(window: WindowX11, v: bool) =

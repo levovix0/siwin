@@ -385,11 +385,11 @@ method drawImage*(window: WindowWinapiSoftwareRendering, pixels: openarray[Color
 proc releaseAllKeys(window: WindowWinapi) =
   for key in window.keyboard.pressed:
     window.keyboard.pressed.excl key
-    window.eventsHandler.pushEvent onKey, KeyEvent(window: window, key: key, pressed: false, repeated: false)
+    window.eventsHandler.pushEvent onKey, KeyEvent(window: window, key: key, pressed: false, repeated: false, generated: true)
 
   for button in window.mouse.pressed:
     window.mouse.pressed.excl button
-    window.eventsHandler.pushEvent onMouseButton, MouseButtonEvent(window: window, button: button, pressed: false)
+    window.eventsHandler.pushEvent onMouseButton, MouseButtonEvent(window: window, button: button, pressed: false, generated: true)
 
 
 method `maximized=`*(window: WindowWinapi, v: bool) =
