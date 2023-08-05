@@ -75,6 +75,8 @@ test "OpenGL":
         else: discard
     ,
     onMouseMove: proc(e: MouseMoveEvent) =
+      if e.kind == leave: echo "leave: ", e.pos
+      if e.kind == MouseMoveKind.enter: echo "enter: ", e.pos
       if MouseButton.left in e.window.mouse.pressed:
         g = (e.pos.x / e.window.size.x * 2).min(2).max(0)
         redraw e.window

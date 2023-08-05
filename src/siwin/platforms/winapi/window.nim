@@ -248,6 +248,7 @@ proc initWindow(window: WindowWinapi; size: IVec2; screen: ScreenWinapi, fullscr
   window.wcursor = LoadCursor(0, IdcArrow)
   window.handle.SetWindowLongPtrW(GwlpUserData, cast[LongPtr](window))
   window.handle.trackMouseEvent(TmeHover)
+  window.handle.trackMouseEvent(TmeLeave)
   window.hdc = window.handle.GetDC
   
   window.m_size = size

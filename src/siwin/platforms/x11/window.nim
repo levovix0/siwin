@@ -820,9 +820,11 @@ method step*(window: WindowX11) =
 
     of LeaveNotify:
       window.clicking = {}
+      window.mouse.pos = ivec2(ev.xcrossing.x.int32, ev.xcrossing.y.int32)
       window.eventsHandler.pushEvent onMouseMove, MouseMoveEvent(window: window, pos: window.mouse.pos, kind: MouseMoveKind.leave)
     of EnterNotify:
       window.clicking = {}
+      window.mouse.pos = ivec2(ev.xcrossing.x.int32, ev.xcrossing.y.int32)
       window.eventsHandler.pushEvent onMouseMove, MouseMoveEvent(window: window, pos: window.mouse.pos, kind: MouseMoveKind.enter)
 
     of FocusIn:
