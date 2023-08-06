@@ -23,6 +23,7 @@ type
     wicon: HIcon
     hdc: Hdc
     wcursor: HCursor
+    restoreSize, restorePos: IVec2
 
   WindowWinapiSoftwareRendering* = ref object of WindowWinapi
     buffer: Buffer
@@ -243,6 +244,7 @@ proc initWindow(window: WindowWinapi; size: IVec2; screen: ScreenWinapi, fullscr
     nil
   )
   discard ShowWindow(window.handle, SwHide)
+  window.m_frameless = frameless
 
   window.m_focused = true  #? is it correct?
   window.wcursor = LoadCursor(0, IdcArrow)
@@ -394,14 +396,26 @@ proc releaseAllKeys(window: WindowWinapi) =
 
 method `maximized=`*(window: WindowWinapi, v: bool) =
   if window.m_maximized == v: return
-  discard ShowWindow(window.handle, if v: SwMaximize else: SwRestore)
+  if window.m_frameless:
+    if v:
+      window.restoreSize = window.size
+      window.restorePos = window.pos
+      var workArea: Rect
+      discard SystemParametersInfo(SpiGetWorkArea, 0, workArea.addr, 0)
+      window.size = ivec2(workArea.right - workArea.left, workArea.bottom - workArea.top)
+      window.pos = ivec2(workArea.left, workArea.top)
+    else:
+      window.size = window.restoreSize
+      window.pos = window.restorePos
+  else:
+    discard ShowWindow(window.handle, if v: SwMaximize else: SwNormal)
   window.m_maximized = v
   window.eventsHandler.pushEvent onMaximizedChanged, MaximizedChangedEvent(window: window, maximized: window.m_maximized)
 
 method `minimized=`*(window: WindowWinapi, v: bool) =
   window.releaseAllKeys()
   window.m_minimized = v
-  discard ShowWindow(window.handle, if v: SwMinimize else: SwRestore)
+  discard ShowWindow(window.handle, if v: SwShowMinNoActive  else: SwNormal)
 
 method `visible=`*(window: WindowWinapi, v: bool) =
   window.m_visible = v
@@ -473,7 +487,7 @@ method step*(window: WindowWinapi) =
   var catched = false
 
   proc checkStateChanged =
-    if IsZoomed(window.handle).bool != window.m_maximized:
+    if not window.m_frameless and IsZoomed(window.handle).bool != window.m_maximized:
       window.m_maximized = not window.m_maximized
       window.eventsHandler.pushEvent onMaximizedChanged, MaximizedChangedEvent(window: window, maximized: window.m_maximized)
     

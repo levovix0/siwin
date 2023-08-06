@@ -161,6 +161,14 @@ test "bgrx image":
         case e.key
         of Key.escape:
           close e.window
+        of Key.f1:
+          e.window.fullscreen = not window.fullscreen
+        of Key.f2:
+          e.window.maximized = not window.maximized
+        of Key.f3:
+          e.window.minimized = not window.minimized
+        of Key.f4:
+          e.window.size = ivec2(300, 300)
         else: discard
     ,
     onClick: proc(e: ClickEvent) =
