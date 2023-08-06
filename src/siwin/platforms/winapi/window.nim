@@ -423,21 +423,24 @@ method `visible=`*(window: WindowWinapi, v: bool) =
 
 
 method `resizable=`*(window: WindowWinapi, v: bool) =
-  let style = GetWindowLongW(window.handle, GwlStyle)
-  discard SetWindowLongW(window.handle, GwlStyle, if v: style or WsThickframe else: style and not WsThickframe)
+  if not window.m_frameless:
+    let style = GetWindowLongW(window.handle, GwlStyle)
+    discard SetWindowLongW(window.handle, GwlStyle, if v: style or WsThickframe else: style and not WsThickframe)
   window.m_minSize = ivec2()
   window.m_maxSize = ivec2()
 
 
 method `minSize=`*(window: WindowWinapi, v: IVec2) =
   window.m_minSize = v
-  let style = GetWindowLongW(window.handle, GwlStyle)
-  discard SetWindowLongW(window.handle, GwlStyle, style or WsThickframe)
+  if not window.m_frameless:
+    let style = GetWindowLongW(window.handle, GwlStyle)
+    discard SetWindowLongW(window.handle, GwlStyle, style or WsThickframe)
 
 method `maxSize=`*(window: WindowWinapi, v: IVec2) =
   window.m_maxSize = v
-  let style = GetWindowLongW(window.handle, GwlStyle)
-  discard SetWindowLongW(window.handle, GwlStyle, style or WsThickframe)
+  if not window.m_frameless:
+    let style = GetWindowLongW(window.handle, GwlStyle)
+    discard SetWindowLongW(window.handle, GwlStyle, style or WsThickframe)
 
 
 method startInteractiveMove*(window: WindowWinapi, pos: Option[IVec2]) =
