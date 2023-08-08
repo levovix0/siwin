@@ -444,6 +444,11 @@ method `frameless=`*(window: WindowX11, v: bool) =
     )
 
   else: discard display.XSetTransientForHint(window.handle, display.RootWindow(window.screen))
+  
+  if window.visible and not v:
+    # "reopen" window to apply the changes
+    discard display.XUnmapWindow(window.handle)
+    discard display.XMapWindow(window.handle)
 
 
 method `size=`*(window: WindowX11, v: IVec2) =

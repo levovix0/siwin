@@ -169,6 +169,8 @@ test "bgrx image":
           e.window.minimized = not window.minimized
         of Key.f4:
           e.window.size = ivec2(300, 300)
+        of Key.f5:
+          e.window.frameless = not window.frameless
         else: discard
     ,
     onClick: proc(e: ClickEvent) =
