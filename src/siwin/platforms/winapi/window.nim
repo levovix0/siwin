@@ -595,6 +595,7 @@ proc poolEvent(window: WindowWinapi, message: Uint, wParam: WParam, lParam: LPar
   of WmLButtonDblclk, WmRButtonDblclk, WmMButtonDblclk, WmXButtonDblclk:
     window.handle.SetCapture()
     window.mouse.pressed.incl button
+    window.eventsHandler.pushEvent onMouseButton, MouseButtonEvent(window: window, button: button, pressed: true)
     window.eventsHandler.pushEvent onClick, ClickEvent(window: window, button: button, pos: window.mouse.pos, double: true)
 
   of WmLButtonUp, WmRButtonUp, WmMButtonUp, WmXButtonUp:
