@@ -1,6 +1,9 @@
 # Siwin
+<img alt="siwin" width="100%" src="http://levovix.ru:8000/docs/siwin/banner.png">
+<p align="center">
+  Cross-platform window creation and event handling library.
+</p>
 
-Cross-platform window creation and event handling library.  
 Can be used as an alternative to GLFW/GLUT/windy  
 
 ![Language](https://img.shields.io/badge/language-Nim-orange.svg?style=flat-square) ![Code size](https://img.shields.io/github/languages/code-size/levovix0/siwin?style=flat-square) ![Total Lines](https://img.shields.io/tokei/lines/github/levovix0/siwin?color=purple&style=flat-square)
