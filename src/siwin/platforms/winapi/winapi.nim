@@ -1,3 +1,6 @@
+when not (compiles do: import winim/inc/windef):
+  {.error: "winim library not installed, required to cross compile to windows\n please run `nimble install winim`".}
+
 import winim/inc/[windef, winbase, wingdi, winuser, dwmapi], winim/winstr
 export windef, winbase, wingdi, winuser, winstr, dwmapi
 

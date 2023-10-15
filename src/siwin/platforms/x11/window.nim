@@ -1,3 +1,6 @@
+when not (compiles do: import pkg/x11/xutil):
+  {.error: "x11 library not installed, required to cross compile to linux\n please run `nimble install x11`".}
+
 import std/[times, importutils, strformat, sequtils, os, options, tables]
 import pkg/[vmath, chroma]
 import pkg/x11/xlib except Screen

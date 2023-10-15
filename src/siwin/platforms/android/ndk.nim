@@ -1,3 +1,9 @@
+when not (compiles do: import jnim):
+  {.error: "jnim library not installed, required to cross compile to android\n please run `nimble install jnim`".}
+
+when not (compiles do: import android/app/application):
+  {.error: "android library not installed, required to cross compile to android\n please run `nimble install android`".}
+
 import jnim
 import android/os/bundle
 import jnim/java/lang # for Runnable

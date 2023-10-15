@@ -8,11 +8,17 @@ requires "nim >= 2.0"
 requires "chroma >= 0.2.6"
 requires "vmath >= 1.1.4"
 
-# note: nimble does not support "features", so just require all dependencies without any conditioning
-requires "x11 >= 1.1"
-requires "winim >= 3.6"
-requires "jnim >= 0.5.2"
-requires "https://github.com/yglukhov/android"
+# note: require platform dependencies only if it is the platform on which userprogrammer works.
+#       ask a userprogrammer to install specific platform dependencies if cross compiling.
+when defined(linux):
+  requires "x11 >= 1.1"
+
+when defined(windows):
+  requires "winim >= 3.6"
+
+when defined(android):
+  requires "jnim >= 0.5.2"
+  requires "https://github.com/yglukhov/android"
 
 
 import strformat

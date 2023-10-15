@@ -1,6 +1,7 @@
 import sets, strutils, sequtils, bitops, unittest
 import nimgl/vulkan, vmath
 import siwin
+# todo: use https://github.com/DanielBelmes/vulkan instead of nimgl/vulkan
 
 type
   QueueFamilyIndices = object
