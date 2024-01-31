@@ -29,7 +29,7 @@ test "OpenGL":
       glMatrixMode GlModelView
     ,
     onRender: proc(e: RenderEvent) =
-      glClearColor 0.3, 0.3, 0.3, 0
+      glClearColor 0.1, 0.1, 0.1, 0.3
       glClear GlColorBufferBit or GlDepthBufferBit
     
       glShadeModel GlSmooth

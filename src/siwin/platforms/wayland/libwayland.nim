@@ -43,6 +43,14 @@ type
   Wl_dispatcher_proc* = proc(
       impl: pointer, obj: pointer, opcode: uint32, msg: ptr WlMessage, args: pointer
     ): int32 {.cdecl.}
+  
+  Wl_array* = object
+    size*: int
+    alloc*: int
+    data*: pointer
+  
+  WlProxyTyped* = concept x
+    x.proxy is Wl_proxy
 
 
 let proxyNimTag: cstring = "nim-side proxy (userdata is ref RootObj and it requires destruction)"
@@ -141,3 +149,10 @@ proc construct*(proxy: pointer, t: type, dispatcher: Wl_dispatcher_proc, callbac
 
 proc iface*(display: type Wl_display): ptr Wl_interface =
   cast[ptr Wl_interface](display.raw)  # display is {proxy, ...}, proxy is {object, ...} and object is {ptr iface, ...} so it is safe to just cast pointer to ptr Wl_interface
+
+template proxy*(x: Wl_display): Wl_display =
+  x
+
+proc `==`*(a: WlProxyTyped, b: typeof nil): bool = a.proxy.raw == nil
+proc `==`*(a: Wl_proxy, b: typeof nil): bool = a.raw == nil
+proc `==`*(a: Wl_display, b: typeof nil): bool = a.raw == nil

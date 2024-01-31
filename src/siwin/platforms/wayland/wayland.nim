@@ -1,97 +1,58 @@
 import libwayland, protocol
 
-type
-  Wl_registry* = object
-    proxy*: WlProxy
-  `Wl_registry/Callbacks`* = object
-    destroy: proc(cb: pointer) {.cdecl, raises: [].}
-    global*: proc(name: uint32, iface: cstring, version: uint32)
-
-var `Wl_registry/iface`: WlInterface
-proc iface*(t: type Wl_registry): ptr WlInterface = `Wl_registry/iface`.addr
-
-`Wl_registry/iface` = newWlInterface(
-  "wl_registry", 1,
-  [
-    # newWlMessage("f", "in", [nil, R.iface]),
-  ],
-  [
-    newWlMessage("wl_registry.global", "usu", [(ptr WlInterface)nil, nil, nil]),
-  ]
-)
-
-proc `Wl_registry/dispatch`(impl: pointer, obj: pointer, opcode: uint32, msg: ptr WlMessage, args: pointer): int32 {.cdecl.} =
-  let callbacks = cast[ptr `Wl_registry/Callbacks`](impl)
-  case opcode
-  of 0:
-    let args = cast[ptr (uint32, cstring, uint32)](args)[]
-    if callbacks.global != nil:
-      callbacks.global(args[0], args[1], args[2])
-  else: discard
-
-proc get_registry*(this: Wl_display): Wl_registry =
-  let args = (0'u32,)
-  wl_proxy_marshal_array_flags(this.raw, 1, Wl_registry.iface, 1, 0, args.addr).construct(Wl_registry, `Wl_registry/dispatch`, `Wl_registry/Callbacks`)
-
-template onGlobal*(this: Wl_registry; body) =
-  cast[ptr `Wl_registry/Callbacks`](this.proxy.raw.impl).global = proc(name {.inject.}: uint32, iface {.inject.}: cstring, version {.inject.}: uint32) =
-    body
-
 var
   initialized: bool
 
-  display: Wl_display
-  registry: Wl_registry
+  display: WlDisplay
+  registry: WlRegistry
 
-  # compositor: Compositor
-  # shm: Shm
-  # shell: XdgWmBase
+  compositor: WlCompositor
+  shm: WlShm
+  shell: XdgWmBase
 
-  # pixelFormats: seq[PixelFormat]
+  pixelFormats: seq[`WlShm / Format`]
 
 proc init* =
   if initialized: return
 
   display = wl_display_connect()
+
   registry = display.get_registry
-  # registry.onGlobal:
-  #   echo iface, ", ", name, ", ", version
+
+  registry.onGlobal:
+    case `interface`
+    of "wl_compositor":
+      compositor = registry.bindTyped(name, WlCompositor, version)
+
+    of "wl_shm":
+      shm = registry.bindTyped(name, WlShm, version)
+
+      shm.onFormat:
+        pixelFormats.add format
+    
+    of "xdg_wm_base":
+      shell = registry.bindTyped(name, XdgWmBase, version)
+
+      shell.onPing:
+        shell.pong(serial)
+
   wl_display_roundtrip display
 
-  # registry = display.registry
+  if compositor == nil or shm == nil or shell == nil:
+    raise WaylandProtocolError.newException(
+      "Not enough Wayland interfaces, missing: " &
+      (if compositor == nil: "wl_compositor " else: "") &
+      (if shm == nil: "wl_shm " else: "") &
+      (if shell == nil: "xdg_wm_base " else: "")
+    )
 
-  # registry.onGlobal:
-  #   case iface
-  #   of Compositor.iface:
-  #     compositor = registry.bindInterface(Compositor, name, iface, version)
+  wl_display_roundtrip display
 
-  #   of Shm.iface:
-  #     shm = registry.bindInterface(Shm, name, iface, version)
+  echo pixelFormats
 
-  #     shm.onFormat:
-  #       pixelFormats.add format
+  # initEgl()
 
-  #   of XdgWmBase.iface:
-  #     shell = registry.bindInterface(XdgWmBase, name, iface, version)
-
-  #     shell.onPing:
-  #       shell.pong(serial)
-
-  # sync display
-
-#   if compositor == nil or shm == nil or shell == nil:
-#     raise WindyError.newException(
-#       "Not enough Wayland interfaces, missing: " &
-#       (if compositor == nil: "wl_compositor " else: "") &
-#       (if shm == nil: "wl_shm " else: "") &
-#       (if shell == nil: "xdg_wm_base " else: "")
-#     )
-
-#   sync display
-
-#   initEgl()
-
-#   initialized = true
+  initialized = true
 
 when isMainModule:
   init()
