@@ -1,7 +1,7 @@
 import std/importutils
 import vmath
 import x11/x except Window
-import x11/[xlib, xutil]
+import x11/[xlib, xutil, xrender]
 import ../any/window as anyWindow
 import window {.all.}, glx, globalDisplay
 
@@ -24,10 +24,54 @@ proc initOpenglWindow(
 
   window.m_transparent = transparent
   let root = display.DefaultRootWindow
+  
   var vi: XVisualInfo
-  discard display.XMatchVisualInfo(window.screen, if transparent: 32 else: 24, TrueColor, vi.addr)
+  var fbc: GlxFbConfig
+
+  if transparent:
+    let fbcs = glxChooseFbConfig(screen.number, [
+      GLX_RENDER_TYPE, GLX_RGBA_BIT,
+      GLX_DRAWABLE_TYPE, GLX_WINDOW_BIT,
+      GLX_DOUBLEBUFFER, 1,
+      GLX_RED_SIZE, 8,
+      GLX_GREEN_SIZE, 8,
+      GLX_BLUE_SIZE, 8,
+      GLX_ALPHA_SIZE, 8,
+      GLX_DEPTH_SIZE, 16,
+    ])
+    for i, x in fbcs:
+      type
+        XRenderDirectFormat = object
+          red*: cshort
+          redMask*: cshort
+          green*: cshort
+          greenMask*: cshort
+          blue*: cshort
+          blueMask*: cshort
+          alpha*: cshort
+          alphaMask*: cshort
+
+        XRenderPictFormat = object
+          id*: culong
+          thetype*: cint
+          depth*: cint
+          direct*: XRenderDirectFormat
+          colormap*: Colormap
+
+      if x.glxGetVisualFromFBConfig == nil: continue
+      var pf = cast[ptr XRenderPictFormat](display.XRenderFindVisualFormat(x.glxGetVisualFromFBConfig.visual))
+      if pf == nil: continue
+      if pf.direct.alphaMask > 0:
+        vi = x.glxGetVisualFromFBConfig[]
+        fbc = x
+        break
+  
+  else:
+    discard display.XMatchVisualInfo(window.screen, 24, TrueColor, vi.addr)
+  
   let cmap = display.XCreateColormap(root, vi.visual, AllocNone)
   var swa = XSetWindowAttributes(colormap: cmap)
+
   window.handle = display.XCreateWindow(
     root, 0, 0, size.x.cuint, size.y.cuint, 0, vi.depth, InputOutput, vi.visual,
     CwColormap or CwEventMask or CwBorderPixel or CwBackPixel, swa.addr
@@ -35,7 +79,10 @@ proc initOpenglWindow(
 
   window.setupWindow fullscreen, frameless, class
 
-  window.glxContext = newGlxContext(vi.addr)
+  if transparent:
+    window.glxContext = newGlxContext(fbc)
+  else:
+    window.glxContext = newGlxContext(vi.addr)
   window.handle.makeCurrent window.glxContext
 
 
