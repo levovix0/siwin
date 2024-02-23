@@ -84,6 +84,10 @@ proc wl_proxy_marshal_array_flags*(
   proxy: pointer, opcode: uint32, iface: ptr Wl_interface, version: uint32, flags: uint32, args: pointer
 ): pointer
 
+proc wl_proxy_marshal_flags*(
+  proxy: pointer, opcode: uint32, iface: ptr Wl_interface, version: uint32, flags: uint32
+): pointer {.varargs.}
+
 proc wl_proxy_add_dispatcher*(
   proxy: Wl_proxy, callback: Wl_dispatcher_proc, impl: pointer, proxyUserdata: pointer
 ): int32
@@ -95,15 +99,18 @@ proc `=destroy`*(this: Wl_display) =
   if this.raw != nil:
     wl_display_disconnect this
 
-proc `=destroy`*(this: Wl_proxy) =
+proc destroy*(this: Wl_proxy) =
   if this.raw == nil: return
   if this.wl_proxy_get_tag == proxyNimTag.addr:
     cast[ptr proc(cb: pointer) {.cdecl, raises: [].}](this.raw.impl)[](this.raw.impl)
   wl_proxy_destroy this
 
-proc `=copy`*(this: var Wl_proxy, v: Wl_proxy) {.error.}
-proc `=sink`*(this: var Wl_proxy, v: Wl_proxy) =
-  this.raw = v.raw
+# proc `=destroy`*(this: Wl_proxy) =
+#   destroy(this)
+
+# proc `=copy`*(this: var Wl_proxy, v: Wl_proxy) {.error.}
+# proc `=sink`*(this: var Wl_proxy, v: Wl_proxy) =
+#   this.raw = v.raw
 
 
 proc dispatch*(this: Wl_display): int32 =

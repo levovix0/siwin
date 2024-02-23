@@ -1,4 +1,3 @@
-import ../../../common, vmath
 
 type
   OpenglContext* = object
@@ -41,39 +40,43 @@ const
 
   eglNone = int32 0x3038
 
-{.push, cdecl, dynlib: "libEGL.so(|.1)", importc.}
 
-using d: EglDisplay
+var d: EglDisplay
+
+
+{.push, cdecl, dynlib: "libEGL.so(|.1)", importc.}
 
 proc eglGetError(): EglError
 proc eglGetDisplay(native: pointer = nil): EglDisplay
 
-proc eglInitialize(d; major: ptr int32 = nil; minor: ptr int32 = nil): bool
-proc eglTerminate(d)
+proc eglInitialize(d: EglDisplay; major: ptr int32 = nil; minor: ptr int32 = nil): bool
+proc eglTerminate(d: EglDisplay)
 
-proc eglChooseConfig(d; attrs: ptr int32; retConfigs: ptr EglConfig;
+proc eglChooseConfig(d: EglDisplay; attrs: ptr int32; retConfigs: ptr EglConfig;
     maxConfigs: int32; retConfigCount: ptr int32): bool
 
-proc eglCreateContext(d; config: EglConfig; share: EglContext = nil;
+proc eglCreateContext(d: EglDisplay; config: EglConfig; share: EglContext = nil;
     attrs: ptr int32 = nil): EglContext
 
-proc eglCreatePbufferSurface(d; config: EglConfig;
+proc eglCreatePbufferSurface(d: EglDisplay; config: EglConfig;
     attrs: ptr int32 = nil): EglSurface
 
-proc eglMakeCurrent(d; draw, read: EglSurface; ctx: EglContext): bool
+proc eglCreateWindowSurface(d: EglDisplay; config: EglConfig; native_window: pointer; attrs: ptr int32 = nil): EglSurface
+
+proc eglMakeCurrent(d: EglDisplay; draw, read: EglSurface; ctx: EglContext): bool
 
 {.pop.}
 
-template expect(x) =
-  if not x: raise WindyError.newException("Error creating OpenGL context (" &
-      $eglGetError() & ")")
 
-var d: EglDisplay
+proc expect(x: bool) =
+  if not x: raise OsError.newException("Error creating OpenGL context (" & $eglGetError() & ")")
+
 
 proc initEgl* =
   d = eglGetDisplay()
   expect d != nil
   expect d.eglInitialize
+
 
 proc newOpenglContext*: OpenglContext =
   ## creates opengl context (on new dummy surface)
@@ -103,10 +106,10 @@ proc newOpenglContext*: OpenglContext =
   result.srf = d.eglCreatePbufferSurface(config, attrs2[0].addr)
   expect result.srf != nil
 
+
 proc makeCurrent*(context: OpenglContext) =
-  if not d.eglMakeCurrent(context.srf, context.srf, context.ctx):
-    raise WindyError.newException("Error creating OpenGL context (" &
-        $eglGetError() & ")")
+  expect d.eglMakeCurrent(context.srf, context.srf, context.ctx)
+
 
 proc terminateEgl* =
   d.eglTerminate

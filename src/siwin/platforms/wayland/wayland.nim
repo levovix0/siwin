@@ -1,4 +1,5 @@
-import libwayland, protocol
+import vmath
+import libwayland, protocol, sharedBuffer, egl
 
 var
   initialized: bool
@@ -11,6 +12,7 @@ var
   shell: XdgWmBase
 
   pixelFormats: seq[`WlShm / Format`]
+
 
 proc init* =
   if initialized: return
@@ -48,39 +50,30 @@ proc init* =
 
   wl_display_roundtrip display
 
-  echo pixelFormats
-
-  # initEgl()
+  initEgl()
 
   initialized = true
 
+
 when isMainModule:
   init()
-#   let srf = compositor.newSurface
-#   let ssrf = shell.shellSurface(srf)
-#   let tl = ssrf.toplevel
+  
+  let srf = compositor.create_surface
+  let ssrf = shell.get_xdg_surface(srf)
+  let tl = ssrf.get_toplevel
 
-#   commit srf
+  commit srf
 
-#   ssrf.onConfigure:
-#     ssrf.ackConfigure(serial)
-#     commit srf
+  ssrf.onConfigure:
+    ssrf.ackConfigure(serial)
+    commit srf
 
-#   tl.onClose: quit()
+  tl.onClose: quit()
 
-#   sync display
+  wl_display_roundtrip display
 
-#   let buf = shm.create(ivec2(128, 128), PixelFormat.xrgb8888)
-#   attach srf, buf.buffer, ivec2(0, 0)
-#   commit srf
+  let buf = shm.create(ivec2(128, 128), xrgb8888)
+  srf.attach(buf.buffer, 0, 0)
+  commit srf
 
-#   makeCurrent newOpenglContext()
-
-  # how to draw on window?
-  # i tried:
-  #   creating context on window (incompatible native window (wl_window vs. protocol.Window))
-  #   eglCreateDRMImageMESA/eglExportDRMImageMESA/wl_drm.newBuffer (fails via BadAlloc)
-  # in this code works:
-  #   setting pixels manually on buf.dataAddr (no OpenGL)
-
-  # while true: sync display
+  while true: wl_display_roundtrip display

@@ -78,6 +78,8 @@ macro generateProtocolWrapperFromXmlStringImpl(outNimFile: static[string], insta
     dispatcherSection = newStmtList()
     wrapperFunctionsSection = newStmtList()
     eventHandlerTemplatesSection = newStmtList()
+    dispatchTemplatesSection = newStmtList()
+    callbacksTemplatesSection = newStmtList()
 
   res.add newCommentStmtNode("note: this file is generated in protocol_gen.nim\ndo not edit it mannualy!\npass -d:siwin_generate_wayland_protocol to regenerate it")
   res.add nnkImportStmt.newTree(ident "libwayland")
@@ -389,6 +391,11 @@ macro generateProtocolWrapperFromXmlStringImpl(outNimFile: static[string], insta
               error("unexpected type: " & t)
               ""
           
+          if x.name == "bind" and ifaceName == "wl_registry":
+            # in wayland protocol it's declared as taking 2 args, BUT in actual code... it takes 4.
+            # idk why, but while it works like so...
+            shortSignature = "1usun"
+          
           var types = nnkBracket.newTree()
           for (_, _, iface, _, _) in x.args:
             if iface == "":
@@ -441,15 +448,13 @@ macro generateProtocolWrapperFromXmlStringImpl(outNimFile: static[string], insta
                 nnkIdentDefs.newTree(
                   ident("args"),
                   newEmptyNode(),
-                  nnkBracketExpr.newTree(
-                    nnkCast.newTree(
-                      nnkPtrTy.newTree(
-                        nnkTupleConstr.newTree(
-                          msg.args.mapit(it.t.toNimType(it.iface, it.enm))
-                        )
-                      ),
-                      ident("args")
-                    )
+                  nnkCast.newTree(
+                    nnkPtrTy.newTree(
+                      nnkTupleConstr.newTree(
+                        msg.args.mapit(it.t.toNimType(it.iface, it.enm))
+                      )
+                    ),
+                    ident("args")
                   )
                 )
               )]
@@ -473,7 +478,9 @@ macro generateProtocolWrapperFromXmlStringImpl(outNimFile: static[string], insta
                       ) &
                       (0..msg.args.high).mapit(
                         nnkBracketExpr.newTree(
-                          ident("args"),
+                          nnkBracketExpr.newTree(
+                            ident("args"),
+                          ),
                           newLit(it)
                         )
                       )
@@ -579,15 +586,15 @@ macro generateProtocolWrapperFromXmlStringImpl(outNimFile: static[string], insta
       for i, req in requests:
         let rt = req.rettype
         let marshal = nnkCall.newTree(
-          ident("wl_proxy_marshal_array_flags"),
+          @[ident("wl_proxy_marshal_flags")] &
           nnkDotExpr.newTree(
             nnkDotExpr.newTree(
               ident("this"),
               ident("proxy")
             ),
             ident("raw")
-          ),
-          newLit(i),
+          ) &
+          newLit(i) &
           (if rt.kind == nnkEmpty or rt == ident("uint32"):
             newNilLit()
           else:
@@ -595,12 +602,14 @@ macro generateProtocolWrapperFromXmlStringImpl(outNimFile: static[string], insta
               rt,
               ident("iface")
             )
-          ),
-          newLit(req.version),
-          newLit(if req.isDestructor: 1 else: 0),
-          nnkDotExpr.newTree(
-            ident("args"),
-            ident("addr")
+          ) &
+          newLit(req.version) &
+          newLit(if req.isDestructor: 1 else: 0) &
+          req.args.mapit(
+            if it.t == "new_id":
+              newNilLit()
+            else:
+              accquote it.name
           )
         )
 
@@ -630,20 +639,6 @@ macro generateProtocolWrapperFromXmlStringImpl(outNimFile: static[string], insta
           newEmptyNode(),
           nnkStmtList.newTree(
             (if req.desc != "": @[newCommentStmtNode(req.desc)] else: @[]) &
-            nnkLetSection.newTree(
-              nnkIdentDefs.newTree(
-                ident("args"),
-                newEmptyNode(),
-                nnkTupleConstr.newTree(
-                  req.args.mapit(
-                    if it.t == "new_id":
-                      newLit 0'u32
-                    else:
-                      accquote it.name
-                  )
-                )
-              )
-            ) &
             (if rt.kind != nnkEmpty and rt != ident("uint32"):
               nnkCall.newTree(
                 ident("construct"),
@@ -748,10 +743,71 @@ macro generateProtocolWrapperFromXmlStringImpl(outNimFile: static[string], insta
           )
         )
 
+      # dispatch template
+      dispatchTemplatesSection.add nnkTemplateDef.newTree(
+        nnkPostfix.newTree(
+          ident("*"),
+          ident("dispatch")
+        ),
+        newEmptyNode(),
+        newEmptyNode(),
+        nnkFormalParams.newTree(
+          ident("untyped"),
+          nnkIdentDefs.newTree(
+            ident("t"),
+            nnkBracketExpr.newTree(
+              ident("typedesc"),
+              typename
+            ),
+            newEmptyNode()
+          )
+        ),
+        newEmptyNode(),
+        newEmptyNode(),
+        nnkStmtList.newTree(
+          nnkAccQuoted.newTree(
+            typename,
+            ident("/"),
+            ident("dispatch")
+          )
+        )
+      )
+
+      # dispatch template
+      callbacksTemplatesSection.add nnkTemplateDef.newTree(
+        nnkPostfix.newTree(
+          ident("*"),
+          ident("Callbacks")
+        ),
+        newEmptyNode(),
+        newEmptyNode(),
+        nnkFormalParams.newTree(
+          ident("untyped"),
+          nnkIdentDefs.newTree(
+            ident("t"),
+            nnkBracketExpr.newTree(
+              ident("typedesc"),
+              typename
+            ),
+            newEmptyNode()
+          )
+        ),
+        newEmptyNode(),
+        newEmptyNode(),
+        nnkStmtList.newTree(
+          nnkAccQuoted.newTree(
+            typename,
+            ident("/"),
+            ident("Callbacks")
+          )
+        )
+      )
+
+
   for (kind, path) in walkDir(instantiatedFrom.splitPath.head / "protocols"):
     parse staticRead path
 
-  res.add [typesection, ifaceDeclSection, ifaceBodySection, dispatcherSection, wrapperFunctionsSection, eventHandlerTemplatesSection]
+  res.add [typesection, ifaceDeclSection, ifaceBodySection, dispatcherSection, wrapperFunctionsSection, eventHandlerTemplatesSection, dispatchTemplatesSection, callbacksTemplatesSection]
 
   writeFile(instantiatedFrom.splitPath.head / outNimFile, res.repr)
 

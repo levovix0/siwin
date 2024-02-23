@@ -1,35 +1,38 @@
 import memfiles, os, protocol, vmath
 
-type SharedBuffer* = ref object
-  ## memmaped file that can be shared between processes
-  shm: Shm
-  buffer: Buffer
-  file: MemFile
-  filename: string
+type
+  SharedBuffer* = object
+    ## memmaped file that can be shared between processes
+    shm: WlShm
+    buffer: WlBuffer
+    file: MemFile
+    filename: string
 
 proc dataAddr*(buffer: SharedBuffer): pointer =
   buffer.file.mem
 
-proc fileDescriptor*(buffer: SharedBuffer): FileDescriptor =
-  buffer.file.handle.FileDescriptor
+proc fileDescriptor*(buffer: SharedBuffer): FileHandle =
+  buffer.file.handle
 
-proc buffer*(buffer: SharedBuffer): Buffer =
+proc buffer*(buffer: SharedBuffer): WlBuffer =
   buffer.buffer
 
-proc create*(shm: Shm, size: IVec2, format: PixelFormat): SharedBuffer =
-  new result, proc(buffer: SharedBuffer) =
-    close buffer.file
+proc `=destroy`(buffer: SharedBuffer) =
+  try:
+    close buffer.addr[].file
+  except OsError: discard
 
+proc create*(shm: WlShm, size: IVec2, format: `WlShm / Format`, pixelSize = 4): SharedBuffer =
   result.shm = shm
 
-  let filebase = getEnv("XDG_RUNTIME_DIR") / "windy-"
+  let filebase = getEnv("XDG_RUNTIME_DIR") / "siwin-"
   for i in 0..int.high:
     if not fileExists(filebase & $i):
       result.filename = filebase & $i
       result.file = memfiles.open(result.filename, mode = fmReadWrite,
-          allowRemap = true, newFileSize = size.x * size.y * 4)
+          allowRemap = true, newFileSize = size.x * size.y * pixelSize)
       break
 
-  let pool = shm.newPool(result.fileDescriptor, size.x * size.y * 4)
-  result.buffer = pool.newBuffer(0, size, size.x * 4, format)
+  let pool = shm.create_pool(result.fileDescriptor, size.x * size.y * 4)
+  result.buffer = pool.create_buffer(0, size.x, size.y, size.x * 4, format)
   destroy pool

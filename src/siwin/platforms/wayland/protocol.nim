@@ -26,6 +26,4 @@ proc bindTyped*(this: Wl_registry; name: uint32, t: type, version: uint32): t =
   ## specified name as the identifier.
   ## 
   ## typed version
-  mixin iface
-  let args = (name, 0'u32)
-  t(proxy: Wl_proxy(raw: cast[ptr Wl_object](wl_proxy_marshal_array_flags(this.proxy.raw, 0, iface(t), version, 0, args.addr))))
+  construct(wl_proxy_marshal_flags(this.proxy.raw, 0, t.iface, version, 0, name, t.iface[].name, version, nil), t, t.dispatch, t.Callbacks)
