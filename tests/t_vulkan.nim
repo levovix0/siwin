@@ -1,7 +1,8 @@
 import sets, strutils, sequtils, bitops, unittest
-import nimgl/vulkan, vmath
+when not (compiles do: import vulkan):
+  {.error: "please run `nimble install https://github.com/DanielBelmes/vulkan`".}
+import vulkan, vmath
 import siwin
-# todo: use https://github.com/DanielBelmes/vulkan instead of nimgl/vulkan
 
 type
   QueueFamilyIndices = object
@@ -30,9 +31,6 @@ const
   VK_NULL_HANDLE = 0
   WIDTH* = 800.uint32
   HEIGHT* = 600.uint32
-
-loadVK_KHR_surface()
-loadVK_KHR_swapchain()
 
 proc isComplete(indices: QueueFamilyIndices): bool =
   indices.graphicsFamilyFound and indices.presentFamilyFound
@@ -143,7 +141,7 @@ proc createInstance(extensions: cstringArray, extensionCount: uint32): VkInstanc
     applicationVersion = vkMakeVersion(1, 0, 0),
     pEngineName = "No Engine",
     engineVersion = vkMakeVersion(1, 0, 0),
-    apiVersion = vkApiVersion1_1
+    apiVersion = VkApiVersion1_1
   )
 
   var instanceCreateInfo = newVkInstanceCreateInfo(
@@ -618,8 +616,6 @@ proc deinit*() =
   vkDestroyInstance(instance, nil)
 
 test "Vulkan":
-  doAssert vkInit()
-  
   let exts = getRequiredVulkanExtensions()
   var cexts = exts.mapit(it[0].unsafeaddr)
 
