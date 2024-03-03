@@ -1,5 +1,6 @@
+import unicode
 import vmath, opengl
-import libwayland, protocol, sharedBuffer, egl
+import libwayland, protocol, egl
 import ../../../../tests/gl
 
 var
@@ -10,8 +11,10 @@ var
 
   compositor: WlCompositor
   shm: WlShm
-  seat: WlSeat
   shell: XdgWmBase
+  seat: WlSeat
+
+  serverDecorations: Org_kde_kwin_server_decoration_manager
 
   pixelFormats: seq[`WlShm / Format`]
 
@@ -42,6 +45,9 @@ proc init* =
 
     of "wl_seat":
       seat = registry.bindTyped(name, WlSeat, version)
+
+    of "org_kde_kwin_server_decoration_manager":
+      serverDecorations = registry.bindTyped(name, Org_kde_kwin_server_decoration_manager, version)
 
   wl_display_roundtrip display
 
@@ -78,7 +84,18 @@ when isMainModule:
 
   tl.set_title("siwin wayland test")
 
+  # tl.set_app_id("DMusic")
+  # tl.set_app_id("Веб-браузер Firefox")
+  tl.set_app_id("siwin")
+
+  # tl.set_min_size(1280, 720)
+  # tl.set_max_size(1280, 720)
+
   commit srf
+
+
+  let ssd {.used.} = serverDecorations.create(srf)
+
 
   let eglctx = newOpenglContext(srf.proxy.raw, 1280, 720)
   makeCurrent eglctx
@@ -88,12 +105,24 @@ when isMainModule:
     ssrf.ackConfigure(serial)
     commit srf
 
+  tl.onConfigure:
+    eglctx.win.wl_egl_window_resize(width, height, 0, 0)
+    ssrf.ackConfigure(0)  #? is it needed?
+    glViewport 0, 0, width, height
+
   var windowClosed = false
   tl.onClose: windowClosed = true
+
 
   wl_display_roundtrip display
 
   commit srf
+
+
+  let keyboard = seat.get_keyboard
+
+  keyboard.onKey:
+    echo cast[Rune](key), " ", key
 
 
   while not windowClosed:
@@ -103,7 +132,7 @@ when isMainModule:
       # glViewport 0, 0, 1280, 720
 
       glClearColor(32/255/2, 32/255/2, 32/255/2, 1/2)
-      # glClearColor(0, 0, 0, 0)
+      # glClearColor(32/255, 32/255, 32/255, 1)
       glClear(GL_COLOR_BUFFER_BIT or GL_DEPTH_BUFFER_BIT)
 
       let shader = ctx.makeShader:
@@ -130,6 +159,5 @@ when isMainModule:
       # glDisable(GlBlend)
 
     swapBuffers eglctx
-
 
     wl_display_roundtrip display

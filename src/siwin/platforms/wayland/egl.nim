@@ -67,7 +67,9 @@ const
   EGL_CONTEXT_CLIENT_VERSION* = int32 0x3098
 
 
-var egl_display: EglDisplay
+var
+  initialized: bool
+  egl_display: EglDisplay
 
 
 {.push, cdecl, dynlib: "libEGL.so(|.1)", importc.}
@@ -111,6 +113,9 @@ proc expect(x: bool) =
 
 
 proc initEgl*(nativeDisplay: pointer) =
+  if initialized: return
+  initialized = true
+
   egl_display = eglGetDisplay(nativeDisplay)
   expect egl_display != nil
   expect egl_display.eglInitialize
@@ -185,4 +190,7 @@ proc swapBuffers*(context: OpenglContext) =
 
 
 proc terminateEgl* =
+  if not initialized: return
+  initialized = false
+  
   egl_display.eglTerminate

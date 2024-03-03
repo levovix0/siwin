@@ -44,13 +44,15 @@ type
       impl: pointer, obj: pointer, opcode: uint32, msg: ptr WlMessage, args: pointer
     ): int32 {.cdecl.}
   
-  Wl_array* = object
+  Wl_array* = ptr object
     size*: int
     alloc*: int
     data*: pointer
   
   WlProxyTyped* = concept x
     x.proxy is Wl_proxy
+  
+  Wl_argument* = int
 
 
 let proxyNimTag: cstring = "nim-side proxy (userdata is ref RootObj and it requires destruction)"
@@ -99,10 +101,15 @@ proc `=destroy`*(this: Wl_display) =
   if this.raw != nil:
     wl_display_disconnect this
 
-proc destroy*(this: Wl_proxy) =
+proc destroyCallbacks*(this: Wl_proxy) =
   if this.raw == nil: return
   if this.wl_proxy_get_tag == proxyNimTag.addr:
     cast[ptr proc(cb: pointer) {.cdecl, raises: [].}](this.raw.impl)[](this.raw.impl)
+    this.wl_proxy_set_tag nil
+
+proc destroy*(this: Wl_proxy) =
+  if this.raw == nil: return
+  destroyCallbacks this
   wl_proxy_destroy this
 
 # proc `=destroy`*(this: Wl_proxy) =
@@ -148,7 +155,7 @@ proc construct*(proxy: pointer, t: type, dispatcher: Wl_dispatcher_proc, callbac
   result.proxy.raw = cast[ptr Wl_object](proxy)
   result.proxy.wl_proxy_set_tag(proxyNimTag.addr)
   let callbacks = cast[ptr callbacksT](alloc0(callbacksT.sizeof))
-  callbacks.destroy = proc(cb: pointer) {.cdecl, raises: [].} =
+  callbacks[].destroy = proc(cb: pointer) {.cdecl, raises: [].} =
     `=destroy`(cast[ptr callbacksT](cb)[])
     dealloc(cb)
   discard result.proxy.wl_proxy_add_dispatcher(dispatcher, callbacks, nil)

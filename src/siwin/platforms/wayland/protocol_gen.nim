@@ -28,7 +28,7 @@ macro generateProtocolWrapperFromXmlStringImpl(outNimFile: static[string], insta
   ##     T* = object
   ##       proxy*: WlProxy
   ##     `T/Callbacks`* = object
-  ##       destroy: proc(cb: pointer) {.cdecl, raises: [].}
+  ##       destroy*: proc(cb: pointer) {.cdecl, raises: [].}
   ##       e*: proc(a: E)
   ##     E* = enum
   ##       eb = 1
@@ -330,7 +330,10 @@ macro generateProtocolWrapperFromXmlStringImpl(outNimFile: static[string], insta
             newEmptyNode(),
             nnkRecList.newTree(
               nnkIdentDefs.newTree(
-                ident("destroy"),
+                nnkPostfix.newTree(
+                  ident"*",
+                  ident("destroy"),
+                ),
                 nnkProcTy.newTree(
                   nnkFormalParams.newTree(
                     newEmptyNode(),
@@ -446,12 +449,14 @@ macro generateProtocolWrapperFromXmlStringImpl(outNimFile: static[string], insta
             nnkStmtList.newTree(
               (if msg.args.len != 0: @[nnkLetSection.newTree(
                 nnkIdentDefs.newTree(
-                  ident("args"),
+                  ident("argsArray"),
                   newEmptyNode(),
                   nnkCast.newTree(
                     nnkPtrTy.newTree(
-                      nnkTupleConstr.newTree(
-                        msg.args.mapit(it.t.toNimType(it.iface, it.enm))
+                      nnkBracketExpr.newTree(
+                        ident("array"),
+                        newLit(msg.args.len),
+                        ident("Wl_argument")
                       )
                     ),
                     ident("args")
@@ -477,11 +482,14 @@ macro generateProtocolWrapperFromXmlStringImpl(outNimFile: static[string], insta
                         accquote msg.name
                       ) &
                       (0..msg.args.high).mapit(
-                        nnkBracketExpr.newTree(
+                        nnkCast.newTree(
+                          msg.args[it].t.toNimType(msg.args[it].iface, msg.args[it].enm),
                           nnkBracketExpr.newTree(
-                            ident("args"),
+                            nnkBracketExpr.newTree(
+                              ident("argsArray"),
+                            ),
+                            newLit(it),
                           ),
-                          newLit(it)
                         )
                       )
                     )
@@ -639,20 +647,34 @@ macro generateProtocolWrapperFromXmlStringImpl(outNimFile: static[string], insta
           newEmptyNode(),
           nnkStmtList.newTree(
             (if req.desc != "": @[newCommentStmtNode(req.desc)] else: @[]) &
-            (if rt.kind != nnkEmpty and rt != ident("uint32"):
+            ( if req.isDestructor: @[
               nnkCall.newTree(
-                ident("construct"),
-                marshal,
-                rt,
-                nnkAccQuoted.newTree(
-                  rt.unaccquote,
-                  ident("/"),
-                  ident("dispatch")
-                ),
-                nnkAccQuoted.newTree(
-                  rt.unaccquote,
-                  ident("/"),
-                  ident("Callbacks")
+                ident("destroyCallbacks"),
+                nnkDotExpr.newTree(
+                  ident("this"),
+                  ident("proxy")
+                )
+              )]
+              else:
+                @[]
+            ) &
+            (if rt.kind != nnkEmpty and rt != ident("uint32"):
+              nnkAsgn.newTree(
+                ident("result"),
+                nnkCall.newTree(
+                  ident("construct"),
+                  marshal,
+                  rt,
+                  nnkAccQuoted.newTree(
+                    rt.unaccquote,
+                    ident("/"),
+                    ident("dispatch")
+                  ),
+                  nnkAccQuoted.newTree(
+                    rt.unaccquote,
+                    ident("/"),
+                    ident("Callbacks")
+                  )
                 )
               )
             else:

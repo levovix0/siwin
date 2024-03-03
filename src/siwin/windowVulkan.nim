@@ -4,6 +4,8 @@ import ./platforms
 when defined(linux):
   import ./platforms/x11/window as x11Window
   import ./platforms/x11/windowVulkan as x11WindowVulkan
+  import ./platforms/wayland/window as waylandWindow
+  import ./platforms/wayland/windowVulkan as waylandWindowVulkan
 elif defined(windows):
   import ./platforms/winapi/window as winapiWindow
   import ./platforms/winapi/windowVulkan as winapiWindowVulkan
@@ -32,6 +34,15 @@ proc newVulkanWindow*(
         resizable, fullscreen, frameless, transparent,
         (if class == "": title else: class)
       )
+    
+    of wayland:
+      newVulkanWindowWayland(
+        vkInstance,
+        size, title,
+        (if screen == -1: defaultScreenWayland() else: screenWayland(screen)),
+        resizable, fullscreen, frameless, transparent
+      )
+
     else:
       raise PlatformSupportDefect.newException("Unsupported platform: " & $platform)
 

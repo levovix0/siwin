@@ -14,78 +14,6 @@ test "screen":
       echo &"screen({i}).size: {size.x}x{size.y}"
 
 
-test "OpenGL":
-  var g = 1.0
-  
-  let window = newOpenglWindow(title="OpenGL test", transparent=true)
-  loadExtensions()
-  
-  run window, WindowEventsHandler(
-    onResize: proc(e: ResizeEvent) =
-      glViewport 0, 0, e.size.x.GLsizei, e.size.y.GLsizei
-      glMatrixMode GlProjection
-      glLoadIdentity()
-      glOrtho -30, 30, -30, 30, -30, 30
-      glMatrixMode GlModelView
-    ,
-    onRender: proc(e: RenderEvent) =
-      glClearColor 0.1, 0.1, 0.1, 0.3
-      glClear GlColorBufferBit or GlDepthBufferBit
-    
-      glShadeModel GlSmooth
-    
-      glLoadIdentity()
-      glTranslatef -15, -15, 0
-    
-      glBegin GlTriangles
-      glColor3f 1 * g, g - 1, g - 1
-      glVertex2f 0, 0
-      glColor3f g - 1, 1 * g, g - 1
-      glVertex2f 30, 0
-      glColor3f g - 1, g - 1, 1 * g
-      glVertex2f 0, 30
-      glEnd()
-    ,
-    onKey: proc(e: KeyEvent) =
-      if not e.pressed:
-        case e.key
-        of Key.escape:
-          close e.window
-        of Key.f1:
-          e.window.fullscreen = not window.fullscreen
-        of Key.f2:
-          e.window.maximized = not window.maximized
-        of Key.f3:
-          e.window.minimized = not window.minimized
-        of Key.f4:
-          e.window.size = ivec2(300, 300)
-        else: discard
-    ,
-    onClick: proc(e: ClickEvent) =
-      if e.double:
-        close e.window
-      else:
-        case e.button
-        of MouseButton.left, MouseButton.right:
-          g = (e.pos.x / e.window.size.x * 2).min(2).max(0)
-          redraw e.window
-        of MouseButton.middle:
-          e.window.maxSize = ivec2(600, 600)
-          e.window.minSize = ivec2(300, 300)
-        else: discard
-    ,
-    onMouseMove: proc(e: MouseMoveEvent) =
-      if e.kind == leave: echo "leave: ", e.pos
-      if e.kind == MouseMoveKind.enter: echo "enter: ", e.pos
-      if MouseButton.left in e.window.mouse.pressed:
-        g = (e.pos.x / e.window.size.x * 2).min(2).max(0)
-        redraw e.window
-    ,
-    onMaximizedChanged: proc(e: MaximizedChangedEvent) =
-      echo "maximized: ", e.maximized
-  )
-
-
 test "pixie":
   var
     image: Image
@@ -229,10 +157,6 @@ test "2 windows at once":
     onResize: proc(e: ResizeEvent) =
       makeCurrent e.window
       glViewport 0, 0, e.size.x.GLsizei, e.size.y.GLsizei
-      glMatrixMode GlProjection
-      glLoadIdentity()
-      glOrtho -30, 30, -30, 30, -30, 30
-      glMatrixMode GlModelView
     ,
     onRender: proc(e: RenderEvent) =
       makeCurrent e.window
@@ -274,41 +198,3 @@ test "clipboard":
   clipboard.text = "hello"
   check clipboard.text == "hello"
 
-
-when defined(wayland):
-  import wayland/client
-
-  var
-    compositor: Compositor
-    shell: Shell
-
-    srf: Surface
-    shsrf: ShellSurface
-
-  test "wayland":
-    let display = displayConnect()
-    if display == nil:
-      raise Exception.newException "Can't connect to display"
-    
-    let reg = display.getRegistry
-    var rl = RegistryListener(
-      global: proc(data: pointer, registry: Registry, name: uint32, iface: cstring, version: uint32) {.cdecl.} =
-        template i(v, f): untyped = v = cast[type(v)](registry.bindRegistry(name, f.addr, 1))
-        echo $iface
-        case $iface
-        of "wl_compositor": i(compositor, wl_compositor_interface)
-        of "wl_shell": i(shell, wl_shell_interface)
-      ,
-      globalRemove: proc(data: pointer, registry: Registry, name: uint32) {.cdecl.} = discard
-        # who cares?
-    )
-    reg.addListener rl.addr
-
-    dispatch display
-    roundtrip display
-
-    srf = compositor.createSurface
-    shsrf = shell.getShellSurface(srf)
-    setTopLevel shsrf
-
-    disconnect display

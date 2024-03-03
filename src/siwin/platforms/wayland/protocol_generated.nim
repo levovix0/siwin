@@ -19,7 +19,7 @@ type
     invalid_popup_parent = 3, invalid_surface_state = 4, invalid_positioner = 5,
     unresponsive = 6
   `Xdg_wm_base / Callbacks`* = object
-    destroy: proc (cb: pointer) {.cdecl, raises: [].}
+    destroy*: proc (cb: pointer) {.cdecl, raises: [].}
     ping*: proc (serial: uint32)
 
   Xdg_positioner* = object
@@ -66,7 +66,7 @@ type
     none = 0, slide_x = 1, slide_y = 2, flip_x = 4, flip_y = 8, resize_x = 16,
     resize_y = 32
   `Xdg_positioner / Callbacks`* = object
-    destroy: proc (cb: pointer) {.cdecl, raises: [].}
+    destroy*: proc (cb: pointer) {.cdecl, raises: [].}
 
   Xdg_surface* = object
     ## An interface that may be implemented by a wl_surface, for
@@ -122,7 +122,7 @@ type
     not_constructed = 1, already_constructed = 2, unconfigured_buffer = 3,
     invalid_serial = 4, invalid_size = 5, defunct_role_object = 6
   `Xdg_surface / Callbacks`* = object
-    destroy: proc (cb: pointer) {.cdecl, raises: [].}
+    destroy*: proc (cb: pointer) {.cdecl, raises: [].}
     configure*: proc (serial: uint32)
 
   Xdg_toplevel* = object
@@ -163,7 +163,7 @@ type
   `Xdg_toplevel / Wm_capabilities`* {.size: 4.} = enum
     window_menu = 1, maximize = 2, fullscreen = 3, minimize = 4
   `Xdg_toplevel / Callbacks`* = object
-    destroy: proc (cb: pointer) {.cdecl, raises: [].}
+    destroy*: proc (cb: pointer) {.cdecl, raises: [].}
     configure*: proc (width: int32; height: int32; states: Wl_array)
     close*: proc ()
     configure_bounds*: proc (width: int32; height: int32)
@@ -199,10 +199,35 @@ type
   `Xdg_popup / Error`* {.size: 4.} = enum
     invalid_grab = 0
   `Xdg_popup / Callbacks`* = object
-    destroy: proc (cb: pointer) {.cdecl, raises: [].}
+    destroy*: proc (cb: pointer) {.cdecl, raises: [].}
     configure*: proc (x: int32; y: int32; width: int32; height: int32)
     popup_done*: proc ()
     repositioned*: proc (token: uint32)
+
+  Org_kde_kwin_server_decoration_manager* = object
+    ## This interface allows to coordinate whether the server should create
+    ## a server-side window decoration around a wl_surface representing a
+    ## shell surface (wl_shell_surface or similar). By announcing support
+    ## for this interface the server indicates that it supports server
+    ## side decorations.
+    ## 
+    ## Use in conjunction with zxdg_decoration_manager_v1 is undefined.
+    proxy*: Wl_proxy
+
+  `Org_kde_kwin_server_decoration_manager / Mode`* {.size: 4.} = enum ## Possible values to use in request_mode and the event mode.
+    None = 0, Client = 1, Server = 2
+  `Org_kde_kwin_server_decoration_manager / Callbacks`* = object
+    destroy*: proc (cb: pointer) {.cdecl, raises: [].}
+    default_mode*: proc (mode: uint32)
+
+  Org_kde_kwin_server_decoration* = object
+    proxy*: Wl_proxy
+
+  `Org_kde_kwin_server_decoration / Mode`* {.size: 4.} = enum ## Possible values to use in request_mode and the event mode.
+    None = 0, Client = 1, Server = 2
+  `Org_kde_kwin_server_decoration / Callbacks`* = object
+    destroy*: proc (cb: pointer) {.cdecl, raises: [].}
+    mode*: proc (mode: uint32)
 
   `Wl_display / Error`* {.size: 4.} = enum ## These errors are global and can be emitted in response to any
                                             ## server request.
@@ -231,7 +256,7 @@ type
     proxy*: Wl_proxy
 
   `Wl_registry / Callbacks`* = object
-    destroy: proc (cb: pointer) {.cdecl, raises: [].}
+    destroy*: proc (cb: pointer) {.cdecl, raises: [].}
     global*: proc (name: uint32; `interface`: cstring; version: uint32)
     global_remove*: proc (name: uint32)
 
@@ -244,7 +269,7 @@ type
     proxy*: Wl_proxy
 
   `Wl_callback / Callbacks`* = object
-    destroy: proc (cb: pointer) {.cdecl, raises: [].}
+    destroy*: proc (cb: pointer) {.cdecl, raises: [].}
     done*: proc (callback_data: uint32)
 
   Wl_compositor* = object
@@ -254,7 +279,7 @@ type
     proxy*: Wl_proxy
 
   `Wl_compositor / Callbacks`* = object
-    destroy: proc (cb: pointer) {.cdecl, raises: [].}
+    destroy*: proc (cb: pointer) {.cdecl, raises: [].}
 
   Wl_shm_pool* = object
     ## The wl_shm_pool object encapsulates a piece of memory shared
@@ -267,7 +292,7 @@ type
     proxy*: Wl_proxy
 
   `Wl_shm_pool / Callbacks`* = object
-    destroy: proc (cb: pointer) {.cdecl, raises: [].}
+    destroy*: proc (cb: pointer) {.cdecl, raises: [].}
 
   Wl_shm* = object
     ## A singleton global object that provides support for shared
@@ -336,7 +361,7 @@ type
     avuy8888 = 1498764865, xvuy8888 = 1498764888, vyuy = 1498765654,
     uyvy = 1498831189
   `Wl_shm / Callbacks`* = object
-    destroy: proc (cb: pointer) {.cdecl, raises: [].}
+    destroy*: proc (cb: pointer) {.cdecl, raises: [].}
     format*: proc (format: `Wl_shm / Format`)
 
   Wl_buffer* = object
@@ -356,7 +381,7 @@ type
     proxy*: Wl_proxy
 
   `Wl_buffer / Callbacks`* = object
-    destroy: proc (cb: pointer) {.cdecl, raises: [].}
+    destroy*: proc (cb: pointer) {.cdecl, raises: [].}
     release*: proc ()
 
   Wl_data_offer* = object
@@ -372,7 +397,7 @@ type
     invalid_finish = 0, invalid_action_mask = 1, invalid_action = 2,
     invalid_offer = 3
   `Wl_data_offer / Callbacks`* = object
-    destroy: proc (cb: pointer) {.cdecl, raises: [].}
+    destroy*: proc (cb: pointer) {.cdecl, raises: [].}
     offer*: proc (mime_type: cstring)
     source_actions*: proc (source_actions: `Wl_data_device_manager / Dnd_action`)
     action*: proc (dnd_action: `Wl_data_device_manager / Dnd_action`)
@@ -387,7 +412,7 @@ type
   `Wl_data_source / Error`* {.size: 4.} = enum
     invalid_action_mask = 0, invalid_source = 1
   `Wl_data_source / Callbacks`* = object
-    destroy: proc (cb: pointer) {.cdecl, raises: [].}
+    destroy*: proc (cb: pointer) {.cdecl, raises: [].}
     target*: proc (mime_type: cstring)
     send*: proc (mime_type: cstring; fd: FileHandle)
     cancelled*: proc ()
@@ -406,7 +431,7 @@ type
   `Wl_data_device / Error`* {.size: 4.} = enum
     role = 0, used_source = 1
   `Wl_data_device / Callbacks`* = object
-    destroy: proc (cb: pointer) {.cdecl, raises: [].}
+    destroy*: proc (cb: pointer) {.cdecl, raises: [].}
     data_offer*: proc (id: Wl_data_offer)
     enter*: proc (serial: uint32; surface: Wl_surface; x: float32; y: float32;
                   id: Wl_data_offer)
@@ -453,7 +478,7 @@ type
                                                              ## actions (e.g. "ask").
     none = 0, copy = 1, move = 2, ask = 4
   `Wl_data_device_manager / Callbacks`* = object
-    destroy: proc (cb: pointer) {.cdecl, raises: [].}
+    destroy*: proc (cb: pointer) {.cdecl, raises: [].}
 
   Wl_shell* = object
     ## This interface is implemented by servers that provide
@@ -470,7 +495,7 @@ type
   `Wl_shell / Error`* {.size: 4.} = enum
     role = 0
   `Wl_shell / Callbacks`* = object
-    destroy: proc (cb: pointer) {.cdecl, raises: [].}
+    destroy*: proc (cb: pointer) {.cdecl, raises: [].}
 
   Wl_shell_surface* = object
     ## An interface that may be implemented by a wl_surface, for
@@ -500,7 +525,7 @@ type
                                                               ## output. The compositor is free to ignore this parameter.
     default = 0, scale = 1, driver = 2, fill = 3
   `Wl_shell_surface / Callbacks`* = object
-    destroy: proc (cb: pointer) {.cdecl, raises: [].}
+    destroy*: proc (cb: pointer) {.cdecl, raises: [].}
     ping*: proc (serial: uint32)
     configure*: proc (edges: `Wl_shell_surface / Resize`; width: int32;
                       height: int32)
@@ -555,7 +580,7 @@ type
     invalid_scale = 0, invalid_transform = 1, invalid_size = 2,
     invalid_offset = 3, defunct_role_object = 4
   `Wl_surface / Callbacks`* = object
-    destroy: proc (cb: pointer) {.cdecl, raises: [].}
+    destroy*: proc (cb: pointer) {.cdecl, raises: [].}
     enter*: proc (output: Wl_output)
     leave*: proc (output: Wl_output)
     preferred_buffer_scale*: proc (factor: int32)
@@ -574,7 +599,7 @@ type
   `Wl_seat / Error`* {.size: 4.} = enum ## These errors can be emitted in response to wl_seat requests.
     missing_capability = 0
   `Wl_seat / Callbacks`* = object
-    destroy: proc (cb: pointer) {.cdecl, raises: [].}
+    destroy*: proc (cb: pointer) {.cdecl, raises: [].}
     capabilities*: proc (capabilities: `Wl_seat / Capability`)
     name*: proc (name: cstring)
 
@@ -617,7 +642,7 @@ type
                                                               ## wl_pointer.axis event, relative to the wl_pointer.axis direction.
     identical = 0, inverted = 1
   `Wl_pointer / Callbacks`* = object
-    destroy: proc (cb: pointer) {.cdecl, raises: [].}
+    destroy*: proc (cb: pointer) {.cdecl, raises: [].}
     enter*: proc (serial: uint32; surface: Wl_surface; surface_x: float32;
                   surface_y: float32)
     leave*: proc (serial: uint32; surface: Wl_surface)
@@ -643,7 +668,7 @@ type
   `Wl_keyboard / Key_state`* {.size: 4.} = enum ## Describes the physical state of a key that produced the key event.
     released = 0, pressed = 1
   `Wl_keyboard / Callbacks`* = object
-    destroy: proc (cb: pointer) {.cdecl, raises: [].}
+    destroy*: proc (cb: pointer) {.cdecl, raises: [].}
     keymap*: proc (format: `Wl_keyboard / Keymap_format`; fd: FileHandle;
                    size: uint32)
     enter*: proc (serial: uint32; surface: Wl_surface; keys: Wl_array)
@@ -666,7 +691,7 @@ type
     proxy*: Wl_proxy
 
   `Wl_touch / Callbacks`* = object
-    destroy: proc (cb: pointer) {.cdecl, raises: [].}
+    destroy*: proc (cb: pointer) {.cdecl, raises: [].}
     down*: proc (serial: uint32; time: uint32; surface: Wl_surface; id: int32;
                  x: float32; y: float32)
     up*: proc (serial: uint32; time: uint32; id: int32)
@@ -706,7 +731,7 @@ type
                                           ## They are used in the flags bitfield of the mode event.
     current = 1, preferred = 2
   `Wl_output / Callbacks`* = object
-    destroy: proc (cb: pointer) {.cdecl, raises: [].}
+    destroy*: proc (cb: pointer) {.cdecl, raises: [].}
     geometry*: proc (x: int32; y: int32; physical_width: int32;
                      physical_height: int32; subpixel: `Wl_output / Subpixel`;
                      make: cstring; model: cstring;
@@ -726,7 +751,7 @@ type
     proxy*: Wl_proxy
 
   `Wl_region / Callbacks`* = object
-    destroy: proc (cb: pointer) {.cdecl, raises: [].}
+    destroy*: proc (cb: pointer) {.cdecl, raises: [].}
 
   Wl_subcompositor* = object
     ## The global interface exposing sub-surface compositing capabilities.
@@ -753,7 +778,7 @@ type
   `Wl_subcompositor / Error`* {.size: 4.} = enum
     bad_surface = 0, bad_parent = 1
   `Wl_subcompositor / Callbacks`* = object
-    destroy: proc (cb: pointer) {.cdecl, raises: [].}
+    destroy*: proc (cb: pointer) {.cdecl, raises: [].}
 
   Wl_subsurface* = object
     ## An additional interface to a wl_surface object, which has been
@@ -808,7 +833,7 @@ type
   `Wl_subsurface / Error`* {.size: 4.} = enum
     bad_surface = 0
   `Wl_subsurface / Callbacks`* = object
-    destroy: proc (cb: pointer) {.cdecl, raises: [].}
+    destroy*: proc (cb: pointer) {.cdecl, raises: [].}
 
 var `Xdg_wm_base / iface`: WlInterface
 proc iface*(t: typedesc[Xdg_wm_base]): ptr WlInterface =
@@ -829,6 +854,14 @@ proc iface*(t: typedesc[Xdg_toplevel]): ptr WlInterface =
 var `Xdg_popup / iface`: WlInterface
 proc iface*(t: typedesc[Xdg_popup]): ptr WlInterface =
   `Xdg_popup / iface`.addr
+
+var `Org_kde_kwin_server_decoration_manager / iface`: WlInterface
+proc iface*(t: typedesc[Org_kde_kwin_server_decoration_manager]): ptr WlInterface =
+  `Org_kde_kwin_server_decoration_manager / iface`.addr
+
+var `Org_kde_kwin_server_decoration / iface`: WlInterface
+proc iface*(t: typedesc[Org_kde_kwin_server_decoration]): ptr WlInterface =
+  `Org_kde_kwin_server_decoration / iface`.addr
 
 var `Wl_registry / iface`: WlInterface
 proc iface*(t: typedesc[Wl_registry]): ptr WlInterface =
@@ -981,6 +1014,17 @@ proc iface*(t: typedesc[Wl_subsurface]): ptr WlInterface =
                                      (ptr WlInterface) nil]),
     newWlMessage("xdg_popup.popup_done", "1", []),
     newWlMessage("xdg_popup.repositioned", "1u", [(ptr WlInterface) nil])])
+`Org_kde_kwin_server_decoration_manager / iface` = newWlInterface(
+    "org_kde_kwin_server_decoration_manager", 1, [newWlMessage(
+    "org_kde_kwin_server_decoration_manager.create", "1no",
+    [iface(Org_kde_kwin_server_decoration), iface(Wl_surface)])], [newWlMessage(
+    "org_kde_kwin_server_decoration_manager.default_mode", "1u",
+    [(ptr WlInterface) nil])])
+`Org_kde_kwin_server_decoration / iface` = newWlInterface(
+    "org_kde_kwin_server_decoration", 1, [
+    newWlMessage("org_kde_kwin_server_decoration.release", "1", []), newWlMessage(
+    "org_kde_kwin_server_decoration.request_mode", "1u", [(ptr WlInterface) nil])], [newWlMessage(
+    "org_kde_kwin_server_decoration.mode", "1u", [(ptr WlInterface) nil])])
 `Wl_registry / iface` = newWlInterface("wl_registry", 1, [newWlMessage(
     "wl_registry.bind", "1usun", [(ptr WlInterface) nil, (ptr WlInterface) nil])], [newWlMessage(
     "wl_registry.global", "1usu",
@@ -1192,9 +1236,9 @@ proc `Xdg_wm_base / dispatch`*(impl: pointer; obj: pointer; opcode: uint32;
   let callbacks = cast[ptr `Xdg_wm_base / Callbacks`](impl)
   case opcode
   of 0:
-    let args = cast[ptr (uint32,)](args)
+    let argsArray = cast[ptr array[1, Wl_argument]](args)
     if callbacks.ping != nil:
-      callbacks.ping(args[][0])
+      callbacks.ping(cast[uint32](argsArray[][0]))
   else:
     discard
 
@@ -1210,9 +1254,9 @@ proc `Xdg_surface / dispatch`*(impl: pointer; obj: pointer; opcode: uint32;
   let callbacks = cast[ptr `Xdg_surface / Callbacks`](impl)
   case opcode
   of 0:
-    let args = cast[ptr (uint32,)](args)
+    let argsArray = cast[ptr array[1, Wl_argument]](args)
     if callbacks.configure != nil:
-      callbacks.configure(args[][0])
+      callbacks.configure(cast[uint32](argsArray[][0]))
   else:
     discard
 
@@ -1222,20 +1266,23 @@ proc `Xdg_toplevel / dispatch`*(impl: pointer; obj: pointer; opcode: uint32;
   let callbacks = cast[ptr `Xdg_toplevel / Callbacks`](impl)
   case opcode
   of 0:
-    let args = cast[ptr (int32, int32, Wl_array)](args)
+    let argsArray = cast[ptr array[3, Wl_argument]](args)
     if callbacks.configure != nil:
-      callbacks.configure(args[][0], args[][1], args[][2])
+      callbacks.configure(cast[int32](argsArray[][0]),
+                          cast[int32](argsArray[][1]),
+                          cast[Wl_array](argsArray[][2]))
   of 1:
     if callbacks.close != nil:
       callbacks.close()
   of 2:
-    let args = cast[ptr (int32, int32)](args)
+    let argsArray = cast[ptr array[2, Wl_argument]](args)
     if callbacks.configure_bounds != nil:
-      callbacks.configure_bounds(args[][0], args[][1])
+      callbacks.configure_bounds(cast[int32](argsArray[][0]),
+                                 cast[int32](argsArray[][1]))
   of 3:
-    let args = cast[ptr (Wl_array,)](args)
+    let argsArray = cast[ptr array[1, Wl_argument]](args)
     if callbacks.wm_capabilities != nil:
-      callbacks.wm_capabilities(args[][0])
+      callbacks.wm_capabilities(cast[Wl_array](argsArray[][0]))
   else:
     discard
 
@@ -1244,16 +1291,42 @@ proc `Xdg_popup / dispatch`*(impl: pointer; obj: pointer; opcode: uint32;
   let callbacks = cast[ptr `Xdg_popup / Callbacks`](impl)
   case opcode
   of 0:
-    let args = cast[ptr (int32, int32, int32, int32)](args)
+    let argsArray = cast[ptr array[4, Wl_argument]](args)
     if callbacks.configure != nil:
-      callbacks.configure(args[][0], args[][1], args[][2], args[][3])
+      callbacks.configure(cast[int32](argsArray[][0]),
+                          cast[int32](argsArray[][1]),
+                          cast[int32](argsArray[][2]),
+                          cast[int32](argsArray[][3]))
   of 1:
     if callbacks.popup_done != nil:
       callbacks.popup_done()
   of 2:
-    let args = cast[ptr (uint32,)](args)
+    let argsArray = cast[ptr array[1, Wl_argument]](args)
     if callbacks.repositioned != nil:
-      callbacks.repositioned(args[][0])
+      callbacks.repositioned(cast[uint32](argsArray[][0]))
+  else:
+    discard
+
+proc `Org_kde_kwin_server_decoration_manager / dispatch`*(impl: pointer;
+    obj: pointer; opcode: uint32; msg: ptr WlMessage; args: pointer): int32 {.
+    cdecl.} =
+  let callbacks = cast[ptr `Org_kde_kwin_server_decoration_manager / Callbacks`](impl)
+  case opcode
+  of 0:
+    let argsArray = cast[ptr array[1, Wl_argument]](args)
+    if callbacks.default_mode != nil:
+      callbacks.default_mode(cast[uint32](argsArray[][0]))
+  else:
+    discard
+
+proc `Org_kde_kwin_server_decoration / dispatch`*(impl: pointer; obj: pointer;
+    opcode: uint32; msg: ptr WlMessage; args: pointer): int32 {.cdecl.} =
+  let callbacks = cast[ptr `Org_kde_kwin_server_decoration / Callbacks`](impl)
+  case opcode
+  of 0:
+    let argsArray = cast[ptr array[1, Wl_argument]](args)
+    if callbacks.mode != nil:
+      callbacks.mode(cast[uint32](argsArray[][0]))
   else:
     discard
 
@@ -1262,13 +1335,15 @@ proc `Wl_registry / dispatch`*(impl: pointer; obj: pointer; opcode: uint32;
   let callbacks = cast[ptr `Wl_registry / Callbacks`](impl)
   case opcode
   of 0:
-    let args = cast[ptr (uint32, cstring, uint32)](args)
+    let argsArray = cast[ptr array[3, Wl_argument]](args)
     if callbacks.global != nil:
-      callbacks.global(args[][0], args[][1], args[][2])
+      callbacks.global(cast[uint32](argsArray[][0]),
+                       cast[cstring](argsArray[][1]),
+                       cast[uint32](argsArray[][2]))
   of 1:
-    let args = cast[ptr (uint32,)](args)
+    let argsArray = cast[ptr array[1, Wl_argument]](args)
     if callbacks.global_remove != nil:
-      callbacks.global_remove(args[][0])
+      callbacks.global_remove(cast[uint32](argsArray[][0]))
   else:
     discard
 
@@ -1277,9 +1352,9 @@ proc `Wl_callback / dispatch`*(impl: pointer; obj: pointer; opcode: uint32;
   let callbacks = cast[ptr `Wl_callback / Callbacks`](impl)
   case opcode
   of 0:
-    let args = cast[ptr (uint32,)](args)
+    let argsArray = cast[ptr array[1, Wl_argument]](args)
     if callbacks.done != nil:
-      callbacks.done(args[][0])
+      callbacks.done(cast[uint32](argsArray[][0]))
   else:
     discard
 
@@ -1301,9 +1376,9 @@ proc `Wl_shm / dispatch`*(impl: pointer; obj: pointer; opcode: uint32;
   let callbacks = cast[ptr `Wl_shm / Callbacks`](impl)
   case opcode
   of 0:
-    let args = cast[ptr (`Wl_shm / Format`,)](args)
+    let argsArray = cast[ptr array[1, Wl_argument]](args)
     if callbacks.format != nil:
-      callbacks.format(args[][0])
+      callbacks.format(cast[`Wl_shm / Format`](argsArray[][0]))
   else:
     discard
 
@@ -1323,17 +1398,18 @@ proc `Wl_data_offer / dispatch`*(impl: pointer; obj: pointer; opcode: uint32;
   let callbacks = cast[ptr `Wl_data_offer / Callbacks`](impl)
   case opcode
   of 0:
-    let args = cast[ptr (cstring,)](args)
+    let argsArray = cast[ptr array[1, Wl_argument]](args)
     if callbacks.offer != nil:
-      callbacks.offer(args[][0])
+      callbacks.offer(cast[cstring](argsArray[][0]))
   of 1:
-    let args = cast[ptr (`Wl_data_device_manager / Dnd_action`,)](args)
+    let argsArray = cast[ptr array[1, Wl_argument]](args)
     if callbacks.source_actions != nil:
-      callbacks.source_actions(args[][0])
+      callbacks.source_actions(cast[`Wl_data_device_manager / Dnd_action`](argsArray[][
+          0]))
   of 2:
-    let args = cast[ptr (`Wl_data_device_manager / Dnd_action`,)](args)
+    let argsArray = cast[ptr array[1, Wl_argument]](args)
     if callbacks.action != nil:
-      callbacks.action(args[][0])
+      callbacks.action(cast[`Wl_data_device_manager / Dnd_action`](argsArray[][0]))
   else:
     discard
 
@@ -1343,13 +1419,14 @@ proc `Wl_data_source / dispatch`*(impl: pointer; obj: pointer; opcode: uint32;
   let callbacks = cast[ptr `Wl_data_source / Callbacks`](impl)
   case opcode
   of 0:
-    let args = cast[ptr (cstring,)](args)
+    let argsArray = cast[ptr array[1, Wl_argument]](args)
     if callbacks.target != nil:
-      callbacks.target(args[][0])
+      callbacks.target(cast[cstring](argsArray[][0]))
   of 1:
-    let args = cast[ptr (cstring, FileHandle)](args)
+    let argsArray = cast[ptr array[2, Wl_argument]](args)
     if callbacks.send != nil:
-      callbacks.send(args[][0], args[][1])
+      callbacks.send(cast[cstring](argsArray[][0]),
+                     cast[FileHandle](argsArray[][1]))
   of 2:
     if callbacks.cancelled != nil:
       callbacks.cancelled()
@@ -1360,9 +1437,9 @@ proc `Wl_data_source / dispatch`*(impl: pointer; obj: pointer; opcode: uint32;
     if callbacks.dnd_finished != nil:
       callbacks.dnd_finished()
   of 5:
-    let args = cast[ptr (`Wl_data_device_manager / Dnd_action`,)](args)
+    let argsArray = cast[ptr array[1, Wl_argument]](args)
     if callbacks.action != nil:
-      callbacks.action(args[][0])
+      callbacks.action(cast[`Wl_data_device_manager / Dnd_action`](argsArray[][0]))
   else:
     discard
 
@@ -1372,27 +1449,33 @@ proc `Wl_data_device / dispatch`*(impl: pointer; obj: pointer; opcode: uint32;
   let callbacks = cast[ptr `Wl_data_device / Callbacks`](impl)
   case opcode
   of 0:
-    let args = cast[ptr (Wl_data_offer,)](args)
+    let argsArray = cast[ptr array[1, Wl_argument]](args)
     if callbacks.data_offer != nil:
-      callbacks.data_offer(args[][0])
+      callbacks.data_offer(cast[Wl_data_offer](argsArray[][0]))
   of 1:
-    let args = cast[ptr (uint32, Wl_surface, float32, float32, Wl_data_offer)](args)
+    let argsArray = cast[ptr array[5, Wl_argument]](args)
     if callbacks.enter != nil:
-      callbacks.enter(args[][0], args[][1], args[][2], args[][3], args[][4])
+      callbacks.enter(cast[uint32](argsArray[][0]),
+                      cast[Wl_surface](argsArray[][1]),
+                      cast[float32](argsArray[][2]),
+                      cast[float32](argsArray[][3]),
+                      cast[Wl_data_offer](argsArray[][4]))
   of 2:
     if callbacks.leave != nil:
       callbacks.leave()
   of 3:
-    let args = cast[ptr (uint32, float32, float32)](args)
+    let argsArray = cast[ptr array[3, Wl_argument]](args)
     if callbacks.motion != nil:
-      callbacks.motion(args[][0], args[][1], args[][2])
+      callbacks.motion(cast[uint32](argsArray[][0]),
+                       cast[float32](argsArray[][1]),
+                       cast[float32](argsArray[][2]))
   of 4:
     if callbacks.drop != nil:
       callbacks.drop()
   of 5:
-    let args = cast[ptr (Wl_data_offer,)](args)
+    let argsArray = cast[ptr array[1, Wl_argument]](args)
     if callbacks.selection != nil:
-      callbacks.selection(args[][0])
+      callbacks.selection(cast[Wl_data_offer](argsArray[][0]))
   else:
     discard
 
@@ -1414,13 +1497,15 @@ proc `Wl_shell_surface / dispatch`*(impl: pointer; obj: pointer; opcode: uint32;
   let callbacks = cast[ptr `Wl_shell_surface / Callbacks`](impl)
   case opcode
   of 0:
-    let args = cast[ptr (uint32,)](args)
+    let argsArray = cast[ptr array[1, Wl_argument]](args)
     if callbacks.ping != nil:
-      callbacks.ping(args[][0])
+      callbacks.ping(cast[uint32](argsArray[][0]))
   of 1:
-    let args = cast[ptr (`Wl_shell_surface / Resize`, int32, int32)](args)
+    let argsArray = cast[ptr array[3, Wl_argument]](args)
     if callbacks.configure != nil:
-      callbacks.configure(args[][0], args[][1], args[][2])
+      callbacks.configure(cast[`Wl_shell_surface / Resize`](argsArray[][0]),
+                          cast[int32](argsArray[][1]),
+                          cast[int32](argsArray[][2]))
   of 2:
     if callbacks.popup_done != nil:
       callbacks.popup_done()
@@ -1432,21 +1517,22 @@ proc `Wl_surface / dispatch`*(impl: pointer; obj: pointer; opcode: uint32;
   let callbacks = cast[ptr `Wl_surface / Callbacks`](impl)
   case opcode
   of 0:
-    let args = cast[ptr (Wl_output,)](args)
+    let argsArray = cast[ptr array[1, Wl_argument]](args)
     if callbacks.enter != nil:
-      callbacks.enter(args[][0])
+      callbacks.enter(cast[Wl_output](argsArray[][0]))
   of 1:
-    let args = cast[ptr (Wl_output,)](args)
+    let argsArray = cast[ptr array[1, Wl_argument]](args)
     if callbacks.leave != nil:
-      callbacks.leave(args[][0])
+      callbacks.leave(cast[Wl_output](argsArray[][0]))
   of 2:
-    let args = cast[ptr (int32,)](args)
+    let argsArray = cast[ptr array[1, Wl_argument]](args)
     if callbacks.preferred_buffer_scale != nil:
-      callbacks.preferred_buffer_scale(args[][0])
+      callbacks.preferred_buffer_scale(cast[int32](argsArray[][0]))
   of 3:
-    let args = cast[ptr (`Wl_output / Transform`,)](args)
+    let argsArray = cast[ptr array[1, Wl_argument]](args)
     if callbacks.preferred_buffer_transform != nil:
-      callbacks.preferred_buffer_transform(args[][0])
+      callbacks.preferred_buffer_transform(
+          cast[`Wl_output / Transform`](argsArray[][0]))
   else:
     discard
 
@@ -1455,13 +1541,13 @@ proc `Wl_seat / dispatch`*(impl: pointer; obj: pointer; opcode: uint32;
   let callbacks = cast[ptr `Wl_seat / Callbacks`](impl)
   case opcode
   of 0:
-    let args = cast[ptr (`Wl_seat / Capability`,)](args)
+    let argsArray = cast[ptr array[1, Wl_argument]](args)
     if callbacks.capabilities != nil:
-      callbacks.capabilities(args[][0])
+      callbacks.capabilities(cast[`Wl_seat / Capability`](argsArray[][0]))
   of 1:
-    let args = cast[ptr (cstring,)](args)
+    let argsArray = cast[ptr array[1, Wl_argument]](args)
     if callbacks.name != nil:
-      callbacks.name(args[][0])
+      callbacks.name(cast[cstring](argsArray[][0]))
   else:
     discard
 
@@ -1470,49 +1556,63 @@ proc `Wl_pointer / dispatch`*(impl: pointer; obj: pointer; opcode: uint32;
   let callbacks = cast[ptr `Wl_pointer / Callbacks`](impl)
   case opcode
   of 0:
-    let args = cast[ptr (uint32, Wl_surface, float32, float32)](args)
+    let argsArray = cast[ptr array[4, Wl_argument]](args)
     if callbacks.enter != nil:
-      callbacks.enter(args[][0], args[][1], args[][2], args[][3])
+      callbacks.enter(cast[uint32](argsArray[][0]),
+                      cast[Wl_surface](argsArray[][1]),
+                      cast[float32](argsArray[][2]),
+                      cast[float32](argsArray[][3]))
   of 1:
-    let args = cast[ptr (uint32, Wl_surface)](args)
+    let argsArray = cast[ptr array[2, Wl_argument]](args)
     if callbacks.leave != nil:
-      callbacks.leave(args[][0], args[][1])
+      callbacks.leave(cast[uint32](argsArray[][0]),
+                      cast[Wl_surface](argsArray[][1]))
   of 2:
-    let args = cast[ptr (uint32, float32, float32)](args)
+    let argsArray = cast[ptr array[3, Wl_argument]](args)
     if callbacks.motion != nil:
-      callbacks.motion(args[][0], args[][1], args[][2])
+      callbacks.motion(cast[uint32](argsArray[][0]),
+                       cast[float32](argsArray[][1]),
+                       cast[float32](argsArray[][2]))
   of 3:
-    let args = cast[ptr (uint32, uint32, uint32, `Wl_pointer / Button_state`)](args)
+    let argsArray = cast[ptr array[4, Wl_argument]](args)
     if callbacks.button != nil:
-      callbacks.button(args[][0], args[][1], args[][2], args[][3])
+      callbacks.button(cast[uint32](argsArray[][0]),
+                       cast[uint32](argsArray[][1]),
+                       cast[uint32](argsArray[][2]),
+                       cast[`Wl_pointer / Button_state`](argsArray[][3]))
   of 4:
-    let args = cast[ptr (uint32, `Wl_pointer / Axis`, float32)](args)
+    let argsArray = cast[ptr array[3, Wl_argument]](args)
     if callbacks.axis != nil:
-      callbacks.axis(args[][0], args[][1], args[][2])
+      callbacks.axis(cast[uint32](argsArray[][0]),
+                     cast[`Wl_pointer / Axis`](argsArray[][1]),
+                     cast[float32](argsArray[][2]))
   of 5:
     if callbacks.frame != nil:
       callbacks.frame()
   of 6:
-    let args = cast[ptr (`Wl_pointer / Axis_source`,)](args)
+    let argsArray = cast[ptr array[1, Wl_argument]](args)
     if callbacks.axis_source != nil:
-      callbacks.axis_source(args[][0])
+      callbacks.axis_source(cast[`Wl_pointer / Axis_source`](argsArray[][0]))
   of 7:
-    let args = cast[ptr (uint32, `Wl_pointer / Axis`)](args)
+    let argsArray = cast[ptr array[2, Wl_argument]](args)
     if callbacks.axis_stop != nil:
-      callbacks.axis_stop(args[][0], args[][1])
+      callbacks.axis_stop(cast[uint32](argsArray[][0]),
+                          cast[`Wl_pointer / Axis`](argsArray[][1]))
   of 8:
-    let args = cast[ptr (`Wl_pointer / Axis`, int32)](args)
+    let argsArray = cast[ptr array[2, Wl_argument]](args)
     if callbacks.axis_discrete != nil:
-      callbacks.axis_discrete(args[][0], args[][1])
+      callbacks.axis_discrete(cast[`Wl_pointer / Axis`](argsArray[][0]),
+                              cast[int32](argsArray[][1]))
   of 9:
-    let args = cast[ptr (`Wl_pointer / Axis`, int32)](args)
+    let argsArray = cast[ptr array[2, Wl_argument]](args)
     if callbacks.axis_value120 != nil:
-      callbacks.axis_value120(args[][0], args[][1])
+      callbacks.axis_value120(cast[`Wl_pointer / Axis`](argsArray[][0]),
+                              cast[int32](argsArray[][1]))
   of 10:
-    let args = cast[ptr (`Wl_pointer / Axis`,
-                         `Wl_pointer / Axis_relative_direction`)](args)
+    let argsArray = cast[ptr array[2, Wl_argument]](args)
     if callbacks.axis_relative_direction != nil:
-      callbacks.axis_relative_direction(args[][0], args[][1])
+      callbacks.axis_relative_direction(cast[`Wl_pointer / Axis`](argsArray[][0]), cast[`Wl_pointer / Axis_relative_direction`](argsArray[][
+          1]))
   else:
     discard
 
@@ -1521,29 +1621,41 @@ proc `Wl_keyboard / dispatch`*(impl: pointer; obj: pointer; opcode: uint32;
   let callbacks = cast[ptr `Wl_keyboard / Callbacks`](impl)
   case opcode
   of 0:
-    let args = cast[ptr (`Wl_keyboard / Keymap_format`, FileHandle, uint32)](args)
+    let argsArray = cast[ptr array[3, Wl_argument]](args)
     if callbacks.keymap != nil:
-      callbacks.keymap(args[][0], args[][1], args[][2])
+      callbacks.keymap(cast[`Wl_keyboard / Keymap_format`](argsArray[][0]),
+                       cast[FileHandle](argsArray[][1]),
+                       cast[uint32](argsArray[][2]))
   of 1:
-    let args = cast[ptr (uint32, Wl_surface, Wl_array)](args)
+    let argsArray = cast[ptr array[3, Wl_argument]](args)
     if callbacks.enter != nil:
-      callbacks.enter(args[][0], args[][1], args[][2])
+      callbacks.enter(cast[uint32](argsArray[][0]),
+                      cast[Wl_surface](argsArray[][1]),
+                      cast[Wl_array](argsArray[][2]))
   of 2:
-    let args = cast[ptr (uint32, Wl_surface)](args)
+    let argsArray = cast[ptr array[2, Wl_argument]](args)
     if callbacks.leave != nil:
-      callbacks.leave(args[][0], args[][1])
+      callbacks.leave(cast[uint32](argsArray[][0]),
+                      cast[Wl_surface](argsArray[][1]))
   of 3:
-    let args = cast[ptr (uint32, uint32, uint32, `Wl_keyboard / Key_state`)](args)
+    let argsArray = cast[ptr array[4, Wl_argument]](args)
     if callbacks.key != nil:
-      callbacks.key(args[][0], args[][1], args[][2], args[][3])
+      callbacks.key(cast[uint32](argsArray[][0]), cast[uint32](argsArray[][1]),
+                    cast[uint32](argsArray[][2]),
+                    cast[`Wl_keyboard / Key_state`](argsArray[][3]))
   of 4:
-    let args = cast[ptr (uint32, uint32, uint32, uint32, uint32)](args)
+    let argsArray = cast[ptr array[5, Wl_argument]](args)
     if callbacks.modifiers != nil:
-      callbacks.modifiers(args[][0], args[][1], args[][2], args[][3], args[][4])
+      callbacks.modifiers(cast[uint32](argsArray[][0]),
+                          cast[uint32](argsArray[][1]),
+                          cast[uint32](argsArray[][2]),
+                          cast[uint32](argsArray[][3]),
+                          cast[uint32](argsArray[][4]))
   of 5:
-    let args = cast[ptr (int32, int32)](args)
+    let argsArray = cast[ptr array[2, Wl_argument]](args)
     if callbacks.repeat_info != nil:
-      callbacks.repeat_info(args[][0], args[][1])
+      callbacks.repeat_info(cast[int32](argsArray[][0]),
+                            cast[int32](argsArray[][1]))
   else:
     discard
 
@@ -1552,18 +1664,24 @@ proc `Wl_touch / dispatch`*(impl: pointer; obj: pointer; opcode: uint32;
   let callbacks = cast[ptr `Wl_touch / Callbacks`](impl)
   case opcode
   of 0:
-    let args = cast[ptr (uint32, uint32, Wl_surface, int32, float32, float32)](args)
+    let argsArray = cast[ptr array[6, Wl_argument]](args)
     if callbacks.down != nil:
-      callbacks.down(args[][0], args[][1], args[][2], args[][3], args[][4],
-                     args[][5])
+      callbacks.down(cast[uint32](argsArray[][0]), cast[uint32](argsArray[][1]),
+                     cast[Wl_surface](argsArray[][2]),
+                     cast[int32](argsArray[][3]), cast[float32](argsArray[][4]),
+                     cast[float32](argsArray[][5]))
   of 1:
-    let args = cast[ptr (uint32, uint32, int32)](args)
+    let argsArray = cast[ptr array[3, Wl_argument]](args)
     if callbacks.up != nil:
-      callbacks.up(args[][0], args[][1], args[][2])
+      callbacks.up(cast[uint32](argsArray[][0]), cast[uint32](argsArray[][1]),
+                   cast[int32](argsArray[][2]))
   of 2:
-    let args = cast[ptr (uint32, int32, float32, float32)](args)
+    let argsArray = cast[ptr array[4, Wl_argument]](args)
     if callbacks.motion != nil:
-      callbacks.motion(args[][0], args[][1], args[][2], args[][3])
+      callbacks.motion(cast[uint32](argsArray[][0]),
+                       cast[int32](argsArray[][1]),
+                       cast[float32](argsArray[][2]),
+                       cast[float32](argsArray[][3]))
   of 3:
     if callbacks.frame != nil:
       callbacks.frame()
@@ -1571,13 +1689,16 @@ proc `Wl_touch / dispatch`*(impl: pointer; obj: pointer; opcode: uint32;
     if callbacks.cancel != nil:
       callbacks.cancel()
   of 5:
-    let args = cast[ptr (int32, float32, float32)](args)
+    let argsArray = cast[ptr array[3, Wl_argument]](args)
     if callbacks.shape != nil:
-      callbacks.shape(args[][0], args[][1], args[][2])
+      callbacks.shape(cast[int32](argsArray[][0]),
+                      cast[float32](argsArray[][1]),
+                      cast[float32](argsArray[][2]))
   of 6:
-    let args = cast[ptr (int32, float32)](args)
+    let argsArray = cast[ptr array[2, Wl_argument]](args)
     if callbacks.orientation != nil:
-      callbacks.orientation(args[][0], args[][1])
+      callbacks.orientation(cast[int32](argsArray[][0]),
+                            cast[float32](argsArray[][1]))
   else:
     discard
 
@@ -1586,30 +1707,37 @@ proc `Wl_output / dispatch`*(impl: pointer; obj: pointer; opcode: uint32;
   let callbacks = cast[ptr `Wl_output / Callbacks`](impl)
   case opcode
   of 0:
-    let args = cast[ptr (int32, int32, int32, int32, `Wl_output / Subpixel`,
-                         cstring, cstring, `Wl_output / Transform`)](args)
+    let argsArray = cast[ptr array[8, Wl_argument]](args)
     if callbacks.geometry != nil:
-      callbacks.geometry(args[][0], args[][1], args[][2], args[][3], args[][4],
-                         args[][5], args[][6], args[][7])
+      callbacks.geometry(cast[int32](argsArray[][0]),
+                         cast[int32](argsArray[][1]),
+                         cast[int32](argsArray[][2]),
+                         cast[int32](argsArray[][3]),
+                         cast[`Wl_output / Subpixel`](argsArray[][4]),
+                         cast[cstring](argsArray[][5]),
+                         cast[cstring](argsArray[][6]),
+                         cast[`Wl_output / Transform`](argsArray[][7]))
   of 1:
-    let args = cast[ptr (`Wl_output / Mode`, int32, int32, int32)](args)
+    let argsArray = cast[ptr array[4, Wl_argument]](args)
     if callbacks.mode != nil:
-      callbacks.mode(args[][0], args[][1], args[][2], args[][3])
+      callbacks.mode(cast[`Wl_output / Mode`](argsArray[][0]),
+                     cast[int32](argsArray[][1]), cast[int32](argsArray[][2]),
+                     cast[int32](argsArray[][3]))
   of 2:
     if callbacks.done != nil:
       callbacks.done()
   of 3:
-    let args = cast[ptr (int32,)](args)
+    let argsArray = cast[ptr array[1, Wl_argument]](args)
     if callbacks.scale != nil:
-      callbacks.scale(args[][0])
+      callbacks.scale(cast[int32](argsArray[][0]))
   of 4:
-    let args = cast[ptr (cstring,)](args)
+    let argsArray = cast[ptr array[1, Wl_argument]](args)
     if callbacks.name != nil:
-      callbacks.name(args[][0])
+      callbacks.name(cast[cstring](argsArray[][0]))
   of 5:
-    let args = cast[ptr (cstring,)](args)
+    let argsArray = cast[ptr array[1, Wl_argument]](args)
     if callbacks.description != nil:
-      callbacks.description(args[][0])
+      callbacks.description(cast[cstring](argsArray[][0]))
   else:
     discard
 
@@ -1639,15 +1767,16 @@ proc destroy*(this: Xdg_wm_base) =
   ## Destroying a bound xdg_wm_base object while there are surfaces
   ## still alive created by this xdg_wm_base object instance is illegal
   ## and will result in a defunct_surfaces error.
+  destroyCallbacks(this.proxy)
   discard wl_proxy_marshal_flags(this.proxy.raw, 0, nil, 1, 1)
 
 proc create_positioner*(this: Xdg_wm_base): Xdg_positioner =
   ## Create a positioner object. A positioner object is used to position
   ## surfaces relative to some parent surface. See the interface description
   ## and xdg_surface.get_popup for details.
-  construct(wl_proxy_marshal_flags(this.proxy.raw, 1, Xdg_positioner.iface, 1,
-                                   0, nil), Xdg_positioner,
-            `Xdg_positioner / dispatch`, `Xdg_positioner / Callbacks`)
+  result = construct(wl_proxy_marshal_flags(this.proxy.raw, 1,
+      Xdg_positioner.iface, 1, 0, nil), Xdg_positioner,
+                     `Xdg_positioner / dispatch`, `Xdg_positioner / Callbacks`)
 
 proc get_xdg_surface*(this: Xdg_wm_base; surface: Wl_surface): Xdg_surface =
   ## This creates an xdg_surface for the given surface. While xdg_surface
@@ -1663,9 +1792,9 @@ proc get_xdg_surface*(this: Xdg_wm_base; surface: Wl_surface): Xdg_surface =
   ## 
   ## See the documentation of xdg_surface for more details about what an
   ## xdg_surface is and how it is used.
-  construct(wl_proxy_marshal_flags(this.proxy.raw, 2, Xdg_surface.iface, 1, 0,
-                                   nil, surface), Xdg_surface,
-            `Xdg_surface / dispatch`, `Xdg_surface / Callbacks`)
+  result = construct(wl_proxy_marshal_flags(this.proxy.raw, 2,
+      Xdg_surface.iface, 1, 0, nil, surface), Xdg_surface,
+                     `Xdg_surface / dispatch`, `Xdg_surface / Callbacks`)
 
 proc pong*(this: Xdg_wm_base; serial: uint32) =
   ## A client must respond to a ping event with a pong request or
@@ -1675,6 +1804,7 @@ proc pong*(this: Xdg_wm_base; serial: uint32) =
 
 proc destroy*(this: Xdg_positioner) =
   ## Notify the compositor that the xdg_positioner will no longer be used.
+  destroyCallbacks(this.proxy)
   discard wl_proxy_marshal_flags(this.proxy.raw, 0, nil, 1, 1)
 
 proc set_size*(this: Xdg_positioner; width: int32; height: int32) =
@@ -1783,6 +1913,7 @@ proc destroy*(this: Xdg_surface) =
   ## Destroy the xdg_surface object. An xdg_surface must only be destroyed
   ## after its role object has been destroyed, otherwise
   ## a defunct_role_object error is raised.
+  destroyCallbacks(this.proxy)
   discard wl_proxy_marshal_flags(this.proxy.raw, 0, nil, 1, 1)
 
 proc get_toplevel*(this: Xdg_surface): Xdg_toplevel =
@@ -1791,9 +1922,9 @@ proc get_toplevel*(this: Xdg_surface): Xdg_toplevel =
   ## 
   ## See the documentation of xdg_toplevel for more details about what an
   ## xdg_toplevel is and how it is used.
-  construct(wl_proxy_marshal_flags(this.proxy.raw, 1, Xdg_toplevel.iface, 1, 0,
-                                   nil), Xdg_toplevel, `Xdg_toplevel / dispatch`,
-            `Xdg_toplevel / Callbacks`)
+  result = construct(wl_proxy_marshal_flags(this.proxy.raw, 1,
+      Xdg_toplevel.iface, 1, 0, nil), Xdg_toplevel, `Xdg_toplevel / dispatch`,
+                     `Xdg_toplevel / Callbacks`)
 
 proc get_popup*(this: Xdg_surface; parent: Xdg_surface;
                 positioner: Xdg_positioner): Xdg_popup =
@@ -1805,9 +1936,9 @@ proc get_popup*(this: Xdg_surface; parent: Xdg_surface;
   ## 
   ## See the documentation of xdg_popup for more details about what an
   ## xdg_popup is and how it is used.
-  construct(wl_proxy_marshal_flags(this.proxy.raw, 2, Xdg_popup.iface, 1, 0,
-                                   nil, parent, positioner), Xdg_popup,
-            `Xdg_popup / dispatch`, `Xdg_popup / Callbacks`)
+  result = construct(wl_proxy_marshal_flags(this.proxy.raw, 2, Xdg_popup.iface,
+      1, 0, nil, parent, positioner), Xdg_popup, `Xdg_popup / dispatch`,
+                     `Xdg_popup / Callbacks`)
 
 proc set_window_geometry*(this: Xdg_surface; x: int32; y: int32; width: int32;
                           height: int32) =
@@ -1890,6 +2021,7 @@ proc ack_configure*(this: Xdg_surface; serial: uint32) =
 proc destroy*(this: Xdg_toplevel) =
   ## This request destroys the role surface and unmaps the surface;
   ## see "Unmapping" behavior in interface section for details.
+  destroyCallbacks(this.proxy)
   discard wl_proxy_marshal_flags(this.proxy.raw, 0, nil, 1, 1)
 
 proc set_parent*(this: Xdg_toplevel; parent: Xdg_toplevel) =
@@ -2206,6 +2338,7 @@ proc destroy*(this: Xdg_popup) =
   ## 
   ## If this xdg_popup is not the "topmost" popup, the
   ## xdg_wm_base.not_the_topmost_popup protocol error will be sent.
+  destroyCallbacks(this.proxy)
   discard wl_proxy_marshal_flags(this.proxy.raw, 0, nil, 1, 1)
 
 proc grab*(this: Xdg_popup; seat: Wl_seat; serial: uint32) =
@@ -2274,6 +2407,32 @@ proc reposition*(this: Xdg_popup; positioner: Xdg_positioner; token: uint32) =
   ## send an xdg_positioner.set_parent_size request.
   discard wl_proxy_marshal_flags(this.proxy.raw, 2, nil, 1, 0, positioner, token)
 
+proc create*(this: Org_kde_kwin_server_decoration_manager; surface: Wl_surface): Org_kde_kwin_server_decoration =
+  ## When a client creates a server-side decoration object it indicates
+  ## that it supports the protocol. The client is supposed to tell the
+  ## server whether it wants server-side decorations or will provide
+  ## client-side decorations.
+  ## 
+  ## If the client does not create a server-side decoration object for
+  ## a surface the server interprets this as lack of support for this
+  ## protocol and considers it as client-side decorated. Nevertheless a
+  ## client-side decorated surface should use this protocol to indicate
+  ## to the server that it does not want a server-side deco.
+  result = construct(wl_proxy_marshal_flags(this.proxy.raw, 0,
+      Org_kde_kwin_server_decoration.iface, 1, 0, nil, surface),
+                     Org_kde_kwin_server_decoration,
+                     `Org_kde_kwin_server_decoration / dispatch`,
+                     `Org_kde_kwin_server_decoration / Callbacks`)
+
+proc release*(this: Org_kde_kwin_server_decoration) =
+  ## release the server decoration object
+  destroyCallbacks(this.proxy)
+  discard wl_proxy_marshal_flags(this.proxy.raw, 0, nil, 1, 1)
+
+proc request_mode*(this: Org_kde_kwin_server_decoration; mode: uint32) =
+  ## The decoration mode the surface wants to use.
+  discard wl_proxy_marshal_flags(this.proxy.raw, 1, nil, 1, 0, mode)
+
 proc sync*(this: Wl_display): Wl_callback =
   ## The sync request asks the server to emit the 'done' event
   ## on the returned wl_callback object.  Since requests are
@@ -2286,9 +2445,9 @@ proc sync*(this: Wl_display): Wl_callback =
   ## attempt to use it after that point.
   ## 
   ## The callback_data passed in the callback is the event serial.
-  construct(wl_proxy_marshal_flags(this.proxy.raw, 0, Wl_callback.iface, 1, 0,
-                                   nil), Wl_callback, `Wl_callback / dispatch`,
-            `Wl_callback / Callbacks`)
+  result = construct(wl_proxy_marshal_flags(this.proxy.raw, 0,
+      Wl_callback.iface, 1, 0, nil), Wl_callback, `Wl_callback / dispatch`,
+                     `Wl_callback / Callbacks`)
 
 proc get_registry*(this: Wl_display): Wl_registry =
   ## This request creates a registry object that allows the client
@@ -2300,9 +2459,9 @@ proc get_registry*(this: Wl_display): Wl_registry =
   ## client disconnects, not when the client side proxy is destroyed.
   ## Therefore, clients should invoke get_registry as infrequently as
   ## possible to avoid wasting memory.
-  construct(wl_proxy_marshal_flags(this.proxy.raw, 1, Wl_registry.iface, 1, 0,
-                                   nil), Wl_registry, `Wl_registry / dispatch`,
-            `Wl_registry / Callbacks`)
+  result = construct(wl_proxy_marshal_flags(this.proxy.raw, 1,
+      Wl_registry.iface, 1, 0, nil), Wl_registry, `Wl_registry / dispatch`,
+                     `Wl_registry / Callbacks`)
 
 proc `bind`*(this: Wl_registry; name: uint32): uint32 =
   ## Binds a new, client-created object to the server using the
@@ -2311,14 +2470,13 @@ proc `bind`*(this: Wl_registry; name: uint32): uint32 =
 
 proc create_surface*(this: Wl_compositor): Wl_surface =
   ## Ask the compositor to create a new surface.
-  construct(wl_proxy_marshal_flags(this.proxy.raw, 0, Wl_surface.iface, 1, 0,
-                                   nil), Wl_surface, `Wl_surface / dispatch`,
-            `Wl_surface / Callbacks`)
+  result = construct(wl_proxy_marshal_flags(this.proxy.raw, 0, Wl_surface.iface,
+      1, 0, nil), Wl_surface, `Wl_surface / dispatch`, `Wl_surface / Callbacks`)
 
 proc create_region*(this: Wl_compositor): Wl_region =
   ## Ask the compositor to create a new region.
-  construct(wl_proxy_marshal_flags(this.proxy.raw, 1, Wl_region.iface, 1, 0, nil),
-            Wl_region, `Wl_region / dispatch`, `Wl_region / Callbacks`)
+  result = construct(wl_proxy_marshal_flags(this.proxy.raw, 1, Wl_region.iface,
+      1, 0, nil), Wl_region, `Wl_region / dispatch`, `Wl_region / Callbacks`)
 
 proc create_buffer*(this: Wl_shm_pool; offset: int32; width: int32;
                     height: int32; stride: int32; format: `Wl_shm / Format`): Wl_buffer =
@@ -2333,9 +2491,9 @@ proc create_buffer*(this: Wl_shm_pool; offset: int32; width: int32;
   ## A buffer will keep a reference to the pool it was created from
   ## so it is valid to destroy the pool immediately after creating
   ## a buffer from it.
-  construct(wl_proxy_marshal_flags(this.proxy.raw, 0, Wl_buffer.iface, 1, 0,
-                                   nil, offset, width, height, stride, format),
-            Wl_buffer, `Wl_buffer / dispatch`, `Wl_buffer / Callbacks`)
+  result = construct(wl_proxy_marshal_flags(this.proxy.raw, 0, Wl_buffer.iface,
+      1, 0, nil, offset, width, height, stride, format), Wl_buffer,
+                     `Wl_buffer / dispatch`, `Wl_buffer / Callbacks`)
 
 proc destroy*(this: Wl_shm_pool) =
   ## Destroy the shared memory pool.
@@ -2343,6 +2501,7 @@ proc destroy*(this: Wl_shm_pool) =
   ## The mmapped memory will be released when all
   ## buffers that have been created from this pool
   ## are gone.
+  destroyCallbacks(this.proxy)
   discard wl_proxy_marshal_flags(this.proxy.raw, 1, nil, 1, 1)
 
 proc resize*(this: Wl_shm_pool; size: int32) =
@@ -2364,15 +2523,16 @@ proc create_pool*(this: Wl_shm; fd: FileHandle; size: int32): Wl_shm_pool =
   ## The pool can be used to create shared memory based buffer
   ## objects.  The server will mmap size bytes of the passed file
   ## descriptor, to use as backing memory for the pool.
-  construct(wl_proxy_marshal_flags(this.proxy.raw, 0, Wl_shm_pool.iface, 1, 0,
-                                   nil, fd, size), Wl_shm_pool,
-            `Wl_shm_pool / dispatch`, `Wl_shm_pool / Callbacks`)
+  result = construct(wl_proxy_marshal_flags(this.proxy.raw, 0,
+      Wl_shm_pool.iface, 1, 0, nil, fd, size), Wl_shm_pool,
+                     `Wl_shm_pool / dispatch`, `Wl_shm_pool / Callbacks`)
 
 proc destroy*(this: Wl_buffer) =
   ## Destroy a buffer. If and how you need to release the backing
   ## storage is defined by the buffer factory interface.
   ## 
   ## For possible side-effects to a surface, see wl_surface.attach.
+  destroyCallbacks(this.proxy)
   discard wl_proxy_marshal_flags(this.proxy.raw, 0, nil, 1, 1)
 
 proc accept*(this: Wl_data_offer; serial: uint32; mime_type: cstring) =
@@ -2412,6 +2572,7 @@ proc receive*(this: Wl_data_offer; mime_type: cstring; fd: FileHandle) =
 
 proc destroy*(this: Wl_data_offer) =
   ## Destroy the data offer.
+  destroyCallbacks(this.proxy)
   discard wl_proxy_marshal_flags(this.proxy.raw, 2, nil, 1, 1)
 
 proc finish*(this: Wl_data_offer) =
@@ -2476,6 +2637,7 @@ proc offer*(this: Wl_data_source; mime_type: cstring) =
 
 proc destroy*(this: Wl_data_source) =
   ## Destroy the data source.
+  destroyCallbacks(this.proxy)
   discard wl_proxy_marshal_flags(this.proxy.raw, 1, nil, 1, 1)
 
 proc set_actions*(this: Wl_data_source;
@@ -2542,19 +2704,20 @@ proc set_selection*(this: Wl_data_device; source: Wl_data_source; serial: uint32
 
 proc release*(this: Wl_data_device) =
   ## This request destroys the data device.
+  destroyCallbacks(this.proxy)
   discard wl_proxy_marshal_flags(this.proxy.raw, 2, nil, 1, 1)
 
 proc create_data_source*(this: Wl_data_device_manager): Wl_data_source =
   ## Create a new data source.
-  construct(wl_proxy_marshal_flags(this.proxy.raw, 0, Wl_data_source.iface, 1,
-                                   0, nil), Wl_data_source,
-            `Wl_data_source / dispatch`, `Wl_data_source / Callbacks`)
+  result = construct(wl_proxy_marshal_flags(this.proxy.raw, 0,
+      Wl_data_source.iface, 1, 0, nil), Wl_data_source,
+                     `Wl_data_source / dispatch`, `Wl_data_source / Callbacks`)
 
 proc get_data_device*(this: Wl_data_device_manager; seat: Wl_seat): Wl_data_device =
   ## Create a new data device for a given seat.
-  construct(wl_proxy_marshal_flags(this.proxy.raw, 1, Wl_data_device.iface, 1,
-                                   0, nil, seat), Wl_data_device,
-            `Wl_data_device / dispatch`, `Wl_data_device / Callbacks`)
+  result = construct(wl_proxy_marshal_flags(this.proxy.raw, 1,
+      Wl_data_device.iface, 1, 0, nil, seat), Wl_data_device,
+                     `Wl_data_device / dispatch`, `Wl_data_device / Callbacks`)
 
 proc get_shell_surface*(this: Wl_shell; surface: Wl_surface): Wl_shell_surface =
   ## Create a shell surface for an existing surface. This gives
@@ -2562,9 +2725,9 @@ proc get_shell_surface*(this: Wl_shell; surface: Wl_surface): Wl_shell_surface =
   ## already has another role, it raises a protocol error.
   ## 
   ## Only one shell surface can be associated with a given surface.
-  construct(wl_proxy_marshal_flags(this.proxy.raw, 0, Wl_shell_surface.iface, 1,
-                                   0, nil, surface), Wl_shell_surface,
-            `Wl_shell_surface / dispatch`, `Wl_shell_surface / Callbacks`)
+  result = construct(wl_proxy_marshal_flags(this.proxy.raw, 0,
+      Wl_shell_surface.iface, 1, 0, nil, surface), Wl_shell_surface,
+                     `Wl_shell_surface / dispatch`, `Wl_shell_surface / Callbacks`)
 
 proc pong*(this: Wl_shell_surface; serial: uint32) =
   ## A client must respond to a ping event with a pong request or
@@ -2713,6 +2876,7 @@ proc set_class*(this: Wl_shell_surface; class: cstring) =
 
 proc destroy*(this: Wl_surface) =
   ## Deletes the surface and invalidates its object ID.
+  destroyCallbacks(this.proxy)
   discard wl_proxy_marshal_flags(this.proxy.raw, 0, nil, 1, 1)
 
 proc attach*(this: Wl_surface; buffer: Wl_buffer; x: int32; y: int32) =
@@ -2833,9 +2997,9 @@ proc frame*(this: Wl_surface): Wl_callback =
   ## 
   ## The callback_data passed in the callback is the current time, in
   ## milliseconds, with an undefined base.
-  construct(wl_proxy_marshal_flags(this.proxy.raw, 3, Wl_callback.iface, 1, 0,
-                                   nil), Wl_callback, `Wl_callback / dispatch`,
-            `Wl_callback / Callbacks`)
+  result = construct(wl_proxy_marshal_flags(this.proxy.raw, 3,
+      Wl_callback.iface, 1, 0, nil), Wl_callback, `Wl_callback / dispatch`,
+                     `Wl_callback / Callbacks`)
 
 proc set_opaque_region*(this: Wl_surface; region: Wl_region) =
   ## This request sets the region of the surface that contains
@@ -3028,9 +3192,8 @@ proc get_pointer*(this: Wl_seat): Wl_pointer =
   ## It is a protocol violation to issue this request on a seat that has
   ## never had the pointer capability. The missing_capability error will
   ## be sent in this case.
-  construct(wl_proxy_marshal_flags(this.proxy.raw, 0, Wl_pointer.iface, 1, 0,
-                                   nil), Wl_pointer, `Wl_pointer / dispatch`,
-            `Wl_pointer / Callbacks`)
+  result = construct(wl_proxy_marshal_flags(this.proxy.raw, 0, Wl_pointer.iface,
+      1, 0, nil), Wl_pointer, `Wl_pointer / dispatch`, `Wl_pointer / Callbacks`)
 
 proc get_keyboard*(this: Wl_seat): Wl_keyboard =
   ## The ID provided will be initialized to the wl_keyboard interface
@@ -3041,9 +3204,9 @@ proc get_keyboard*(this: Wl_seat): Wl_keyboard =
   ## It is a protocol violation to issue this request on a seat that has
   ## never had the keyboard capability. The missing_capability error will
   ## be sent in this case.
-  construct(wl_proxy_marshal_flags(this.proxy.raw, 1, Wl_keyboard.iface, 1, 0,
-                                   nil), Wl_keyboard, `Wl_keyboard / dispatch`,
-            `Wl_keyboard / Callbacks`)
+  result = construct(wl_proxy_marshal_flags(this.proxy.raw, 1,
+      Wl_keyboard.iface, 1, 0, nil), Wl_keyboard, `Wl_keyboard / dispatch`,
+                     `Wl_keyboard / Callbacks`)
 
 proc get_touch*(this: Wl_seat): Wl_touch =
   ## The ID provided will be initialized to the wl_touch interface
@@ -3054,12 +3217,13 @@ proc get_touch*(this: Wl_seat): Wl_touch =
   ## It is a protocol violation to issue this request on a seat that has
   ## never had the touch capability. The missing_capability error will
   ## be sent in this case.
-  construct(wl_proxy_marshal_flags(this.proxy.raw, 2, Wl_touch.iface, 1, 0, nil),
-            Wl_touch, `Wl_touch / dispatch`, `Wl_touch / Callbacks`)
+  result = construct(wl_proxy_marshal_flags(this.proxy.raw, 2, Wl_touch.iface,
+      1, 0, nil), Wl_touch, `Wl_touch / dispatch`, `Wl_touch / Callbacks`)
 
 proc release*(this: Wl_seat) =
   ## Using this request a client can tell the server that it is not going to
   ## use the seat object anymore.
+  destroyCallbacks(this.proxy)
   discard wl_proxy_marshal_flags(this.proxy.raw, 3, nil, 1, 1)
 
 proc set_cursor*(this: Wl_pointer; serial: uint32; surface: Wl_surface;
@@ -3106,23 +3270,28 @@ proc release*(this: Wl_pointer) =
   ## 
   ## This request destroys the pointer proxy object, so clients must not call
   ## wl_pointer_destroy() after using this request.
+  destroyCallbacks(this.proxy)
   discard wl_proxy_marshal_flags(this.proxy.raw, 1, nil, 1, 1)
 
 proc release*(this: Wl_keyboard) =
   ## release the keyboard object
+  destroyCallbacks(this.proxy)
   discard wl_proxy_marshal_flags(this.proxy.raw, 0, nil, 1, 1)
 
 proc release*(this: Wl_touch) =
   ## release the touch object
+  destroyCallbacks(this.proxy)
   discard wl_proxy_marshal_flags(this.proxy.raw, 0, nil, 1, 1)
 
 proc release*(this: Wl_output) =
   ## Using this request a client can tell the server that it is not going to
   ## use the output object anymore.
+  destroyCallbacks(this.proxy)
   discard wl_proxy_marshal_flags(this.proxy.raw, 0, nil, 1, 1)
 
 proc destroy*(this: Wl_region) =
   ## Destroy the region.  This will invalidate the object ID.
+  destroyCallbacks(this.proxy)
   discard wl_proxy_marshal_flags(this.proxy.raw, 0, nil, 1, 1)
 
 proc add*(this: Wl_region; x: int32; y: int32; width: int32; height: int32) =
@@ -3139,6 +3308,7 @@ proc destroy*(this: Wl_subcompositor) =
   ## Informs the server that the client will not be using this
   ## protocol object anymore. This does not affect any other
   ## objects, wl_subsurface objects included.
+  destroyCallbacks(this.proxy)
   discard wl_proxy_marshal_flags(this.proxy.raw, 0, nil, 1, 1)
 
 proc get_subsurface*(this: Wl_subcompositor; surface: Wl_surface;
@@ -3162,15 +3332,16 @@ proc get_subsurface*(this: Wl_subcompositor; surface: Wl_surface;
   ## 
   ## This request modifies the behaviour of wl_surface.commit request on
   ## the sub-surface, see the documentation on wl_subsurface interface.
-  construct(wl_proxy_marshal_flags(this.proxy.raw, 1, Wl_subsurface.iface, 1, 0,
-                                   nil, surface, parent), Wl_subsurface,
-            `Wl_subsurface / dispatch`, `Wl_subsurface / Callbacks`)
+  result = construct(wl_proxy_marshal_flags(this.proxy.raw, 1,
+      Wl_subsurface.iface, 1, 0, nil, surface, parent), Wl_subsurface,
+                     `Wl_subsurface / dispatch`, `Wl_subsurface / Callbacks`)
 
 proc destroy*(this: Wl_subsurface) =
   ## The sub-surface interface is removed from the wl_surface object
   ## that was turned into a sub-surface with a
   ## wl_subcompositor.get_subsurface request. The wl_surface's association
   ## to the parent is deleted. The wl_surface is unmapped immediately.
+  destroyCallbacks(this.proxy)
   discard wl_proxy_marshal_flags(this.proxy.raw, 0, nil, 1, 1)
 
 proc set_position*(this: Wl_subsurface; x: int32; y: int32) =
@@ -3417,6 +3588,35 @@ template onRepositioned*(this: Xdg_popup; body) =
   ## effect. See xdg_surface.ack_configure for details.
   cast[ptr `Xdg_popup / Callbacks`](this.proxy.raw.impl).repositioned = proc (
       token {.inject.}: uint32) =
+    body
+
+template onDefault_mode*(this: Org_kde_kwin_server_decoration_manager; body) =
+  ## This event is emitted directly after binding the interface. It contains
+  ## the default mode for the decoration. When a new server decoration object
+  ## is created this new object will be in the default mode until the first
+  ## request_mode is requested.
+  ## 
+  ## The server may change the default mode at any time.
+  cast[ptr `Org_kde_kwin_server_decoration_manager / Callbacks`](this.proxy.raw.impl).default_mode = proc (
+      mode {.inject.}: uint32) =
+    body
+
+template onMode*(this: Org_kde_kwin_server_decoration; body) =
+  ## This event is emitted directly after the decoration is created and
+  ## represents the base decoration policy by the server. E.g. a server
+  ## which wants all surfaces to be client-side decorated will send Client,
+  ## a server which wants server-side decoration will send Server.
+  ## 
+  ## The client can request a different mode through the decoration request.
+  ## The server will acknowledge this by another event with the same mode. So
+  ## even if a server prefers server-side decoration it's possible to force a
+  ## client-side decoration.
+  ## 
+  ## The server may emit this event at any time. In this case the client can
+  ## again request a different mode. It's the responsibility of the server to
+  ## prevent a feedback loop.
+  cast[ptr `Org_kde_kwin_server_decoration / Callbacks`](this.proxy.raw.impl).mode = proc (
+      mode {.inject.}: uint32) =
     body
 
 template onError*(this: Wl_display; body) =
@@ -4476,6 +4676,12 @@ template dispatch*(t: typedesc[Xdg_toplevel]): untyped =
 template dispatch*(t: typedesc[Xdg_popup]): untyped =
   `Xdg_popup / dispatch`
 
+template dispatch*(t: typedesc[Org_kde_kwin_server_decoration_manager]): untyped =
+  `Org_kde_kwin_server_decoration_manager / dispatch`
+
+template dispatch*(t: typedesc[Org_kde_kwin_server_decoration]): untyped =
+  `Org_kde_kwin_server_decoration / dispatch`
+
 template dispatch*(t: typedesc[Wl_display]): untyped =
   `Wl_display / dispatch`
 
@@ -4556,6 +4762,12 @@ template Callbacks*(t: typedesc[Xdg_toplevel]): untyped =
 
 template Callbacks*(t: typedesc[Xdg_popup]): untyped =
   `Xdg_popup / Callbacks`
+
+template Callbacks*(t: typedesc[Org_kde_kwin_server_decoration_manager]): untyped =
+  `Org_kde_kwin_server_decoration_manager / Callbacks`
+
+template Callbacks*(t: typedesc[Org_kde_kwin_server_decoration]): untyped =
+  `Org_kde_kwin_server_decoration / Callbacks`
 
 template Callbacks*(t: typedesc[Wl_display]): untyped =
   `Wl_display / Callbacks`
