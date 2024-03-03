@@ -80,4 +80,7 @@ test "OpenGL ES":
     ,
     onMaximizedChanged: proc(e: MaximizedChangedEvent) =
       echo "maximized: ", e.maximized
+    ,
+    onScroll: proc(e: ScrollEvent) =
+      echo "scroll: ", vec2(e.delta, e.deltaX)
   )

@@ -11,7 +11,7 @@ Can be used as an alternative to GLFW/GLUT/windy
 
 # Features
 * works with: OpenGL, Vulkan, software rendering
-* works on: Linux(X11), Windows
+* works on: Linux(X11 and Wayland), Windows
 * handles events from: mouse, keyboard
 * and also supports: clipboard, offscreen rendering, interactive move/resize, etc.
 
@@ -40,7 +40,12 @@ run newSoftwareRenderingWindow(), WindowEventsHandler(
 ```nim
 import siwin, opengl, vmath
 
-var window = newOpenglWindow(title="OpenGL example")
+var window = newOpenglWindow(
+  title="OpenGL example",
+  preferedPlatform = (when defined(linux): x11 else: defaultPreferedPlatform)
+  # note: glBegin and other non- OpenGL ES functions don't work on Wayland
+  # see tests/t_opengl_es.nim for more complex, wayland-compatible opengl example
+)
 loadExtensions()  # init opengl
 
 run window, WindowEventsHandler(

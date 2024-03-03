@@ -482,15 +482,33 @@ macro generateProtocolWrapperFromXmlStringImpl(outNimFile: static[string], insta
                         accquote msg.name
                       ) &
                       (0..msg.args.high).mapit(
-                        nnkCast.newTree(
-                          msg.args[it].t.toNimType(msg.args[it].iface, msg.args[it].enm),
-                          nnkBracketExpr.newTree(
-                            nnkBracketExpr.newTree(
-                              ident("argsArray"),
+                        if msg.args[it].t == "fixed":
+                          nnkInfix.newTree(
+                            ident("/"),
+                            nnkDotExpr.newTree(
+                              nnkCast.newTree(
+                                ident("int32"),
+                                nnkBracketExpr.newTree(
+                                  nnkBracketExpr.newTree(
+                                    ident("argsArray"),
+                                  ),
+                                  newLit(it),
+                                ),
+                              ),
+                              ident("float32")
                             ),
-                            newLit(it),
-                          ),
-                        )
+                            newLit(256)
+                          )
+                        else:
+                          nnkCast.newTree(
+                            msg.args[it].t.toNimType(msg.args[it].iface, msg.args[it].enm),
+                            nnkBracketExpr.newTree(
+                              nnkBracketExpr.newTree(
+                                ident("argsArray"),
+                              ),
+                              newLit(it),
+                            ),
+                          )
                       )
                     )
                   )

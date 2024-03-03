@@ -1,5 +1,5 @@
 import tables
-import ./[libwayland, protocol]
+import ./[libwayland, protocol, bitfields]
 
 type
   WaylandExtensionNotFound* = object of CatchableError
@@ -18,8 +18,9 @@ var
   seat*: WlSeat
 
   kdeServerDecorationsManager*: Org_kde_kwin_server_decoration_manager
-
+  
   shmFormats*: seq[`WlShm / Format`]
+  seatCapabilities*: Bitfield[`WlSeat / Capability`]
 
   waylandAvailable* = true
 
@@ -39,6 +40,8 @@ addRegistry Wl_shm:
   shmFormats = @[]
   shm.onFormat:
     shmFormats.add format
+  
+  wl_display_roundtrip display
 
 addRegistry Xdg_wm_base:
   xdgWmBase = binded
@@ -48,6 +51,12 @@ addRegistry Xdg_wm_base:
 
 addRegistry Wl_seat:
   seat = binded
+
+  seatCapabilities = seatCapabilities.typeof.default
+  seat.onCapabilities:
+    seatCapabilities = capabilities.asBitfield
+  
+  wl_display_roundtrip display
 
 addRegistry Org_kde_kwin_server_decoration_manager:
   kdeServerDecorationsManager = binded

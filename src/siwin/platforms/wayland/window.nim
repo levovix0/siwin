@@ -2,7 +2,7 @@ import std/[times, importutils, strformat, options]
 import pkg/[vmath]
 import ../../utils, ../../bgrx
 import ../any/window {.all.}
-import ./[libwayland, protocol, globals, sharedBuffer]
+import ./[libwayland, protocol, globals, sharedBuffer, bitfields]
 
 {.experimental: "overloadableEnums".}
 
@@ -21,10 +21,15 @@ type
 
     kdeDecorations: Org_kde_kwin_server_decoration
 
-    lastClickTime: Time
+    lastClickTime: Duration
     doubleClickHandled: bool
 
     lastActionSerial: uint32
+    isPointerInside: bool
+
+    seat_pointer: Wl_pointer
+    seat_keyboard: Wl_keyboard
+    seat_touch: Wl_touch
   
   WindowWaylandSoftwareRendering* = ref object of WindowWayland
     buffer: SharedBuffer
@@ -174,6 +179,10 @@ proc `=destroy`(window: WindowWaylandObj) =
       f x
       x = typeof(x).default
 
+  destroy window.seat_pointer, release
+  destroy window.seat_keyboard, release
+  destroy window.seat_touch, release
+
   destroy window.kdeDecorations, release
   destroy window.xdgToplevel, destroy
   destroy window.xdgSurface, destroy
@@ -194,6 +203,10 @@ method release(window: WindowWayland) {.base.} =
       f x
       x = typeof(x).default
 
+  destroy window.seat_pointer, release
+  destroy window.seat_keyboard, release
+  destroy window.seat_touch, release
+  
   destroy window.kdeDecorations, release
   destroy window.xdgToplevel, destroy
   destroy window.xdgSurface, destroy
@@ -438,6 +451,84 @@ proc setupWindow(window: WindowWayland, fullscreen, frameless, transparent: bool
   window.xdgToplevel.onConfigure:
     window.xdgSurface.ackConfigure(0)  #? is it needed?    
     window.resize(ivec2(width, height))
+  
+
+  if seat.proxy.raw != nil:
+    if `WlSeat / Capability`.`pointer` in seatCapabilities:
+      window.seat_pointer = seat.get_pointer
+
+      window.seat_pointer.onEnter:
+        if surface != window.surface: return
+        window.lastActionSerial = serial
+        window.isPointerInside = true
+        window.mouse.pos = vec2(surface_x, surface_y).ivec2
+        window.eventsHandler.pushEvent onMouseMove, MouseMoveEvent(window: window, pos: window.mouse.pos, kind: MouseMoveKind.enter)
+      
+      window.seat_pointer.onLeave:
+        if surface != window.surface: return
+        window.lastActionSerial = serial
+        window.isPointerInside = false
+        window.eventsHandler.pushEvent onMouseMove, MouseMoveEvent(window: window, pos: window.mouse.pos, kind: MouseMoveKind.leave)
+      
+      window.seat_pointer.onMotion:
+        if not window.isPointerInside: return
+        window.mouse.pos = vec2(surface_x, surface_y).ivec2
+        window.eventsHandler.pushEvent onMouseMove, MouseMoveEvent(window: window, pos: window.mouse.pos, kind: MouseMoveKind.move)
+      
+      window.seat_pointer.onButton:
+        let nows = initDuration(milliseconds = time.int64)
+
+        let button = case button
+        of 0x110: MouseButton.left
+        of 0x111: MouseButton.right
+        of 0x112: MouseButton.middle
+        of 0x115: MouseButton.forward
+        of 0x116: MouseButton.backward
+        else: return  # todo?
+
+        if (
+          (state != `WlPointer / Button_state`.released or button in window.mouse.pressed) and
+          not window.isPointerInside
+        ): return
+
+        window.lastActionSerial = serial
+        if state == `WlPointer / Button_state`.pressed:
+          window.mouse.pressed.incl button
+          window.clicking.incl button
+
+          if (nows - window.lastClickTime).inMilliseconds < 200:
+            window.eventsHandler.pushEvent onClick, ClickEvent(
+              window: window, button: button, pos: window.mouse.pos, double: true
+            )
+            window.doubleClickHandled = true
+          else:
+            window.doubleClickHandled = false
+        else:
+          window.mouse.pressed.excl button
+          if button in window.clicking:
+            if not window.doubleClickHandled:
+              window.eventsHandler.pushEvent onClick, ClickEvent(
+                window: window, button: button, pos: window.mouse.pos, double: false
+              )
+              window.lastClickTime = nows
+            window.clicking.excl button
+
+        window.eventsHandler.pushEvent onMouseButton, MouseButtonEvent(window: window, button: button, pressed: state == `WlPointer / Button_state`.pressed, generated: false)
+
+      window.seat_pointer.onAxis:
+        if not window.isPointerInside: return
+
+        if axis == `WlPointer / Axis`.vertical_scroll:
+          window.eventsHandler.pushEvent onScroll, ScrollEvent(window: window, delta: value, deltaX: 0)
+        elif axis == `WlPointer / Axis`.horizontal_scroll:
+          window.eventsHandler.pushEvent onScroll, ScrollEvent(window: window, delta: 0, deltaX: value)
+        else:
+          return
+
+
+    if `WlSeat / Capability`.keyboard in seatCapabilities:
+      window.seat_keyboard = seat.get_keyboard
+
 
 
 proc initSoftwareRenderingWindow(

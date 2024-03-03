@@ -108,7 +108,7 @@ type
   MouseButtonEvent* = object of AnyWindowEvent
     button*: MouseButton
     pressed*: bool
-    generated*: bool  ## generated, for example, by releaseAllKeys when alt-tab. Means used don't actually do this action
+    generated*: bool  ## generated, for example, by releaseAllKeys when alt-tab. Means user don't actually do this action
   
   ScrollEvent* = object of AnyWindowEvent
     delta*: float
@@ -123,7 +123,7 @@ type
     key*: Key
     pressed*: bool
     repeated*: bool  ## means user is holding this key and system is repeating keydown+keyup
-    generated*: bool  ## generated, for example, by releaseAllKeys when alt-tab. Means used don't actually do this action
+    generated*: bool  ## generated, for example, by releaseAllKeys when alt-tab. Means user don't actually do this action
   
   TextInputEvent* = object of AnyWindowEvent
     text*: string

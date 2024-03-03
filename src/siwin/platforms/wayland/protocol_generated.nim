@@ -1457,8 +1457,8 @@ proc `Wl_data_device / dispatch`*(impl: pointer; obj: pointer; opcode: uint32;
     if callbacks.enter != nil:
       callbacks.enter(cast[uint32](argsArray[][0]),
                       cast[Wl_surface](argsArray[][1]),
-                      cast[float32](argsArray[][2]),
-                      cast[float32](argsArray[][3]),
+                      cast[int32](argsArray[][2]).float32 / 256,
+                      cast[int32](argsArray[][3]).float32 / 256,
                       cast[Wl_data_offer](argsArray[][4]))
   of 2:
     if callbacks.leave != nil:
@@ -1467,8 +1467,8 @@ proc `Wl_data_device / dispatch`*(impl: pointer; obj: pointer; opcode: uint32;
     let argsArray = cast[ptr array[3, Wl_argument]](args)
     if callbacks.motion != nil:
       callbacks.motion(cast[uint32](argsArray[][0]),
-                       cast[float32](argsArray[][1]),
-                       cast[float32](argsArray[][2]))
+                       cast[int32](argsArray[][1]).float32 / 256,
+                       cast[int32](argsArray[][2]).float32 / 256)
   of 4:
     if callbacks.drop != nil:
       callbacks.drop()
@@ -1560,8 +1560,8 @@ proc `Wl_pointer / dispatch`*(impl: pointer; obj: pointer; opcode: uint32;
     if callbacks.enter != nil:
       callbacks.enter(cast[uint32](argsArray[][0]),
                       cast[Wl_surface](argsArray[][1]),
-                      cast[float32](argsArray[][2]),
-                      cast[float32](argsArray[][3]))
+                      cast[int32](argsArray[][2]).float32 / 256,
+                      cast[int32](argsArray[][3]).float32 / 256)
   of 1:
     let argsArray = cast[ptr array[2, Wl_argument]](args)
     if callbacks.leave != nil:
@@ -1571,8 +1571,8 @@ proc `Wl_pointer / dispatch`*(impl: pointer; obj: pointer; opcode: uint32;
     let argsArray = cast[ptr array[3, Wl_argument]](args)
     if callbacks.motion != nil:
       callbacks.motion(cast[uint32](argsArray[][0]),
-                       cast[float32](argsArray[][1]),
-                       cast[float32](argsArray[][2]))
+                       cast[int32](argsArray[][1]).float32 / 256,
+                       cast[int32](argsArray[][2]).float32 / 256)
   of 3:
     let argsArray = cast[ptr array[4, Wl_argument]](args)
     if callbacks.button != nil:
@@ -1585,7 +1585,7 @@ proc `Wl_pointer / dispatch`*(impl: pointer; obj: pointer; opcode: uint32;
     if callbacks.axis != nil:
       callbacks.axis(cast[uint32](argsArray[][0]),
                      cast[`Wl_pointer / Axis`](argsArray[][1]),
-                     cast[float32](argsArray[][2]))
+                     cast[int32](argsArray[][2]).float32 / 256)
   of 5:
     if callbacks.frame != nil:
       callbacks.frame()
@@ -1668,8 +1668,9 @@ proc `Wl_touch / dispatch`*(impl: pointer; obj: pointer; opcode: uint32;
     if callbacks.down != nil:
       callbacks.down(cast[uint32](argsArray[][0]), cast[uint32](argsArray[][1]),
                      cast[Wl_surface](argsArray[][2]),
-                     cast[int32](argsArray[][3]), cast[float32](argsArray[][4]),
-                     cast[float32](argsArray[][5]))
+                     cast[int32](argsArray[][3]),
+                     cast[int32](argsArray[][4]).float32 / 256,
+                     cast[int32](argsArray[][5]).float32 / 256)
   of 1:
     let argsArray = cast[ptr array[3, Wl_argument]](args)
     if callbacks.up != nil:
@@ -1680,8 +1681,8 @@ proc `Wl_touch / dispatch`*(impl: pointer; obj: pointer; opcode: uint32;
     if callbacks.motion != nil:
       callbacks.motion(cast[uint32](argsArray[][0]),
                        cast[int32](argsArray[][1]),
-                       cast[float32](argsArray[][2]),
-                       cast[float32](argsArray[][3]))
+                       cast[int32](argsArray[][2]).float32 / 256,
+                       cast[int32](argsArray[][3]).float32 / 256)
   of 3:
     if callbacks.frame != nil:
       callbacks.frame()
@@ -1692,13 +1693,13 @@ proc `Wl_touch / dispatch`*(impl: pointer; obj: pointer; opcode: uint32;
     let argsArray = cast[ptr array[3, Wl_argument]](args)
     if callbacks.shape != nil:
       callbacks.shape(cast[int32](argsArray[][0]),
-                      cast[float32](argsArray[][1]),
-                      cast[float32](argsArray[][2]))
+                      cast[int32](argsArray[][1]).float32 / 256,
+                      cast[int32](argsArray[][2]).float32 / 256)
   of 6:
     let argsArray = cast[ptr array[2, Wl_argument]](args)
     if callbacks.orientation != nil:
       callbacks.orientation(cast[int32](argsArray[][0]),
-                            cast[float32](argsArray[][1]))
+                            cast[int32](argsArray[][1]).float32 / 256)
   else:
     discard
 
