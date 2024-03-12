@@ -220,7 +220,9 @@ method `fullscreen=`*(window: WindowWinapi, v: bool) =
   else:
     window.handle.ShowWindow(SwShowNormal)
     discard window.handle.SetWindowLongPtr(GwlStyle, WsVisible or WsOverlappedWindow)
-  window.eventsHandler.pushEvent onFullscreenChanged, FullscreenChangedEvent(window: window, fullscreen: v)
+    window.eventsHandler.pushEvent onStateBoolChanged, StateBoolChangedEvent(
+      window: window, kind: StateBoolChangedEventKind.fullscreen, value: v
+    )
 
 method `size=`*(window: WindowWinapi, size: IVec2) =
   window.fullscreen = false
@@ -410,7 +412,9 @@ method `maximized=`*(window: WindowWinapi, v: bool) =
   else:
     discard ShowWindow(window.handle, if v: SwMaximize else: SwNormal)
   window.m_maximized = v
-  window.eventsHandler.pushEvent onMaximizedChanged, MaximizedChangedEvent(window: window, maximized: window.m_maximized)
+  window.eventsHandler.pushEvent onStateBoolChanged, StateBoolChangedEvent(
+    window: window, kind: StateBoolChangedEventKind.maximized, value: window.m_maximized
+  )
 
 method `minimized=`*(window: WindowWinapi, v: bool) =
   window.releaseAllKeys()
@@ -492,7 +496,9 @@ method step*(window: WindowWinapi) =
   proc checkStateChanged =
     if not window.m_frameless and IsZoomed(window.handle).bool != window.m_maximized:
       window.m_maximized = not window.m_maximized
-      window.eventsHandler.pushEvent onMaximizedChanged, MaximizedChangedEvent(window: window, maximized: window.m_maximized)
+      window.eventsHandler.pushEvent onStateBoolChanged, StateBoolChangedEvent(
+        window: window, kind: StateBoolChangedEventKind.maximized, value: window.m_maximized
+      )
     
     window.m_minimized = IsIconic(window.handle) != 0
     window.m_visible = IsWindowVisible(window.handle) != 0
@@ -570,7 +576,9 @@ proc poolEvent(window: WindowWinapi, message: Uint, wParam: WParam, lParam: LPar
 
   of WmSetFocus:
     window.m_focused = true
-    window.eventsHandler.pushEvent onFocusChanged, FocusChangedEvent(window: window, focus: true)
+    window.eventsHandler.pushEvent onStateBoolChanged, StateBoolChangedEvent(
+      window: window, kind: StateBoolChangedEventKind.focus, value: true
+    )
 
     let keys = getKeyboardState().mapit(wkeyToKey(it))
     for k in keys: # press pressed in system keys
@@ -580,7 +588,9 @@ proc poolEvent(window: WindowWinapi, message: Uint, wParam: WParam, lParam: LPar
 
   of WmKillFocus:
     window.m_focused = false
-    window.eventsHandler.pushEvent onFocusChanged, FocusChangedEvent(window: window, focus: false)
+    window.eventsHandler.pushEvent onStateBoolChanged, StateBoolChangedEvent(
+      window: window, kind: StateBoolChangedEventKind.focus, value: false
+    )
     let pressed = window.keyboard.pressed
     for key in pressed: # release all keys
       window.keyboard.pressed.excl key

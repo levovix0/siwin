@@ -6,6 +6,7 @@ type
 
 var
   initialized: bool
+  seatEventsInitialized*: bool
 
   display*: WlDisplay
   registry: WlRegistry
@@ -17,12 +18,16 @@ var
   xdgWmBase*: XdgWmBase
   seat*: WlSeat
 
-  kdeServerDecorationsManager*: Org_kde_kwin_server_decoration_manager
+  serverDecorationManager*: Zxdg_decoration_manager_v1
   
   shmFormats*: seq[`WlShm / Format`]
   seatCapabilities*: Bitfield[`WlSeat / Capability`]
 
   waylandAvailable* = true
+
+  seat_pointer*: Wl_pointer
+  seat_keyboard*: Wl_keyboard
+  seat_touch*: Wl_touch
 
 
 template addRegistry*(target: type, body) =
@@ -34,6 +39,7 @@ template addRegistry*(target: type, body) =
 addRegistry Wl_compositor:
   compositor = binded
 
+
 addRegistry Wl_shm:
   shm = binded
 
@@ -41,13 +47,15 @@ addRegistry Wl_shm:
   shm.onFormat:
     shmFormats.add format
   
-  wl_display_roundtrip display
+  discard wl_display_roundtrip display
+
 
 addRegistry Xdg_wm_base:
   xdgWmBase = binded
 
   xdgWmBase.onPing:
     xdgWmBase.pong(serial)
+
 
 addRegistry Wl_seat:
   seat = binded
@@ -56,10 +64,11 @@ addRegistry Wl_seat:
   seat.onCapabilities:
     seatCapabilities = capabilities.asBitfield
   
-  wl_display_roundtrip display
+  discard wl_display_roundtrip display
 
-addRegistry Org_kde_kwin_server_decoration_manager:
-  kdeServerDecorationsManager = binded
+
+addRegistry Zxdg_decoration_manager_v1:
+  serverDecorationManager = binded
 
 
 proc init* =
@@ -81,12 +90,13 @@ proc init* =
       if interfaceString == targetIface:
         callback(registry, name, version)
   
-  wl_display_roundtrip display
+  discard wl_display_roundtrip display
 
 
 proc uninit* =
   if not initialized: return
   initialized = false
+  seatEventsInitialized = false
 
   wl_display_disconnect display
 

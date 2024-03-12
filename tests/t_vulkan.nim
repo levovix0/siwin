@@ -616,12 +616,12 @@ proc deinit*() =
   vkDestroyInstance(instance, nil)
 
 test "Vulkan":
-  let exts = getRequiredVulkanExtensions(x11)
+  let exts = getRequiredVulkanExtensions()
   var cexts = exts.mapit(it[0].unsafeaddr)
 
   instance = createInstance(cast[cstringArray](cexts[0].addr), exts.len.uint32)
 
-  let window = newVulkanWindow(cast[pointer](instance), title="Vulkan test", size = ivec2(WIDTH.int32, HEIGHT.int32), resizable=false, platform = x11)
+  let window = newVulkanWindow(cast[pointer](instance), title="Vulkan test", size = ivec2(WIDTH.int32, HEIGHT.int32), resizable=false)
   surface = cast[VkSurfaceKHR](window.vulkanSurface)
   
   init()

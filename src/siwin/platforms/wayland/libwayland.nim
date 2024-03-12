@@ -68,7 +68,7 @@ proc wl_display_connect_to_fd*(fd: FileHandle): Wl_display
 proc wl_display_get_fd*(this: Wl_display): FileHandle
 
 proc wl_display_flush*(this: Wl_display)
-proc wl_display_roundtrip*(this: Wl_display)
+proc wl_display_roundtrip*(this: Wl_display): int32
 
 
 proc wl_proxy_set_user_data*(this: Wl_proxy, v: pointer)
@@ -170,3 +170,10 @@ template proxy*(x: Wl_display): Wl_display =
 proc `==`*(a: WlProxyTyped, b: typeof nil): bool = a.proxy.raw == nil
 proc `==`*(a: Wl_proxy, b: typeof nil): bool = a.raw == nil
 proc `==`*(a: Wl_display, b: typeof nil): bool = a.raw == nil
+
+
+proc toSeq*(x: Wl_array, t: type): seq[t] =
+  when t.sizeof != 4: {.error: "invalid type, should be 4 bytes long".}
+  if x[].size == 0: return
+  result = newSeq[t](x[].size)
+  copyMem(result[0].addr, x[].data, x[].size * sizeof(t))

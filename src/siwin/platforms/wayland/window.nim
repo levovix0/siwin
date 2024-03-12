@@ -1,8 +1,8 @@
-import std/[times, importutils, strformat, options]
+import std/[times, importutils, strformat, options, tables, os]
 import pkg/[vmath]
 import ../../utils, ../../bgrx
 import ../any/window {.all.}
-import ./[libwayland, protocol, globals, sharedBuffer, bitfields]
+import ./[libwayland, protocol, globals, sharedBuffer, bitfields, xkb]
 
 {.experimental: "overloadableEnums".}
 
@@ -19,133 +19,147 @@ type
     xdgSurface: Xdg_surface
     xdgToplevel: Xdg_toplevel
 
-    kdeDecorations: Org_kde_kwin_server_decoration
+    serverDecoration: Zxdg_toplevel_decoration_v1
 
     lastClickTime: Duration
     doubleClickHandled: bool
 
     lastActionSerial: uint32
-    isPointerInside: bool
 
-    seat_pointer: Wl_pointer
-    seat_keyboard: Wl_keyboard
-    seat_touch: Wl_touch
+    lastKeyPressed: Key
+    lastTextEntered: string
+    lastKeyPressedTime: Time
+    lastKeyRepeatedTime: Time
   
   WindowWaylandSoftwareRendering* = ref object of WindowWayland
     buffer: SharedBuffer
 
 
+var
+  associatedWindows: Table[uint32, WindowWayland]  # surface proxy id -> window
+
+  seat_pointer_currentWindow: WindowWayland
+  seat_keyboard_currentWindow: WindowWayland
+  seat_touch_currentWindow: WindowWayland
+
+  seat_keyboard_repeatSettings: tuple[rate, delay: int32]
+
+
 proc waylandKeyToKey(keycode: uint32): Key =
-  ## todo
-  case keycode
-  # of Xk_shiftL:       Key.lshift
-  # of Xk_shiftR:       Key.rshift
-  # of Xk_controlL:     Key.lcontrol
-  # of Xk_controlR:     Key.rcontrol
-  # of Xk_altL:         Key.lalt
-  # of Xk_altR:         Key.ralt
-  # of Xk_superL:       Key.lsystem
-  # of Xk_superR:       Key.rsystem
-  # of Xk_menu:         Key.menu
-  # of Xk_escape:       Key.escape
-  # of Xk_semicolon:    Key.semicolon
-  # of Xk_slash:        Key.slash
-  # of Xk_equal:        Key.equal
-  # of Xk_minus:        Key.minus
-  # of Xk_bracketleft:  Key.lbracket
-  # of Xk_bracketright: Key.rbracket
-  # of Xk_comma:        Key.comma
-  # of Xk_period:       Key.dot
-  # of Xk_apostrophe:   Key.quote
-  # of Xk_backslash:    Key.backslash
-  # of Xk_grave:        Key.tilde
-  # of Xk_space:        Key.space
-  # of Xk_return:       Key.enter
-  # of Xk_kpEnter:      Key.enter
-  # of Xk_backspace:    Key.backspace
-  # of Xk_tab:          Key.tab
-  # of Xk_prior:        Key.page_up
-  # of Xk_next:         Key.page_down
-  # of Xk_end:          Key.End
-  # of Xk_home:         Key.home
-  # of Xk_insert:       Key.insert
-  # of Xk_delete:       Key.del
-  # of Xk_kpAdd:        Key.add
-  # of Xk_kpSubtract:   Key.subtract
-  # of Xk_kpMultiply:   Key.multiply
-  # of Xk_kpDivide:     Key.divide
-  # of Xk_capsLock:     Key.capsLock
-  # of Xk_numLock:      Key.numLock
-  # of Xk_scrollLock:   Key.scrollLock
-  # of Xk_print:        Key.printScreen
-  # of Xk_kpSeparator:  Key.npadDot
-  # of Xk_pause:        Key.pause
-  # of Xk_f1:           Key.f1
-  # of Xk_f2:           Key.f2
-  # of Xk_f3:           Key.f3
-  # of Xk_f4:           Key.f4
-  # of Xk_f5:           Key.f5
-  # of Xk_f6:           Key.f6
-  # of Xk_f7:           Key.f7
-  # of Xk_f8:           Key.f8
-  # of Xk_f9:           Key.f9
-  # of Xk_f10:          Key.f10
-  # of Xk_f11:          Key.f11
-  # of Xk_f12:          Key.f12
-  # of Xk_f13:          Key.f13
-  # of Xk_f14:          Key.f14
-  # of Xk_f15:          Key.f15
-  # of Xk_left:         Key.left
-  # of Xk_right:        Key.right
-  # of Xk_up:           Key.up
-  # of Xk_down:         Key.down
-  # of Xk_kpInsert:     Key.npad0
-  # of Xk_kpEnd:        Key.npad1
-  # of Xk_kpDown:       Key.npad2
-  # of Xk_kpPagedown:   Key.npad3
-  # of Xk_kpLeft:       Key.npad4
-  # of Xk_kpBegin:      Key.npad5
-  # of Xk_kpRight:      Key.npad6
-  # of Xk_kpHome:       Key.npad7
-  # of Xk_kpUp:         Key.npad8
-  # of Xk_kpPageup:     Key.npad9
-  # of Xk_a:            Key.a
-  # of Xk_b:            Key.b
-  # of Xk_c:            Key.c
-  # of Xk_d:            Key.d
-  # of Xk_e:            Key.e
-  # of Xk_f:            Key.f
-  # of Xk_g:            Key.g
-  # of Xk_h:            Key.h
-  # of Xk_i:            Key.i
-  # of Xk_j:            Key.j
-  # of Xk_k:            Key.k
-  # of Xk_l:            Key.l
-  # of Xk_m:            Key.m
-  # of Xk_n:            Key.n
-  # of Xk_o:            Key.o
-  # of Xk_p:            Key.p
-  # of Xk_q:            Key.q
-  # of Xk_r:            Key.r
-  # of Xk_s:            Key.s
-  # of Xk_t:            Key.t
-  # of Xk_u:            Key.u
-  # of Xk_v:            Key.v
-  # of Xk_w:            Key.w
-  # of Xk_x:            Key.x
-  # of Xk_y:            Key.y
-  # of Xk_z:            Key.z
-  # of Xk_0:            Key.n0
-  # of Xk_1:            Key.n1
-  # of Xk_2:            Key.n2
-  # of Xk_3:            Key.n3
-  # of Xk_4:            Key.n4
-  # of Xk_5:            Key.n5
-  # of Xk_6:            Key.n6
-  # of Xk_7:            Key.n7
-  # of Xk_8:            Key.n8
-  # of Xk_9:            Key.n9
+  case global_xkb_state_unmodified.xkb_state_key_get_one_sym(keycode + 8)
+  of XKB_KEY_shiftL:       Key.lshift
+  of XKB_KEY_shiftR:       Key.rshift
+  of XKB_KEY_controlL:     Key.lcontrol
+  of XKB_KEY_controlR:     Key.rcontrol
+  of XKB_KEY_altL:         Key.lalt
+  of XKB_KEY_altR:         Key.ralt
+  of XKB_KEY_superL:       Key.lsystem
+  of XKB_KEY_superR:       Key.rsystem
+  of XKB_KEY_menu:         Key.menu
+  of XKB_KEY_escape:       Key.escape
+  of XKB_KEY_semicolon:    Key.semicolon
+  of XKB_KEY_slash:        Key.slash
+  of XKB_KEY_equal:        Key.equal
+  of XKB_KEY_minus:        Key.minus
+  of XKB_KEY_bracketleft:  Key.lbracket
+  of XKB_KEY_bracketright: Key.rbracket
+  of XKB_KEY_comma:        Key.comma
+  of XKB_KEY_period:       Key.dot
+  of XKB_KEY_apostrophe:   Key.quote
+  of XKB_KEY_backslash:    Key.backslash
+  of XKB_KEY_grave:        Key.tilde
+  of XKB_KEY_space:        Key.space
+  of XKB_KEY_return:       Key.enter
+  of XKB_KEY_kpEnter:      Key.enter
+  of XKB_KEY_backspace:    Key.backspace
+  of XKB_KEY_tab:          Key.tab
+  of XKB_KEY_prior:        Key.page_up
+  of XKB_KEY_next:         Key.page_down
+  of XKB_KEY_end:          Key.End
+  of XKB_KEY_home:         Key.home
+  of XKB_KEY_insert:       Key.insert
+  of XKB_KEY_delete:       Key.del
+  of XKB_KEY_kpAdd:        Key.add
+  of XKB_KEY_kpSubtract:   Key.subtract
+  of XKB_KEY_kpMultiply:   Key.multiply
+  of XKB_KEY_kpDivide:     Key.divide
+  of XKB_KEY_capsLock:     Key.capsLock
+  of XKB_KEY_numLock:      Key.numLock
+  of XKB_KEY_scrollLock:   Key.scrollLock
+  of XKB_KEY_print:        Key.printScreen
+  of XKB_KEY_kpSeparator:  Key.npadDot
+  of XKB_KEY_pause:        Key.pause
+  of XKB_KEY_f1:           Key.f1
+  of XKB_KEY_f2:           Key.f2
+  of XKB_KEY_f3:           Key.f3
+  of XKB_KEY_f4:           Key.f4
+  of XKB_KEY_f5:           Key.f5
+  of XKB_KEY_f6:           Key.f6
+  of XKB_KEY_f7:           Key.f7
+  of XKB_KEY_f8:           Key.f8
+  of XKB_KEY_f9:           Key.f9
+  of XKB_KEY_f10:          Key.f10
+  of XKB_KEY_f11:          Key.f11
+  of XKB_KEY_f12:          Key.f12
+  of XKB_KEY_f13:          Key.f13
+  of XKB_KEY_f14:          Key.f14
+  of XKB_KEY_f15:          Key.f15
+  of XKB_KEY_left:         Key.left
+  of XKB_KEY_right:        Key.right
+  of XKB_KEY_up:           Key.up
+  of XKB_KEY_down:         Key.down
+  of XKB_KEY_kpInsert:     Key.npad0
+  of XKB_KEY_kpEnd:        Key.npad1
+  of XKB_KEY_kpDown:       Key.npad2
+  of XKB_KEY_kpPagedown:   Key.npad3
+  of XKB_KEY_kpLeft:       Key.npad4
+  of XKB_KEY_kpBegin:      Key.npad5
+  of XKB_KEY_kpRight:      Key.npad6
+  of XKB_KEY_kpHome:       Key.npad7
+  of XKB_KEY_kpUp:         Key.npad8
+  of XKB_KEY_kpPageup:     Key.npad9
+  of XKB_KEY_a:            Key.a
+  of XKB_KEY_b:            Key.b
+  of XKB_KEY_c:            Key.c
+  of XKB_KEY_d:            Key.d
+  of XKB_KEY_e:            Key.e
+  of XKB_KEY_f:            Key.f
+  of XKB_KEY_g:            Key.g
+  of XKB_KEY_h:            Key.h
+  of XKB_KEY_i:            Key.i
+  of XKB_KEY_j:            Key.j
+  of XKB_KEY_k:            Key.k
+  of XKB_KEY_l:            Key.l
+  of XKB_KEY_m:            Key.m
+  of XKB_KEY_n:            Key.n
+  of XKB_KEY_o:            Key.o
+  of XKB_KEY_p:            Key.p
+  of XKB_KEY_q:            Key.q
+  of XKB_KEY_r:            Key.r
+  of XKB_KEY_s:            Key.s
+  of XKB_KEY_t:            Key.t
+  of XKB_KEY_u:            Key.u
+  of XKB_KEY_v:            Key.v
+  of XKB_KEY_w:            Key.w
+  of XKB_KEY_x:            Key.x
+  of XKB_KEY_y:            Key.y
+  of XKB_KEY_z:            Key.z
+  of XKB_KEY_0:            Key.n0
+  of XKB_KEY_1:            Key.n1
+  of XKB_KEY_2:            Key.n2
+  of XKB_KEY_3:            Key.n3
+  of XKB_KEY_4:            Key.n4
+  of XKB_KEY_5:            Key.n5
+  of XKB_KEY_6:            Key.n6
+  of XKB_KEY_7:            Key.n7
+  of XKB_KEY_8:            Key.n8
+  of XKB_KEY_9:            Key.n9
   else:               Key.unknown
+
+proc waylandKeyToString(keycode: uint32): string =
+  result = newStringOfCap(8)
+  result.setLen 1
+  result.setLen global_xkb_state.xkb_state_key_get_utf8(keycode + 8, cast[cstring](result[0].addr), 7)
 
 
 method swapBuffers(window: WindowWayland) {.base.} = discard
@@ -179,11 +193,10 @@ proc `=destroy`(window: WindowWaylandObj) =
       f x
       x = typeof(x).default
 
-  destroy window.seat_pointer, release
-  destroy window.seat_keyboard, release
-  destroy window.seat_touch, release
+  if window.surface.proxy.raw != nil:
+    associatedWindows.del window.surface.proxy.raw.id
 
-  destroy window.kdeDecorations, release
+  destroy window.serverDecoration, destroy
   destroy window.xdgToplevel, destroy
   destroy window.xdgSurface, destroy
   destroy window.surface, destroy
@@ -203,11 +216,9 @@ method release(window: WindowWayland) {.base.} =
       f x
       x = typeof(x).default
 
-  destroy window.seat_pointer, release
-  destroy window.seat_keyboard, release
-  destroy window.seat_touch, release
+  associatedWindows.del window.surface.proxy.raw.id
   
-  destroy window.kdeDecorations, release
+  destroy window.serverDecoration, destroy
   destroy window.xdgToplevel, destroy
   destroy window.xdgSurface, destroy
   destroy window.surface, destroy
@@ -269,13 +280,28 @@ method `title=`*(window: WindowWayland, v: string) =
 
 
 proc setFrameless(window: WindowWayland, v: bool) =
-  if not v:
-    if kdeServerDecorationsManager.proxy.raw != nil:
-      window.kdeDecorations = kdeServerDecorationsManager.create(window.surface)
-  else:
-    if window.kdeDecorations.proxy.raw != nil:
-      release window.kdeDecorations
-      window.kdeDecorations.proxy.raw = nil
+  if serverDecorationManager.proxy.raw != nil:
+    if window.serverDecoration.proxy.raw == nil:
+      window.serverDecoration = serverDecorationManager.get_toplevel_decoration(window.xdg_toplevel)
+      
+      window.serverDecoration.onConfigure:
+        let newFrameless = case mode
+        of client_side: true
+        else: false
+        if newFrameless == window.m_frameless: return
+        
+        window.m_frameless = newFrameless
+        window.eventsHandler.pushEvent onStateBoolChanged, StateBoolChangedEvent(
+          window: window, kind: StateBoolChangedEventKind.frameless, value: window.m_frameless, isExternal: true
+        )
+
+    window.serverDecoration.set_mode:
+      if v: client_side
+      else: server_side
+    
+    window.eventsHandler.pushEvent onStateBoolChanged, StateBoolChangedEvent(
+      window: window, kind: StateBoolChangedEventKind.frameless, value: window.m_frameless, isExternal: false
+    )
 
 
 method `fullscreen=`*(window: WindowWayland, v: bool) =
@@ -346,19 +372,17 @@ method `maximized=`*(window: WindowWayland, v: bool) =
   else:
     window.xdgToplevel.unsetMaximized()
 
-  window.eventsHandler.pushEvent onMaximizedChanged, MaximizedChangedEvent(window: window, maximized: window.m_maximized)
+  window.eventsHandler.pushEvent onStateBoolChanged, StateBoolChangedEvent(
+    window: window, kind: StateBoolChangedEventKind.maximized, value: window.m_maximized
+  )
 
 
 proc releaseAllKeys(window: WindowWayland) =
   ## release all pressed keys
   ## needed when window loses focus
-  for k in window.keyboard.pressed.items:
+  for k in window.keyboard.pressed.items.toSeq:
     window.keyboard.pressed.excl k
     window.eventsHandler.pushEvent onKey, KeyEvent(window: window, key: k, pressed: false, repeated: false, generated: true)
-
-  for b in window.mouse.pressed:
-    window.mouse.pressed.excl b
-    window.eventsHandler.pushEvent onMouseButton, MouseButtonEvent(window: window, button: b, pressed: false, generated: true)
 
 
 method `minimized=`*(window: WindowWayland, v: bool) =
@@ -409,86 +433,73 @@ method startInteractiveResize*(window: WindowWayland, edge: Edge, pos: Option[IV
   window.xdgToplevel.resize(
     seat, window.lastActionSerial,
     case edge
-    of Edge.topLeft: `Xdg_toplevel/Resize_edge`.top_left
-    of Edge.top: `Xdg_toplevel/Resize_edge`.top
-    of Edge.topRight: `Xdg_toplevel/Resize_edge`.top_right
-    of Edge.right: `Xdg_toplevel/Resize_edge`.right
+    of Edge.topLeft:     `Xdg_toplevel/Resize_edge`.top_left
+    of Edge.top:         `Xdg_toplevel/Resize_edge`.top
+    of Edge.topRight:    `Xdg_toplevel/Resize_edge`.top_right
+    of Edge.right:       `Xdg_toplevel/Resize_edge`.right
     of Edge.bottomRight: `Xdg_toplevel/Resize_edge`.bottom_right
-    of Edge.bottom: `Xdg_toplevel/Resize_edge`.bottom
-    of Edge.bottomLeft: `Xdg_toplevel/Resize_edge`.bottom_left
-    of Edge.left: `Xdg_toplevel/Resize_edge`.left
+    of Edge.bottom:      `Xdg_toplevel/Resize_edge`.bottom
+    of Edge.bottomLeft:  `Xdg_toplevel/Resize_edge`.bottom_left
+    of Edge.left:        `Xdg_toplevel/Resize_edge`.left
   )
 
 
-proc setupWindow(window: WindowWayland, fullscreen, frameless, transparent: bool, size: IVec2, class: string) =
-  expectExtension compositor
-  expectExtension xdgWmBase
-  
-  window.surface = compositor.create_surface
-  window.xdgSurface = xdgWmBase.get_xdg_surface(window.surface)
-  window.xdgToplevel = window.xdgSurface.get_toplevel
+proc initSeatEvents* =
+  if seatEventsInitialized: return
+  if not waylandAvailable: return
+  seatEventsInitialized = true
 
-  window.xdgSurface.onConfigure:
-    window.xdgSurface.ack_configure(serial)
-    commit window.surface
+  if seat.proxy.raw == nil: return
 
-  window.fullscreen = fullscreen
-  window.frameless = frameless
+  if `WlSeat / Capability`.`pointer` in seatCapabilities:
+    seat_pointer = seat.get_pointer
 
-  window.m_transparent = transparent
-  if not transparent:
-    let opaqueRegion = compositor.create_region
-    opaqueRegion.add(0, 0, size.x, size.y)
-    window.surface.set_opaque_region(opaqueRegion)
-    destroy opaqueRegion
-  
-  if class != "":
-    window.xdgToplevel.set_app_id(class)
-
-  window.xdgToplevel.onClose:
-    window.m_closed = true
-
-  window.xdgToplevel.onConfigure:
-    window.xdgSurface.ackConfigure(0)  #? is it needed?    
-    window.resize(ivec2(width, height))
-  
-
-  if seat.proxy.raw != nil:
-    if `WlSeat / Capability`.`pointer` in seatCapabilities:
-      window.seat_pointer = seat.get_pointer
-
-      window.seat_pointer.onEnter:
-        if surface != window.surface: return
-        window.lastActionSerial = serial
-        window.isPointerInside = true
-        window.mouse.pos = vec2(surface_x, surface_y).ivec2
-        window.eventsHandler.pushEvent onMouseMove, MouseMoveEvent(window: window, pos: window.mouse.pos, kind: MouseMoveKind.enter)
+    seat_pointer.onEnter:
+      if surface.proxy.raw == nil or surface.proxy.raw.id notin associatedWindows: return
+      let window = associatedWindows[surface.proxy.raw.id]
+      seat_pointer_currentWindow = window
       
-      window.seat_pointer.onLeave:
-        if surface != window.surface: return
-        window.lastActionSerial = serial
-        window.isPointerInside = false
-        window.eventsHandler.pushEvent onMouseMove, MouseMoveEvent(window: window, pos: window.mouse.pos, kind: MouseMoveKind.leave)
+      window.lastActionSerial = serial
+      window.mouse.pos = vec2(surface_x, surface_y).ivec2
+      window.eventsHandler.pushEvent onMouseMove, MouseMoveEvent(window: window, pos: window.mouse.pos, kind: MouseMoveKind.enter)
+    
+
+    seat_pointer.onLeave:
+      seat_pointer_currentWindow = nil
+      if surface.proxy.raw == nil or surface.proxy.raw.id notin associatedWindows: return
+      let window = associatedWindows[surface.proxy.raw.id]
       
-      window.seat_pointer.onMotion:
-        if not window.isPointerInside: return
+      window.lastActionSerial = serial
+      window.eventsHandler.pushEvent onMouseMove, MouseMoveEvent(window: window, pos: window.mouse.pos, kind: MouseMoveKind.leave)
+    
+
+    seat_pointer.onMotion:
+      for window in associatedWindows.values:
+        if (
+          (window.mouse.pressed.len == 0) and
+          window != seat_pointer_currentWindow
+        ): return
+
         window.mouse.pos = vec2(surface_x, surface_y).ivec2
         window.eventsHandler.pushEvent onMouseMove, MouseMoveEvent(window: window, pos: window.mouse.pos, kind: MouseMoveKind.move)
-      
-      window.seat_pointer.onButton:
-        let nows = initDuration(milliseconds = time.int64)
+    
 
-        let button = case button
-        of 0x110: MouseButton.left
-        of 0x111: MouseButton.right
-        of 0x112: MouseButton.middle
-        of 0x115: MouseButton.forward
-        of 0x116: MouseButton.backward
-        else: return  # todo?
+    seat_pointer.onButton:
+      let button = case button
+      of 0x110: MouseButton.left
+      of 0x111: MouseButton.right
+      of 0x112: MouseButton.middle
+      of 0x115: MouseButton.forward
+      of 0x116: MouseButton.backward
+      else: return  # todo?
 
+      let nows = initDuration(milliseconds = time.int64)
+
+      # iterate over all windows, in case there are some which currently "holding" pressed mouse
+      for window in associatedWindows.values:
         if (
-          (state != `WlPointer / Button_state`.released or button in window.mouse.pressed) and
-          not window.isPointerInside
+          (state != `WlPointer / Button_state`.released or button notin window.mouse.pressed) and
+          window != seat_pointer_currentWindow
         ): return
 
         window.lastActionSerial = serial
@@ -515,19 +526,135 @@ proc setupWindow(window: WindowWayland, fullscreen, frameless, transparent: bool
 
         window.eventsHandler.pushEvent onMouseButton, MouseButtonEvent(window: window, button: button, pressed: state == `WlPointer / Button_state`.pressed, generated: false)
 
-      window.seat_pointer.onAxis:
-        if not window.isPointerInside: return
 
-        if axis == `WlPointer / Axis`.vertical_scroll:
-          window.eventsHandler.pushEvent onScroll, ScrollEvent(window: window, delta: value, deltaX: 0)
-        elif axis == `WlPointer / Axis`.horizontal_scroll:
-          window.eventsHandler.pushEvent onScroll, ScrollEvent(window: window, delta: 0, deltaX: value)
+    seat_pointer.onAxis:
+      if seat_pointer_currentWindow == nil: return
+      let window = seat_pointer_currentWindow
+
+      if axis == `WlPointer / Axis`.vertical_scroll:
+        window.eventsHandler.pushEvent onScroll, ScrollEvent(window: window, delta: value, deltaX: 0)
+      elif axis == `WlPointer / Axis`.horizontal_scroll:
+        window.eventsHandler.pushEvent onScroll, ScrollEvent(window: window, delta: 0, deltaX: value)
+      else:
+        return
+
+
+  if `WlSeat / Capability`.keyboard in seatCapabilities:
+    seat_keyboard = seat.get_keyboard
+
+    seat_keyboard.onKeymap:
+      updateKeymap(fd, size)
+
+
+    seat_keyboard.onEnter:
+      if surface.proxy.raw == nil or surface.proxy.raw.id notin associatedWindows: return
+      let window = associatedWindows[surface.proxy.raw.id]
+      seat_keyboard_currentWindow = window
+      
+      window.lastActionSerial = serial
+      for key in keys.toSeq(uint32):
+        let siwinKey = waylandKeyToKey(key)
+        if siwinKey == Key.unknown: continue
+
+        window.keyboard.pressed.incl siwinKey
+        window.eventsHandler.pushEvent onKey, KeyEvent(
+          window: window, key: siwinKey, pressed: true, generated: true
+        )
+        window.lastKeyPressed = siwinKey
+        window.lastTextEntered = ""
+        window.lastKeyPressedTime = getTime()
+
+
+    seat_keyboard.onLeave:
+      seat_keyboard_currentWindow = nil
+      if surface.proxy.raw == nil or surface.proxy.raw.id notin associatedWindows: return
+      let window = associatedWindows[surface.proxy.raw.id]
+
+      window.lastActionSerial = serial
+      window.releaseAllKeys()
+    
+
+    seat_keyboard.onKey:
+      if seat_keyboard_currentWindow == nil: return
+      let window = seat_keyboard_currentWindow
+
+      let pressed = state == `WlKeyboard / Key_state`.pressed
+      window.lastActionSerial = serial
+
+      if pressed:
+        window.lastKeyPressedTime = getTime()
+      
+      let siwinKey = waylandKeyToKey(key)
+
+      if siwinKey != Key.unknown:
+        if pressed:
+          window.keyboard.pressed.incl siwinKey
         else:
-          return
+          window.keyboard.pressed.excl siwinKey
+
+        window.eventsHandler.pushEvent onKey, KeyEvent(
+          window: window, key: siwinKey, pressed: pressed
+        )
+
+        if pressed and siwinKey notin Key.lcontrol..Key.rsystem:
+          window.lastKeyPressed = siwinKey
+
+      var text = waylandKeyToString(key)
+      if Key.lcontrol in window.keyboard.pressed or Key.rcontrol in window.keyboard.pressed: text = ""
+      if text.len == 1 and text[0] < 32.char: text = ""
+
+      if pressed and text != "":
+        window.eventsHandler.pushEvent onTextInput, TextInputEvent(
+          window: window, text: text
+        )
+
+        window.lastTextEntered = text
+
+    
+    seat_keyboard.onModifiers:
+      discard global_xkb_state.xkb_state_update_mask(mods_depressed, mods_latched, mods_locked, 0, 0, group)
+    
+
+    seat_keyboard.onRepeat_info:
+      seat_keyboard_repeatSettings = (rate: rate, delay: delay)
 
 
-    if `WlSeat / Capability`.keyboard in seatCapabilities:
-      window.seat_keyboard = seat.get_keyboard
+proc setupWindow(window: WindowWayland, fullscreen, frameless, transparent: bool, size: IVec2, class: string) =
+  expectExtension compositor
+  expectExtension xdgWmBase
+  
+  initSeatEvents()
+  
+  window.surface = compositor.create_surface
+  associatedWindows[window.surface.proxy.raw.id] = window
+  window.xdgSurface = xdgWmBase.get_xdg_surface(window.surface)
+  window.xdgToplevel = window.xdgSurface.get_toplevel
+
+  window.xdgSurface.onConfigure:
+    window.xdgSurface.ack_configure(serial)
+    commit window.surface
+
+  window.fullscreen = fullscreen
+
+  window.m_frameless = frameless
+  window.setFrameless(frameless)
+
+  window.m_transparent = transparent
+  if not transparent:
+    let opaqueRegion = compositor.create_region
+    opaqueRegion.add(0, 0, size.x, size.y)
+    window.surface.set_opaque_region(opaqueRegion)
+    destroy opaqueRegion
+  
+  if class != "":
+    window.xdgToplevel.set_app_id(class)
+
+  window.xdgToplevel.onClose:
+    window.m_closed = true
+
+  window.xdgToplevel.onConfigure:
+    window.xdgSurface.ackConfigure(0)  #? is it needed?    
+    window.resize(ivec2(width, height))
 
 
 
@@ -563,13 +690,46 @@ method firstStep*(window: WindowWayland, makeVisible = true) =
 method step*(window: WindowWayland) =
   ## make window main loop step
   ## ! don't forget to call firstStep()
+
   template closeIfNeeded =
     if window.m_closed: 
       release window
       return
-  
-  wl_display_roundtrip(globals.display)
+
   closeIfNeeded()
+  
+  let eventCount = wl_display_roundtrip(globals.display)
+  closeIfNeeded()
+  if eventCount == 0: sleep(1)
+
+  if seat_keyboard_currentWindow == window:
+    # repeat keys if needed
+    if (
+      (seat_keyboard_repeatSettings.rate > 0 and seat_keyboard_repeatSettings.rate < 1000) and
+      (window.keyboard.pressed - {Key.lcontrol, Key.lshift, Key.lalt, Key.rcontrol, Key.rshift, Key.ralt}).len != 0
+    ):
+      let repeatStartTime = window.lastKeyPressedTime + initDuration(milliseconds = seat_keyboard_repeatSettings.delay)
+      let nows = getTime()
+      let interval = initDuration(milliseconds = 1000 div seat_keyboard_repeatSettings.rate)
+
+      if repeatStartTime <= nows and window.lastKeyRepeatedTime < repeatStartTime - interval:
+        window.lastKeyRepeatedTime = repeatStartTime - interval
+      
+      while repeatStartTime <= nows and window.lastKeyRepeatedTime + interval <= nows:
+        window.lastKeyRepeatedTime += interval
+        
+        if window.lastKeyPressed != Key.unknown:
+          window.eventsHandler.pushEvent onKey, KeyEvent(
+            window: window, key: window.lastKeyPressed, pressed: false, repeated: true
+          )
+          window.eventsHandler.pushEvent onKey, KeyEvent(
+            window: window, key: window.lastKeyPressed, pressed: true, repeated: true
+          )
+
+        if window.lastTextEntered != "":
+          window.eventsHandler.pushEvent onTextInput, TextInputEvent(
+            window: window, text: window.lastTextEntered, repeated: true
+          )
 
   let nows = getTime()
   window.eventsHandler.pushEvent onTick, TickEvent(window: window, deltaTime: nows - window.lastTickTime)

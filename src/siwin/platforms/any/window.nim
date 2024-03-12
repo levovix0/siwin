@@ -4,6 +4,7 @@ import ../../bgrx
 
 {.experimental: "overloadableEnums".}
 
+{.push, warning[Deprecated]: off.}
 type
   MouseButton* {.pure.} = enum
     left right middle forward backward
@@ -92,13 +93,13 @@ type
   WindowMoveEvent* = object of AnyWindowEvent
     pos*: IVec2
 
-  FocusChangedEvent* = object of AnyWindowEvent
+  FocusChangedEvent* {.deprecated: "use StateBoolChangedEvent instead".} = object of AnyWindowEvent
     focus*: bool
   
-  FullscreenChangedEvent* = object of AnyWindowEvent
+  FullscreenChangedEvent* {.deprecated: "use StateBoolChangedEvent instead".} = object of AnyWindowEvent
     fullscreen*: bool
   
-  MaximizedChangedEvent* = object of AnyWindowEvent
+  MaximizedChangedEvent* {.deprecated: "use StateBoolChangedEvent instead".} = object of AnyWindowEvent
     maximized*: bool
 
   MouseMoveEvent* = object of AnyWindowEvent
@@ -127,6 +128,18 @@ type
   
   TextInputEvent* = object of AnyWindowEvent
     text*: string
+    repeated*: bool
+  
+  StateBoolChangedEventKind* = enum
+    focus
+    fullscreen
+    maximized
+    frameless
+
+  StateBoolChangedEvent* = object of AnyWindowEvent
+    value*: bool
+    kind*: StateBoolChangedEventKind
+    isExternal*: bool  ## changed by user via compositor (server-side change)
 
   WindowEventsHandler* = object
     onClose*:       proc(e: CloseEvent)
@@ -135,9 +148,9 @@ type
     onResize*:      proc(e: ResizeEvent)
     onWindowMove*:  proc(e: WindowMoveEvent)
 
-    onFocusChanged*:       proc(e: FocusChangedEvent)
-    onFullscreenChanged*:  proc(e: FullscreenChangedEvent)  ## note: sends BEFORE ResizeEvent
-    onMaximizedChanged*:   proc(e: MaximizedChangedEvent)  ## note: sends BEFORE ResizeEvent
+    onFocusChanged* {.deprecated #[use onStateBoolChanged instead]#.}:       proc(e: FocusChangedEvent)
+    onFullscreenChanged* {.deprecated #[use onStateBoolChanged instead]#.}:  proc(e: FullscreenChangedEvent)  ## note: sends BEFORE ResizeEvent
+    onMaximizedChanged* {.deprecated #[use onStateBoolChanged instead]#.}:   proc(e: MaximizedChangedEvent)  ## note: sends BEFORE ResizeEvent
 
     onMouseMove*:    proc(e: MouseMoveEvent)
     onMouseButton*:  proc(e: MouseButtonEvent)
@@ -146,6 +159,8 @@ type
 
     onKey*:   proc(e: KeyEvent)
     onTextInput*:  proc(e: TextInputEvent)
+
+    onStateBoolChanged*: proc(e: StateBoolChangedEvent)
 
 
   Window* = ref object of RootObj
@@ -164,6 +179,7 @@ type
     m_transparent: bool
     m_frameless: bool
     m_cursor: Cursor
+    m_separateTouch: bool
     
     m_size: IVec2
     m_pos: IVec2
@@ -175,6 +191,7 @@ type
     m_resizable: bool
     m_minSize: IVec2
     m_maxSize: IVec2
+{.pop.}
 
 
 method number*(screen: Screen): int32 {.base.} = discard
@@ -195,6 +212,8 @@ method close*(window: Window) {.base.} =
 proc transparent*(window: Window): bool = window.m_transparent
 proc frameless*(window: Window): bool = window.m_frameless
 proc cursor*(window: Window): Cursor = window.m_cursor
+proc separateTouch*(window: Window): bool = window.m_separateTouch
+  ## enable/disable handling touch events separately from mouse events
 
 proc size*(window: Window): IVec2 = window.m_size
 proc pos*(window: Window): IVec2 = window.m_pos
@@ -220,6 +239,11 @@ method `frameless=`*(window: Window, v: bool) {.base.} = discard
 method `cursor=`*(window: Window, v: Cursor) {.base.} = discard
   ## set cursor
   ## used when mouse hover window
+
+
+method `separateTouch=`*(window: Window, v: bool) {.base.} = discard
+  ## enable/disable handling touch events separately from mouse events
+
 
 method `size=`*(window: Window, v: IVec2) {.base.} = discard
   ## resize window
@@ -306,8 +330,10 @@ proc run*(window: sink Window, makeVisible = true) =
 
 proc run*(window: sink Window, eventsHandler: WindowEventsHandler, makeVisible = true) =
   ## set window eventsHandler and run whole window main loops
+  {.push, warning[Deprecated]: off.}
   if eventsHandler != WindowEventsHandler():
     window.eventsHandler = eventsHandler
+  {.pop.}
   run(window, makeVisible)
 
 proc runMultiple*(windows: varargs[tuple[window: Window, makeVisible: bool]]) =

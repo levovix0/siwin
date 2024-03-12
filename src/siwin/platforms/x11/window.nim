@@ -422,7 +422,7 @@ method `fullscreen=`*(window: WindowX11, v: bool) =
 
 method `frameless=`*(window: WindowX11, v: bool) =
   if window.m_frameless == v: return
-  defer: window.m_frameless = v
+  window.m_frameless = v
   
   case wmForFramelessKind
   of WmForFramelessKind.motiv:
@@ -452,6 +452,10 @@ method `frameless=`*(window: WindowX11, v: bool) =
     # "reopen" window to apply the changes
     discard display.XUnmapWindow(window.handle)
     discard display.XMapWindow(window.handle)
+
+  window.eventsHandler.pushEvent onStateBoolChanged, StateBoolChangedEvent(
+    window: window, kind: StateBoolChangedEventKind.frameless, value: v
+  )
 
 
 method `size=`*(window: WindowX11, v: IVec2) =
@@ -577,7 +581,9 @@ method `maximized=`*(window: WindowX11, v: bool) =
     display.DefaultRootWindow, 0, SubstructureNotifyMask or SubstructureRedirectMask, event.addr
   )
   window.m_maximized = v
-  window.eventsHandler.pushEvent onMaximizedChanged, MaximizedChangedEvent(window: window, maximized: window.m_maximized)
+  window.eventsHandler.pushEvent onStateBoolChanged, StateBoolChangedEvent(
+    window: window, kind: StateBoolChangedEventKind.maximized, value: v
+  )
 
 
 proc releaseAllKeys(window: WindowX11) =
@@ -773,14 +779,20 @@ method step*(window: WindowX11) =
       let state = (let (kind, data) = window.handle.property(atoms.netWmState, Atom); if kind == XaAtom: data else: @[])
       if atoms.netWmStateFullscreen in state != window.m_fullscreen:
         window.m_fullscreen = not window.m_fullscreen
-        window.eventsHandler.pushEvent onFullscreenChanged, FullscreenChangedEvent(window: window, fullscreen: window.m_fullscreen)
+        window.eventsHandler.pushEvent onStateBoolChanged, StateBoolChangedEvent(
+          window: window, kind: StateBoolChangedEventKind.fullscreen, value: window.m_fullscreen
+        )
+      
       if (atoms.netWmStateMaximizedHorz in state and atoms.netWmStateMaximizedVert in state) != window.m_maximized:
         window.m_maximized = not window.m_maximized
-        window.eventsHandler.pushEvent onMaximizedChanged, MaximizedChangedEvent(window: window, maximized: window.m_maximized)
+        window.eventsHandler.pushEvent onStateBoolChanged, StateBoolChangedEvent(
+          window: window, kind: StateBoolChangedEventKind.maximized, value: window.m_maximized
+        )
 
       if ev.xconfigure.width != window.m_size.x or ev.xconfigure.height != window.m_size.y:
         window.m_size = ivec2(ev.xconfigure.width.int32, ev.xconfigure.height.int32)
         window.eventsHandler.pushEvent onResize, ResizeEvent(window: window, size: window.m_size, initial: false)
+
       if ev.xconfigure.x.int != window.m_pos.x or ev.xconfigure.y.int != window.m_pos.y:
         window.m_pos = ivec2(ev.xconfigure.x.int32, ev.xconfigure.y.int32)
         window.mouse.pos = cursor().pos - window.m_pos
@@ -841,13 +853,17 @@ method step*(window: WindowX11) =
     of FocusIn:
       window.m_focused = true
       if window.xinContext != nil: XSetICFocus window.xinContext
-      window.eventsHandler.pushEvent onFocusChanged, FocusChangedEvent(window: window, focus: true)
+      window.eventsHandler.pushEvent onStateBoolChanged, StateBoolChangedEvent(
+        window: window, kind: StateBoolChangedEventKind.focus, value: true
+      )
       window.pressAllKeys()
 
     of FocusOut:
       window.m_focused = false
       if window.xinContext != nil: XUnsetICFocus window.xinContext
-      window.eventsHandler.pushEvent onFocusChanged, FocusChangedEvent(window: window, focus: false)
+      window.eventsHandler.pushEvent onStateBoolChanged, StateBoolChangedEvent(
+        window: window, kind: StateBoolChangedEventKind.focus, value: false
+      )
       window.releaseAllKeys()
 
     of KeyPress:

@@ -204,31 +204,6 @@ type
     popup_done*: proc ()
     repositioned*: proc (token: uint32)
 
-  Org_kde_kwin_server_decoration_manager* = object
-    ## This interface allows to coordinate whether the server should create
-    ## a server-side window decoration around a wl_surface representing a
-    ## shell surface (wl_shell_surface or similar). By announcing support
-    ## for this interface the server indicates that it supports server
-    ## side decorations.
-    ## 
-    ## Use in conjunction with zxdg_decoration_manager_v1 is undefined.
-    proxy*: Wl_proxy
-
-  `Org_kde_kwin_server_decoration_manager / Mode`* {.size: 4.} = enum ## Possible values to use in request_mode and the event mode.
-    None = 0, Client = 1, Server = 2
-  `Org_kde_kwin_server_decoration_manager / Callbacks`* = object
-    destroy*: proc (cb: pointer) {.cdecl, raises: [].}
-    default_mode*: proc (mode: uint32)
-
-  Org_kde_kwin_server_decoration* = object
-    proxy*: Wl_proxy
-
-  `Org_kde_kwin_server_decoration / Mode`* {.size: 4.} = enum ## Possible values to use in request_mode and the event mode.
-    None = 0, Client = 1, Server = 2
-  `Org_kde_kwin_server_decoration / Callbacks`* = object
-    destroy*: proc (cb: pointer) {.cdecl, raises: [].}
-    mode*: proc (mode: uint32)
-
   `Wl_display / Error`* {.size: 4.} = enum ## These errors are global and can be emitted in response to any
                                             ## server request.
     invalid_object = 0, invalid_method = 1, no_memory = 2, implementation = 3
@@ -835,6 +810,51 @@ type
   `Wl_subsurface / Callbacks`* = object
     destroy*: proc (cb: pointer) {.cdecl, raises: [].}
 
+  Zxdg_decoration_manager_v1* = object
+    ## This interface allows a compositor to announce support for server-side
+    ## decorations.
+    ## 
+    ## A window decoration is a set of window controls as deemed appropriate by
+    ## the party managing them, such as user interface components used to move,
+    ## resize and change a window's state.
+    ## 
+    ## A client can use this protocol to request being decorated by a supporting
+    ## compositor.
+    ## 
+    ## If compositor and client do not negotiate the use of a server-side
+    ## decoration using this protocol, clients continue to self-decorate as they
+    ## see fit.
+    ## 
+    ## Warning! The protocol described in this file is experimental and
+    ## backward incompatible changes may be made. Backward compatible changes
+    ## may be added together with the corresponding interface version bump.
+    ## Backward incompatible changes are done by bumping the version number in
+    ## the protocol and interface names and resetting the interface version.
+    ## Once the protocol is to be declared stable, the 'z' prefix and the
+    ## version number in the protocol and interface names are removed and the
+    ## interface version number is reset.
+    proxy*: Wl_proxy
+
+  `Zxdg_decoration_manager_v1 / Callbacks`* = object
+    destroy*: proc (cb: pointer) {.cdecl, raises: [].}
+
+  Zxdg_toplevel_decoration_v1* = object
+    ## The decoration object allows the compositor to toggle server-side window
+    ## decorations for a toplevel surface. The client can request to switch to
+    ## another mode.
+    ## 
+    ## The xdg_toplevel_decoration object must be destroyed before its
+    ## xdg_toplevel.
+    proxy*: Wl_proxy
+
+  `Zxdg_toplevel_decoration_v1 / Error`* {.size: 4.} = enum
+    unconfigured_buffer = 0, already_constructed = 1, orphaned = 2
+  `Zxdg_toplevel_decoration_v1 / Mode`* {.size: 4.} = enum ## These values describe window decoration modes.
+    client_side = 1, server_side = 2
+  `Zxdg_toplevel_decoration_v1 / Callbacks`* = object
+    destroy*: proc (cb: pointer) {.cdecl, raises: [].}
+    configure*: proc (mode: `Zxdg_toplevel_decoration_v1 / Mode`)
+
 var `Xdg_wm_base / iface`: WlInterface
 proc iface*(t: typedesc[Xdg_wm_base]): ptr WlInterface =
   `Xdg_wm_base / iface`.addr
@@ -854,14 +874,6 @@ proc iface*(t: typedesc[Xdg_toplevel]): ptr WlInterface =
 var `Xdg_popup / iface`: WlInterface
 proc iface*(t: typedesc[Xdg_popup]): ptr WlInterface =
   `Xdg_popup / iface`.addr
-
-var `Org_kde_kwin_server_decoration_manager / iface`: WlInterface
-proc iface*(t: typedesc[Org_kde_kwin_server_decoration_manager]): ptr WlInterface =
-  `Org_kde_kwin_server_decoration_manager / iface`.addr
-
-var `Org_kde_kwin_server_decoration / iface`: WlInterface
-proc iface*(t: typedesc[Org_kde_kwin_server_decoration]): ptr WlInterface =
-  `Org_kde_kwin_server_decoration / iface`.addr
 
 var `Wl_registry / iface`: WlInterface
 proc iface*(t: typedesc[Wl_registry]): ptr WlInterface =
@@ -947,6 +959,14 @@ var `Wl_subsurface / iface`: WlInterface
 proc iface*(t: typedesc[Wl_subsurface]): ptr WlInterface =
   `Wl_subsurface / iface`.addr
 
+var `Zxdg_decoration_manager_v1 / iface`: WlInterface
+proc iface*(t: typedesc[Zxdg_decoration_manager_v1]): ptr WlInterface =
+  `Zxdg_decoration_manager_v1 / iface`.addr
+
+var `Zxdg_toplevel_decoration_v1 / iface`: WlInterface
+proc iface*(t: typedesc[Zxdg_toplevel_decoration_v1]): ptr WlInterface =
+  `Zxdg_toplevel_decoration_v1 / iface`.addr
+
 `Xdg_wm_base / iface` = newWlInterface("xdg_wm_base", 6, [
     newWlMessage("xdg_wm_base.destroy", "1", []), newWlMessage(
     "xdg_wm_base.create_positioner", "1n", [iface(Xdg_positioner)]), newWlMessage(
@@ -1014,17 +1034,6 @@ proc iface*(t: typedesc[Wl_subsurface]): ptr WlInterface =
                                      (ptr WlInterface) nil]),
     newWlMessage("xdg_popup.popup_done", "1", []),
     newWlMessage("xdg_popup.repositioned", "1u", [(ptr WlInterface) nil])])
-`Org_kde_kwin_server_decoration_manager / iface` = newWlInterface(
-    "org_kde_kwin_server_decoration_manager", 1, [newWlMessage(
-    "org_kde_kwin_server_decoration_manager.create", "1no",
-    [iface(Org_kde_kwin_server_decoration), iface(Wl_surface)])], [newWlMessage(
-    "org_kde_kwin_server_decoration_manager.default_mode", "1u",
-    [(ptr WlInterface) nil])])
-`Org_kde_kwin_server_decoration / iface` = newWlInterface(
-    "org_kde_kwin_server_decoration", 1, [
-    newWlMessage("org_kde_kwin_server_decoration.release", "1", []), newWlMessage(
-    "org_kde_kwin_server_decoration.request_mode", "1u", [(ptr WlInterface) nil])], [newWlMessage(
-    "org_kde_kwin_server_decoration.mode", "1u", [(ptr WlInterface) nil])])
 `Wl_registry / iface` = newWlInterface("wl_registry", 1, [newWlMessage(
     "wl_registry.bind", "1usun", [(ptr WlInterface) nil, (ptr WlInterface) nil])], [newWlMessage(
     "wl_registry.global", "1usu",
@@ -1231,6 +1240,17 @@ proc iface*(t: typedesc[Wl_subsurface]): ptr WlInterface =
     newWlMessage("wl_subsurface.place_below", "1o", [iface(Wl_surface)]),
     newWlMessage("wl_subsurface.set_sync", "1", []),
     newWlMessage("wl_subsurface.set_desync", "1", [])], [])
+`Zxdg_decoration_manager_v1 / iface` = newWlInterface(
+    "zxdg_decoration_manager_v1", 1, [newWlMessage(
+    "zxdg_decoration_manager_v1.destroy", "1", []), newWlMessage(
+    "zxdg_decoration_manager_v1.get_toplevel_decoration", "1no",
+    [iface(Zxdg_toplevel_decoration_v1), iface(Xdg_toplevel)])], [])
+`Zxdg_toplevel_decoration_v1 / iface` = newWlInterface(
+    "zxdg_toplevel_decoration_v1", 1, [newWlMessage(
+    "zxdg_toplevel_decoration_v1.destroy", "1", []), newWlMessage(
+    "zxdg_toplevel_decoration_v1.set_mode", "1u", [(ptr WlInterface) nil]), newWlMessage(
+    "zxdg_toplevel_decoration_v1.unset_mode", "1", [])], [newWlMessage(
+    "zxdg_toplevel_decoration_v1.configure", "1u", [(ptr WlInterface) nil])])
 proc `Xdg_wm_base / dispatch`*(impl: pointer; obj: pointer; opcode: uint32;
                                msg: ptr WlMessage; args: pointer): int32 {.cdecl.} =
   let callbacks = cast[ptr `Xdg_wm_base / Callbacks`](impl)
@@ -1304,29 +1324,6 @@ proc `Xdg_popup / dispatch`*(impl: pointer; obj: pointer; opcode: uint32;
     let argsArray = cast[ptr array[1, Wl_argument]](args)
     if callbacks.repositioned != nil:
       callbacks.repositioned(cast[uint32](argsArray[][0]))
-  else:
-    discard
-
-proc `Org_kde_kwin_server_decoration_manager / dispatch`*(impl: pointer;
-    obj: pointer; opcode: uint32; msg: ptr WlMessage; args: pointer): int32 {.
-    cdecl.} =
-  let callbacks = cast[ptr `Org_kde_kwin_server_decoration_manager / Callbacks`](impl)
-  case opcode
-  of 0:
-    let argsArray = cast[ptr array[1, Wl_argument]](args)
-    if callbacks.default_mode != nil:
-      callbacks.default_mode(cast[uint32](argsArray[][0]))
-  else:
-    discard
-
-proc `Org_kde_kwin_server_decoration / dispatch`*(impl: pointer; obj: pointer;
-    opcode: uint32; msg: ptr WlMessage; args: pointer): int32 {.cdecl.} =
-  let callbacks = cast[ptr `Org_kde_kwin_server_decoration / Callbacks`](impl)
-  case opcode
-  of 0:
-    let argsArray = cast[ptr array[1, Wl_argument]](args)
-    if callbacks.mode != nil:
-      callbacks.mode(cast[uint32](argsArray[][0]))
   else:
     discard
 
@@ -1759,6 +1756,24 @@ proc `Wl_subsurface / dispatch`*(impl: pointer; obj: pointer; opcode: uint32;
                                  msg: ptr WlMessage; args: pointer): int32 {.
     cdecl.} =
   case opcode
+  else:
+    discard
+
+proc `Zxdg_decoration_manager_v1 / dispatch`*(impl: pointer; obj: pointer;
+    opcode: uint32; msg: ptr WlMessage; args: pointer): int32 {.cdecl.} =
+  case opcode
+  else:
+    discard
+
+proc `Zxdg_toplevel_decoration_v1 / dispatch`*(impl: pointer; obj: pointer;
+    opcode: uint32; msg: ptr WlMessage; args: pointer): int32 {.cdecl.} =
+  let callbacks = cast[ptr `Zxdg_toplevel_decoration_v1 / Callbacks`](impl)
+  case opcode
+  of 0:
+    let argsArray = cast[ptr array[1, Wl_argument]](args)
+    if callbacks.configure != nil:
+      callbacks.configure(cast[`Zxdg_toplevel_decoration_v1 / Mode`](argsArray[][
+          0]))
   else:
     discard
 
@@ -2407,32 +2422,6 @@ proc reposition*(this: Xdg_popup; positioner: Xdg_positioner; token: uint32) =
   ## resized, but not in response to a configure event, the client should
   ## send an xdg_positioner.set_parent_size request.
   discard wl_proxy_marshal_flags(this.proxy.raw, 2, nil, 1, 0, positioner, token)
-
-proc create*(this: Org_kde_kwin_server_decoration_manager; surface: Wl_surface): Org_kde_kwin_server_decoration =
-  ## When a client creates a server-side decoration object it indicates
-  ## that it supports the protocol. The client is supposed to tell the
-  ## server whether it wants server-side decorations or will provide
-  ## client-side decorations.
-  ## 
-  ## If the client does not create a server-side decoration object for
-  ## a surface the server interprets this as lack of support for this
-  ## protocol and considers it as client-side decorated. Nevertheless a
-  ## client-side decorated surface should use this protocol to indicate
-  ## to the server that it does not want a server-side deco.
-  result = construct(wl_proxy_marshal_flags(this.proxy.raw, 0,
-      Org_kde_kwin_server_decoration.iface, 1, 0, nil, surface),
-                     Org_kde_kwin_server_decoration,
-                     `Org_kde_kwin_server_decoration / dispatch`,
-                     `Org_kde_kwin_server_decoration / Callbacks`)
-
-proc release*(this: Org_kde_kwin_server_decoration) =
-  ## release the server decoration object
-  destroyCallbacks(this.proxy)
-  discard wl_proxy_marshal_flags(this.proxy.raw, 0, nil, 1, 1)
-
-proc request_mode*(this: Org_kde_kwin_server_decoration; mode: uint32) =
-  ## The decoration mode the surface wants to use.
-  discard wl_proxy_marshal_flags(this.proxy.raw, 1, nil, 1, 0, mode)
 
 proc sync*(this: Wl_display): Wl_callback =
   ## The sync request asks the server to emit the 'done' event
@@ -3425,6 +3414,62 @@ proc set_desync*(this: Wl_subsurface) =
   ## the cached state is applied on set_desync.
   discard wl_proxy_marshal_flags(this.proxy.raw, 5, nil, 1, 0)
 
+proc destroy*(this: Zxdg_decoration_manager_v1) =
+  ## Destroy the decoration manager. This doesn't destroy objects created
+  ## with the manager.
+  destroyCallbacks(this.proxy)
+  discard wl_proxy_marshal_flags(this.proxy.raw, 0, nil, 1, 1)
+
+proc get_toplevel_decoration*(this: Zxdg_decoration_manager_v1;
+                              toplevel: Xdg_toplevel): Zxdg_toplevel_decoration_v1 =
+  ## Create a new decoration object associated with the given toplevel.
+  ## 
+  ## Creating an xdg_toplevel_decoration from an xdg_toplevel which has a
+  ## buffer attached or committed is a client error, and any attempts by a
+  ## client to attach or manipulate a buffer prior to the first
+  ## xdg_toplevel_decoration.configure event must also be treated as
+  ## errors.
+  result = construct(wl_proxy_marshal_flags(this.proxy.raw, 1,
+      Zxdg_toplevel_decoration_v1.iface, 1, 0, nil, toplevel),
+                     Zxdg_toplevel_decoration_v1,
+                     `Zxdg_toplevel_decoration_v1 / dispatch`,
+                     `Zxdg_toplevel_decoration_v1 / Callbacks`)
+
+proc destroy*(this: Zxdg_toplevel_decoration_v1) =
+  ## Switch back to a mode without any server-side decorations at the next
+  ## commit.
+  destroyCallbacks(this.proxy)
+  discard wl_proxy_marshal_flags(this.proxy.raw, 0, nil, 1, 1)
+
+proc set_mode*(this: Zxdg_toplevel_decoration_v1;
+               mode: `Zxdg_toplevel_decoration_v1 / Mode`) =
+  ## Set the toplevel surface decoration mode. This informs the compositor
+  ## that the client prefers the provided decoration mode.
+  ## 
+  ## After requesting a decoration mode, the compositor will respond by
+  ## emitting an xdg_surface.configure event. The client should then update
+  ## its content, drawing it without decorations if the received mode is
+  ## server-side decorations. The client must also acknowledge the configure
+  ## when committing the new content (see xdg_surface.ack_configure).
+  ## 
+  ## The compositor can decide not to use the client's mode and enforce a
+  ## different mode instead.
+  ## 
+  ## Clients whose decoration mode depend on the xdg_toplevel state may send
+  ## a set_mode request in response to an xdg_surface.configure event and wait
+  ## for the next xdg_surface.configure event to prevent unwanted state.
+  ## Such clients are responsible for preventing configure loops and must
+  ## make sure not to send multiple successive set_mode requests with the
+  ## same decoration mode.
+  discard wl_proxy_marshal_flags(this.proxy.raw, 1, nil, 1, 0, mode)
+
+proc unset_mode*(this: Zxdg_toplevel_decoration_v1) =
+  ## Unset the toplevel surface decoration mode. This informs the compositor
+  ## that the client doesn't prefer a particular decoration mode.
+  ## 
+  ## This request has the same semantics as set_mode.
+  discard wl_proxy_marshal_flags(this.proxy.raw, 2, nil, 1, 0)
+
 template onPing*(this: Xdg_wm_base; body) =
   ## The ping event asks the client if it's still alive. Pass the
   ## serial specified in the event back to the compositor by sending
@@ -3589,35 +3634,6 @@ template onRepositioned*(this: Xdg_popup; body) =
   ## effect. See xdg_surface.ack_configure for details.
   cast[ptr `Xdg_popup / Callbacks`](this.proxy.raw.impl).repositioned = proc (
       token {.inject.}: uint32) =
-    body
-
-template onDefault_mode*(this: Org_kde_kwin_server_decoration_manager; body) =
-  ## This event is emitted directly after binding the interface. It contains
-  ## the default mode for the decoration. When a new server decoration object
-  ## is created this new object will be in the default mode until the first
-  ## request_mode is requested.
-  ## 
-  ## The server may change the default mode at any time.
-  cast[ptr `Org_kde_kwin_server_decoration_manager / Callbacks`](this.proxy.raw.impl).default_mode = proc (
-      mode {.inject.}: uint32) =
-    body
-
-template onMode*(this: Org_kde_kwin_server_decoration; body) =
-  ## This event is emitted directly after the decoration is created and
-  ## represents the base decoration policy by the server. E.g. a server
-  ## which wants all surfaces to be client-side decorated will send Client,
-  ## a server which wants server-side decoration will send Server.
-  ## 
-  ## The client can request a different mode through the decoration request.
-  ## The server will acknowledge this by another event with the same mode. So
-  ## even if a server prefers server-side decoration it's possible to force a
-  ## client-side decoration.
-  ## 
-  ## The server may emit this event at any time. In this case the client can
-  ## again request a different mode. It's the responsibility of the server to
-  ## prevent a feedback loop.
-  cast[ptr `Org_kde_kwin_server_decoration / Callbacks`](this.proxy.raw.impl).mode = proc (
-      mode {.inject.}: uint32) =
     body
 
 template onError*(this: Wl_display; body) =
@@ -4662,6 +4678,18 @@ template onDescription*(this: Wl_output; body) =
       description {.inject.}: cstring) =
     body
 
+template onConfigure*(this: Zxdg_toplevel_decoration_v1; body) =
+  ## The configure event configures the effective decoration mode. The
+  ## configured state should not be applied immediately. Clients must send an
+  ## ack_configure in response to this event. See xdg_surface.configure and
+  ## xdg_surface.ack_configure for details.
+  ## 
+  ## A configure event can be sent at any time. The specified mode must be
+  ## obeyed by the client.
+  cast[ptr `Zxdg_toplevel_decoration_v1 / Callbacks`](this.proxy.raw.impl).configure = proc (
+      mode {.inject.}: `Zxdg_toplevel_decoration_v1 / Mode`) =
+    body
+
 template dispatch*(t: typedesc[Xdg_wm_base]): untyped =
   `Xdg_wm_base / dispatch`
 
@@ -4676,12 +4704,6 @@ template dispatch*(t: typedesc[Xdg_toplevel]): untyped =
 
 template dispatch*(t: typedesc[Xdg_popup]): untyped =
   `Xdg_popup / dispatch`
-
-template dispatch*(t: typedesc[Org_kde_kwin_server_decoration_manager]): untyped =
-  `Org_kde_kwin_server_decoration_manager / dispatch`
-
-template dispatch*(t: typedesc[Org_kde_kwin_server_decoration]): untyped =
-  `Org_kde_kwin_server_decoration / dispatch`
 
 template dispatch*(t: typedesc[Wl_display]): untyped =
   `Wl_display / dispatch`
@@ -4749,6 +4771,12 @@ template dispatch*(t: typedesc[Wl_subcompositor]): untyped =
 template dispatch*(t: typedesc[Wl_subsurface]): untyped =
   `Wl_subsurface / dispatch`
 
+template dispatch*(t: typedesc[Zxdg_decoration_manager_v1]): untyped =
+  `Zxdg_decoration_manager_v1 / dispatch`
+
+template dispatch*(t: typedesc[Zxdg_toplevel_decoration_v1]): untyped =
+  `Zxdg_toplevel_decoration_v1 / dispatch`
+
 template Callbacks*(t: typedesc[Xdg_wm_base]): untyped =
   `Xdg_wm_base / Callbacks`
 
@@ -4763,12 +4791,6 @@ template Callbacks*(t: typedesc[Xdg_toplevel]): untyped =
 
 template Callbacks*(t: typedesc[Xdg_popup]): untyped =
   `Xdg_popup / Callbacks`
-
-template Callbacks*(t: typedesc[Org_kde_kwin_server_decoration_manager]): untyped =
-  `Org_kde_kwin_server_decoration_manager / Callbacks`
-
-template Callbacks*(t: typedesc[Org_kde_kwin_server_decoration]): untyped =
-  `Org_kde_kwin_server_decoration / Callbacks`
 
 template Callbacks*(t: typedesc[Wl_display]): untyped =
   `Wl_display / Callbacks`
@@ -4835,3 +4857,9 @@ template Callbacks*(t: typedesc[Wl_subcompositor]): untyped =
 
 template Callbacks*(t: typedesc[Wl_subsurface]): untyped =
   `Wl_subsurface / Callbacks`
+
+template Callbacks*(t: typedesc[Zxdg_decoration_manager_v1]): untyped =
+  `Zxdg_decoration_manager_v1 / Callbacks`
+
+template Callbacks*(t: typedesc[Zxdg_toplevel_decoration_v1]): untyped =
+  `Zxdg_toplevel_decoration_v1 / Callbacks`
