@@ -12,18 +12,22 @@ type
     instance: pointer
     raw: pointer
 
-  WindowWaylandVulkan* = ref object of WindowWayland
+  WindowWaylandVulkan* = ref WindowWaylandVulkanObj
+  WindowWaylandVulkanObj* = object of WindowWayland
     vulkan_surface: Surface
 
 
-proc `=destroy`*(surface: Surface) =
-  if surface.instance != nil and surface.raw != nil:
-    # vkDestroySurfaceKHR(surface.instance, surface.raw, nil)  #? causes crash
-    discard
+proc `=destroy`*(window: WindowWaylandVulkanObj) =
+  release cast[WindowWaylandVulkan](window.addr)
+
+  for x in window.fields:
+    when compiles(`=destroy`(x)):
+      `=destroy`(x)
 
 method release(window: WindowWaylandVulkan) =
   ## destroy wayland part of window
-  if window.vulkan_surface.raw != nil:
+  if window.vulkan_surface.instance != nil and window.vulkan_surface.raw != nil:
+    # vkDestroySurfaceKHR(surface.instance, surface.raw, nil)  #? causes crash
     discard
 
   procCall window.WindowWayland.release()

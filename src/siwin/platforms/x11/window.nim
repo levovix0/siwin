@@ -652,6 +652,8 @@ method `maxSize=`*(window: WindowX11, v: IVec2) =
 
 
 method startInteractiveMove*(window: WindowX11, pos: Option[IVec2]) =
+  # todo: remove `pos` argument and use last click event cursor pos
+
   window.releaseAllKeys()
   let pos = pos.get(cursor().pos)
   discard display.XUngrabPointer(0)
@@ -857,6 +859,7 @@ method step*(window: WindowX11) =
         window: window, kind: StateBoolChangedEventKind.focus, value: true
       )
       window.pressAllKeys()
+      redraw window
 
     of FocusOut:
       window.m_focused = false

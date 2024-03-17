@@ -56,6 +56,8 @@ test "OpenGL ES":
           e.window.minimized = not window.minimized
         of Key.f4:
           e.window.size = ivec2(300, 300)
+        of Key.f5:
+          e.window.pos = e.window.size
         else: discard
     ,
     onClick: proc(e: ClickEvent) =
@@ -78,8 +80,8 @@ test "OpenGL ES":
         g = (e.pos.x / e.window.size.x * 2).min(2).max(0)
         redraw e.window
     ,
-    onMaximizedChanged: proc(e: MaximizedChangedEvent) =
-      echo "maximized: ", e.maximized
+    onStateBoolChanged: proc(e: StateBoolChangedEvent) =
+      echo e.kind, ": ", e.value
     ,
     onScroll: proc(e: ScrollEvent) =
       echo "scroll: ", vec2(e.delta, e.deltaX)

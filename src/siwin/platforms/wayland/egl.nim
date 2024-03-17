@@ -95,6 +95,9 @@ proc eglCreatePlatformWindowSurface*(d: EglDisplay; config: EglConfig; native_wi
 proc eglMakeCurrent*(d: EglDisplay; draw, read: EglSurface; ctx: EglContext): bool
 proc eglSwapBuffers*(d: EglDisplay; srf: EglSurface): bool
 
+proc eglDestroyContext*(d: EglDisplay; ctx: EglContext): bool
+proc eglDestroySurface*(d: EglDisplay; srf: EglSurface): bool
+
 {.pop.}
 
 
@@ -119,6 +122,15 @@ proc initEgl*(nativeDisplay: pointer) =
   egl_display = eglGetDisplay(nativeDisplay)
   expect egl_display != nil
   expect egl_display.eglInitialize
+
+
+proc destroy*(context: OpenglContext) =
+  # if context.win != nil:  #? causes crush
+  #   wl_egl_window_destroy(context.win)
+  if context.srf != nil:
+    discard egl_display.eglDestroySurface(context.srf)
+  if context.ctx != nil:
+    discard egl_display.eglDestroyContext(context.ctx)
 
 
 proc newOpenglContext*: OpenglContext =

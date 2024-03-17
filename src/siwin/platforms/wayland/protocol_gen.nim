@@ -94,7 +94,7 @@ macro generateProtocolWrapperFromXmlStringImpl(outNimFile: static[string], insta
 
       proc accquote(x: string): NimNode =
         case x
-        of "method", "interface", "bind": nnkAccQuoted.newTree(ident x)
+        of "method", "interface", "bind", "type": nnkAccQuoted.newTree(ident x)
         elif x[0].isDigit: nnkAccQuoted.newTree(ident x)
         else: ident x.strip(chars={'_'})
       proc unaccquote(x: NimNode): NimNode =

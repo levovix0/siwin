@@ -8,8 +8,24 @@ privateAccess Window
 privateAccess WindowWayland
 
 type
-  WindowWaylandOpengl* = ref object of WindowWayland
+  WindowWaylandOpengl* = ref WindowWaylandOpenglObj
+  WindowWaylandOpenglObj* = object of WindowWayland
     eglContext: OpenglContext
+
+
+proc `=destroy`(window: WindowWaylandOpenglObj) =
+  release cast[WindowWaylandOpengl](window.addr)
+
+  for x in window.fields:
+    when compiles(`=destroy`(x)):
+      `=destroy`(x)
+
+
+method release(window: WindowWaylandOpengl) =
+  ## destroy wayland part of window
+  destroy window.eglContext
+
+  procCall window.WindowWayland.release()
 
 
 proc initOpenglWindow(

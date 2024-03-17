@@ -19,6 +19,7 @@ var
   seat*: WlSeat
 
   serverDecorationManager*: Zxdg_decoration_manager_v1
+  plasmaShell*: Org_kde_plasma_shell
   
   shmFormats*: seq[`WlShm / Format`]
   seatCapabilities*: Bitfield[`WlSeat / Capability`]
@@ -69,6 +70,10 @@ addRegistry Wl_seat:
 
 addRegistry Zxdg_decoration_manager_v1:
   serverDecorationManager = binded
+
+
+addRegistry Org_kde_plasma_shell:
+  plasmaShell = binded
 
 
 proc init* =

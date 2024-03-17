@@ -20,18 +20,23 @@ type
     xdgToplevel: Xdg_toplevel
 
     serverDecoration: Zxdg_toplevel_decoration_v1
+      # will be nil if compositor doesn't support this protocol
+
+    plasmaSurface: Org_kde_plasma_surface
+      # will be nil if compositor doesn't support this protocol
 
     lastClickTime: Duration
     doubleClickHandled: bool
 
-    lastActionSerial: uint32
+    lastMouseButtonEventSerial: uint32
 
     lastKeyPressed: Key
     lastTextEntered: string
     lastKeyPressedTime: Time
     lastKeyRepeatedTime: Time
   
-  WindowWaylandSoftwareRendering* = ref object of WindowWayland
+  WindowWaylandSoftwareRendering* = ref WindowWaylandSoftwareRenderingObj
+  WindowWaylandSoftwareRenderingObj* = object of WindowWayland
     buffer: SharedBuffer
 
 
@@ -186,42 +191,41 @@ method width*(screen: ScreenWayland): int32 = 1920  # todo
 method height*(screen: ScreenWayland): int32 = 1080  # todo
 
 
+method release(window: WindowWayland) {.base, raises: [].}
+
+
 proc `=destroy`(window: WindowWaylandObj) =
-  let window = window.addr
-  template destroy(x, f) =
-    if x != typeof(x).default:
-      f x
-      x = typeof(x).default
+  release cast[WindowWayland](window.addr)
 
-  if window.surface.proxy.raw != nil:
-    associatedWindows.del window.surface.proxy.raw.id
-
-  destroy window.serverDecoration, destroy
-  destroy window.xdgToplevel, destroy
-  destroy window.xdgSurface, destroy
-  destroy window.surface, destroy
-
-  for x in window[].fields:
+  for x in window.fields:
     when compiles(`=destroy`(x)):
-      try:
-        `=destroy`(x)
-      except:
-        discard
+      `=destroy`(x)
 
 
-method release(window: WindowWayland) {.base.} =
+proc `=destroy`(window: WindowWaylandSoftwareRenderingObj) =
+  release cast[WindowWaylandSoftwareRendering](window.addr)
+
+  for x in window.fields:
+    when compiles(`=destroy`(x)):
+      `=destroy`(x)
+
+
+method release(window: WindowWayland) {.base, raises: [].} =
   ## destroy wayland part of window
   template destroy(x, f) =
     if x != typeof(x).default:
       f x
       x = typeof(x).default
 
-  associatedWindows.del window.surface.proxy.raw.id
+  if window.surface != nil:
+    associatedWindows.del window.surface.proxy.raw.id
   
+  destroy window.plasmaSurface, destroy
   destroy window.serverDecoration, destroy
   destroy window.xdgToplevel, destroy
   destroy window.xdgSurface, destroy
   destroy window.surface, destroy
+
 
 method release(window: WindowWaylandSoftwareRendering) =
   ## destroy wayland part of window
@@ -237,7 +241,7 @@ template pushEvent(eventsHandler: WindowEventsHandler, event, args) =
 
 proc basicInitWindow(window: WindowWayland; size: IVec2; screen: ScreenWayland) =
   window.m_size = size
-  window.m_focused = true
+  window.m_focused = false
   window.m_resizable = true
   window.m_frameless = true
 
@@ -280,8 +284,8 @@ method `title=`*(window: WindowWayland, v: string) =
 
 
 proc setFrameless(window: WindowWayland, v: bool) =
-  if serverDecorationManager.proxy.raw != nil:
-    if window.serverDecoration.proxy.raw == nil:
+  if serverDecorationManager != nil:
+    if window.serverDecoration == nil:
       window.serverDecoration = serverDecorationManager.get_toplevel_decoration(window.xdg_toplevel)
       
       window.serverDecoration.onConfigure:
@@ -331,7 +335,23 @@ method `size=`*(window: WindowWayland, v: IVec2) =
 
 
 method `pos=`*(window: WindowWayland, v: IVec2) =
-  ## todo
+  if window.m_pos == v: return
+  window.m_pos = v
+
+  if window.fullscreen:
+    window.fullscreen = false
+  
+  if window.plasmaSurface != nil:
+    window.plasmaSurface.set_position(v.x, v.y)
+  
+  else:
+    # there are no protocol to force move window for Mutter (Gnome) and Weston compositors.
+    # there are zwlr_layer_shell_v1 for wlroots-based (and kde) compositors,
+    # but it doesnt seem to be the right protocol to use to move window
+    discard
+  
+  # since no compositor notifies us about window movement, let's emulate such event
+  window.eventsHandler.pushEvent onWindowMove, WindowMoveEvent(window: window, pos: v)
 
 
 method `cursor=`*(window: WindowWayland, v: Cursor) =
@@ -425,13 +445,13 @@ method `maxSize=`*(window: WindowWayland, v: IVec2) =
 
 method startInteractiveMove*(window: WindowWayland, pos: Option[IVec2]) =
   expectExtension seat
-  window.xdgToplevel.move(seat, window.lastActionSerial)
+  window.xdgToplevel.move(seat, window.lastMouseButtonEventSerial)
 
 
 method startInteractiveResize*(window: WindowWayland, edge: Edge, pos: Option[IVec2]) =
   expectExtension seat
   window.xdgToplevel.resize(
-    seat, window.lastActionSerial,
+    seat, window.lastMouseButtonEventSerial,
     case edge
     of Edge.topLeft:     `Xdg_toplevel/Resize_edge`.top_left
     of Edge.top:         `Xdg_toplevel/Resize_edge`.top
@@ -449,27 +469,25 @@ proc initSeatEvents* =
   if not waylandAvailable: return
   seatEventsInitialized = true
 
-  if seat.proxy.raw == nil: return
+  if seat == nil: return
 
   if `WlSeat / Capability`.`pointer` in seatCapabilities:
     seat_pointer = seat.get_pointer
 
     seat_pointer.onEnter:
-      if surface.proxy.raw == nil or surface.proxy.raw.id notin associatedWindows: return
+      if surface == nil or surface.proxy.raw.id notin associatedWindows: return
       let window = associatedWindows[surface.proxy.raw.id]
       seat_pointer_currentWindow = window
       
-      window.lastActionSerial = serial
       window.mouse.pos = vec2(surface_x, surface_y).ivec2
       window.eventsHandler.pushEvent onMouseMove, MouseMoveEvent(window: window, pos: window.mouse.pos, kind: MouseMoveKind.enter)
     
 
     seat_pointer.onLeave:
       seat_pointer_currentWindow = nil
-      if surface.proxy.raw == nil or surface.proxy.raw.id notin associatedWindows: return
+      if surface == nil or surface.proxy.raw.id notin associatedWindows: return
       let window = associatedWindows[surface.proxy.raw.id]
       
-      window.lastActionSerial = serial
       window.eventsHandler.pushEvent onMouseMove, MouseMoveEvent(window: window, pos: window.mouse.pos, kind: MouseMoveKind.leave)
     
 
@@ -502,7 +520,7 @@ proc initSeatEvents* =
           window != seat_pointer_currentWindow
         ): return
 
-        window.lastActionSerial = serial
+        window.lastMouseButtonEventSerial = serial
         if state == `WlPointer / Button_state`.pressed:
           window.mouse.pressed.incl button
           window.clicking.incl button
@@ -547,11 +565,10 @@ proc initSeatEvents* =
 
 
     seat_keyboard.onEnter:
-      if surface.proxy.raw == nil or surface.proxy.raw.id notin associatedWindows: return
+      if surface == nil or surface.proxy.raw.id notin associatedWindows: return
       let window = associatedWindows[surface.proxy.raw.id]
       seat_keyboard_currentWindow = window
       
-      window.lastActionSerial = serial
       for key in keys.toSeq(uint32):
         let siwinKey = waylandKeyToKey(key)
         if siwinKey == Key.unknown: continue
@@ -567,10 +584,9 @@ proc initSeatEvents* =
 
     seat_keyboard.onLeave:
       seat_keyboard_currentWindow = nil
-      if surface.proxy.raw == nil or surface.proxy.raw.id notin associatedWindows: return
+      if surface == nil or surface.proxy.raw.id notin associatedWindows: return
       let window = associatedWindows[surface.proxy.raw.id]
 
-      window.lastActionSerial = serial
       window.releaseAllKeys()
     
 
@@ -579,7 +595,6 @@ proc initSeatEvents* =
       let window = seat_keyboard_currentWindow
 
       let pressed = state == `WlKeyboard / Key_state`.pressed
-      window.lastActionSerial = serial
 
       if pressed:
         window.lastKeyPressedTime = getTime()
@@ -627,6 +642,7 @@ proc setupWindow(window: WindowWayland, fullscreen, frameless, transparent: bool
   
   window.surface = compositor.create_surface
   associatedWindows[window.surface.proxy.raw.id] = window
+
   window.xdgSurface = xdgWmBase.get_xdg_surface(window.surface)
   window.xdgToplevel = window.xdgSurface.get_toplevel
 
@@ -655,6 +671,25 @@ proc setupWindow(window: WindowWayland, fullscreen, frameless, transparent: bool
   window.xdgToplevel.onConfigure:
     window.xdgSurface.ackConfigure(0)  #? is it needed?    
     window.resize(ivec2(width, height))
+
+    let states = states.toSeq(`XdgToplevel / State`)
+    
+    template checkState(state: `XdgToplevel / State`): bool = state in states
+    template handleState(k, n, m: untyped) =
+      if window.m != checkState(`XdgToplevel / State`.n):
+        window.m = checkState(`XdgToplevel / State`.n)
+        window.eventsHandler.pushEvent onStateBoolChanged, StateBoolChangedEvent(
+          window: window, kind: StateBoolChangedEventKind.k, value: window.m, isExternal: true
+        )
+    
+    handleState maximized, maximized, m_maximized
+    handleState fullscreen, fullscreen, m_fullscreen
+    handleState focus, activated, m_focused
+
+    redraw window
+  
+  if plasmaShell != nil:
+    window.plasmaSurface = plasmaShell.get_surface(window.surface)
 
 
 
@@ -694,6 +729,7 @@ method step*(window: WindowWayland) =
   template closeIfNeeded =
     if window.m_closed: 
       release window
+      window.eventsHandler.pushEvent onClose, CloseEvent(window: window)
       return
 
   closeIfNeeded()
