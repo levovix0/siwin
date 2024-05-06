@@ -53,7 +53,7 @@ test "pixie":
       e.window.drawImage(image.data.toBgrx, ivec2(image.width.int32, image.height.int32))
     ,
     onKey: proc(e: KeyEvent) =
-      if not e.pressed:
+      if e.pressed and not e.generated:
         case e.key
         of Key.escape:
           close e.window
@@ -85,7 +85,7 @@ test "bgrx image":
       e.window.drawImage(image, e.window.size)
     ,
     onKey: proc(e: KeyEvent) =
-      if not e.pressed:
+      if e.pressed and not e.generated:
         case e.key
         of Key.escape:
           close e.window
@@ -168,7 +168,7 @@ test "2 windows at once":
         close (if win2.opened: win2 else: e.window)
     ,
     onKey: proc(e: KeyEvent) =
-      if not e.pressed:
+      if e.pressed and not e.generated:
         case e.key
         of Key.escape:
           close win1

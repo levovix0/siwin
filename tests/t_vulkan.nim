@@ -630,7 +630,7 @@ test "Vulkan":
       tick()
     ,
     onKey: proc(e: KeyEvent) =
-      if (not e.pressed) and e.key == Key.escape:
+      if e.pressed and e.key == Key.escape:
         close e.window
   )
   deinit()

@@ -44,7 +44,7 @@ test "OpenGL ES":
       # glDisable(GlBlend)
     ,
     onKey: proc(e: KeyEvent) =
-      if not e.pressed:
+      if e.pressed:
         case e.key
         of Key.escape:
           close e.window
@@ -58,6 +58,8 @@ test "OpenGL ES":
           e.window.size = ivec2(300, 300)
         of Key.f5:
           e.window.pos = e.window.size
+        of Key.f6:
+          e.window.cursor = Cursor(kind: builtin, builtin: cross)
         else: discard
     ,
     onClick: proc(e: ClickEvent) =
