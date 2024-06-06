@@ -1,7 +1,16 @@
-import ./platforms/wayland/globals as waylandGlobals
+import ./[siwindefs]
+when defined(linux):
+  import ./platforms/wayland/globals as waylandGlobals
+
+
+when siwin_use_pure_enums:
+  {.pragma: siwinPureEnum, pure.}
+else:
+  {.pragma: siwinPureEnum.}
+
 
 type
-  Platform* {.pure.} = enum
+  Platform* {.siwinPureEnum.} = enum
     x11
     wayland
     winapi
@@ -10,20 +19,6 @@ type
   PlatformSupportDefect* = object of Defect
   PlatformMatchError* = object of CatchableError
     ## raised if tried to force run wayland window on x11 compositor, or if tried to run window without any compositor at all
-
-const defaultPreferedPlatform* =
-  when defined(windows): Platform.winapi
-  else: Platform.wayland
-
-
-proc getRequiredVulkanExtensions*(platform = defaultPreferedPlatform): seq[string] =
-  case platform
-  of x11:
-    @["VK_KHR_surface", "VK_KHR_xlib_surface"]
-  of wayland:
-    @["VK_KHR_surface", "VK_KHR_wayland_surface"]
-  of winapi:
-    @["VK_KHR_surface", "VK_KHR_win32_surface"]
 
 
 proc availablePlatforms*: seq[Platform] =
@@ -41,6 +36,20 @@ proc availablePlatforms*: seq[Platform] =
 
   else:
     @[]
+
+
+proc defaultPreferedPlatform*: Platform =
+  availablePlatforms()[0]
+
+
+proc getRequiredVulkanExtensions*(platform = defaultPreferedPlatform()): seq[string] =
+  case platform
+  of x11:
+    @["VK_KHR_surface", "VK_KHR_xlib_surface"]
+  of wayland:
+    @["VK_KHR_surface", "VK_KHR_wayland_surface"]
+  of winapi:
+    @["VK_KHR_surface", "VK_KHR_win32_surface"]
 
 
 proc platformToUse*(available: seq[Platform], prefered: Platform): Platform =

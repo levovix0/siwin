@@ -20,7 +20,7 @@ proc newOpenglWindow*(
   frameless = false,
   transparent = false,
   vsync = true,
-  preferedPlatform = defaultPreferedPlatform,
+  preferedPlatform = defaultPreferedPlatform(),
 
   class = "", # window class (used in x11), equals to title if not specified
 ): Window =

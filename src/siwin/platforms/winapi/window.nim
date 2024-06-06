@@ -1,7 +1,7 @@
 import times, os, options, std/importutils
 import vmath
 import winapi
-import ../../utils, ../../bgrx
+import ../../[utils, colorutils]
 import ../any/window {.all.}
 
 privateAccess Window
@@ -15,7 +15,7 @@ type
     x, y: int
     bitmap: HBitmap
     hdc: Hdc
-    pixels: ptr UncheckedArray[ColorBgrx]
+    pixels: pointer
 
   WindowWinapi* = ref WindowWinapiObj
   WindowWinapiObj* = object of Window
@@ -165,7 +165,7 @@ method height*(screen: ScreenWinapi): int32 = GetSystemMetrics(SmCyScreen)
 
 
 proc `=destroy`(buffer: Buffer) =
-  if buffer.pixels != nil:
+  if buffer.hdc != 0:
     DeleteDC buffer.hdc
     DeleteObject buffer.bitmap
 
@@ -320,19 +320,20 @@ method `cursor=`*(window: WindowWinapi, v: Cursor) =
       window.wcursor = cu
   
   of image:
-    if v.image.size.x * v.image.size.y == 0:
+    if v.image.pixels.size.x * v.image.pixels.size.y == 0:
       window.cursor = Cursor(kind: builtin, builtin: BuiltinCursor.hided)
       return
-    assert v.image.data.len >= v.image.size.x * v.image.size.y, "not enougth pixels"
+
     if window.wcursor != 0: DestroyCursor window.wcursor
-    let pixels = v.image.data.mapit (
-      (it.b.float / it.a.float * 255).byte,
-      (it.g.float / it.a.float * 255).byte,
-      (it.r.float / it.a.float * 255).byte,
-      it.a
-    )
-    window.wcursor = CreateIcon(hInstance, v.image.size.x, v.image.size.y, 1, 32, nil, cast[ptr Byte](pixels.dataAddr))
+
+    let sourceFormat = v.image.pixels.format  # to convert pixels back later
+    var buffer = v.image.pixels
+    convertPixelsInplace(buffer.data, buffer.size, sourceFormat, PixelBufferFormat.bgra_32bit)
+
+    window.wcursor = CreateIcon(hInstance, buffer.size.x, buffer.size.y, 1, 32, nil, cast[ptr Byte](buffer.data))
     SetCursor window.wcursor
+
+    convertPixelsInplace(buffer.data, buffer.size, PixelBufferFormat.bgra_32bit, sourceFormat)
   
 
 method `icon=`*(window: WindowWinapi, _: nil.typeof) =
@@ -344,25 +345,28 @@ method `icon=`*(window: WindowWinapi, _: nil.typeof) =
   window.handle.SendMessageW(WmSetIcon, IconBig, 0)
   window.handle.SendMessageW(WmSetIcon, IconSmall, 0)
 
-method `icon=`*(window: WindowWinapi, image: tuple[pixels: openarray[ColorBgrx], size: IVec2]) =
+method `icon=`*(window: WindowWinapi, v: PixelBuffer) =
   ## set icon
-  if image.size.x * image.size.y == 0: window.icon = nil
-  assert image.pixels.len >= image.size.x * image.size.y, "not enougth pixels"
+  if v.size.x * v.size.y == 0:
+    window.icon = nil
+    return
+
   if window.wicon != 0: DestroyIcon window.wicon
   
-  let pixels = image.pixels.mapit (
-    (it.b.float / it.a.float * 255).byte,
-    (it.g.float / it.a.float * 255).byte,
-    (it.r.float / it.a.float * 255).byte,
-    it.a
-  )
-  window.wicon = CreateIcon(hInstance, image.size.x, image.size.y, 1, 32, nil, cast[ptr Byte](pixels.dataAddr))
+  let sourceFormat = v.format  # to convert pixels back later
+  var buffer = v
+  convertPixelsInplace(buffer.data, buffer.size, sourceFormat, PixelBufferFormat.bgra_32bit)
+
+  window.wicon = CreateIcon(hInstance, v.size.x, v.size.y, 1, 32, nil, cast[ptr Byte](v.data))
   window.handle.SendMessageW(WmSetIcon, IconBig, window.wicon)
   window.handle.SendMessageW(WmSetIcon, IconSmall, window.wicon)
 
+  convertPixelsInplace(buffer.data, buffer.size, PixelBufferFormat.bgra_32bit, sourceFormat)
+
+
 proc resizeBufferIfNeeded(buffer: var Buffer, size: IVec2) =
   if size.x != buffer.x or size.y != buffer.y:
-    if buffer.pixels != nil:
+    if buffer.hdc != 0:
       DeleteDC buffer.hdc
       DeleteObject buffer.bitmap
     
@@ -379,11 +383,13 @@ proc resizeBufferIfNeeded(buffer: var Buffer, size: IVec2) =
     buffer.hdc = CreateCompatibleDC(0)
     buffer.hdc.SelectObject buffer.bitmap
 
-method drawImage*(window: WindowWinapiSoftwareRendering, pixels: openarray[ColorBgrx], size: IVec2, pos: IVec2 = ivec2(), srcPos: IVec2 = ivec2()) =
-  assert pixels.len >= size.x * size.y, "not enougth pixels"    
-  resizeBufferIfNeeded window.buffer, size
-  copyMem(window.buffer.pixels, pixels.dataAddr, pixels.len * ColorBgrx.sizeof)
-  window.hdc.BitBlt(pos.x, pos.y, size.x, size.y, window.buffer.hdc, srcPos.x, srcPos.y, SrcCopy)
+
+method pixelBuffer*(window: WindowWinapiSoftwareRendering): PixelBuffer =
+  result = PixelBuffer(
+    data: window.buffer.pixels,
+    size: ivec2(window.buffer.x.int32, window.buffer.y.int32),
+    format: (if window.transparent: PixelBufferFormat.bgrx_32bit else: PixelBufferFormat.bgru_32bit)
+  )
 
 
 proc releaseAllKeys(window: WindowWinapi) =
@@ -416,10 +422,12 @@ method `maximized=`*(window: WindowWinapi, v: bool) =
     window: window, kind: StateBoolChangedEventKind.maximized, value: window.m_maximized
   )
 
+
 method `minimized=`*(window: WindowWinapi, v: bool) =
   window.releaseAllKeys()
   window.m_minimized = v
   discard ShowWindow(window.handle, if v: SwShowMinNoActive  else: SwNormal)
+
 
 method `visible=`*(window: WindowWinapi, v: bool) =
   window.m_visible = v
@@ -473,21 +481,32 @@ method startInteractiveResize*(window: WindowWinapi, edge: Edge, pos: Option[IVe
   )
   # todo: press all keys and mouse buttons that are pressed after resize
 
+
 method displayImpl(window: WindowWinapi) {.base.} =
   var ps: PaintStruct
   window.handle.BeginPaint(ps.addr)
+  
   window.eventsHandler.pushEvent onRender, RenderEvent(window: window)
+  
+  if window of WindowWinapiSoftwareRendering:
+    window.hdc.BitBlt(0, 0, window.m_size.x, window.m_size.y, window.WindowWinapiSoftwareRendering.buffer.hdc, 0, 0, SrcCopy)
+  
   window.handle.EndPaint(ps.addr)
+
 
 method firstStep*(window: WindowWinapi, makeVisible = true) =
   if makeVisible:
     window.visible = true
+  
+  if window of WindowWinapiSoftwareRendering:
+    resizeBufferIfNeeded window.WindowWinapiSoftwareRendering.buffer, window.m_size
 
   window.eventsHandler.pushEvent onResize, ResizeEvent(window: window, size: window.m_size, initial: true)
 
   window.handle.UpdateWindow()
 
   window.lastTickTime = getTime()
+
 
 method step*(window: WindowWinapi) =
   var msg: Msg
@@ -522,6 +541,7 @@ method step*(window: WindowWinapi) =
   window.eventsHandler.pushEvent onTick, TickEvent(window: window, deltaTime: nows - window.lastTickTime)
   window.lastTickTime = nows
 
+
 proc poolEvent(window: WindowWinapi, message: Uint, wParam: WParam, lParam: LParam): LResult =
   template button: MouseButton =
     case message
@@ -543,6 +563,10 @@ proc poolEvent(window: WindowWinapi, message: Uint, wParam: WParam, lParam: LPar
     let rect = window.handle.clientRect
     if rect.right != window.m_size.x or rect.bottom != window.m_size.y:
       window.m_size = ivec2(rect.right, rect.bottom)
+  
+      if window of WindowWinapiSoftwareRendering:
+        resizeBufferIfNeeded window.WindowWinapiSoftwareRendering.buffer, window.m_size
+
       window.eventsHandler.pushEvent onResize, ResizeEvent(window: window, size: window.m_size, initial: false)
 
     if window.m_size.x * window.m_size.y > 0:

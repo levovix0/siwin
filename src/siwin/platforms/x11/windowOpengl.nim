@@ -9,9 +9,20 @@ privateAccess Window
 privateAccess WindowX11
 
 type
-  WindowX11Opengl* = ref object of WindowX11
+  WindowX11Opengl* = ref WindowX11OpenglObj
+  WindowX11OpenglObj* = object of WindowX11
     glxContext: GlxContext
     vsyncEnabled: bool
+
+
+proc `=trace`(x: var WindowX11OpenglObj, env: pointer) =
+  #? for some reason, without this, nim produces invalid C code for =trace implementation
+  `=trace`(cast[ptr WindowX11Obj](x.addr)[], env)
+
+proc `=destroy`(x: WindowX11OpenglObj) =
+  #? for some reason, without this, nim produces invalid C code for =trace implementation
+  `=destroy`(cast[ptr WindowX11Obj](x.addr)[])
+  `=destroy`(x.glxContext)
 
 
 proc initOpenglWindow(

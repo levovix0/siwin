@@ -18,16 +18,22 @@ test "pixie":
   var
     image: Image
     window = newSoftwareRenderingWindow(title="pixie test", frameless=true, transparent=true)
+    cursorImage = newImage(32, 32)
   
   window.cursor = block:
-    var image = newImage(32, 32)
-    image.fill(rgba(0, 0, 0, 0))
-    let ctx = image.newContext
+    cursorImage.fill(rgba(0, 0, 0, 0))
+    let ctx = cursorImage.newContext
     ctx.fillStyle = rgba(100, 100, 255, 100)
     ctx.fillPolygon(vec2(16, 16), 16, 5)
+
+    var pixelBuffer = PixelBuffer(
+      data: cursorImage.data[0].addr,
+      size: ivec2(cursorImage.width.int32, cursorImage.height.int32),
+      format: PixelBufferFormat.rgba_32bit,
+    )
+
     Cursor(kind: CursorKind.image, image: ImageCursor(
-      data: image.data.toBgrx,
-      size: ivec2(image.width.int32, image.height.int32),
+      pixels: pixelBuffer,
       origin: ivec2(16, 16)
     ))
 
@@ -50,7 +56,9 @@ test "pixie":
       ctx.fillStyle = rgba(50, 50, 255, 255)
       ctx.fillRoundedRect(rect(pos, wh), 25.0)
       
-      e.window.drawImage(image.data.toBgrx, ivec2(image.width.int32, image.height.int32))
+      let pixelBuffer = e.window.pixelBuffer
+      copyMem(pixelBuffer.data, image.data[0].addr, pixelBuffer.size.x * pixelBuffer.size.y * Color32bit.sizeof)
+      convertPixelsInplace(pixelBuffer.data, pixelBuffer.size, PixelBufferFormat.rgbx_32bit, pixelBuffer.format)
     ,
     onKey: proc(e: KeyEvent) =
       if e.pressed and not e.generated:
@@ -67,22 +75,20 @@ test "pixie":
 
 test "bgrx image":
   var
-    image: seq[ColorBgrx]
     window = newSoftwareRenderingWindow(title="bgrx image test", frameless=true, transparent=true)
   
   run window, WindowEventsHandler(
-    onResize: proc(e: ResizeEvent) =
-      image.setLen(e.size.x * e.size.y)
-    ,
-
     onRender: proc(e: RenderEvent) =
-      for y in 0..<e.window.size.y:
-        let a = round(y / e.window.size.y * 255).byte
-        let c = ColorBgrx(b: a, g: a, r: a, a: a)
-        for x in 0..<e.window.size.x:
-          image[y * e.window.size.x + x] = c
+      let pixelBuffer = e.window.pixelBuffer
       
-      e.window.drawImage(image, e.window.size)
+      for y in 0..<pixelBuffer.size.y:
+        let a = round(y / pixelBuffer.size.y * 255).byte
+        let c = [a, a, a, a]
+        
+        for x in 0..<pixelBuffer.size.x:
+          cast[ptr UncheckedArray[Color32bit]](pixelBuffer.data)[y * pixelBuffer.size.x + x] = c
+      
+      convertPixelsInplace(pixelBuffer.data, pixelBuffer.size, PixelBufferFormat.bgrx_32bit, pixelBuffer.format)
     ,
     onKey: proc(e: KeyEvent) =
       if e.pressed and not e.generated:

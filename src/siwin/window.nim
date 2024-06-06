@@ -1,5 +1,5 @@
 import vmath
-import ./platforms/any/window
+import ./platforms/any/[window]
 import ./platforms
 export window
 when defined(linux):
@@ -9,7 +9,7 @@ elif defined(windows):
   import ./platforms/winapi/window as winapiWindow
 
 
-proc screenCount*(preferedPlatform = defaultPreferedPlatform): int32 =
+proc screenCount*(preferedPlatform = defaultPreferedPlatform()): int32 =
   when defined(linux):
     case availablePlatforms().platformToUse(preferedPlatform)
     of x11:
@@ -20,7 +20,7 @@ proc screenCount*(preferedPlatform = defaultPreferedPlatform): int32 =
   
   elif defined(windows): screenCountWinapi()
 
-proc screen*(number: int32, preferedPlatform = defaultPreferedPlatform): Screen =
+proc screen*(number: int32, preferedPlatform = defaultPreferedPlatform()): Screen =
   when defined(linux):
     case availablePlatforms().platformToUse(preferedPlatform)
     of x11:
@@ -31,7 +31,7 @@ proc screen*(number: int32, preferedPlatform = defaultPreferedPlatform): Screen 
   
   elif defined(windows): screenWinapi(number)
 
-proc defaultScreen*(preferedPlatform = defaultPreferedPlatform): Screen =
+proc defaultScreen*(preferedPlatform = defaultPreferedPlatform()): Screen =
   when defined(linux):
     case availablePlatforms().platformToUse(preferedPlatform)
     of x11:
@@ -51,7 +51,7 @@ proc newSoftwareRenderingWindow*(
   resizable = true,
   frameless = false,
   transparent = false,
-  preferedPlatform = defaultPreferedPlatform,
+  preferedPlatform = defaultPreferedPlatform(),
 
   class = "", # window class (used in x11), equals to title if not specified
 ): Window =

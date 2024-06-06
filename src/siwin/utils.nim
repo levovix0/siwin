@@ -13,3 +13,6 @@ func dataAddr*[T: string|seq|array|openarray|cstring](a: T): pointer =
   elif T is cstring:
     cast[pointer](a)
   else: {.error.}
+
+
+proc `cast`*[TFrom](x: TFrom, tTo: typedesc): tTo {.inline.} = cast[tTo](x)

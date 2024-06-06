@@ -91,6 +91,10 @@ proc init* =
 
   registry.onGlobal:
     let interfaceString = $`interface`
+
+    when defined(siwin_debug_echoWaylandSupportedProtocols):
+      echo interfaceString
+
     for targetIface, callback in registryCallbacks:
       if interfaceString == targetIface:
         callback(registry, name, version)

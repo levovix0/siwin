@@ -53,6 +53,7 @@ const
 
   eglRenderableType* = int32 0x3040
   eglOpenglEs2Bit* = int32 0x0004
+  eglOpenglBit* = int32 0x0008
 
   eglAlphaSize* = int32 0x3021
   eglBlueSize* = int32 0x3022
@@ -121,7 +122,7 @@ proc initEgl*(nativeDisplay: pointer) =
 
   egl_display = eglGetDisplay(nativeDisplay)
   expect egl_display != nil
-  expect egl_display.eglInitialize
+  expect eglInitialize(egl_display)
 
 
 proc destroy*(context: OpenglContext) =
@@ -205,4 +206,4 @@ proc terminateEgl* =
   if not initialized: return
   initialized = false
   
-  egl_display.eglTerminate
+  eglTerminate(egl_display)

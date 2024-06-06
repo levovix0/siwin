@@ -615,6 +615,7 @@ proc deinit*() =
   vkDestroyDevice(device, nil)
   vkDestroyInstance(instance, nil)
 
+
 test "Vulkan":
   let exts = getRequiredVulkanExtensions()
   var cexts = exts.mapit(it[0].unsafeaddr)

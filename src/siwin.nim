@@ -1,3 +1,3 @@
-import siwin/[window, windowOpengl, windowVulkan, clipboards, offscreen, bgrx, platforms]
-export window, windowOpengl, windowVulkan, clipboards, offscreen, bgrx, platforms
+import siwin/[window, windowOpengl, windowVulkan, clipboards, offscreen, colorutils, platforms]
+export window, windowOpengl, windowVulkan, clipboards, offscreen, colorutils, platforms
 

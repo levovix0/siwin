@@ -13,7 +13,8 @@ type
     instance: pointer
     raw: pointer
 
-  WindowX11Vulkan* = ref object of WindowX11
+  WindowX11Vulkan* = ref WindowX11VulkanObj
+  WindowX11VulkanObj* = object of WindowX11
     surface: Surface
 
 
@@ -21,6 +22,16 @@ proc `=destroy`*(surface: Surface) =
   if surface.instance != nil and surface.raw != nil:
     # vkDestroySurfaceKHR(surface.instance, surface.raw, nil)  #? causes crash
     discard
+
+
+proc `=trace`(x: var WindowX11VulkanObj, env: pointer) =
+  #? for some reason, without this, nim produces invalid C code for =trace implementation
+  `=trace`(cast[ptr WindowX11Obj](x.addr)[], env)
+
+proc `=destroy`(x: WindowX11VulkanObj) =
+  #? for some reason, without this, nim produces invalid C code for =trace implementation
+  `=destroy`(cast[ptr WindowX11Obj](x.addr)[])
+  `=destroy`(x.surface)
 
 
 method vulkanSurface*(window: WindowX11Vulkan): pointer =

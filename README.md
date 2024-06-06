@@ -21,13 +21,17 @@ Can be used as an alternative to GLFW/GLUT/windy
 ```nim
 import siwin, vmath
 
+const color = [32'u8, 32, 32, 255]
+
 run newSoftwareRenderingWindow(), WindowEventsHandler(
   onRender: proc(e: RenderEvent) =
-    const color = ColorBgrx(r: 32, g: 32, b: 32, a: 255)
-    var image = newSeq[ColorBgrx](e.window.size.x * e.window.size.y)
-    for c in image.mitems:
-      c = color
-    e.window.drawImage(image, e.window.size)
+    let pixelBuffer = e.window.pixelBuffer
+    
+    for y in 0..<pixelBuffer.size.y:
+      for x in 0..<pixelBuffer.size.x:
+        cast[ptr UncheckedArray[array[4, uint8]]](pixelBuffer.pixels)[y * pixelBuffer.size.x + x] = color
+
+    convertPixelsInplace(pixelBuffer.data, pixelBuffer.size, PixelBufferFormat.bgrx_32bit, pixelBuffer.format)
   ,
   onKey: proc(e: KeyEvent) =
     if (not e.pressed) and e.key == Key.escape:
@@ -85,7 +89,7 @@ import siwin, nimgl/vulkan, sequtils
 doassert vkInit()
 
 let exts = getRequiredVulkanExtensions()
-var cexts = exts.mapit(it[0].unsafeaddr)
+var cexts = exts.mapit(it[0].addr)
 
 var appInfo = newVkApplicationInfo(
   pApplicationName = "siwin Vulkan example",
@@ -125,7 +129,7 @@ run window, WindowEventsHandler(
 ## pixie
 ![](https://ia.wampi.ru/2021/09/07/32.png)
 
-note: very slow, but better than render frames to opengl image if you realy want to use only pixie
+note: very slow, but useful if opengl not needed and if window is used to just display one single image
 
 ```nim
 import siwin, pixie
@@ -149,8 +153,10 @@ run newSoftwareRenderingWindow(title="pixie example"), WindowEventsHandler(
       pos = vec2(image.width.float, image.height.float) / 2 - wh / 2
     
     ctx.fillRoundedRect(rect(pos, wh), 25.0)
-    
-    e.window.drawImage(image.data.toBgrx, ivec2(image.width.int32, image.height.int32))
+
+    let pixelBuffer = e.window.pixelBuffer
+    copyMem(pixelBuffer.data, image.data[0].addr, pixelBuffer.size.x * pixelBuffer.size.y * Color32bit.sizeof)
+    convertPixelsInplace(pixelBuffer.data, pixelBuffer.size, PixelBufferFormat.rgbx_32bit, pixelBuffer.format)
   ,
   onKey: proc(e: KeyEvent) =
     if (not e.pressed) and e.key == Key.escape:

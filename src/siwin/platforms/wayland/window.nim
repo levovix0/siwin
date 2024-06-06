@@ -1,6 +1,6 @@
 import std/[times, importutils, strformat, options, tables, os]
 import pkg/[vmath]
-import ../../utils, ../../bgrx
+import ../../[utils, colorutils]
 import ../any/window {.all.}
 import ./[libwayland, protocol, globals, sharedBuffer, bitfields, xkb]
 
@@ -29,12 +29,14 @@ type
     doubleClickHandled: bool
 
     lastMouseButtonEventSerial: uint32
+    enterSerial: uint32
 
     lastKeyPressed: Key
     lastTextEntered: string
     lastKeyPressedTime: Time
     lastKeyRepeatedTime: Time
-  
+
+
   WindowWaylandSoftwareRendering* = ref WindowWaylandSoftwareRenderingObj
   WindowWaylandSoftwareRenderingObj* = object of WindowWayland
     buffer: SharedBuffer
@@ -159,6 +161,8 @@ proc waylandKeyToKey(keycode: uint32): Key =
   of XKB_KEY_7:            Key.n7
   of XKB_KEY_8:            Key.n8
   of XKB_KEY_9:            Key.n9
+  of XKB_KEY_ISO_Level3_Shift:  Key.level3_shift
+  of XKB_KEY_ISO_Level5_Shift:  Key.level5_shift
   else:               Key.unknown
 
 proc waylandKeyToString(keycode: uint32): string =
@@ -200,6 +204,11 @@ proc `=destroy`(window: WindowWaylandObj) =
   for x in window.fields:
     when compiles(`=destroy`(x)):
       `=destroy`(x)
+
+
+proc `=trace`(x: var WindowWaylandSoftwareRenderingObj, env: pointer) =
+  #? for some reason, without this, nim produces invalid C code for =trace implementation
+  `=trace`(cast[ptr WindowWaylandObj](x.addr)[], env)
 
 
 proc `=destroy`(window: WindowWaylandSoftwareRenderingObj) =
@@ -355,29 +364,29 @@ method `pos=`*(window: WindowWayland, v: IVec2) =
 
 
 method `cursor=`*(window: WindowWayland, v: Cursor) =
-  if v.kind == builtin and window.cursor.kind == builtin and v.builtin == window.cursor.builtin: return
+  if v.kind == builtin and window.m_cursor.kind == builtin and v.builtin == window.m_cursor.builtin: return
   ## todo
 
 
 method `icon=`*(window: WindowWayland, v: nil.typeof) =
   ## todo
 
-method `icon=`*(window: WindowWayland, v: tuple[pixels: openarray[ColorBgrx], size: IVec2]) =
+method `icon=`*(window: WindowWayland, v: PixelBuffer) =
   if v.size.x * v.size.y == 0: window.icon = nil
-  assert v.pixels.len >= v.size.x * v.size.y, "not enougth pixels"
   ## todo
 
 
-method drawImage*(window: WindowWaylandSoftwareRendering, pixels: openarray[ColorBgrx], size: IVec2, pos: IVec2 = ivec2(), srcPos: IVec2 = ivec2()) =
-  assert pixels.len >= size.x * size.y, "not enougth pixels"
-  ## todo: pos, srcPos
-  for i in 0..<(size.x * size.y):
-    cast[ptr UncheckedArray[byte]](window.buffer.dataAddr)[i * ColorBgrx.sizeof] = pixels[i].a
-    cast[ptr UncheckedArray[byte]](window.buffer.dataAddr)[i * ColorBgrx.sizeof + 1] = pixels[i].r
-    cast[ptr UncheckedArray[byte]](window.buffer.dataAddr)[i * ColorBgrx.sizeof + 2] = pixels[i].g
-    cast[ptr UncheckedArray[byte]](window.buffer.dataAddr)[i * ColorBgrx.sizeof + 3] = pixels[i].b
+method pixelBuffer*(window: WindowWaylandSoftwareRendering): PixelBuffer =
+  PixelBuffer(
+    data: window.buffer.dataAddr,
+    size: window.m_size,
+    format: (if window.transparent: PixelBufferFormat.xrgb_32bit else: PixelBufferFormat.urgb_32bit)
+  )
+
+
+method swapBuffers(window: WindowWaylandSoftwareRendering) =
   window.surface.attach(window.buffer.buffer, 0, 0)
-  window.surface.damage_buffer(0, 0, size.x, size.y)
+  window.surface.damage_buffer(0, 0, window.m_size.x, window.m_size.y)
   commit window.surface
 
 
@@ -479,6 +488,7 @@ proc initSeatEvents* =
       let window = associatedWindows[surface.proxy.raw.id]
       seat_pointer_currentWindow = window
       
+      window.enterSerial = serial
       window.mouse.pos = vec2(surface_x, surface_y).ivec2
       window.eventsHandler.pushEvent onMouseMove, MouseMoveEvent(window: window, pos: window.mouse.pos, kind: MouseMoveKind.enter)
     
@@ -705,7 +715,7 @@ proc initSoftwareRenderingWindow(
   
   window.setupWindow fullscreen, frameless, transparent, size, class
 
-  window.buffer = shm.create(size, (if transparent: argb8888 else: xrgb8888))
+  window.buffer = shm.create(size, (if transparent: argb8888 else: xrgb8888))  
   window.surface.attach(window.buffer.buffer, 0, 0)
   commit window.surface
 
@@ -774,6 +784,7 @@ method step*(window: WindowWayland) =
 
   if window.redrawRequested:
     window.redrawRequested = false
+
     window.eventsHandler.pushEvent onRender, RenderEvent(window: window)
     closeIfNeeded()
 

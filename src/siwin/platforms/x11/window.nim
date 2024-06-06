@@ -6,7 +6,7 @@ import pkg/[vmath, chroma]
 import pkg/x11/xlib except Screen
 import pkg/x11/x except Window, Cursor, Time
 import pkg/x11/[xutil, xatom, cursorfont, keysym]
-import ../../utils, ../../bgrx
+import ../../[utils, colorutils]
 import ../any/window {.all.}
 import globalDisplay
 
@@ -31,16 +31,13 @@ type
     syncAndConfigureRecieved
 
 
-  ColorArgb = object
-    a, r, g, b: byte
-
   CursorImage = object
     ver: uint32
     normalSize: uint32
     size: IVec2
     origin: IVec2
     delay: uint32
-    pixels: ptr ColorArgb
+    pixels: pointer  # argb
   
 
   ScreenX11* = ref object of Screen
@@ -64,8 +61,10 @@ type
     lastClickTime: Time
     doubleClickHandled: bool
   
-  WindowX11SoftwareRendering* = ref object of WindowX11
+  WindowX11SoftwareRendering* = ref WindowX11SoftwareRenderingObj
+  WindowX11SoftwareRenderingObj* = object of WindowX11
     gc: GraphicsContext
+    pixels: pointer
 
 
 const libXExt* =
@@ -240,18 +239,18 @@ proc geometry(a: x.Window): tuple[root: x.Window; pos: IVec2; size: IVec2; borde
   discard display.XGetGeometry(a, root.addr, x.addr, y.addr, w.addr, h.addr, borderW.addr, depth.addr)
   (root, ivec2(x.int32, y.int32), ivec2(w.int32, h.int32), borderW.int, depth.int)
 
-proc asXImage(data: openarray[ColorBgrx], size: IVec2, transparent = false): XImage = XImage(
+proc asXImage(data: pointer, size: IVec2, transparent = false): XImage = XImage(
   width: cint size.x,
   height: cint size.y,
   depth: if transparent: 32 else: 24,
   bitsPerPixel: 32,
   format: ZPixmap,
-  data: cast[cstring](data.dataAddr),
+  data: cast[cstring](data),
   byteOrder: LSBFirst,
   bitmapUnit: display.BitmapUnit,
   bitmapBitOrder: LSBFirst,
   bitmapPad: 32,
-  bytesPerLine: cint size.x * ColorBgrx.sizeof
+  bytesPerLine: cint size.x * uint32.sizeof
 )
 
 proc cursor: tuple[pos: IVec2; root, child: x.Window; winX, winY: int; mask: uint; exists: bool] =
@@ -307,9 +306,22 @@ proc `=destroy`(window: WindowX11Obj) =
     display.XSyncDestroyCounter(window.xSyncCounter)
 
 
+proc `=trace`(x: var WindowX11SoftwareRenderingObj, env: pointer) =
+  #? for some reason, without this, nim produces invalid C code for =trace implementation
+  `=trace`(cast[ptr WindowX11Obj](x.addr)[], env)
+
+proc `=destroy`(x: WindowX11SoftwareRenderingObj) =
+  #? for some reason, without this, nim produces invalid C code for =trace implementation
+  `=destroy`(cast[ptr WindowX11Obj](x.addr)[])
+  `=destroy`(x.gc)
+
+
 template pushEvent(eventsHandler: WindowEventsHandler, event, args) =
   if eventsHandler.event != nil:
     eventsHandler.event(args)
+
+proc resizePixelBuffer(window: WindowX11SoftwareRendering, size: IVec2) =
+  window.pixels = window.pixels.realloc(size.x * size.y * Color32bit.sizeof)
 
 
 proc basicInitWindow(window: WindowX11; size: IVec2; screen: ScreenX11) =
@@ -502,37 +514,37 @@ method `cursor=`*(window: WindowX11, v: Cursor) =
       discard display.XFreePixmap blank
 
   of image:
-    proc toArgb(x: openarray[ColorBgrx]): seq[ColorArgb] =
-      result = newSeq[ColorArgb](x.len)
-      for i, v in result.mpairs:
-        v = ColorArgb(b: x[i].b, g: x[i].g, r: x[i].r, a: x[i].a)
-
-    if v.image.size.x * v.image.size.y == 0:
+    if v.image.pixels.size.x * v.image.pixels.size.y == 0:
       window.cursor = Cursor(kind: builtin, builtin: hided)
       return
+
+    let sourceFormat = v.image.pixels.format  # to convert pixels back later
+    var buffer = v.image.pixels
+    convertPixelsInplace(buffer.data, buffer.size, sourceFormat, PixelBufferFormat.xrgb_32bit)
     
-    assert v.image.data.len >= v.image.size.x * v.image.size.y, "not enougth pixels"
-    var pixels = v.image.data.toArgb
     var ci = CursorImage(
       ver: 1,
-      normalSize: (if v.image.size.x > v.image.size.y: v.image.size.x.uint32 else: v.image.size.y.uint32),
-      size: v.image.size,
+      normalSize: (if buffer.size.x > buffer.size.y: buffer.size.x.uint32 else: buffer.size.y.uint32),
+      size: buffer.size,
       origin: v.image.origin,
-      pixels: pixels[0].addr
+      pixels: buffer.data
     )
     window.xCursor = display.XcursorImageLoadCursor(ci.addr)
+    
+    convertPixelsInplace(buffer.data, buffer.size, PixelBufferFormat.xrgb_32bit, sourceFormat)
 
   discard display.XDefineCursor(window.handle, window.xCursor)
   discard display.XSync(0)
   window.m_cursor = v
 
 
-proc newPixmap(source: tuple[pixels: openarray[ColorBgrx], size: IVec2], window: WindowX11): Pixmap =
-  result = display.XCreatePixmap(window.handle, source.size.x.cuint, source.size.y.cuint, cuint display.DefaultDepth(window.screen))
-  var image = asXImage(source.pixels, ivec2(source.size.x, source.size.y))
+proc newPixmap(buffer: PixelBuffer, window: WindowX11): Pixmap =
+  result = display.XCreatePixmap(window.handle, buffer.size.x.cuint, buffer.size.y.cuint, cuint display.DefaultDepth(window.screen))
+  var image = asXImage(buffer.data, ivec2(buffer.size.x, buffer.size.y))
   var gc: GraphicsContext
   gc.gc = display.XCreateGC(result, GCForeground or GCBackground, gc.gcv.addr)
-  discard display.XPutImage(result, gc.gc, image.addr, 0, 0, 0, 0, source.size.x.cuint, source.size.y.cuint)
+  discard display.XPutImage(result, gc.gc, image.addr, 0, 0, 0, 0, buffer.size.x.cuint, buffer.size.y.cuint)
+
 
 method `icon=`*(window: WindowX11, v: nil.typeof) =
   if window.xicon != 0: discard display.XFreePixmap(window.xicon)
@@ -542,29 +554,56 @@ method `icon=`*(window: WindowX11, v: nil.typeof) =
   var hints = XWmHints(flags: IconPixmapHint or IconMaskHint, iconPixmap: window.xicon, iconMask: window.xiconMask)
   discard display.XSetWMHints(window.handle, hints.addr)
 
-method `icon=`*(window: WindowX11, v: tuple[pixels: openarray[ColorBgrx], size: IVec2]) =
+
+method `icon=`*(window: WindowX11, v: PixelBuffer) =
   if v.size.x * v.size.y == 0: window.icon = nil
-  assert v.pixels.len >= v.size.x * v.size.y, "not enougth pixels"
   if window.xicon != 0: discard display.XFreePixmap(window.xicon)
   if window.xiconMask != 0: discard display.XFreePixmap(window.xiconMask)
+  let pixelCount = v.size.x * v.size.y
 
   window.xicon = newPixmap(v, window)
 
   # convert alpha channel to bit mask (semi-transparency is not supported)
-  var mask =  newSeq[ColorBgrx](v.size.x * v.size.y)
-  for i in 0..<(v.size.x * v.size.y):
-    mask[i] = if v.pixels[i].a > 127: ColorBgrx(b: 0, g: 0, r: 0, a: 255) else: ColorBgrx(b: 255, g: 255, r: 255, a: 255)
-  window.xiconMask = newPixmap((mask.toOpenarray(0, mask.high), v.size), window)
+  var mask = newSeq[uint32](pixelCount)
+  case v.format
+  of PixelBufferFormat.bgrx_32bit, PixelBufferFormat.rgba_32bit, PixelBufferFormat.rgbx_32bit, PixelBufferFormat.bgra_32bit:
+    proc alphaAt(buffer: PixelBuffer, i: int): byte =
+      buffer.data.cast(ptr UncheckedArray[array[4, byte]])[i][3]
+
+    for i in 0..<pixelCount:
+      mask[i] = (if v.alphaAt(i) > 127: 0xff000000'u32 else: 0xffffffff'u32)
+  
+  of PixelBufferFormat.xrgb_32bit:
+    proc alphaAt(buffer: PixelBuffer, i: int): byte =
+      buffer.data.cast(ptr UncheckedArray[array[4, byte]])[i][0]
+
+    for i in 0..<pixelCount:
+      mask[i] = (if v.alphaAt(i) > 127: 0xff000000'u32 else: 0xffffffff'u32)
+
+  of PixelBufferFormat.bgru_32bit, PixelBufferFormat.urgb_32bit, PixelBufferFormat.rgbu_32bit:
+    for i in 0..<pixelCount:
+      mask[i] = 0xffffffff'u32
+  
+  window.xiconMask = newPixmap(PixelBuffer(data: mask[0].addr, size: v.size), window)
 
   var hints = XWmHints(flags: IconPixmapHint or IconMaskHint, iconPixmap: window.xicon, iconMask: window.xiconMask)
   discard display.XSetWMHints(window.handle, hints.addr)
 
 
-method drawImage*(window: WindowX11SoftwareRendering, pixels: openarray[ColorBgrx], size: IVec2, pos: IVec2 = ivec2(), srcPos: IVec2 = ivec2()) =
-  assert pixels.len >= size.x * size.y, "not enougth pixels"
-  var ximg = asXImage(pixels, size, window.transparent)
+method pixelBuffer*(window: WindowX11SoftwareRendering): PixelBuffer =
+  result = PixelBuffer(
+    data: window.pixels,
+    size: window.m_size,
+    format: (if window.transparent: PixelBufferFormat.bgrx_32bit else: PixelBufferFormat.bgru_32bit),
+  )
+
+
+method endSwapBuffers(window: WindowX11SoftwareRendering) =
+  if window.pixels == nil: return
+  var ximg = asXImage(window.pixels, window.m_size, window.transparent)
+  
   discard display.XPutImage(
-    window.handle, window.gc.gc, ximg.addr, pos.x.cint, pos.y.cint, srcPos.x.cint, srcPos.y.cint, size.x.cuint, size.y.cuint
+    window.handle, window.gc.gc, ximg.addr, 0, 0, 0, 0, window.m_size.x.cuint, window.m_size.y.cuint
   )
 
 
@@ -703,6 +742,8 @@ method firstStep*(window: WindowX11, makeVisible = true) =
   window.m_pos = window.handle.geometry.pos
   window.mouse.pos = cursor().pos - window.m_pos
   
+  if window of WindowX11SoftwareRendering:
+    window.WindowX11SoftwareRendering.resizePixelBuffer(window.m_size)
   window.eventsHandler.pushEvent onResize, ResizeEvent(window: window, size: window.m_size, initial: true)
   window.lastTickTime = getTime()
 
@@ -793,6 +834,8 @@ method step*(window: WindowX11) =
 
       if ev.xconfigure.width != window.m_size.x or ev.xconfigure.height != window.m_size.y:
         window.m_size = ivec2(ev.xconfigure.width.int32, ev.xconfigure.height.int32)
+        if window of WindowX11SoftwareRendering:
+          window.WindowX11SoftwareRendering.resizePixelBuffer(window.m_size)
         window.eventsHandler.pushEvent onResize, ResizeEvent(window: window, size: window.m_size, initial: false)
 
       if ev.xconfigure.x.int != window.m_pos.x or ev.xconfigure.y.int != window.m_pos.y:

@@ -20,7 +20,7 @@ proc newVulkanWindow*(
   fullscreen = false,
   frameless = false,
   transparent = false,
-  platform = defaultPreferedPlatform,  ## note that this is foced platform, not prefered
+  platform = defaultPreferedPlatform(),  ## note that this is foced platform, not prefered
 
   class = "", # window class (used in x11), equals to title if not specified
 ): Window =

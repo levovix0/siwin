@@ -7,7 +7,7 @@ test "OpenGL":
   
   let window = newOpenglWindow(
     title="OpenGL test", transparent=true,
-    preferedPlatform = (when defined(linux): x11 else: defaultPreferedPlatform)
+    # preferedPlatform = (when defined(linux): x11 else: defaultPreferedPlatform)
   )
   loadExtensions()
   

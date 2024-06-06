@@ -17,6 +17,11 @@ type
     vulkan_surface: Surface
 
 
+proc `=trace`(x: var WindowWaylandVulkanObj, env: pointer) =
+  #? for some reason, without this, nim produces invalid C code for =trace implementation
+  `=trace`(cast[ptr WindowWaylandObj](x.addr)[], env)
+
+
 proc `=destroy`*(window: WindowWaylandVulkanObj) =
   release cast[WindowWaylandVulkan](window.addr)
 

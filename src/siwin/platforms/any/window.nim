@@ -1,15 +1,20 @@
 import std/[times, options, sequtils]
 import pkg/[vmath]
-import ../../bgrx
+import ../../[siwindefs, colorutils]
 
-{.experimental: "overloadableEnums".}
+
+when siwin_use_pure_enums:
+  {.pragma: siwinPureEnum, pure.}
+else:
+  {.pragma: siwinPureEnum.}
+
 
 {.push, warning[Deprecated]: off.}
 type
-  MouseButton* {.pure.} = enum
+  MouseButton* {.siwinPureEnum.} = enum
     left right middle forward backward
 
-  Key* {.pure.} = enum
+  Key* {.siwinPureEnum.} = enum
     unknown = 0
 
     a b c d e f g h i j k l m n o p q r s t u v w x y z
@@ -23,9 +28,9 @@ type
     left right up down
     npad0 npad1 npad2 npad3 npad4 npad5 npad6 npad7 npad8 npad9 npadDot
     add subtract multiply divide
-    capsLock numLock scrollLock printScreen
+    capsLock numLock scrollLock printScreen pause
 
-    pause
+    level3_shift level5_shift
 
   Mouse* = object
     pos*: IVec2
@@ -33,9 +38,20 @@ type
 
   Keyboard* = object
     pressed*: set[Key]
-
   
-  CursorKind* {.pure.} = enum
+
+  Edge* {.siwinPureEnum.} = enum
+    left
+    right
+    top
+    bottom
+    topLeft
+    topRight
+    bottomLeft
+    bottomRight
+
+
+  CursorKind* {.siwinPureEnum.} = enum
     builtin
     image
 
@@ -44,7 +60,7 @@ type
     of builtin: builtin*: BuiltinCursor
     of image: image*: ImageCursor
 
-  BuiltinCursor* {.pure.} = enum
+  BuiltinCursor* {.siwinPureEnum.} = enum
     arrow arrowUp arrowRight
     wait arrowWait
     pointingHand grab
@@ -54,25 +70,18 @@ type
     hided
   
   ImageCursor* = object
-    size*, origin*: IVec2
-    data*: seq[ColorBgrx]
-  
+    origin*: IVec2
+    pixels*: PixelBuffer
 
-  Edge* {.pure.} = enum
-    left
-    right
-    top
-    bottom
-    topLeft
-    topRight
-    bottomLeft
-    bottomRight
+
+  WindowTypeDefect* = object of Defect
+    ## raised when trying to get pixel buffer from non-softwareRendering window
   
 
   Screen* = ref object of RootObj
 
 
-  MouseMoveKind* {.pure.} = enum
+  MouseMoveKind* {.siwinPureEnum.} = enum
     move
     enter
     leave
@@ -283,7 +292,7 @@ method `maxSize=`*(window: Window, v: IVec2) {.base.} = discard
 method `icon=`*(window: Window, v: nil.typeof) {.base.} = discard
   ## clear window icon
 
-method `icon=`*(window: Window, v: tuple[pixels: openarray[ColorBgrx], size: IVec2]) {.base.} = discard
+method `icon=`*(window: Window, v: PixelBuffer) {.base.} = discard
   ## set window icon
 
 method startInteractiveMove*(window: Window, pos: Option[IVec2] = none IVec2) {.base.} = discard
@@ -297,9 +306,12 @@ method startInteractiveResize*(window: Window, edge: Edge, pos: Option[IVec2] = 
   ## it's recomended to start interactive move after user grabbed window border and started to move mouse
 
 
-method drawImage*(window: Window, pixels: openarray[ColorBgrx], size: IVec2, pos: IVec2 = ivec2(), srcPos: IVec2 = ivec2()) {.base.} = discard
-  ## put pixels into window
-  ## note: no blending is performed, even if image or/and window is transparent
+proc drawImage*(window: Window, pixels: auto, size: IVec2, pos: IVec2 = ivec2(), srcPos: IVec2 = ivec2()) {.deprecated: "use pixelBuffer method instead".} = discard
+
+
+method pixelBuffer*(window: Window): PixelBuffer {.base.} =
+  ## returns pixel buffer attached to window
+  raise WindowTypeDefect.newException("this Window has no pixel buffer. only SoftwareRendering windows have one")
 
 
 method makeCurrent*(window: Window) {.base.} = discard
