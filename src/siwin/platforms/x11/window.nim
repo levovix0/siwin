@@ -8,6 +8,7 @@ import pkg/x11/x except Window, Cursor, Time
 import pkg/x11/[xutil, xatom, cursorfont, keysym]
 import ../../[utils, colorutils]
 import ../any/window {.all.}
+import ../any/[windowUtils]
 import globalDisplay
 
 {.experimental: "overloadableEnums".}
@@ -60,6 +61,9 @@ type
 
     lastClickTime: Time
     doubleClickHandled: bool
+
+    temporaryCursor: Option[BuiltinCursor]
+      # used to emulate window title and border cursor changes
   
   WindowX11SoftwareRendering* = ref WindowX11SoftwareRenderingObj
   WindowX11SoftwareRenderingObj* = object of WindowX11
@@ -481,8 +485,7 @@ method `pos=`*(window: WindowX11, v: IVec2) =
   discard display.XMoveWindow(window.handle, v.x.cint, v.y.cint)
 
 
-method `cursor=`*(window: WindowX11, v: Cursor) =
-  if v.kind == builtin and window.cursor.kind == builtin and v.builtin == window.cursor.builtin: return
+proc setX11Cursor(window: WindowX11, v: Cursor) =
   if window.xCursor != 0:
     discard display.XFreeCursor(window.xCursor)
     window.xCursor = 0
@@ -501,7 +504,7 @@ method `cursor=`*(window: WindowX11, v: Cursor) =
     of BuiltinCursor.cross:           window.xcursor = display.XCreateFontCursor(XcTCross)
     of BuiltinCursor.sizeAll:         window.xcursor = display.XCreateFontCursor(XcFleur)
     of BuiltinCursor.sizeVertical:    window.xcursor = display.XCreateFontCursor(XcSb_v_doubleArrow)
-    of BuiltinCursor.sizeHorisontal:  window.xcursor = display.XCreateFontCursor(XcSb_h_doubleArrow)
+    of BuiltinCursor.sizeHorizontal:  window.xcursor = display.XCreateFontCursor(XcSb_h_doubleArrow)
     of BuiltinCursor.sizeTopLeft:     window.xcursor = display.XCreateFontCursor(XC_ul_angle)
     of BuiltinCursor.sizeTopRight:    window.xcursor = display.XCreateFontCursor(XC_ur_angle)
     of BuiltinCursor.sizeBottomLeft:  window.xcursor = display.XCreateFontCursor(XC_ll_angle)
@@ -535,6 +538,23 @@ method `cursor=`*(window: WindowX11, v: Cursor) =
 
   discard display.XDefineCursor(window.handle, window.xCursor)
   discard display.XSync(0)
+
+
+proc setTemporaryCursor(window: WindowX11, v: BuiltinCursor) =
+  if window.temporaryCursor.isSome and window.temporaryCursor.get == v: return
+  window.temporaryCursor = some v
+  window.setX11Cursor(Cursor(kind: builtin, builtin: v))
+
+proc clearTemporaryCursor(window: WindowX11) =
+  if window.temporaryCursor.isNone: return
+  window.temporaryCursor = options.none BuiltinCursor
+  window.setX11Cursor(window.m_cursor)
+
+
+method `cursor=`*(window: WindowX11, v: Cursor) =
+  if v.kind == builtin and window.cursor.kind == builtin and v.builtin == window.cursor.builtin: return
+  if window.temporaryCursor.isNone:
+    window.setX11Cursor(v)
   window.m_cursor = v
 
 
@@ -694,7 +714,7 @@ method startInteractiveMove*(window: WindowX11, pos: Option[IVec2]) =
   # todo: remove `pos` argument and use last click event cursor pos
 
   window.releaseAllKeys()
-  let pos = pos.get(cursor().pos)
+  let pos = pos.get(cursor().pos - window.m_pos) + window.m_pos
   discard display.XUngrabPointer(0)
   discard XFlush display
 
@@ -709,7 +729,7 @@ method startInteractiveMove*(window: WindowX11, pos: Option[IVec2]) =
 
 method startInteractiveResize*(window: WindowX11, edge: Edge, pos: Option[IVec2]) =
   window.releaseAllKeys()
-  let pos = pos.get(cursor().pos)
+  let pos = pos.get(cursor().pos - window.m_pos) + window.m_pos
   discard display.XUngrabPointer(0)
   discard XFlush display
 
@@ -733,6 +753,41 @@ method startInteractiveResize*(window: WindowX11, edge: Edge, pos: Option[IVec2]
     display.DefaultRootWindow, 0, SubstructureNotifyMask or SubstructureRedirectMask, event.addr
   )
   # todo: press all keys and mouse buttons that are pressed after resize
+
+
+method showWindowMenu*(window: WindowX11, pos: Option[IVec2]) =
+  discard
+
+
+method setInputRegion*(window: WindowX11, pos, size: IVec2) =
+  procCall window.Window.setInputRegion(pos, size)
+  # todo: use XShape to cut window input region
+
+
+proc emulateWindowTitleAndBorderBehaviour(window: WindowX11, prevMousePos: IVec2) =
+  case window.windowPartAt(prevMousePos)
+  of WindowPart.border_top_left:      window.setTemporaryCursor(BuiltinCursor.sizeTopLeft)
+  of WindowPart.border_top_right:     window.setTemporaryCursor(BuiltinCursor.sizeTopRight)
+  of WindowPart.border_bottom_left:   window.setTemporaryCursor(BuiltinCursor.sizeBottomLeft)
+  of WindowPart.border_bottom_right:  window.setTemporaryCursor(BuiltinCursor.sizeBottomRight)
+  of WindowPart.border_top:           window.setTemporaryCursor(BuiltinCursor.sizeVertical)
+  of WindowPart.border_bottom:        window.setTemporaryCursor(BuiltinCursor.sizeVertical)
+  of WindowPart.border_left:          window.setTemporaryCursor(BuiltinCursor.sizeHorizontal)
+  of WindowPart.border_right:         window.setTemporaryCursor(BuiltinCursor.sizeHorizontal)
+  else: window.clearTemporaryCursor()
+
+  if window.mouse.pressed == {MouseButton.left} and window.clicking == {MouseButton.left}:
+    case window.windowPartAt(prevMousePos)
+    of WindowPart.title:                window.startInteractiveMove(some prevMousePos)
+    of WindowPart.border_top_left:      window.startInteractiveResize(Edge.topLeft, some prevMousePos)
+    of WindowPart.border_top_right:     window.startInteractiveResize(Edge.topRight, some prevMousePos)
+    of WindowPart.border_bottom_left:   window.startInteractiveResize(Edge.bottomLeft, some prevMousePos)
+    of WindowPart.border_bottom_right:  window.startInteractiveResize(Edge.bottomRight, some prevMousePos)
+    of WindowPart.border_top:           window.startInteractiveResize(Edge.top, some prevMousePos)
+    of WindowPart.border_bottom:        window.startInteractiveResize(Edge.bottom, some prevMousePos)
+    of WindowPart.border_left:          window.startInteractiveResize(Edge.left, some prevMousePos)
+    of WindowPart.border_right:         window.startInteractiveResize(Edge.right, some prevMousePos)
+    else: discard
 
 
 method firstStep*(window: WindowX11, makeVisible = true) =
@@ -849,6 +904,7 @@ method step*(window: WindowX11) =
       window.redrawRequested = true
 
     of MotionNotify:
+      emulateWindowTitleAndBorderBehaviour(window, window.mouse.pos)
       window.mouse.pos = ivec2(ev.xmotion.x.int32, ev.xmotion.y.int32)
       window.clicking = {}
       window.eventsHandler.pushEvent onMouseMove, MouseMoveEvent(window: window, pos: window.mouse.pos, kind: MouseMoveKind.move)
@@ -887,10 +943,13 @@ method step*(window: WindowX11) =
         window.eventsHandler.pushEvent onMouseButton, MouseButtonEvent(window: window, button: button, pressed: false)
 
     of LeaveNotify:
+      emulateWindowTitleAndBorderBehaviour(window, window.mouse.pos)
       window.clicking = {}
       window.mouse.pos = ivec2(ev.xcrossing.x.int32, ev.xcrossing.y.int32)
       window.eventsHandler.pushEvent onMouseMove, MouseMoveEvent(window: window, pos: window.mouse.pos, kind: MouseMoveKind.leave)
+    
     of EnterNotify:
+      emulateWindowTitleAndBorderBehaviour(window, window.mouse.pos)
       window.clicking = {}
       window.mouse.pos = ivec2(ev.xcrossing.x.int32, ev.xcrossing.y.int32)
       window.eventsHandler.pushEvent onMouseMove, MouseMoveEvent(window: window, pos: window.mouse.pos, kind: MouseMoveKind.enter)

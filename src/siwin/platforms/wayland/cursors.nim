@@ -84,7 +84,7 @@ proc loadBuiltinCursor*(kind: BuiltinCursor): CursorWayland =
         of BuiltinCursor.text: "text"
         of BuiltinCursor.cross: "cross"
         of BuiltinCursor.sizeAll: "size_all"
-        of BuiltinCursor.sizeHorisontal: "sb_h_double_arrow"
+        of BuiltinCursor.sizeHorizontal: "sb_h_double_arrow"
         of BuiltinCursor.sizeVertical: "sb_v_double_arrow"
         of BuiltinCursor.sizeTopLeft: "top_left_corner"
         of BuiltinCursor.sizeTopRight: "top_right_corner"

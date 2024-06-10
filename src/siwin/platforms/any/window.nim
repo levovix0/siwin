@@ -65,7 +65,7 @@ type
     wait arrowWait
     pointingHand grab
     text cross
-    sizeAll sizeHorisontal sizeVertical
+    sizeAll sizeHorizontal sizeVertical
     sizeTopLeft sizeTopRight sizeBottomLeft sizeBottomRight
     hided
   
@@ -200,6 +200,9 @@ type
     m_resizable: bool
     m_minSize: IVec2
     m_maxSize: IVec2
+
+    inputRegion, titleRegion: Option[tuple[pos, size: IVec2]]
+    borderWidth: Option[tuple[innerWidth, outerWidrth, diagonalSize: int]]
 {.pop.}
 
 
@@ -295,15 +298,46 @@ method `icon=`*(window: Window, v: nil.typeof) {.base.} = discard
 method `icon=`*(window: Window, v: PixelBuffer) {.base.} = discard
   ## set window icon
 
+
 method startInteractiveMove*(window: Window, pos: Option[IVec2] = none IVec2) {.base.} = discard
   ## allow user to move window interactivly
   ## useful to create client-side decorated windows
   ## it's recomended to start interactive move after user grabbed window header and started to move mouse
 
+
 method startInteractiveResize*(window: Window, edge: Edge, pos: Option[IVec2] = none IVec2) {.base.} = discard
   ## allow user to resize window interactivly
   ## useful to create client-side decorated windows
-  ## it's recomended to start interactive move after user grabbed window border and started to move mouse
+  ## it's recomended to start interactive resize after user grabbed window border and started to move mouse
+
+
+method showWindowMenu*(window: Window, pos: Option[IVec2] = none IVec2) {.base.} = discard
+  ## show OS/platform/DE-specific window menu
+  ## it's recomended to show menu after user right-clicked on window header
+  ## for now works only on Linux(Wayland)
+
+
+method setInputRegion*(window: Window, pos, size: IVec2) {.base.} =
+  ## set the rect (in window-local coordinates) where actual window is placed (inluding titlebar, if has one).
+  ## this is used by Windows and Linux(Wayland) to correctly anchor the window and to correctly send mouse and touch events.
+  ## it's recomended to set input region if you draw shadows for window.
+  ## setInputRegion, if called once, must be called after each resize of the window
+  assert size.x * size.y > 0, "there must be at least one pixel of the actual window"
+  window.inputRegion = some (pos, size)
+
+
+method setTitleRegion*(window: Window, pos, size: IVec2) {.base.} =
+  ## set the rect (in window-local coordinates) where titlebar is placed.
+  ## this is used by Windows to allow user to move window interactivly. siwin will replicate this behaviour on other platforms.
+  ## it's recomended to set title region if you have custom titlebar.
+  window.titleRegion = some (pos, size)
+
+
+method setBorderWidth*(window: Window, innerWidth, outerWidth: int, diagonalSize: int) {.base.} =
+  ## set window border width. This will not change the look of window, it is for resizing window.
+  ## this is used on Windows to allow user to resize window interactivly. siwin will replicate this behaviour on other platforms.
+  ## it's recomended to set border width if you have custom titlebar.
+  window.borderWidth = some (innerWidth, outerWidth, diagonalSize)
 
 
 proc drawImage*(window: Window, pixels: auto, size: IVec2, pos: IVec2 = ivec2(), srcPos: IVec2 = ivec2()) {.deprecated: "use pixelBuffer method instead".} = discard

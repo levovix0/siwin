@@ -77,6 +77,8 @@ test "bgrx image":
   var
     window = newSoftwareRenderingWindow(title="bgrx image test", frameless=true, transparent=true)
   
+  window.setBorderWidth(10, 0, 10)
+
   run window, WindowEventsHandler(
     onRender: proc(e: RenderEvent) =
       let pixelBuffer = e.window.pixelBuffer
@@ -110,46 +112,6 @@ test "bgrx image":
     onClick: proc(e: ClickEvent) =
       if e.double:
         close e.window
-    ,
-    onMouseMove: proc(e: MouseMoveEvent) =
-      if e.pos.x in 10..(e.window.size.x - 10) and e.pos.y in 10..(e.window.size.y - 10):
-        e.window.cursor = Cursor(kind: builtin, builtin: sizeAll)
-      elif e.pos.x in 0..10 and e.pos.y in 0..10:
-        e.window.cursor = Cursor(kind: builtin, builtin: sizeTopLeft)
-      elif e.pos.x in 0..10 and e.pos.y in (e.window.size.y - 10)..e.window.size.y:
-        e.window.cursor = Cursor(kind: builtin, builtin: sizeBottomLeft)
-      elif e.pos.x in (e.window.size.x - 10)..e.window.size.x and e.pos.y in 0..10:
-        e.window.cursor = Cursor(kind: builtin, builtin: sizeTopRight)
-      elif e.pos.x in (e.window.size.x - 10)..e.window.size.x and e.pos.y in (e.window.size.y - 10)..e.window.size.y:
-        e.window.cursor = Cursor(kind: builtin, builtin: sizeBottomRight)
-      elif e.pos.x in 0..10:
-        e.window.cursor = Cursor(kind: builtin, builtin: sizeHorisontal)
-      elif e.pos.x in (e.window.size.x - 10)..e.window.size.x:
-        e.window.cursor = Cursor(kind: builtin, builtin: sizeHorisontal)
-      elif e.pos.y in 0..10:
-        e.window.cursor = Cursor(kind: builtin, builtin: sizeVertical)
-      elif e.pos.y in (e.window.size.y - 10)..e.window.size.y:
-        e.window.cursor = Cursor(kind: builtin, builtin: sizeVertical)
-
-      if MouseButton.left in e.window.mouse.pressed:
-        if e.pos.x in 10..(e.window.size.x - 10) and e.pos.y in 10..(e.window.size.y - 10):
-          e.window.startInteractiveMove
-        elif e.pos.x in 0..10 and e.pos.y in 0..10:
-          e.window.startInteractiveResize(Edge.topLeft)
-        elif e.pos.x in 0..10 and e.pos.y in (e.window.size.y - 10)..e.window.size.y:
-          e.window.startInteractiveResize(Edge.bottomLeft)
-        elif e.pos.x in (e.window.size.x - 10)..e.window.size.x and e.pos.y in 0..10:
-          e.window.startInteractiveResize(Edge.topRight)
-        elif e.pos.x in (e.window.size.x - 10)..e.window.size.x and e.pos.y in (e.window.size.y - 10)..e.window.size.y:
-          e.window.startInteractiveResize(Edge.bottomRight)
-        elif e.pos.x in 0..10:
-          e.window.startInteractiveResize(Edge.left)
-        elif e.pos.x in (e.window.size.x - 10)..e.window.size.x:
-          e.window.startInteractiveResize(Edge.right)
-        elif e.pos.y in 0..10:
-          e.window.startInteractiveResize(Edge.top)
-        elif e.pos.y in (e.window.size.y - 10)..e.window.size.y:
-          e.window.startInteractiveResize(Edge.bottom)
     ,
   )
 

@@ -79,7 +79,8 @@ run window, WindowEventsHandler(
     glEnd()
 )
 ```
-note: call redraw(window) every time you want window.render to be called. siwin will automatically call window.render only when window resizes.
+note: call redraw(window) every time you want window.render to be called. siwin will automatically call window.render only when window resizes.  
+note: opengl 1.x and 2.x functions (like `glBegin`), is not supported on Wayland, due to Wayland only beeng able to initialize with EGL
 
 ## Vulkan
 see [t_vulkan.nim](https://github.com/levovix0/siwin/blob/master/tests/t_vulkan.nim)
@@ -255,6 +256,7 @@ run window, WindowEventsHandler(
 ## all methods and events
 see [siwin/platforms/any/window](https://github.com/levovix0/siwin/blob/master/src/siwin/platforms/any/window.nim)
 
+
 ## I want to get system handle of window and do some magic, but it is private?
 ```nim
 import std/importutils
@@ -272,7 +274,6 @@ If you want to support this project, here is some tasks to do:
   * if you doing very big refactoring, first create issue to ask is all your changes needed, and if it is, refactor
 * Documentation
 * Optimization
-* Wayland support
 * MacOS support
 * Android/IOS support
 * Web support

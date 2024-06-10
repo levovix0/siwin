@@ -1,8 +1,9 @@
-import times, os, options, std/importutils
-import vmath
-import winapi
+import std/[times, os, options, importutils]
+import pkg/[vmath]
+import ./[winapi]
 import ../../[utils, colorutils]
 import ../any/window {.all.}
+import ../any/[windowUtils]
 
 privateAccess Window
 
@@ -289,6 +290,7 @@ method `pos=`*(window: WindowWinapi, v: IVec2) =
   if window.m_fullscreen: return
   window.handle.SetWindowPos(0, v.x, v.y, 0, 0, SwpNoSize)
 
+
 method `cursor=`*(window: WindowWinapi, v: Cursor) =
   if window.m_cursor.kind == builtin and v.kind == builtin and v.builtin == window.m_cursor.builtin: return
   if window.wcursor != 0: DestroyCursor window.wcursor
@@ -308,7 +310,7 @@ method `cursor=`*(window: WindowWinapi, v: Cursor) =
     of BuiltinCursor.cross:           LoadCursor(0, IdcCross)
     of BuiltinCursor.sizeAll:         LoadCursor(0, IdcSizeAll)
     of BuiltinCursor.sizeVertical:    LoadCursor(0, IdcSizens)
-    of BuiltinCursor.sizeHorisontal:  LoadCursor(0, IdcSizewe)
+    of BuiltinCursor.sizeHorizontal:  LoadCursor(0, IdcSizewe)
     of BuiltinCursor.sizeTopLeft:     LoadCursor(0, IdcSizenwse)
     of BuiltinCursor.sizeTopRight:    LoadCursor(0, IdcSizenesw)
     of BuiltinCursor.sizeBottomLeft:  LoadCursor(0, IdcSizenesw)
@@ -482,6 +484,10 @@ method startInteractiveResize*(window: WindowWinapi, edge: Edge, pos: Option[IVe
   # todo: press all keys and mouse buttons that are pressed after resize
 
 
+method showWindowMenu*(window: WindowWinapi, pos: Option[IVec2]) =
+  discard
+
+
 method displayImpl(window: WindowWinapi) {.base.} =
   var ps: PaintStruct
   window.handle.BeginPaint(ps.addr)
@@ -522,6 +528,10 @@ method step*(window: WindowWinapi) =
     window.m_minimized = IsIconic(window.handle) != 0
     window.m_visible = IsWindowVisible(window.handle) != 0
     window.m_resizable = (GetWindowLongW(window.handle, GwlStyle) and WsThickframe) != 0
+    
+    var p: WindowPlacement
+    GetWindowPlacement(window.handle, p.addr)
+    window.m_pos = ivec2(p.rcNormalPosition.left, p.rcNormalPosition.top)
 
   while PeekMessage(msg.addr, 0, 0, 0, PmRemove).bool:
     checkStateChanged()
@@ -675,6 +685,22 @@ proc poolEvent(window: WindowWinapi, message: Uint, wParam: WParam, lParam: LPar
     if window.m_maxSize != ivec2():
       info[].ptMaxTrackSize.x = window.m_maxSize.x
       info[].ptMaxTrackSize.y = window.m_maxSize.y
+
+  of WmNcHitTest:
+    window.mouse.pos = ivec2(lParam.GetX_LParam.int32, lParam.GetY_LParam.int32)
+    ScreenToClient(window.handle, cast[ptr Point](window.mouse.pos.addr))
+    case window.windowPartAt(window.mouse.pos)
+    of title: return HtCaption
+    of client: return HtClient
+    of border_top_left: return HtTopLeft
+    of border_top_right: return HtTopRight
+    of border_bottom_left: return HtBottomLeft
+    of border_bottom_right: return HtBottomRight
+    of border_top: return HtTop
+    of border_bottom: return HtBottom
+    of border_left: return HtLeft
+    of border_right: return HtRight
+    of none: return HtNowhere
 
   else: return window.handle.DefWindowProc(message, wParam, lParam)
 

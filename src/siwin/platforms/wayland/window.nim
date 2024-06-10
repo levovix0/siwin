@@ -2,6 +2,7 @@ import std/[times, importutils, strformat, options, tables, os]
 import pkg/[vmath]
 import ../../[utils, colorutils]
 import ../any/window {.all.}
+import ../any/[windowUtils]
 import ./[libwayland, protocol, globals, sharedBuffer, bitfields, xkb]
 
 {.experimental: "overloadableEnums".}
@@ -473,6 +474,35 @@ method startInteractiveResize*(window: WindowWayland, edge: Edge, pos: Option[IV
   )
 
 
+method showWindowMenu*(window: WindowWayland, pos: Option[IVec2]) =
+  let pos = pos.get(window.mouse.pos)
+  window.xdgToplevel.show_window_menu(seat, window.lastMouseButtonEventSerial, pos.x, pos.y)
+
+
+method setInputRegion*(window: WindowWayland, pos, size: IVec2) =
+  procCall window.Window.setInputRegion(pos, size)
+  let region = compositor.create_region
+  region.add(pos.x, pos.y, size.x, size.y)
+  window.surface.set_input_region(region)
+  window.xdgSurface.set_window_geometry(pos.x, pos.y, size.x, size.y)
+
+
+proc replicateWindowTitleAndBorderBehaviour(window: WindowWayland, prevMousePos: IVec2) =
+  if window.mouse.pressed != {MouseButton.left} or window.clicking != {MouseButton.left}: return
+  
+  case window.windowPartAt(prevMousePos)
+  of WindowPart.title:                window.startInteractiveMove(some prevMousePos)
+  of WindowPart.border_top_left:      window.startInteractiveResize(Edge.topLeft, some prevMousePos)
+  of WindowPart.border_top_right:     window.startInteractiveResize(Edge.topRight, some prevMousePos)
+  of WindowPart.border_bottom_left:   window.startInteractiveResize(Edge.bottomLeft, some prevMousePos)
+  of WindowPart.border_bottom_right:  window.startInteractiveResize(Edge.bottomRight, some prevMousePos)
+  of WindowPart.border_top:           window.startInteractiveResize(Edge.top, some prevMousePos)
+  of WindowPart.border_bottom:        window.startInteractiveResize(Edge.bottom, some prevMousePos)
+  of WindowPart.border_left:          window.startInteractiveResize(Edge.left, some prevMousePos)
+  of WindowPart.border_right:         window.startInteractiveResize(Edge.right, some prevMousePos)
+  else: discard
+
+
 proc initSeatEvents* =
   if seatEventsInitialized: return
   if not waylandAvailable: return
@@ -488,8 +518,12 @@ proc initSeatEvents* =
       let window = associatedWindows[surface.proxy.raw.id]
       seat_pointer_currentWindow = window
       
+      window.clicking = {}
       window.enterSerial = serial
       window.mouse.pos = vec2(surface_x, surface_y).ivec2
+
+      replicateWindowTitleAndBorderBehaviour(window, window.mouse.pos)
+
       window.eventsHandler.pushEvent onMouseMove, MouseMoveEvent(window: window, pos: window.mouse.pos, kind: MouseMoveKind.enter)
     
 
@@ -497,8 +531,13 @@ proc initSeatEvents* =
       seat_pointer_currentWindow = nil
       if surface == nil or surface.proxy.raw.id notin associatedWindows: return
       let window = associatedWindows[surface.proxy.raw.id]
+
+      replicateWindowTitleAndBorderBehaviour(window, window.mouse.pos)
       
+      window.clicking = {}
       window.eventsHandler.pushEvent onMouseMove, MouseMoveEvent(window: window, pos: window.mouse.pos, kind: MouseMoveKind.leave)
+      
+      # we don't unpress buttons on leave, because we "capture" mouse
     
 
     seat_pointer.onMotion:
@@ -506,8 +545,11 @@ proc initSeatEvents* =
         if (
           (window.mouse.pressed.len == 0) and
           window != seat_pointer_currentWindow
-        ): return
+        ): continue
 
+        replicateWindowTitleAndBorderBehaviour(window, window.mouse.pos)
+
+        window.clicking = {}
         window.mouse.pos = vec2(surface_x, surface_y).ivec2
         window.eventsHandler.pushEvent onMouseMove, MouseMoveEvent(window: window, pos: window.mouse.pos, kind: MouseMoveKind.move)
     
@@ -528,7 +570,7 @@ proc initSeatEvents* =
         if (
           (state != `WlPointer / Button_state`.released or button notin window.mouse.pressed) and
           window != seat_pointer_currentWindow
-        ): return
+        ): continue
 
         window.lastMouseButtonEventSerial = serial
         if state == `WlPointer / Button_state`.pressed:
@@ -679,7 +721,6 @@ proc setupWindow(window: WindowWayland, fullscreen, frameless, transparent: bool
     window.m_closed = true
 
   window.xdgToplevel.onConfigure:
-    window.xdgSurface.ackConfigure(0)  #? is it needed?    
     window.resize(ivec2(width, height))
 
     let states = states.toSeq(`XdgToplevel / State`)

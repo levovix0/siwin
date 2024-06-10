@@ -6,42 +6,102 @@ import ./gl
 test "OpenGL ES":
   var g = 1.0
   
-  let window = newOpenglWindow(title="OpenGL ES test", transparent=true)
+  let window = newOpenglWindow(title="OpenGL ES test", transparent=true, frameless=true)
   loadExtensions()
+
+  window.setBorderWidth(10, 10, 10)
   
   run window, WindowEventsHandler(
     onResize: proc(e: ResizeEvent) =
+      window.setTitleRegion(ivec2(0, 0), ivec2(e.size.x, 80))
+      window.setInputRegion(ivec2(10, 10), ivec2(e.size.x - 20, e.size.y - 20))
+      
       glViewport 0, 0, e.size.x.GLsizei, e.size.y.GLsizei
     ,
     onRender: proc(e: RenderEvent) =
       let ctx = newDrawContext()
 
-      glClearColor(32/255/2, 32/255/2, 32/255/2, 1/2)
+      glClearColor(127/255/2, 127/255/2, 127/255/2, 1/2)
       # glClearColor(32/255, 32/255, 32/255, 1)
       glClear(GL_COLOR_BUFFER_BIT or GL_DEPTH_BUFFER_BIT)
 
-      let shader = ctx.makeShader:
-        {.version: "320 es".}
-        proc vert(
-          gl_Position: var Vec4,
-          pos: var Vec2,
-          in_pos: Vec2,
-        ) =
-          gl_Position = vec4(in_pos.x - 0.5, in_pos.y - 0.5, 0, 1)
-          pos = in_pos
+      block rainbowRect:
+        let shader = ctx.makeShader:
+          {.version: "320 es".}
+          proc vert(
+            gl_Position: var Vec4,
+            pos: var Vec2,
+            in_pos: Vec2,
+          ) =
+            gl_Position = vec4(in_pos.x - 0.5, in_pos.y - 0.5, 0, 1)
+            pos = in_pos
 
-        proc frag(
-          glCol: var Vec4,
-          pos: Vec2,
-        ) =
-          # glCol = vec4(pos.x, pos.y, 0, pos.x * pos.y)
-          glCol = vec4(pos.x, pos.y, 0, 1)
-      
-      # glEnable(GlBlend)
-      # glBlendFuncSeparate(GlOne, GlOneMinusSrcAlpha, GlOne, GlOne)
-      use shader.shader
-      draw ctx.rect
-      # glDisable(GlBlend)
+          proc frag(
+            glCol: var Vec4,
+            pos: Vec2,
+          ) =
+            # glCol = vec4(pos.x, pos.y, 0, pos.x * pos.y)
+            glCol = vec4(pos.x, pos.y, 0, 1)
+        
+        # glEnable(GlBlend)
+        # glBlendFuncSeparate(GlOne, GlOneMinusSrcAlpha, GlOne, GlOne)
+        use shader.shader
+        draw ctx.rect
+        # glDisable(GlBlend)
+
+      block titleBar:
+        let shader = ctx.makeShader:
+          {.version: "320 es".}
+          proc vert(
+            gl_Position: var Vec4,
+            pos: var Vec2,
+            h: Uniform[float],
+            in_pos: Vec2,
+          ) =
+            gl_Position = vec4(in_pos.x * 2 - 1, -(in_pos.y * h) * 2 + 1, 0, 1)
+            pos = in_pos
+
+          proc frag(
+            glCol: var Vec4,
+            pos: Vec2,
+          ) =
+            glCol = vec4(0.2, 0.2, 0.2, 1)
+        
+        use shader.shader
+        shader.h.uniform = 80 / e.window.size.y
+        draw ctx.rect
+
+      block border:
+        let shader = ctx.makeShader:
+          {.version: "320 es".}
+          proc vert(
+            gl_Position: var Vec4,
+            pos: var Vec2,
+            in_pos: Vec2,
+          ) =
+            gl_Position = vec4(in_pos.x * 2 - 1, in_pos.y * 2 - 1, 0, 1)
+            pos = in_pos
+
+          proc frag(
+            glCol: var Vec4,
+            pos: Vec2,
+            w: Uniform[float],
+            h: Uniform[float],
+          ) =
+            if (pos.x > w*2 and pos.x < 1 - w*2) and (pos.y > h*2 and pos.y < 1 - h*2):
+              glCol = vec4(0, 0, 0, 0)
+            elif (pos.x > w and pos.x < 1 - w) and (pos.y > h and pos.y < 1 - h):
+              glCol = vec4(0.4, 0.4, 0.4, 0.4)
+            else:
+              glCol = vec4(0, 0, 0, 0.4)
+        
+        glEnable(GlBlend)
+        glBlendFuncSeparate(GlOne, GlOneMinusSrcAlpha, GlOne, GlOne)
+        use shader.shader
+        shader.w.uniform = 10 / e.window.size.x
+        shader.h.uniform = 10 / e.window.size.y
+        draw ctx.rect
+        glDisable(GlBlend)
     ,
     onKey: proc(e: KeyEvent) =
       if e.pressed:

@@ -45,6 +45,7 @@ type
     bo: Buffers
 
   OpenglUniform*[T] = distinct GlInt
+  Uniform*[T] = T
 
 
   DrawContext* = ref object
