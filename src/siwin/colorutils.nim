@@ -1,6 +1,6 @@
 import std/[macros]
 import pkg/[vmath]
-import ./[utils, siwindefs]
+import ./[utils, siwindefs, dynutils]
 
 
 when siwin_use_pure_enums:
@@ -69,7 +69,7 @@ proc toPremultiplied(c: byte, a: byte): byte {.inline.} =
   (c.float / 255 * a.float).byte
 
 
-proc convertPixelsInplace*(data: pointer, size: IVec2, sourceFormat, targetFormat: PixelBufferFormat) =
+proc convertPixelsInplace*(data: pointer, size: IVec2, sourceFormat, targetFormat: PixelBufferFormat) {.siwin_importExport.} =
   ## convert pixels to proper format
   let size = size.x * size.y
 

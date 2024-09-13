@@ -756,7 +756,7 @@ proc initSoftwareRenderingWindow(
   
   window.setupWindow fullscreen, frameless, transparent, size, class
 
-  window.buffer = shm.create(size, (if transparent: argb8888 else: xrgb8888))  
+  window.buffer = shm.create(size, (if transparent: argb8888 else: xrgb8888))
   window.surface.attach(window.buffer.buffer, 0, 0)
   commit window.surface
 

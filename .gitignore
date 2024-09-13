@@ -6,6 +6,7 @@
 # normal ignores
 *.exe
 *.dll
+*.so
 .*
 
 /build
