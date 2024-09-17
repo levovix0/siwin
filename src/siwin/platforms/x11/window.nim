@@ -1,7 +1,7 @@
 when not (compiles do: import pkg/x11/xutil):
   {.error: "x11 library not installed, required to cross compile to linux\n please run `nimble install x11`".}
 
-import std/[times, importutils, strformat, sequtils, os, options, tables]
+import std/[times, importutils, strformat, sequtils, os, options, tables, uri]
 import pkg/[vmath, chroma]
 import pkg/x11/xlib except Screen
 import pkg/x11/x except Window, Cursor, Time
@@ -64,6 +64,10 @@ type
 
     temporaryCursor: Option[BuiltinCursor]
       # used to emulate window title and border cursor changes
+    
+    dragSourceWindow: x.Window
+    dragGettingContentRequests: Table[int, tuple[kind: DragContentKind, mimeType: string]]
+    lastDragContent: tuple[supportedKinds: set[DragContentKind], supportedMimeTypes: seq[string]]
   
   WindowX11SoftwareRendering* = ref WindowX11SoftwareRenderingObj
   WindowX11SoftwareRenderingObj* = object of WindowX11
@@ -320,9 +324,8 @@ proc `=destroy`(x: WindowX11SoftwareRenderingObj) =
   `=destroy`(x.gc)
 
 
-template pushEvent(eventsHandler: WindowEventsHandler, event, args) =
-  if eventsHandler.event != nil:
-    eventsHandler.event(args)
+proc pushEvent[T](event: proc(e: T), args: T) =
+  if event != nil: event(args)
 
 proc resizePixelBuffer(window: WindowX11SoftwareRendering, size: IVec2) =
   window.pixels = window.pixels.realloc(size.x * size.y * Color32bit.sizeof)
@@ -381,6 +384,9 @@ proc setupWindow(window: WindowX11, fullscreen, frameless: bool, class: string) 
     hint.res_name = name.cstring    # use filename as application name
     hint.res_class = class.cstring  # use class (same as title by default) as window class
     discard display.XSetClassHint(window.handle, hint.addr)
+
+  let supportedDndVersion = 4
+  discard display.XChangeProperty(window.handle, atoms.xDndAware, XaAtom, 32, PropModeReplace, cast[PCUchar](supportedDndVersion.addr), 1)
 
 
 proc initSoftwareRenderingWindow(
@@ -469,7 +475,7 @@ method `frameless=`*(window: WindowX11, v: bool) =
     discard display.XUnmapWindow(window.handle)
     discard display.XMapWindow(window.handle)
 
-  window.eventsHandler.pushEvent onStateBoolChanged, StateBoolChangedEvent(
+  window.eventsHandler.onStateBoolChanged.pushEvent StateBoolChangedEvent(
     window: window, kind: StateBoolChangedEventKind.frameless, value: v
   )
 
@@ -640,7 +646,7 @@ method `maximized=`*(window: WindowX11, v: bool) =
     display.DefaultRootWindow, 0, SubstructureNotifyMask or SubstructureRedirectMask, event.addr
   )
   window.m_maximized = v
-  window.eventsHandler.pushEvent onStateBoolChanged, StateBoolChangedEvent(
+  window.eventsHandler.onStateBoolChanged.pushEvent StateBoolChangedEvent(
     window: window, kind: StateBoolChangedEventKind.maximized, value: v
   )
 
@@ -650,11 +656,11 @@ proc releaseAllKeys(window: WindowX11) =
   ## needed when window loses focus
   for k in window.keyboard.pressed.items:
     window.keyboard.pressed.excl k
-    window.eventsHandler.pushEvent onKey, KeyEvent(window: window, key: k, pressed: false, repeated: false, generated: true)
+    window.eventsHandler.onKey.pushEvent KeyEvent(window: window, key: k, pressed: false, repeated: false, generated: true)
 
   for b in window.mouse.pressed:
     window.mouse.pressed.excl b
-    window.eventsHandler.pushEvent onMouseButton, MouseButtonEvent(window: window, button: b, pressed: false, generated: true)
+    window.eventsHandler.onMouseButton.pushEvent MouseButtonEvent(window: window, button: b, pressed: false, generated: true)
 
 
 method `minimized=`*(window: WindowX11, v: bool) =
@@ -764,6 +770,34 @@ method setInputRegion*(window: WindowX11, pos, size: IVec2) =
   # todo: use XShape to cut window input region
 
 
+method requestDragContentInFormat*(window: WindowX11, kind: DragContentKind, mimeType: string) =
+  var requestIndex = 0
+  while requestIndex < window.dragGettingContentRequests.len + 1:
+    if requestIndex notin window.dragGettingContentRequests:
+      break  # free space
+    else:
+      inc requestIndex
+  
+  if kind notin window.lastDragContent.supportedKinds:
+    raise ValueError.newException("Unsupported drag content kind")
+
+  if kind == DragContentKind.mimeType and mimeType notin window.lastDragContent.supportedMimeTypes:
+    raise ValueError.newException("Unsupported drag content mime type")
+
+  var mimeType =
+    case kind
+    of text: "text/plain"
+    of files: "text/uri-list"
+    of mimeType: mimeType.toLower
+
+  window.dragGettingContentRequests[requestIndex] = (kind, mimeType)
+
+  discard display.XConvertSelection(
+    atoms.xDndSelection, display.XInternAtom(cstring mimeType, 0),
+    display.XInternAtom(cstring "siwin_dndTargetProperty_" & $requestIndex, 0), window.handle, CurrentTime
+  )
+
+
 proc emulateWindowTitleAndBorderBehaviour(window: WindowX11, prevMousePos: IVec2) =
   case window.windowPartAt(prevMousePos)
   of WindowPart.border_top_left:      window.setTemporaryCursor(BuiltinCursor.sizeTopLeft)
@@ -799,7 +833,7 @@ method firstStep*(window: WindowX11, makeVisible = true) =
   
   if window of WindowX11SoftwareRendering:
     window.WindowX11SoftwareRendering.resizePixelBuffer(window.m_size)
-  window.eventsHandler.pushEvent onResize, ResizeEvent(window: window, size: window.m_size, initial: true)
+  window.eventsHandler.onResize.pushEvent ResizeEvent(window: window, size: window.m_size, initial: true)
   window.lastTickTime = getTime()
 
 
@@ -847,7 +881,7 @@ method step*(window: WindowX11) =
     for k in keys: # press pressed in system keys
       if k == Key.unknown: continue
       window.keyboard.pressed.incl k
-      window.eventsHandler.pushEvent onKey, KeyEvent(window: window, pressed: false, repeated: false)
+      window.eventsHandler.onKey.pushEvent KeyEvent(window: window, pressed: false, repeated: false)
     
     # todo: press pressed in system mouse buttons
 
@@ -862,7 +896,37 @@ method step*(window: WindowX11) =
       ##
     
     of ClientMessage:
-      if ev.xclient.data.l[0] == atoms.wmDeleteWindow.clong:
+      if ev.xclient.message_type == atoms.xDndEnter:
+        window.dragSourceWindow = x.Window ev.xclient.data.l[0]
+
+        var availableMimeTypes: seq[string]
+        if (ev.xclient.data.l[1] and 1) == 1:
+          let typeList = window.dragSourceWindow.property(atoms.xDndTypeList, Atom)
+          for atom in typeList.data:
+            availableMimeTypes.add $display.XGetAtomName(atom)
+        else:
+          if ev.xclient.data.l[2] != 0: availableMimeTypes.add $display.XGetAtomName(ev.xclient.data.l[2].Atom)
+          if ev.xclient.data.l[3] != 0: availableMimeTypes.add $display.XGetAtomName(ev.xclient.data.l[3].Atom)
+          if ev.xclient.data.l[4] != 0: availableMimeTypes.add $display.XGetAtomName(ev.xclient.data.l[4].Atom)
+        
+        availableMimeTypes = availableMimeTypes.deduplicate
+
+        window.lastDragContent = (
+          supportedKinds: {DragContentKind.mimeType},
+          supportedMimeTypes: availableMimeTypes,
+        )
+        
+        if "text/plain" in availableMimeTypes:
+          window.lastDragContent.supportedKinds.incl DragContentKind.text
+        
+        if "text/uri-list" in availableMimeTypes:
+          window.lastDragContent.supportedKinds.incl DragContentKind.files
+
+        window.eventsHandler.onDragContentChanged.pushEvent DragContentChangedEvent(
+          window: window, supportedKinds: window.lastDragContent.supportedKinds, supportedMimeTypes: availableMimeTypes
+        )
+      
+      elif ev.xclient.data.l[0] == atoms.wmDeleteWindow.clong:
         close window
 
       elif ev.xclient.data.l[0] == atoms.netWmSyncRequest.clong:
@@ -877,13 +941,13 @@ method step*(window: WindowX11) =
       let state = (let (kind, data) = window.handle.property(atoms.netWmState, Atom); if kind == XaAtom: data else: @[])
       if atoms.netWmStateFullscreen in state != window.m_fullscreen:
         window.m_fullscreen = not window.m_fullscreen
-        window.eventsHandler.pushEvent onStateBoolChanged, StateBoolChangedEvent(
+        window.eventsHandler.onStateBoolChanged.pushEvent StateBoolChangedEvent(
           window: window, kind: StateBoolChangedEventKind.fullscreen, value: window.m_fullscreen
         )
       
       if (atoms.netWmStateMaximizedHorz in state and atoms.netWmStateMaximizedVert in state) != window.m_maximized:
         window.m_maximized = not window.m_maximized
-        window.eventsHandler.pushEvent onStateBoolChanged, StateBoolChangedEvent(
+        window.eventsHandler.onStateBoolChanged.pushEvent StateBoolChangedEvent(
           window: window, kind: StateBoolChangedEventKind.maximized, value: window.m_maximized
         )
 
@@ -891,12 +955,12 @@ method step*(window: WindowX11) =
         window.m_size = ivec2(ev.xconfigure.width.int32, ev.xconfigure.height.int32)
         if window of WindowX11SoftwareRendering:
           window.WindowX11SoftwareRendering.resizePixelBuffer(window.m_size)
-        window.eventsHandler.pushEvent onResize, ResizeEvent(window: window, size: window.m_size, initial: false)
+        window.eventsHandler.onResize.pushEvent ResizeEvent(window: window, size: window.m_size, initial: false)
 
       if ev.xconfigure.x.int != window.m_pos.x or ev.xconfigure.y.int != window.m_pos.y:
         window.m_pos = ivec2(ev.xconfigure.x.int32, ev.xconfigure.y.int32)
         window.mouse.pos = cursor().pos - window.m_pos
-        window.eventsHandler.pushEvent onWindowMove, WindowMoveEvent(window: window, pos: window.m_pos)
+        window.eventsHandler.onWindowMove.pushEvent WindowMoveEvent(window: window, pos: window.m_pos)
       
       if window.syncState == SyncState.syncRecieved:
         window.syncState = SyncState.syncAndConfigureRecieved
@@ -907,7 +971,7 @@ method step*(window: WindowX11) =
       emulateWindowTitleAndBorderBehaviour(window, window.mouse.pos)
       window.mouse.pos = ivec2(ev.xmotion.x.int32, ev.xmotion.y.int32)
       window.clicking = {}
-      window.eventsHandler.pushEvent onMouseMove, MouseMoveEvent(window: window, pos: window.mouse.pos, kind: MouseMoveKind.move)
+      window.eventsHandler.onMouseMove.pushEvent MouseMoveEvent(window: window, pos: window.mouse.pos, kind: MouseMoveKind.move)
 
     of ButtonPress:
       if not isScroll:
@@ -916,16 +980,16 @@ method step*(window: WindowX11) =
         window.clicking.incl button
 
         if (nows - window.lastClickTime).inMilliseconds < 200:
-          window.eventsHandler.pushEvent onClick, ClickEvent(
+          window.eventsHandler.onClick.pushEvent ClickEvent(
             window: window, button: button, pos: window.mouse.pos, double: true
           )
           window.doubleClickHandled = true
         else:
           window.doubleClickHandled = false
         
-        window.eventsHandler.pushEvent onMouseButton, MouseButtonEvent(window: window, button: button, pressed: true)
+        window.eventsHandler.onMouseButton.pushEvent MouseButtonEvent(window: window, button: button, pressed: true)
       elif scrollDeltaX != 0 or scrollDeltaY != 0:
-        window.eventsHandler.pushEvent onScroll, ScrollEvent(window: window, delta: scrollDeltaY, deltaX: scrollDeltaX)
+        window.eventsHandler.onScroll.pushEvent ScrollEvent(window: window, delta: scrollDeltaY, deltaX: scrollDeltaX)
 
     of ButtonRelease:
       if not isScroll:
@@ -934,30 +998,30 @@ method step*(window: WindowX11) =
 
         if button in window.clicking:
           if not window.doubleClickHandled:
-            window.eventsHandler.pushEvent onClick, ClickEvent(
+            window.eventsHandler.onClick.pushEvent ClickEvent(
               window: window, button: button, pos: window.mouse.pos, double: false
             )
             window.lastClickTime = nows
           window.clicking.excl button
 
-        window.eventsHandler.pushEvent onMouseButton, MouseButtonEvent(window: window, button: button, pressed: false)
+        window.eventsHandler.onMouseButton.pushEvent MouseButtonEvent(window: window, button: button, pressed: false)
 
     of LeaveNotify:
       emulateWindowTitleAndBorderBehaviour(window, window.mouse.pos)
       window.clicking = {}
       window.mouse.pos = ivec2(ev.xcrossing.x.int32, ev.xcrossing.y.int32)
-      window.eventsHandler.pushEvent onMouseMove, MouseMoveEvent(window: window, pos: window.mouse.pos, kind: MouseMoveKind.leave)
+      window.eventsHandler.onMouseMove.pushEvent MouseMoveEvent(window: window, pos: window.mouse.pos, kind: MouseMoveKind.leave)
     
     of EnterNotify:
       emulateWindowTitleAndBorderBehaviour(window, window.mouse.pos)
       window.clicking = {}
       window.mouse.pos = ivec2(ev.xcrossing.x.int32, ev.xcrossing.y.int32)
-      window.eventsHandler.pushEvent onMouseMove, MouseMoveEvent(window: window, pos: window.mouse.pos, kind: MouseMoveKind.enter)
+      window.eventsHandler.onMouseMove.pushEvent MouseMoveEvent(window: window, pos: window.mouse.pos, kind: MouseMoveKind.enter)
 
     of FocusIn:
       window.m_focused = true
       if window.xinContext != nil: XSetICFocus window.xinContext
-      window.eventsHandler.pushEvent onStateBoolChanged, StateBoolChangedEvent(
+      window.eventsHandler.onStateBoolChanged.pushEvent StateBoolChangedEvent(
         window: window, kind: StateBoolChangedEventKind.focus, value: true
       )
       window.pressAllKeys()
@@ -966,7 +1030,7 @@ method step*(window: WindowX11) =
     of FocusOut:
       window.m_focused = false
       if window.xinContext != nil: XUnsetICFocus window.xinContext
-      window.eventsHandler.pushEvent onStateBoolChanged, StateBoolChangedEvent(
+      window.eventsHandler.onStateBoolChanged.pushEvent StateBoolChangedEvent(
         window: window, kind: StateBoolChangedEventKind.focus, value: false
       )
       window.releaseAllKeys()
@@ -975,7 +1039,7 @@ method step*(window: WindowX11) =
       var key = ev.xkey.extractKey
       if key != Key.unknown:
         window.keyboard.pressed.incl key
-        window.eventsHandler.pushEvent onKey, KeyEvent(window: window, key: key, pressed: true, repeated: repeated)
+        window.eventsHandler.onKey.pushEvent KeyEvent(window: window, key: key, pressed: true, repeated: repeated)
 
       if window.eventsHandler.onTextInput != nil and window.xinContext != nil and (window.keyboard.pressed * {lcontrol, rcontrol, lalt, ralt}).len == 0:
         var status: Status
@@ -999,14 +1063,46 @@ method step*(window: WindowX11) =
         if repeated: prevEventIsKeyUpRepeated = true
 
         window.keyboard.pressed.excl key
-        window.eventsHandler.pushEvent onKey, KeyEvent(window: window, key: key, pressed: false, repeated: repeated)
+        window.eventsHandler.onKey.pushEvent KeyEvent(window: window, key: key, pressed: false, repeated: repeated)
+    
+    of SelectionNotify:
+      if ev.xselection.selection == atoms.xDndSelection:
+        let targetProperty = $display.XGetAtomName(ev.xselection.property)
+        if not targetProperty.startsWith("siwin_dndTargetProperty_"): return
+
+        let requestIndex = targetProperty["siwin_dndTargetProperty_".len..^1].parseInt
+        if requestIndex notin window.dragGettingContentRequests: return
+
+        let (kind, mimeType) = window.dragGettingContentRequests[requestIndex]
+        
+        let data = window.handle.property(ev.xselection.property, string).data
+
+        discard display.XDeleteProperty(window.handle, ev.xselection.target)
+        window.dragGettingContentRequests.del requestIndex
+
+        case kind
+        of text:
+          window.eventsHandler.onGotDragContent.pushEvent GotDragContentEvent(window: window, kind: text, text: data)
+        
+        of files:
+          let uris = data.splitLines
+          var files: seq[string]
+          for uri in uris:
+            let uri = parseUri(uri)
+            if uri.scheme == "file":
+              files.add uri.path.decodeUrl
+
+          window.eventsHandler.onGotDragContent.pushEvent GotDragContentEvent(window: window, kind: files, files: files)
+        
+        of mimeType:
+          window.eventsHandler.onGotDragContent.pushEvent GotDragContentEvent(window: window, kind: mimeType, mimeType: mimeType, data: data)
 
     else: discard
 
 
   block nextEvent:
     template closeAndExit =
-      window.eventsHandler.pushEvent onClose, CloseEvent(window: window)
+      window.eventsHandler.onClose.pushEvent CloseEvent(window: window)
       return
     
     var
@@ -1042,12 +1138,12 @@ method step*(window: WindowX11) =
 
 
   let nows = getTime()
-  window.eventsHandler.pushEvent onTick, TickEvent(window: window, deltaTime: nows - window.lastTickTime)
+  window.eventsHandler.onTick.pushEvent TickEvent(window: window, deltaTime: nows - window.lastTickTime)
   window.lastTickTime = nows
 
   if window.redrawRequested:
     window.redrawRequested = false
-    window.eventsHandler.pushEvent onRender, RenderEvent(window: window)
+    window.eventsHandler.onRender.pushEvent RenderEvent(window: window)
 
     window.beginSwapBuffers()
 

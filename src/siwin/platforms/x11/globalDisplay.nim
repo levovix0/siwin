@@ -13,7 +13,8 @@ var atoms*: tuple[
   frameless, wmDeleteWindow, utf8String, netWmName, netWmIconName,
   netWmState, netWmStateFullscreen, netWmStateMaximizedHorz, netWmStateMaximizedVert, netWmStateHidden, netWmMoveResize,
   netWmSyncRequest, netWmSyncRequestCounter,
-  clipboard, siwin_clipboardTargetProperty, targets, text
+  clipboard, siwin_clipboardTargetProperty, targets, text,
+  xDndAware, xDndEnter, xDndTypeList, xDndSelection
   : Atom
 ]
 
@@ -51,6 +52,10 @@ proc init* {.raises: [OsError].} =
   atoms.siwin_clipboardTargetProperty = display.XInternAtom("siwin_clipboardTargetProperty", 0)
   atoms.targets = display.XInternAtom("TARGETS", 0)
   atoms.text = display.XInternAtom("TEXT", 0)
+  atoms.xDndAware = display.XInternAtom("XdndAware", 0)
+  atoms.xDndEnter = display.XInternAtom("XdndEnter", 0)
+  atoms.xDndTypeList = display.XInternAtom("XdndTypeList", 0)
+  atoms.xDndSelection = display.XInternAtom("XdndSelection", 0)
 
 proc uninit* =
   if display == nil: return

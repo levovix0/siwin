@@ -778,7 +778,7 @@ method step*(window: WindowWayland) =
   ## ! don't forget to call firstStep()
 
   template closeIfNeeded =
-    if window.m_closed: 
+    if window.m_closed:
       release window
       window.eventsHandler.pushEvent onClose, CloseEvent(window: window)
       return

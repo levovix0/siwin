@@ -86,6 +86,13 @@ type
     enter
     leave
 
+
+  DragContentKind* {.siwinPureEnum.} = enum
+    text
+    files
+    mimeType
+
+
   AnyWindowEvent* = object of RootObj
     window*: Window
   
@@ -150,6 +157,21 @@ type
     kind*: StateBoolChangedEventKind
     isExternal*: bool  ## changed by user via compositor (server-side change)
 
+  DragContentChangedEvent* = object of AnyWindowEvent
+    supportedKinds*: set[DragContentKind]
+    supportedMimeTypes*: seq[string]
+  
+  GotDragContentEvent* = object of AnyWindowEvent
+    case kind*: DragContentKind
+    of DragContentKind.text:
+      text*: string
+    of DragContentKind.files:
+      files*: seq[string]
+    of DragContentKind.mimeType:
+      mimeType*: string
+      data*: string
+
+
   WindowEventsHandler* = object
     onClose*:       proc(e: CloseEvent)
     onRender*:      proc(e: RenderEvent)
@@ -170,6 +192,9 @@ type
     onTextInput*:  proc(e: TextInputEvent)
 
     onStateBoolChanged*: proc(e: StateBoolChangedEvent)
+
+    onDragContentChanged*: proc(e: DragContentChangedEvent)
+    onGotDragContent*:     proc(e: GotDragContentEvent)
 
 
   Window* = ref object of RootObj
@@ -322,7 +347,7 @@ method setInputRegion*(window: Window, pos, size: IVec2) {.base.} =
   ## this is used by Windows and Linux(Wayland) to correctly anchor the window and to correctly send mouse and touch events.
   ## it's recomended to set input region if you draw shadows for window.
   ## setInputRegion, if called once, must be called after each resize of the window
-  assert size.x * size.y > 0, "there must be at least one pixel of the actual window"
+  assert size.x > 0 and size.y > 0, "there must be at least one pixel of the actual window"
   window.inputRegion = some (pos, size)
 
 
@@ -357,6 +382,9 @@ method `vsync=`*(window: Window, v: bool, silent = false) {.base.} = discard
 
 method vulkanSurface*(window: Window): pointer {.base.} = discard
   ## get a VkSurfaceKHR attached to window
+
+
+method requestDragContentInFormat*(window: Window, kind: DragContentKind, mimeType = "text/plain") {.base.} = discard
 
 
 method firstStep*(window: Window, makeVisible = true) {.base.} = discard

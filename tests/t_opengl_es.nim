@@ -147,4 +147,20 @@ test "OpenGL ES":
     ,
     onScroll: proc(e: ScrollEvent) =
       echo "scroll: ", vec2(e.delta, e.deltaX)
+    ,
+    onDragContentChanged: proc(e: DragContentChangedEvent) =
+      echo "drag supported kinds: ", e.supportedKinds
+      echo "drag supported mime types: ", e.supportedMimeTypes
+      if DragContentKind.files in e.supportedKinds:
+        e.window.requestDragContentInFormat(DragContentKind.files)
+    ,
+    onGotDragContent: proc(e: GotDragContentEvent) =
+      case e.kind
+      of DragContentKind.text:
+        echo "got drag text: ", e.text
+      of DragContentKind.files:
+        echo "got drag files: ", e.files
+      of DragContentKind.mimeType:
+        echo "got drag content as ", e.mimeType, ": ", e.data
+    ,
   )
