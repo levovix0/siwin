@@ -138,6 +138,7 @@ test "OpenGL ES":
     onMouseMove: proc(e: MouseMoveEvent) =
       if e.kind == leave: echo "leave: ", e.pos
       if e.kind == MouseMoveKind.enter: echo "enter: ", e.pos
+      if e.kind == MouseMoveKind.moveWhileDragging: echo "draging: ", e.pos
       if MouseButton.left in e.window.mouse.pressed:
         g = (e.pos.x / e.window.size.x * 2).min(2).max(0)
         redraw e.window
@@ -153,6 +154,9 @@ test "OpenGL ES":
       echo "drag supported mime types: ", e.supportedMimeTypes
       if DragContentKind.files in e.supportedKinds:
         e.window.requestDragContentInFormat(DragContentKind.files)
+      
+      if e.supportedKinds == {}:
+        echo "drop content set to none;"
     ,
     onGotDragContent: proc(e: GotDragContentEvent) =
       case e.kind
@@ -162,5 +166,9 @@ test "OpenGL ES":
         echo "got drag files: ", e.files
       of DragContentKind.mimeType:
         echo "got drag content as ", e.mimeType, ": ", e.data
+      
+      e.window.dragStatus = DragStatus.accepted
     ,
+    onDrop: proc(e: DropEvent) =
+      echo "drop;"
   )

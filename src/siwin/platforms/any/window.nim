@@ -85,12 +85,17 @@ type
     move
     enter
     leave
+    moveWhileDragging  ## (from this or other window)
 
 
   DragContentKind* {.siwinPureEnum.} = enum
     text
     files
     mimeType
+  
+  DragStatus* {.siwinPureEnum.} = enum
+    rejected
+    accepted
 
 
   AnyWindowEvent* = object of RootObj
@@ -170,6 +175,8 @@ type
     of DragContentKind.mimeType:
       mimeType*: string
       data*: string
+  
+  DropEvent* = object of AnyWindowEvent
 
 
   WindowEventsHandler* = object
@@ -195,6 +202,7 @@ type
 
     onDragContentChanged*: proc(e: DragContentChangedEvent)
     onGotDragContent*:     proc(e: GotDragContentEvent)
+    onDrop*:               proc(e: DropEvent)
 
 
   Window* = ref object of RootObj
@@ -385,6 +393,8 @@ method vulkanSurface*(window: Window): pointer {.base.} = discard
 
 
 method requestDragContentInFormat*(window: Window, kind: DragContentKind, mimeType = "text/plain") {.base.} = discard
+
+method `dragStatus=`*(window: Window, v: DragStatus) {.base.} = discard
 
 
 method firstStep*(window: Window, makeVisible = true) {.base.} = discard

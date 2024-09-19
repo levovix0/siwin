@@ -68,6 +68,9 @@ type
     dragSourceWindow: x.Window
     dragGettingContentRequests: Table[int, tuple[kind: DragContentKind, mimeType: string]]
     lastDragContent: tuple[supportedKinds: set[DragContentKind], supportedMimeTypes: seq[string]]
+    dragPositionTimestamp: x.Time
+    lastDragStatus: DragStatus
+    dragStatusSent: bool
   
   WindowX11SoftwareRendering* = ref WindowX11SoftwareRenderingObj
   WindowX11SoftwareRenderingObj* = object of WindowX11
@@ -794,8 +797,27 @@ method requestDragContentInFormat*(window: WindowX11, kind: DragContentKind, mim
 
   discard display.XConvertSelection(
     atoms.xDndSelection, display.XInternAtom(cstring mimeType, 0),
-    display.XInternAtom(cstring "siwin_dndTargetProperty_" & $requestIndex, 0), window.handle, CurrentTime
+    display.XInternAtom(cstring "siwin_dndTargetProperty_" & $requestIndex, 0), window.handle, window.dragPositionTimestamp
   )
+
+
+method `dragStatus=`*(window: WindowX11, v: DragStatus) =
+  if window.dragSourceWindow == 0: return
+
+  var event = window.dragSourceWindow.newClientMessage(atoms.xDndStatus, [window.handle.clong])
+  event.xclient.data.l[1] = (if v != DragStatus.rejected: 1 else: 0).clong
+
+  case v
+  of DragStatus.accepted:
+    event.xclient.data.l[4] = atoms.xDndActionPrivate.clong
+  of DragStatus.rejected:
+    discard
+
+  discard display.XSendEvent(
+    window.dragSourceWindow, 0, NoEventMask, event.addr
+  )
+  window.lastDragStatus = v
+  window.dragStatusSent = true
 
 
 proc emulateWindowTitleAndBorderBehaviour(window: WindowX11, prevMousePos: IVec2) =
@@ -822,6 +844,14 @@ proc emulateWindowTitleAndBorderBehaviour(window: WindowX11, prevMousePos: IVec2
     of WindowPart.border_left:          window.startInteractiveResize(Edge.left, some prevMousePos)
     of WindowPart.border_right:         window.startInteractiveResize(Edge.right, some prevMousePos)
     else: discard
+
+
+proc clearDragState(window: WindowX11) =
+  window.dragSourceWindow = 0
+  window.dragPositionTimestamp = CurrentTime  # the 0
+  window.lastDragContent = window.lastDragContent.typeof.default
+  window.lastDragStatus = DragStatus.rejected
+  window.dragStatusSent = false
 
 
 method firstStep*(window: WindowX11, makeVisible = true) =
@@ -924,6 +954,30 @@ method step*(window: WindowX11) =
 
         window.eventsHandler.onDragContentChanged.pushEvent DragContentChangedEvent(
           window: window, supportedKinds: window.lastDragContent.supportedKinds, supportedMimeTypes: availableMimeTypes
+        )
+      
+      elif ev.xclient.message_type == atoms.xDndPosition:
+        window.mouse.pos = ivec2(((ev.xclient.data.l[2] shr 16) and 0xFFFF).int32, (ev.xclient.data.l[2] and 0xFFFF).int32) - window.pos
+        window.dragPositionTimestamp = x.Time ev.xclient.data.l[3]
+
+        window.dragStatusSent = false
+        window.eventsHandler.onMouseMove.pushEvent MouseMoveEvent(window: window, pos: window.mouse.pos, kind: MouseMoveKind.moveWhileDragging)
+        
+        if not window.dragStatusSent:  # make sure source window don't forget about us
+          window.dragStatus = window.lastDragStatus
+
+      
+      elif ev.xclient.message_type == atoms.xDndLeave:
+        window.clearDragState()
+        window.eventsHandler.onDragContentChanged.pushEvent DragContentChangedEvent(
+          window: window, supportedKinds: {}, supportedMimeTypes: @[]
+        )
+      
+      elif ev.xclient.message_type == atoms.xDndDrop:
+        window.eventsHandler.onDrop.pushEvent DropEvent(window: window)
+        window.clearDragState()
+        window.eventsHandler.onDragContentChanged.pushEvent DragContentChangedEvent(
+          window: window, supportedKinds: {}, supportedMimeTypes: @[]
         )
       
       elif ev.xclient.data.l[0] == atoms.wmDeleteWindow.clong:
