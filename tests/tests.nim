@@ -14,6 +14,17 @@ test "screen":
       echo &"screen({i}).size: {size.x}x{size.y}"
 
 
+test "clipboard":
+  let window = newSoftwareRenderingWindow()
+  window.firstStep(makeVisible = false)
+  
+  echo "clipboard text: ", window.clipboard.text
+  echo "selection clipboard text: ", window.selectionClipboard.text
+  
+  window.clipboard.text = "hello"
+  check window.clipboard.text == "hello"
+
+
 test "pixie":
   var
     image: Image
@@ -158,11 +169,4 @@ test "2 windows at once":
     (win1, win1eh, true),
     (win2, win2eh, true),
   )
-
-
-test "clipboard":
-  let clipboard = clipboard()
-  echo clipboard.text
-  clipboard.text = "hello"
-  check clipboard.text == "hello"
 

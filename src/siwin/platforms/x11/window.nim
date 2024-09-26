@@ -7,7 +7,7 @@ import pkg/x11/xlib except Screen
 import pkg/x11/x except Window, Cursor, Time
 import pkg/x11/[xutil, xatom, cursorfont, keysym]
 import ../../[utils, colorutils, siwindefs]
-import ../any/window {.all.}
+import ../any/[window, clipboards]
 import ../any/[windowUtils]
 import globalDisplay
 
@@ -46,6 +46,13 @@ type
     handle: PScreen
 
 
+  ClipboardX11* = ref object of Clipboard
+    attachedToWindow {.cursor.}: WindowX11
+    selectionAtom: Atom
+    m_data: Option[string]
+    m_userContent: ClipboardConvertableContent
+
+
   WindowX11* = ref WindowX11Obj
   WindowX11Obj* = object of Window
     handle: x.Window
@@ -66,8 +73,6 @@ type
       # used to emulate window title and border cursor changes
     
     dragSourceWindow: x.Window
-    dragGettingContentRequests: Table[int, tuple[kind: DragContentKind, mimeType: string]]
-    lastDragContent: tuple[supportedKinds: set[DragContentKind], supportedMimeTypes: seq[string]]
     dragPositionTimestamp: x.Time
     lastDragStatus: DragStatus
     dragStatusSent: bool
@@ -390,6 +395,19 @@ proc setupWindow(window: WindowX11, fullscreen, frameless: bool, class: string) 
 
   let supportedDndVersion = 4
   discard display.XChangeProperty(window.handle, atoms.xDndAware, XaAtom, 32, PropModeReplace, cast[PCUchar](supportedDndVersion.addr), 1)
+
+  window.m_clipboard = ClipboardX11(
+    attachedToWindow: window, selectionAtom: atoms.clipboard,
+    availableKinds: {ClipboardContentKind.text}, availableMimeTypes: @["UTF8_STRING"]
+  )
+  window.m_selectionClipboard = ClipboardX11(
+    attachedToWindow: window, selectionAtom: atoms.primary,
+    availableKinds: {ClipboardContentKind.text}, availableMimeTypes: @["UTF8_STRING"]
+  )
+  window.m_dragndropClipboard = ClipboardX11(
+    attachedToWindow: window, selectionAtom: atoms.xDndSelection,
+  )
+
 
 
 proc initSoftwareRenderingWindow(
@@ -773,31 +791,70 @@ method setInputRegion*(window: WindowX11, pos, size: IVec2) =
   # todo: use XShape to cut window input region
 
 
-method requestDragContentInFormat*(window: WindowX11, kind: DragContentKind, mimeType: string) =
-  var requestIndex = 0
-  while requestIndex < window.dragGettingContentRequests.len + 1:
-    if requestIndex notin window.dragGettingContentRequests:
-      break  # free space
+method content*(clipboard: ClipboardX11, kind: ClipboardContentKind, mimeType: string): ClipboardContent =
+  proc emptyContent(kind: ClipboardContentKind, mimeType: string): ClipboardContent =
+    if kind == ClipboardContentKind.other:
+      result = ClipboardContent(kind: other, mimeType: mimeType)
     else:
-      inc requestIndex
-  
-  if kind notin window.lastDragContent.supportedKinds:
-    raise ValueError.newException("Unsupported drag content kind")
+      result = ClipboardContent(kind: kind)
 
-  if kind == DragContentKind.mimeType and mimeType notin window.lastDragContent.supportedMimeTypes:
-    raise ValueError.newException("Unsupported drag content mime type")
+  if kind notin clipboard.availableKinds:
+    return emptyContent(kind, mimeType)
 
   var mimeType =
     case kind
-    of text: "text/plain"
-    of files: "text/uri-list"
-    of mimeType: mimeType.toLower
+    of text:
+      if "UTF8_STRING" in clipboard.availableMimeTypes: "UTF8_STRING"
+      elif "STRING" in clipboard.availableMimeTypes: "STRING"
+      elif "TEXT" in clipboard.availableMimeTypes: "TEXT"
+      else: "text/plain"
+    
+    of files:
+      "text/uri-list"
+    
+    of other:
+      mimeType
 
-  window.dragGettingContentRequests[requestIndex] = (kind, mimeType)
+  if kind == ClipboardContentKind.other and mimeType notin clipboard.availableMimeTypes:
+    return emptyContent(kind, mimeType)
+
+  clipboard.m_data = options.none string
+
+  if display.XGetSelectionOwner(clipboard.selectionAtom) == None:
+    return emptyContent(kind, mimeType)
 
   discard display.XConvertSelection(
-    atoms.xDndSelection, display.XInternAtom(cstring mimeType, 0),
-    display.XInternAtom(cstring "siwin_dndTargetProperty_" & $requestIndex, 0), window.handle, window.dragPositionTimestamp
+    clipboard.selectionAtom, display.XInternAtom(cstring mimeType, 0),
+    atoms.siwin_clipboardTargetProperty, clipboard.attachedToWindow.handle, CurrentTime
+  )
+
+  while clipboard.m_data.isNone:
+    clipboard.attachedToWindow.step()
+
+  case kind
+  of text:
+    result = ClipboardContent(kind: kind, text: clipboard.m_data.get)
+  
+  of files:
+    let uris = clipboard.m_data.get.splitLines
+    var files: seq[string]
+    for uri in uris:
+      let uri = parseUri(uri)
+      if uri.scheme == "file":
+        files.add uri.path.decodeUrl
+
+    result = ClipboardContent(kind: kind, files: files)
+  
+  of other:
+    result = ClipboardContent(kind: kind, mimeType: mimeType, data: clipboard.m_data.get)
+  
+  clipboard.m_data = options.none string
+
+
+method `content=`*(clipboard: ClipboardX11, content: ClipboardConvertableContent) =
+  clipboard.m_userContent = content
+  discard display.XSetSelectionOwner(
+    clipboard.selectionAtom, clipboard.attachedToWindow.handle, CurrentTime
   )
 
 
@@ -849,7 +906,6 @@ proc emulateWindowTitleAndBorderBehaviour(window: WindowX11, prevMousePos: IVec2
 proc clearDragState(window: WindowX11) =
   window.dragSourceWindow = 0
   window.dragPositionTimestamp = CurrentTime  # the 0
-  window.lastDragContent = window.lastDragContent.typeof.default
   window.lastDragStatus = DragStatus.rejected
   window.dragStatusSent = false
 
@@ -941,22 +997,23 @@ method step*(window: WindowX11) =
         
         availableMimeTypes = availableMimeTypes.deduplicate
 
-        window.lastDragContent = (
-          supportedKinds: {DragContentKind.mimeType},
-          supportedMimeTypes: availableMimeTypes,
-        )
+        window.m_dragndropClipboard.availableKinds = {ClipboardContentKind.other}
+        window.m_dragndropClipboard.availableMimeTypes = availableMimeTypes
         
         if "text/plain" in availableMimeTypes:
-          window.lastDragContent.supportedKinds.incl DragContentKind.text
+          window.m_dragndropClipboard.availableKinds.incl ClipboardContentKind.text
         
         if "text/uri-list" in availableMimeTypes:
-          window.lastDragContent.supportedKinds.incl DragContentKind.files
+          window.m_dragndropClipboard.availableKinds.incl ClipboardContentKind.files
 
-        window.eventsHandler.onDragContentChanged.pushEvent DragContentChangedEvent(
-          window: window, supportedKinds: window.lastDragContent.supportedKinds, supportedMimeTypes: availableMimeTypes
+        window.m_dragndropClipboard.onContentChanged.pushEvent ClipboardContentChangedEvent(
+          clipboard: window.m_dragndropClipboard,
+          availableKinds: window.m_dragndropClipboard.availableKinds,
+          availableMimeTypes: window.m_dragndropClipboard.availableMimeTypes,
         )
       
       elif ev.xclient.message_type == atoms.xDndPosition:
+        # todo: xDndPosition sends not only position
         window.mouse.pos = ivec2(((ev.xclient.data.l[2] shr 16) and 0xFFFF).int32, (ev.xclient.data.l[2] and 0xFFFF).int32) - window.pos
         window.dragPositionTimestamp = x.Time ev.xclient.data.l[3]
 
@@ -969,15 +1026,19 @@ method step*(window: WindowX11) =
       
       elif ev.xclient.message_type == atoms.xDndLeave:
         window.clearDragState()
-        window.eventsHandler.onDragContentChanged.pushEvent DragContentChangedEvent(
-          window: window, supportedKinds: {}, supportedMimeTypes: @[]
+        window.m_dragndropClipboard.availableKinds = {}
+        window.m_dragndropClipboard.availableMimeTypes = @[]
+        window.m_dragndropClipboard.onContentChanged.pushEvent ClipboardContentChangedEvent(
+          clipboard: window.m_dragndropClipboard
         )
       
       elif ev.xclient.message_type == atoms.xDndDrop:
         window.eventsHandler.onDrop.pushEvent DropEvent(window: window)
         window.clearDragState()
-        window.eventsHandler.onDragContentChanged.pushEvent DragContentChangedEvent(
-          window: window, supportedKinds: {}, supportedMimeTypes: @[]
+        window.m_dragndropClipboard.availableKinds = {}
+        window.m_dragndropClipboard.availableMimeTypes = @[]
+        window.m_dragndropClipboard.onContentChanged.pushEvent ClipboardContentChangedEvent(
+          clipboard: window.m_dragndropClipboard
         )
       
       elif ev.xclient.data.l[0] == atoms.wmDeleteWindow.clong:
@@ -1120,36 +1181,95 @@ method step*(window: WindowX11) =
         window.eventsHandler.onKey.pushEvent KeyEvent(window: window, key: key, pressed: false, repeated: repeated)
     
     of SelectionNotify:
-      if ev.xselection.selection == atoms.xDndSelection:
-        let targetProperty = $display.XGetAtomName(ev.xselection.property)
-        if not targetProperty.startsWith("siwin_dndTargetProperty_"): return
+      let clipboard =
+        if ev.xselection.selection == atoms.clipboard:
+          window.m_clipboard
+        elif ev.xselection.selection == atoms.primary:
+          window.m_selectionClipboard
+        elif ev.xselection.selection == atoms.xDndSelection:
+          window.m_dragndropClipboard
+        else:
+          return
 
-        let requestIndex = targetProperty["siwin_dndTargetProperty_".len..^1].parseInt
-        if requestIndex notin window.dragGettingContentRequests: return
-
-        let (kind, mimeType) = window.dragGettingContentRequests[requestIndex]
-        
-        let data = window.handle.property(ev.xselection.property, string).data
-
+      if ev.xselection.property != None:
+        clipboard.ClipboardX11.m_data = options.some window.handle.property(ev.xselection.property, string).data
         discard display.XDeleteProperty(window.handle, ev.xselection.target)
-        window.dragGettingContentRequests.del requestIndex
+      else:
+        clipboard.ClipboardX11.m_data = some ""
+    
+    of SelectionRequest:
+      template e: untyped = ev.xselectionRequest
 
-        case kind
+      var resp: XSelectionEvent
+      resp.theType   = SelectionNotify
+      resp.requestor = e.requestor
+      resp.selection = e.selection
+      resp.property  = e.property
+      resp.time      = e.time
+      resp.target    = e.target
+
+      proc sendWeCannotHandleRequest(resp: XSelectionEvent, ev: XEvent) =
+        discard display.XSendEvent(
+          e.requestor, 1, NoEventMask, cast[ptr XEvent](resp.addr)
+        )
+
+      let clipboard =
+        if e.selection == atoms.clipboard:
+          window.m_clipboard
+        elif e.selection == atoms.primary:
+          window.m_selectionClipboard
+        elif e.selection == atoms.xDndSelection:
+          window.m_dragndropClipboard
+        else:
+          sendWeCannotHandleRequest(resp, ev)
+          return
+      
+      let targetType = $display.XGetAtomName(e.target)
+
+      var conv: ClipboardContentConverter
+      for cv in clipboard.ClipboardX11.m_userContent.converters:
+        case cv.kind
         of text:
-          window.eventsHandler.onGotDragContent.pushEvent GotDragContentEvent(window: window, kind: text, text: data)
+          if targetType in ["UTF8_STRING", "STRING", "TEXT"]:
+            conv = cv
+            break
         
         of files:
-          let uris = data.splitLines
-          var files: seq[string]
-          for uri in uris:
-            let uri = parseUri(uri)
-            if uri.scheme == "file":
-              files.add uri.path.decodeUrl
-
-          window.eventsHandler.onGotDragContent.pushEvent GotDragContentEvent(window: window, kind: files, files: files)
+          if targetType in ["text/uri-list"]:
+            conv = cv
+            break
         
-        of mimeType:
-          window.eventsHandler.onGotDragContent.pushEvent GotDragContentEvent(window: window, kind: mimeType, mimeType: mimeType, data: data)
+        of other:
+          if targetType == cv.mimeType:
+            conv = cv
+            break
+      
+      if conv.f == nil:
+        sendWeCannotHandleRequest(resp, ev)
+        return
+
+      var content = conv.f(clipboard.ClipboardX11.m_userContent.data, conv.kind, conv.mimeType)
+
+      var data = ""
+      case conv.kind
+      of text:
+        data = content.text
+      
+      of files:
+        data = content.files.mapIt($Uri(scheme: "file", path: it.encodeUrl(usePlus=false))).join("\n")
+      
+      of other:
+        data = content.data
+      
+      discard display.XChangeProperty(
+        e.requestor, e.property, resp.target,
+        8, PropModeReplace, cast[PCUChar](if data.len != 0: data[0].addr else: nil), data.len.cint
+      )
+
+      discard display.XSendEvent(
+        e.requestor, 1, NoEventMask, cast[ptr XEvent](resp.addr)
+      )
+
 
     else: discard
 

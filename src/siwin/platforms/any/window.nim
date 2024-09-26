@@ -1,6 +1,7 @@
 import std/[times, options, sequtils]
 import pkg/[vmath]
 import ../../[siwindefs, colorutils]
+import ./[clipboards]
 
 
 when siwin_use_pure_enums:
@@ -87,11 +88,6 @@ type
     leave
     moveWhileDragging  ## (from this or other window)
 
-
-  DragContentKind* {.siwinPureEnum.} = enum
-    text
-    files
-    mimeType
   
   DragStatus* {.siwinPureEnum.} = enum
     rejected
@@ -161,21 +157,8 @@ type
     value*: bool
     kind*: StateBoolChangedEventKind
     isExternal*: bool  ## changed by user via compositor (server-side change)
+  
 
-  DragContentChangedEvent* = object of AnyWindowEvent
-    supportedKinds*: set[DragContentKind]
-    supportedMimeTypes*: seq[string]
-  
-  GotDragContentEvent* = object of AnyWindowEvent
-    case kind*: DragContentKind
-    of DragContentKind.text:
-      text*: string
-    of DragContentKind.files:
-      files*: seq[string]
-    of DragContentKind.mimeType:
-      mimeType*: string
-      data*: string
-  
   DropEvent* = object of AnyWindowEvent
 
 
@@ -200,8 +183,6 @@ type
 
     onStateBoolChanged*: proc(e: StateBoolChangedEvent)
 
-    onDragContentChanged*: proc(e: DragContentChangedEvent)
-    onGotDragContent*:     proc(e: GotDragContentEvent)
     onDrop*:               proc(e: DropEvent)
 
 
@@ -233,6 +214,10 @@ type
     m_resizable: bool
     m_minSize: IVec2
     m_maxSize: IVec2
+
+    m_clipboard: Clipboard
+    m_selectionClipboard: Clipboard
+    m_dragndropClipboard: Clipboard
 
     inputRegion, titleRegion: Option[tuple[pos, size: IVec2]]
     borderWidth: Option[tuple[innerWidth, outerWidrth, diagonalSize: int]]
@@ -392,7 +377,12 @@ method vulkanSurface*(window: Window): pointer {.base.} = discard
   ## get a VkSurfaceKHR attached to window
 
 
-method requestDragContentInFormat*(window: Window, kind: DragContentKind, mimeType = "text/plain") {.base.} = discard
+proc clipboard*(window: Window): Clipboard = window.m_clipboard
+
+proc selectionClipboard*(window: Window): Clipboard = window.m_selectionClipboard
+
+proc dragndropClipboard*(window: Window): Clipboard = window.m_dragndropClipboard
+
 
 method `dragStatus=`*(window: Window, v: DragStatus) {.base.} = discard
 
