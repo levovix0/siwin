@@ -1,6 +1,6 @@
 import std/[times, importutils, strformat, options, tables, os]
 import pkg/[vmath]
-import ../../[utils, colorutils]
+import ../../[utils, colorutils, siwindefs]
 import ../any/window {.all.}
 import ../any/[windowUtils]
 import ./[libwayland, protocol, globals, sharedBuffer, bitfields, xkb]
@@ -199,7 +199,7 @@ method height*(screen: ScreenWayland): int32 = 1080  # todo
 method release(window: WindowWayland) {.base, raises: [].}
 
 
-proc `=destroy`(window: WindowWaylandObj) =
+proc `=destroy`(window: WindowWaylandObj) {.siwin_destructor.} =
   release cast[WindowWayland](window.addr)
 
   for x in window.fields:
@@ -212,7 +212,7 @@ proc `=trace`(x: var WindowWaylandSoftwareRenderingObj, env: pointer) =
   `=trace`(cast[ptr WindowWaylandObj](x.addr)[], env)
 
 
-proc `=destroy`(window: WindowWaylandSoftwareRenderingObj) =
+proc `=destroy`(window: WindowWaylandSoftwareRenderingObj) {.siwin_destructor.} =
   release cast[WindowWaylandSoftwareRendering](window.addr)
 
   for x in window.fields:

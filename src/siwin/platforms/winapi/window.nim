@@ -1,7 +1,7 @@
 import std/[times, os, options, importutils]
 import pkg/[vmath]
 import ./[winapi]
-import ../../[utils, colorutils]
+import ../../[utils, colorutils, siwindefs]
 import ../any/window {.all.}
 import ../any/[windowUtils]
 
@@ -165,13 +165,13 @@ method width*(screen: ScreenWinapi): int32 = GetSystemMetrics(SmCxScreen)
 method height*(screen: ScreenWinapi): int32 = GetSystemMetrics(SmCyScreen)
 
 
-proc `=destroy`(buffer: Buffer) =
+proc `=destroy`(buffer: Buffer) {.siwin_destructor.} =
   if buffer.hdc != 0:
     DeleteDC buffer.hdc
     DeleteObject buffer.bitmap
 
 
-proc `=destroy`(window: WindowWinapiObj) =
+proc `=destroy`(window: WindowWinapiObj) {.siwin_destructor.} =
   if window.hdc != 0:
     DeleteDC window.hdc
 

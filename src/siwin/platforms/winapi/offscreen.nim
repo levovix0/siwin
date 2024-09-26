@@ -1,4 +1,5 @@
 import winapi
+import ../../[siwindefs]
 import ../any/window
 
 type
@@ -9,7 +10,7 @@ type
     ctx: WglContext
 
 
-proc `=destroy`(windows: InvisibleOpenglWindowWinapiObj) =
+proc `=destroy`(windows: InvisibleOpenglWindowWinapiObj) {.siwin_destructor.} =
   if windows.hdc != 0:
     DeleteDC windows.hdc
   if windows.handle != 0:

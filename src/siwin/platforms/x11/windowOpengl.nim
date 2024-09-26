@@ -2,6 +2,7 @@ import std/importutils
 import vmath
 import x11/x except Window
 import x11/[xlib, xutil, xrender]
+import ../../[siwindefs]
 import ../any/window as anyWindow
 import window {.all.}, glx, globalDisplay
 
@@ -19,7 +20,7 @@ proc `=trace`(x: var WindowX11OpenglObj, env: pointer) =
   #? for some reason, without this, nim produces invalid C code for =trace implementation
   `=trace`(cast[ptr WindowX11Obj](x.addr)[], env)
 
-proc `=destroy`(x: WindowX11OpenglObj) =
+proc `=destroy`(x: WindowX11OpenglObj) {.siwin_destructor.} =
   #? for some reason, without this, nim produces invalid C code for =trace implementation
   `=destroy`(cast[ptr WindowX11Obj](x.addr)[])
   `=destroy`(x.glxContext)

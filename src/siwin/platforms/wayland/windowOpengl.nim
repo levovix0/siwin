@@ -1,5 +1,6 @@
 import std/[importutils]
 import pkg/[vmath]
+import ../../[siwindefs]
 import ../any/window {.all.}
 import ./[libwayland, protocol, egl, globals]
 import window {.all.}
@@ -18,7 +19,7 @@ proc `=trace`(x: var WindowWaylandOpenglObj, env: pointer) =
   `=trace`(cast[ptr WindowWaylandObj](x.addr)[], env)
 
 
-proc `=destroy`(window: WindowWaylandOpenglObj) =
+proc `=destroy`(window: WindowWaylandOpenglObj) {.siwin_destructor.} =
   release cast[WindowWaylandOpengl](window.addr)
 
   for x in window.fields:

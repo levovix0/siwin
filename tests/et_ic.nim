@@ -1,0 +1,3 @@
+import siwin
+
+run newOpenglWindow()

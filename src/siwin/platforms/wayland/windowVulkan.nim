@@ -1,5 +1,6 @@
 import std/[importutils]
 import pkg/[vmath]
+import ../../[siwindefs]
 import ../any/window {.all.}
 import ./[libwayland, globals, vkWayland]
 import window {.all.}
@@ -22,7 +23,7 @@ proc `=trace`(x: var WindowWaylandVulkanObj, env: pointer) =
   `=trace`(cast[ptr WindowWaylandObj](x.addr)[], env)
 
 
-proc `=destroy`*(window: WindowWaylandVulkanObj) =
+proc `=destroy`*(window: WindowWaylandVulkanObj) {.siwin_destructor.} =
   release cast[WindowWaylandVulkan](window.addr)
 
   for x in window.fields:

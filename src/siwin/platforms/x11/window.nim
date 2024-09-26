@@ -6,7 +6,7 @@ import pkg/[vmath, chroma]
 import pkg/x11/xlib except Screen
 import pkg/x11/x except Window, Cursor, Time
 import pkg/x11/[xutil, xatom, cursorfont, keysym]
-import ../../[utils, colorutils]
+import ../../[utils, colorutils, siwindefs]
 import ../any/window {.all.}
 import ../any/[windowUtils]
 import globalDisplay
@@ -106,7 +106,7 @@ proc XcursorImageLoadCursor(d: ptr Display, image: ptr CursorImage): x.Cursor
 {.pop.}
 
 
-proc `=destroy`(gc: GraphicsContext) =
+proc `=destroy`(gc: GraphicsContext) {.siwin_destructor.} =
   if gc.gc != nil:
     discard display.XFreeGC(gc.gc)
 
@@ -301,7 +301,7 @@ method width*(screen: ScreenX11): int32 = screen.handle.width.int32
 method height*(screen: ScreenX11): int32 = screen.handle.height.int32
 
 
-proc `=destroy`(window: WindowX11Obj) =
+proc `=destroy`(window: WindowX11Obj) {.siwin_destructor.} =
   template destroy(x, f) =
     if x != typeof(x).default:
       f
@@ -321,7 +321,7 @@ proc `=trace`(x: var WindowX11SoftwareRenderingObj, env: pointer) =
   #? for some reason, without this, nim produces invalid C code for =trace implementation
   `=trace`(cast[ptr WindowX11Obj](x.addr)[], env)
 
-proc `=destroy`(x: WindowX11SoftwareRenderingObj) =
+proc `=destroy`(x: WindowX11SoftwareRenderingObj) {.siwin_destructor.} =
   #? for some reason, without this, nim produces invalid C code for =trace implementation
   `=destroy`(cast[ptr WindowX11Obj](x.addr)[])
   `=destroy`(x.gc)

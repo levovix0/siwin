@@ -1,5 +1,6 @@
 import std/[memfiles, os]
 import pkg/[vmath]
+import ../../[siwindefs]
 import ./[protocol, libwayland]
 
 type
@@ -24,7 +25,7 @@ proc buffer*(buffer: SharedBuffer): WlBuffer =
   buffer.buffer
 
 
-proc `=destroy`(buffer: SharedBuffer) =
+proc `=destroy`(buffer: SharedBuffer) {.siwin_destructor.} =
   if buffer.buffer.proxy.raw != nil:
     destroy buffer.buffer
   

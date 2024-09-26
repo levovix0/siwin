@@ -1,6 +1,7 @@
 when not (compiles do: import winim/inc/windef):
   {.error: "winim library not installed, required to cross compile to windows\n please run `nimble install winim`".}
 
+import ../../[siwindefs]
 import winim/inc/[windef, winbase, wingdi, winuser, dwmapi], winim/winstr
 export windef, winbase, wingdi, winuser, winstr, dwmapi
 
@@ -9,7 +10,7 @@ type
     raw*: HGlRc
 
 
-proc `=destroy`*(context: WglContext) =
+proc `=destroy`*(context: WglContext) {.siwin_destructor.} =
   if context.raw != 0:
     if wglGetCurrentContext() == context.raw:
       wglMakeCurrent(0, 0)

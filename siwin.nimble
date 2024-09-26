@@ -149,3 +149,7 @@ task testAll, "run all tests":
   runTests "--mm:orc"
   runTests "-d:mingw --os:windows --cc:gcc --gcc.exe:/usr/bin/x86_64-w64-mingw32-gcc --gcc.linkerexe:/usr/bin/x86_64-w64-mingw32-gcc"
   runTests "-d:mingw --os:windows --cc:gcc --gcc.exe:/usr/bin/x86_64-w64-mingw32-gcc --gcc.linkerexe:/usr/bin/x86_64-w64-mingw32-gcc --mm:orc"
+
+
+task testIc, "test incremental compilation":
+  exec "nim c -r --mm:refc --incremental:on tests/et_ic.nim"

@@ -22,3 +22,14 @@ macro siwin_importExport*(body) =
     newLit("siwin_" & $body.name),
     body,
   )
+
+
+macro siwin_destructor*(body) =
+  result = body
+
+  when compileOption("mm", "refc"):
+    # refc requires destructor to be `=destroy`(v: var object)
+    result.params[1][1] = nnkVarTy.newTree(result.params[1][1])
+  
+  else:
+    discard

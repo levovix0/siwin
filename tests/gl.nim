@@ -1,5 +1,6 @@
 import macros, tables, sequtils
 import vmath, opengl, pixie, fusion/astdsl, fusion/matching, shady
+import siwin/siwindefs
 
 when (compiles do: import imageman):
   import imageman
@@ -59,7 +60,7 @@ type
 
 # -------- Buffers, VertexArrays, Textures --------
 template makeOpenglObjectSeq(t, tobj, T, gen, del, newp, delextra) =
-  proc `=destroy`(xobj {.inject.}: tobj) =
+  proc `=destroy`(xobj {.inject.}: tobj) {.siwin_destructor.} =
     delextra
     del(xobj.n, cast[ptr T](xobj.obj.addr))
 
@@ -134,7 +135,7 @@ proc loadTexture*(obj: GlUint, img: pixie.Image) =
 
 # -------- Shader --------
 {.push, warning[Effect]: off.}
-proc `=destroy`(x: ShaderObj) =
+proc `=destroy`(x: ShaderObj) {.siwin_destructor.} =
   if x.obj != 0:
     glDeleteProgram(x.obj)
 {.pop.}

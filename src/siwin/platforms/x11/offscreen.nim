@@ -2,6 +2,7 @@
 import pkg/x11/xlib
 import pkg/x11/x except Window
 import pkg/x11/[xutil]
+import ../../[siwindefs]
 import ../any/window
 import globalDisplay, glx
 
@@ -12,7 +13,7 @@ type
     ctx: GlxContext
 
 
-proc `=destroy`(window: InvisibleOpenglWindowX11Obj) =
+proc `=destroy`(window: InvisibleOpenglWindowX11Obj) {.siwin_destructor.} =
   if window.handle != 0:
     discard display.XDestroyWindow(window.handle)
 

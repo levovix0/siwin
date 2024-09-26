@@ -1,3 +1,4 @@
+import ../../[siwindefs]
 
 {.pragma: importwayland, cdecl, dynlib: "libwayland-client.so(|.0)".}
 
@@ -97,7 +98,7 @@ proc wl_proxy_add_dispatcher*(
 {.pop.}
 
 
-proc `=destroy`*(this: Wl_display) =
+proc `=destroy`*(this: Wl_display) {.siwin_destructor.} =
   if this.raw != nil:
     wl_display_disconnect this
 

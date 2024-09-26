@@ -2,6 +2,7 @@ import std/importutils
 import vmath
 import x11/x except Window
 import x11/[xlib, xutil]
+import ../../[siwindefs]
 import ../any/window as anyWindow
 import window {.all.}, globalDisplay, vkXlib
 
@@ -18,7 +19,7 @@ type
     surface: Surface
 
 
-proc `=destroy`*(surface: Surface) =
+proc `=destroy`*(surface: Surface) {.siwin_destructor.} =
   if surface.instance != nil and surface.raw != nil:
     # vkDestroySurfaceKHR(surface.instance, surface.raw, nil)  #? causes crash
     discard
@@ -28,7 +29,7 @@ proc `=trace`(x: var WindowX11VulkanObj, env: pointer) =
   #? for some reason, without this, nim produces invalid C code for =trace implementation
   `=trace`(cast[ptr WindowX11Obj](x.addr)[], env)
 
-proc `=destroy`(x: WindowX11VulkanObj) =
+proc `=destroy`(x: WindowX11VulkanObj) {.siwin_destructor.} =
   #? for some reason, without this, nim produces invalid C code for =trace implementation
   `=destroy`(cast[ptr WindowX11Obj](x.addr)[])
   `=destroy`(x.surface)

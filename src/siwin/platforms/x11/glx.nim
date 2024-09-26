@@ -1,6 +1,7 @@
 import macros, unicode, strutils, sequtils, dynlib
 import x11/[x, xlib, xutil]
 import globalDisplay
+import ../../[siwindefs]
 
 type
   GlxContext* = object
@@ -130,7 +131,7 @@ proc makeCurrent*(a: Drawable, ctx: GlxContext) =
   discard display.impl(a, ctx.raw)
 
 
-proc `=destroy`*(context: GlxContext) =
+proc `=destroy`*(context: GlxContext) {.siwin_destructor.} =
   proc impl(dpy: PDisplay, ctx: GlxContext) {.glx: "destroyContext".}
   if context.raw == nil: return
   if cGlxCurrentContext() == context.raw:

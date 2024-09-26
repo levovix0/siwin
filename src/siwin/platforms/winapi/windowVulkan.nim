@@ -1,5 +1,6 @@
 import std/importutils
 import vmath
+import ../../[siwindefs]
 import ../any/window as anyWindow
 import window {.all.}, winapi, vkWin32
 
@@ -14,7 +15,7 @@ type
   WindowWinapiVulkan* = ref object of WindowWinapi
     surface: Surface
 
-proc `=destroy`*(surface: Surface) =
+proc `=destroy`*(surface: Surface) {.siwin_destructor.} =
   if surface.instance != nil and surface.raw != nil:
     discard
     # let vkDestroySurfaceKHR = cast[VkDestroySurfaceKHR](surface.instance.vkGetInstanceProcAddr("vkDestroySurfaceKHR"))
