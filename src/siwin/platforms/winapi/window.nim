@@ -2,7 +2,7 @@ import std/[times, os, options, importutils]
 import pkg/[vmath]
 import ./[winapi]
 import ../../[utils, colorutils, siwindefs]
-import ../any/window {.all.}
+import ../any/[window, clipboards]
 import ../any/[windowUtils]
 
 privateAccess Window
@@ -17,6 +17,10 @@ type
     bitmap: HBitmap
     hdc: Hdc
     pixels: pointer
+
+  ClipboardWinapi* = ref object of Clipboard
+
+  ClipboardWinapiDnd* = ref object of Clipboard
 
   WindowWinapi* = ref WindowWinapiObj
   WindowWinapiObj* = object of Window
@@ -274,6 +278,10 @@ proc initWindow(window: WindowWinapi; size: IVec2; screen: ScreenWinapi, fullscr
     bb.fEnable = True
 
     window.handle.DwmEnableBlurBehindWindow(bb.addr)
+  
+  window.m_clipboard = ClipboardWinapi(availableKinds: {ClipboardContentKind.text})  # todo: other types
+  window.m_selectionClipboard = window.m_clipboard
+  window.m_dragndropClipboard = ClipboardWinapiDnd()  # todo
 
 
 method `title=`*(window: WindowWinapi, title: string) =
@@ -486,6 +494,51 @@ method startInteractiveResize*(window: WindowWinapi, edge: Edge, pos: Option[IVe
 
 method showWindowMenu*(window: WindowWinapi, pos: Option[IVec2]) =
   discard
+
+
+method content*(clipboard: ClipboardWinapi, kind: ClipboardContentKind, mimeType: string): ClipboardContent =
+  discard OpenClipboard(0)
+
+  let hcpb = GetClipboardData(CfUnicodeText)
+  if hcpb == 0:
+    CloseClipboard()
+    return
+  
+  result = ClipboardContent(kind: ClipboardContentKind.text, text: $cast[PWChar](GlobalLock hcpb))  # todo: other types
+  GlobalUnlock hcpb
+  discard CloseClipboard()
+
+
+method `content=`*(clipboard: ClipboardWinapi, content: ClipboardConvertableContent) =
+  var conv: ClipboardContentConverter
+  for cv in content.converters:
+    case cv.kind
+    of ClipboardContentKind.text:
+      conv = cv
+    else:
+      ## todo
+
+  if conv.f == nil: return
+
+  let content = conv.f(content.data, conv.kind, conv.mimeType)
+  if content.kind != ClipboardContentKind.text: return
+
+  let s = content.text
+
+  discard OpenClipboard(0)
+  discard EmptyClipboard()
+  
+  let ws = +$s
+  let ts = (ws.len + 1) * WChar.sizeof
+  let hstr = GlobalAlloc(GMemMoveable, ts)
+  if hstr == 0:
+    CloseClipboard()
+    raise OSError.newException("failed to alloc string")
+
+  copyMem(GlobalLock hstr, ws.winstrConverterWStringToLPWstr, ts)
+  GlobalUnlock hstr
+  SetClipboardData(CfUnicodeText, hstr)
+  CloseClipboard()
 
 
 method displayImpl(window: WindowWinapi) {.base.} =

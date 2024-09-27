@@ -69,6 +69,7 @@ method content*(
 
 method `content=`*(clipboard: Clipboard, content: ClipboardConvertableContent) {.base.} = discard
   ## sets content of clipboard
+  ## note: setting content on dragndropClipboard is not yet implemented
 
 
 proc text*(clipboard: Clipboard): string =

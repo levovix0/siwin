@@ -398,11 +398,13 @@ proc setupWindow(window: WindowX11, fullscreen, frameless: bool, class: string) 
 
   window.m_clipboard = ClipboardX11(
     attachedToWindow: window, selectionAtom: atoms.clipboard,
-    availableKinds: {ClipboardContentKind.text}, availableMimeTypes: @["UTF8_STRING"]
+    availableKinds: {ClipboardContentKind.text, ClipboardContentKind.other}, availableMimeTypes: @["UTF8_STRING"]
+    # todo: detect available kinds/mimetypes
   )
   window.m_selectionClipboard = ClipboardX11(
     attachedToWindow: window, selectionAtom: atoms.primary,
-    availableKinds: {ClipboardContentKind.text}, availableMimeTypes: @["UTF8_STRING"]
+    availableKinds: {ClipboardContentKind.text, ClipboardContentKind.other}, availableMimeTypes: @["UTF8_STRING"]
+    # todo: detect available kinds/mimetypes
   )
   window.m_dragndropClipboard = ClipboardX11(
     attachedToWindow: window, selectionAtom: atoms.xDndSelection,

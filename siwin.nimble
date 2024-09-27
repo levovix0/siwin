@@ -70,14 +70,14 @@ proc runTests(args: string) =
 task test, "test":
   runTests ""
 
-task testOrc, "test with --mm:orc":
-  runTests "--mm:orc"
+task testRefc, "test with --mm:refc":
+  runTests "--mm:refc"
 
 task testWindows, "test windows version with wine on linux":
   runTests "-d:mingw --os:windows --cc:gcc --gcc.exe:/usr/bin/x86_64-w64-mingw32-gcc --gcc.linkerexe:/usr/bin/x86_64-w64-mingw32-gcc"
 
-task testOrcWindows, "test windows version with wine on linux with --mm:orc":
-  runTests "-d:mingw --os:windows --cc:gcc --gcc.exe:/usr/bin/x86_64-w64-mingw32-gcc --gcc.linkerexe:/usr/bin/x86_64-w64-mingw32-gcc --mm:orc"
+task testRefcWindows, "test windows version with wine on linux with --mm:refc":
+  runTests "-d:mingw --os:windows --cc:gcc --gcc.exe:/usr/bin/x86_64-w64-mingw32-gcc --gcc.linkerexe:/usr/bin/x86_64-w64-mingw32-gcc --mm:refc"
 
 
 task testMacos, "test macos":
@@ -146,9 +146,9 @@ wJ4Ybfhm0sf9nowwAwYBAQMBAA==
 
 task testAll, "run all tests":
   runTests ""
-  runTests "--mm:orc"
+  runTests "--mm:refc"
   runTests "-d:mingw --os:windows --cc:gcc --gcc.exe:/usr/bin/x86_64-w64-mingw32-gcc --gcc.linkerexe:/usr/bin/x86_64-w64-mingw32-gcc"
-  runTests "-d:mingw --os:windows --cc:gcc --gcc.exe:/usr/bin/x86_64-w64-mingw32-gcc --gcc.linkerexe:/usr/bin/x86_64-w64-mingw32-gcc --mm:orc"
+  runTests "-d:mingw --os:windows --cc:gcc --gcc.exe:/usr/bin/x86_64-w64-mingw32-gcc --gcc.linkerexe:/usr/bin/x86_64-w64-mingw32-gcc --mm:refc"
 
 
 task testIc, "test incremental compilation":
