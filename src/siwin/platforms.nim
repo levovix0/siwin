@@ -14,7 +14,7 @@ type
     x11
     wayland
     winapi
-    # cocoa
+    cocoa
   
   PlatformSupportDefect* = object of Defect
   PlatformMatchError* = object of CatchableError
@@ -33,6 +33,9 @@ proc availablePlatforms*: seq[Platform] =
       @[Platform.wayland, Platform.x11]
     else:
       @[Platform.x11]
+  
+  elif defined(macosx):
+    @[Platform.cocoa]
 
   else:
     @[]
@@ -50,11 +53,13 @@ proc getRequiredVulkanExtensions*(platform = defaultPreferedPlatform()): seq[str
     @["VK_KHR_surface", "VK_KHR_wayland_surface"]
   of winapi:
     @["VK_KHR_surface", "VK_KHR_win32_surface"]
+  of cocoa:
+    @[]  # todo
 
 
 proc platformToUse*(available: seq[Platform], prefered: Platform): Platform =
   if prefered in available:
-      return prefered
+    return prefered
 
   if prefered == Platform.wayland and Platform.x11 in available:
     return Platform.x11

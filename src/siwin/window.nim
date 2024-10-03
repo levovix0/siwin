@@ -7,6 +7,8 @@ when defined(linux):
   import ./platforms/wayland/window as waylandWindow
 elif defined(windows):
   import ./platforms/winapi/window as winapiWindow
+elif defined(macosx):
+  import ./platforms/cocoa/window as cocoaWindow
 
 
 proc screenCount*(preferedPlatform = defaultPreferedPlatform()): int32 =
@@ -78,5 +80,12 @@ proc newSoftwareRenderingWindow*(
     newSoftwareRenderingWindowWinapi(
       size, title,
       (if screen == -1: defaultScreenWinapi() else: screenWinapi(screen)),
+      resizable, fullscreen, frameless, transparent
+    )
+  
+  elif defined(macosx):
+    newSoftwareRenderingWindowCocoa(
+      size, title,
+      (if screen == -1: defaultScreenCocoa() else: screenCocoa(screen)),
       resizable, fullscreen, frameless, transparent
     )

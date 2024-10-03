@@ -1,6 +1,6 @@
-import std/[importutils, tables, times, os]
+import std/[importutils, tables, times, os, unicode]
 import pkg/[vmath]
-import ../../utils, ../../bgrx
+import ../../[siwindefs, colorutils]
 import ../any/window {.all.}, cocoa
 
 {.experimental: "overloadableEnums".}
@@ -26,6 +26,23 @@ var
   appDelegateClass, windowClass, viewClass: Class
   windows: seq[WindowCocoa]
 proc init
+
+
+proc `=destroy`(window: WindowCocoaObj) {.siwin_destructor.} =
+  if window.handle.int != 0:
+    close window.handle
+    window.addr[].handle = 0.NsWindow
+  
+  window.addr[].m_closed = true
+  
+  block eraseClosedWindows:
+    var i = 0
+    while i < windows.len:
+      if windows[i].m_closed:
+        windows.del(i)
+      else:
+        inc i
+
 
 proc findWindow(windows: seq[WindowCocoa], window: Id): WindowCocoa =
   for w in windows:
@@ -152,22 +169,6 @@ proc width*(window: ScreenCocoa): int =
 proc height*(window: ScreenCocoa): int =
   ## todo
 
-
-proc `=destroy`(window: var WindowCocoaObj) =
-  if window.handle.int != 0:
-    close window.handle
-    window.handle = 0.NsWindow
-  
-  window.m_closed = true
-  
-  block eraseClosedWindows:
-    var i = 0
-    while i < windows.len:
-      if windows[i].m_closed:
-        windows.del(i)
-      else:
-        inc i
-
 method destruct(window: WindowCocoa) {.base.} =
   `=destroy` window[]
 
@@ -259,7 +260,7 @@ method `title=`*(window: WindowCocoaOpengl, title: string) =
     window.handle.setTitle(@title)
 
 
-method `cursor=`*(window: WindowCocoaOpengl, cursor: Cursor) {.locks: "unknown".} =
+method `cursor=`*(window: WindowCocoaOpengl, cursor: Cursor) =
   if window.m_cursor.kind == builtin and cursor.kind == builtin and window.m_cursor.builtin == cursor.builtin: return
   window.m_cursor = cursor
 
@@ -360,14 +361,18 @@ proc init =
       addMethod "windowDidBecomeKey:", proc(self: Id, cmd: Sel, notification: NsNotification): Id {.cdecl.} =
         getWindow()
         window.m_focused = true
-        window.eventsHandler.pushEvent onFocusChanged, FocusChangedEvent(window: window, focus: true)
+        window.eventsHandler.pushEvent onStateBoolChanged, StateBoolChangedEvent(
+          window: window, value: true, kind: StateBoolChangedEventKind.focus
+        )
         updateMousePos window, window.handle.mouseLocationOutsideOfEventStream, MouseMoveKind.enter
 
       addMethod "windowDidResignKey:", proc(self: Id, cmd: Sel, notification: NsNotification): Id {.cdecl.} =
         getWindow()
         updateMousePos window, window.handle.mouseLocationOutsideOfEventStream, MouseMoveKind.leave
         window.m_focused = false
-        window.eventsHandler.pushEvent onFocusChanged, FocusChangedEvent(window: window, focus: false)
+        window.eventsHandler.pushEvent onStateBoolChanged, StateBoolChangedEvent(
+          window: window, value: false, kind: StateBoolChangedEventKind.focus
+        )
 
       addMethod "windowShouldClose:", proc(self: Id, cmd: Sel, notification: NsNotification): bool {.cdecl.} =
         getWindow()

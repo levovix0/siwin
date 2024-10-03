@@ -9,6 +9,8 @@ when defined(linux):
 elif defined(windows):
   import ./platforms/winapi/window as winapiWindow
   import ./platforms/winapi/windowOpengl as winapiWindowOpengl
+elif defined(macosx):
+  import ./platforms/cocoa/window as cocoaWindow
 
 
 proc newOpenglWindow*(
@@ -47,5 +49,12 @@ proc newOpenglWindow*(
     newOpenglWindowWinapi(
       size, title,
       (if screen == -1: defaultScreenWinapi() else: screenWinapi(screen)),
+      resizable, fullscreen, frameless, transparent, vsync
+    )
+
+  elif defined(macosx):
+    newOpenglWindowCocoa(
+      size, title,
+      (if screen == -1: defaultScreenCocoa() else: screenCocoa(screen)),
       resizable, fullscreen, frameless, transparent, vsync
     )
