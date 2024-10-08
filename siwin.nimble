@@ -21,7 +21,7 @@ when defined(android):
   requires "https://github.com/yglukhov/android"
 
 
-import strformat
+import strformat, os
 
 proc createZigccIfNeeded =
   let code = "import std/[os, osproc]; quit startProcess(\"/usr/bin/zig\", args = @[\"cc\"] & commandLineParams(), options = {poParentStreams}).waitForExit"
@@ -51,7 +51,7 @@ task installTestDeps, "install test dependencies":
   createZigccIfNeeded()
 
 task installAndroidDeps, "install android dependencies":
-  exec "nimble install dali"
+  exec "nimble install https://github.com/levovix0/dali"
   exec "nimble install https://github.com/levovix0/marco@0.1.2"
   downloadAndroidNdkIfNeeded()
   # note: requires androids sdk also!
@@ -92,13 +92,19 @@ task testMacos, "test macos":
       except: discard
 
 
-task testAndroid, "test android":
+proc buildAndroid() =
   let pwd = getCurrentDir()
   mkdir "build/android"
   mkdir "build/android/apk"
 
+  var androidSdk = getEnv("ANDROID_SDK_ROOT")
+  if androidSdk == "":
+    androidSdk = getHomeDir() / "Android/Sdk"
+
   let packageName = "com.levovix.siwintest"
-  let compiler = &"--arm.android.clang.path:{pwd}/build/android-ndk-r25c/toolchains/llvm/prebuilt/linux-x86_64/bin/ --arm.android.clang.exe:armv7a-linux-androideabi30-clang --arm.android.clang.linkerexe:armv7a-linux-androideabi30-clang"
+  let compiler32 = &"--arm.android.clang.path:{pwd}/build/android-ndk-r25c/toolchains/llvm/prebuilt/linux-x86_64/bin/ --arm.android.clang.exe:armv7a-linux-androideabi24-clang --arm.android.clang.linkerexe:armv7a-linux-androideabi24-clang"
+  let compiler64 = &"--arm64.android.clang.path:{pwd}/build/android-ndk-r25c/toolchains/llvm/prebuilt/linux-x86_64/bin/ --arm64.android.clang.exe:aarch64-linux-android24-clang --arm64.android.clang.linkerexe:aarch64-linux-android24-clang"
+
 
   # compile manifest
   writeFile "build/android/AndroidManifest.xml", &"""
@@ -107,7 +113,7 @@ task testAndroid, "test android":
   package="{packageName}"
   android:versionCode="1" android:versionName="1.0"
 >
-  <uses-sdk android:minSdkVersion="1" android:targetSdkVersion="30"/>
+  <uses-sdk android:minSdkVersion="1" android:targetSdkVersion="33"/>
   <application android:label="Siwin test">
     <activity android:name="Jnim$SiwinActivity">
       <intent-filter>
@@ -117,13 +123,35 @@ task testAndroid, "test android":
     </activity>
   </application>
 </manifest>"""
+  
+  # https://github.com/akavel/marco
   exec "marco -i=build/android/AndroidManifest.xml -o=build/android/apk/AndroidManifest.xml"
   # cpFile "build/android/AndroidManifest.xml", "build/android/apk/AndroidManifest.xml"
 
+
   # build so
-  exec &"nim c --app:lib --os:android --cpu=arm --threads:on --tlsEmulation:off -d:noSignalHandler {compiler} -d:JnimPackageName={packageName} -d:jnimGenDex -d:siwin_generateDex_out=build/android/siwin_gen_dex.nim -o:build/android/apk/lib/armeabi-v7a/libsiwintest.so src/siwin/platforms/android/ndk.nim"
-  withDir "build/android":
-    exec "nim c -r siwin_gen_dex.nim apk/classes.dex libsiwintest.so"
+  # exec &"nim c --app:lib --os:android --cpu=arm --threads:on --tlsEmulation:off -d:noSignalHandler {compiler32} -d:JnimPackageName={packageName} -d:jnimGenDex -d:siwin_generateDex_out=build/android/siwin_gen_dex.nim -o:build/android/apk/lib/armeabi-v7a/libsiwintest.so src/siwin/platforms/android/ndk.nim"
+  # exec &"nim c --app:lib --os:android --cpu=arm64 --threads:on --tlsEmulation:off -d:noSignalHandler {compiler64} -d:JnimPackageName={packageName} -d:jnimGenDex -d:siwin_generateDex_out=build/android/siwin_gen_dex.nim -o:build/android/apk/lib/arm64-v8a/libsiwintest.so src/siwin/platforms/android/ndk.nim"
+  exec &"nim c --app:lib --os:android --cpu=arm --threads:on --tlsEmulation:off -d:noSignalHandler {compiler32} -d:JnimPackageName={packageName} -o:build/android/apk/lib/armeabi-v7a/libsiwintest.so src/siwin/platforms/android/ndk.nim"
+  exec &"nim c --app:lib --os:android --cpu=arm64 --threads:on --tlsEmulation:off -d:noSignalHandler {compiler64} -d:JnimPackageName={packageName} -o:build/android/apk/lib/arm64-v8a/libsiwintest.so src/siwin/platforms/android/ndk.nim"
+
+
+  # compile java
+  mkdir "build/android/java"
+  mvFile "Jnim.java", "build/android/java/Jnim.java"
+  
+  withDir "build/android/java":
+    exec &"javac --release 8 -cp \".:{androidSdk}/platforms/android-33/android.jar\" ../java/Jnim.java"
+    exec "d8 *.class"
+
+  cpFile "build/android/java/classes.dex", "build/android/apk/classes.dex"
+
+
+  # compile java using https://github.com/akavel/dali, the alternative way
+  # withDir "build/android":
+  #   writeFile("siwin_gen_dex.nim", readFile("siwin_gen_dex.nim").replace("@@[", "@["))  #? idk wtf
+  #   exec "nim c -r siwin_gen_dex.nim apk/classes.dex libsiwintest.so"
+
 
   # pack apk and (incorrectly) sign it
   writeFile "build/android/cert.x509.pem", """
@@ -137,11 +165,20 @@ wJ4Ybfhm0sf9nowwAwYBAQMBAA==
   withDir "build/android":
     exec "../basia/basia -i=apk/ -c=cert.x509.pem -k=key.pk8 -o=siwintest.apk"
   
+
   # sign apk
   withDir "build/android":
     if not fileExists("my.keystore"):
       exec "keytool -genkey -v -keystore my.keystore -keyalg RSA -keysize 2048 -validity 10000 -alias app"
+    # apksigner from android-sdk-build-tools (AUR)
     exec "apksigner sign --ks my.keystore --ks-key-alias app siwintest.apk"
+
+
+task testAndroid, "test android":
+  buildAndroid()
+  try: exec "adb uninstall com.levovix.siwintest"
+  except: discard
+  exec "adb install -r build/android/siwintest.apk"
 
 
 task testAll, "run all tests":
