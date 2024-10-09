@@ -113,7 +113,8 @@ proc buildAndroid() =
   package="{packageName}"
   android:versionCode="1" android:versionName="1.0"
 >
-  <uses-sdk android:minSdkVersion="1" android:targetSdkVersion="33"/>
+  <uses-feature android:glEsVersion="0x00020000" android:required="true" />
+  <uses-sdk android:minSdkVersion="1" android:targetSdkVersion="33" />
   <application android:label="Siwin test">
     <activity android:name="Jnim$SiwinActivity">
       <intent-filter>
@@ -130,10 +131,10 @@ proc buildAndroid() =
 
 
   # build so
-  # exec &"nim c --app:lib --os:android --cpu=arm --threads:on --tlsEmulation:off -d:noSignalHandler {compiler32} -d:JnimPackageName={packageName} -d:jnimGenDex -d:siwin_generateDex_out=build/android/siwin_gen_dex.nim -o:build/android/apk/lib/armeabi-v7a/libsiwintest.so src/siwin/platforms/android/ndk.nim"
-  # exec &"nim c --app:lib --os:android --cpu=arm64 --threads:on --tlsEmulation:off -d:noSignalHandler {compiler64} -d:JnimPackageName={packageName} -d:jnimGenDex -d:siwin_generateDex_out=build/android/siwin_gen_dex.nim -o:build/android/apk/lib/arm64-v8a/libsiwintest.so src/siwin/platforms/android/ndk.nim"
-  exec &"nim c --app:lib --os:android --cpu=arm --threads:on --tlsEmulation:off -d:noSignalHandler {compiler32} -d:JnimPackageName={packageName} -o:build/android/apk/lib/armeabi-v7a/libsiwintest.so src/siwin/platforms/android/ndk.nim"
-  exec &"nim c --app:lib --os:android --cpu=arm64 --threads:on --tlsEmulation:off -d:noSignalHandler {compiler64} -d:JnimPackageName={packageName} -o:build/android/apk/lib/arm64-v8a/libsiwintest.so src/siwin/platforms/android/ndk.nim"
+  # exec &"nim c --noMain --app:lib --os:android --cpu=arm --threads:on --tlsEmulation:off -d:noSignalHandler {compiler32} -d:JnimPackageName={packageName} -d:jnimGenDex -d:siwin_generateDex_out=build/android/siwin_gen_dex.nim -o:build/android/apk/lib/armeabi-v7a/libsiwintest.so src/siwin/platforms/android/window.nim"
+  # exec &"nim c --noMain --app:lib --os:android --cpu=arm64 --threads:on --tlsEmulation:off -d:noSignalHandler {compiler64} -d:JnimPackageName={packageName} -d:jnimGenDex -d:siwin_generateDex_out=build/android/siwin_gen_dex.nim -o:build/android/apk/lib/arm64-v8a/libsiwintest.so src/siwin/platforms/android/window.nim"
+  exec &"nim c --noMain --app:lib --os:android --cpu=arm --threads:on --tlsEmulation:off -d:noSignalHandler {compiler32} -d:JnimPackageName={packageName} -o:build/android/apk/lib/armeabi-v7a/libsiwintest.so src/siwin/platforms/android/window.nim"
+  exec &"nim c --noMain --app:lib --os:android --cpu=arm64 --threads:on --tlsEmulation:off -d:noSignalHandler {compiler64} -d:JnimPackageName={packageName} -o:build/android/apk/lib/arm64-v8a/libsiwintest.so src/siwin/platforms/android/window.nim"
 
 
   # compile java
