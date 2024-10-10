@@ -11,6 +11,11 @@ jclass java.io.File * of JVMObject:
   proc getAbsolutePath*: string
 
 
+jclass java.lang.Thread * of JVMObject:
+  proc run*()
+  proc start*()
+
+
 converter toCharSequence*(s: string): CharSequence = cast[CharSequence](s.toJVMObject)
 
 

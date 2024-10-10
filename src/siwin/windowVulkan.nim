@@ -1,7 +1,9 @@
 import vmath
 import window
 import ./platforms
-when defined(linux):
+when defined(android):
+  import ./platforms/android/window as androidWindow
+elif defined(linux):
   import ./platforms/x11/window as x11Window
   import ./platforms/x11/windowVulkan as x11WindowVulkan
   import ./platforms/wayland/window as waylandWindow
@@ -24,7 +26,15 @@ proc newVulkanWindow*(
 
   class = "", # window class (used in x11), equals to title if not specified
 ): Window =
-  when defined(linux):
+  when defined(android):
+    # todo
+    newOpenglWindowAndroid(
+      size, title,
+      # (if screen == -1: defaultScreenAndroid() else: screenAndroid(screen)),
+      resizable, fullscreen, frameless, transparent, true
+    )
+
+  elif defined(linux):
     case platform
     of x11:
       newVulkanWindowX11(

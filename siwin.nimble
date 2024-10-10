@@ -133,8 +133,8 @@ proc buildAndroid() =
   # build so
   # exec &"nim c --noMain --app:lib --os:android --cpu=arm --threads:on --tlsEmulation:off -d:noSignalHandler {compiler32} -d:JnimPackageName={packageName} -d:jnimGenDex -d:siwin_generateDex_out=build/android/siwin_gen_dex.nim -o:build/android/apk/lib/armeabi-v7a/libsiwintest.so src/siwin/platforms/android/window.nim"
   # exec &"nim c --noMain --app:lib --os:android --cpu=arm64 --threads:on --tlsEmulation:off -d:noSignalHandler {compiler64} -d:JnimPackageName={packageName} -d:jnimGenDex -d:siwin_generateDex_out=build/android/siwin_gen_dex.nim -o:build/android/apk/lib/arm64-v8a/libsiwintest.so src/siwin/platforms/android/window.nim"
-  exec &"nim c --noMain --app:lib --os:android --cpu=arm --threads:on --tlsEmulation:off -d:noSignalHandler {compiler32} -d:JnimPackageName={packageName} -o:build/android/apk/lib/armeabi-v7a/libsiwintest.so src/siwin/platforms/android/window.nim"
-  exec &"nim c --noMain --app:lib --os:android --cpu=arm64 --threads:on --tlsEmulation:off -d:noSignalHandler {compiler64} -d:JnimPackageName={packageName} -o:build/android/apk/lib/arm64-v8a/libsiwintest.so src/siwin/platforms/android/window.nim"
+  exec &"nim c --noMain --app:lib --os:android --cpu=arm --threads:on --tlsEmulation:off -d:noSignalHandler {compiler32} -d:JnimPackageName={packageName} -o:build/android/apk/lib/armeabi-v7a/libsiwintest.so tests/et_android.nim"
+  exec &"nim c --noMain --app:lib --os:android --cpu=arm64 --threads:on --tlsEmulation:off -d:noSignalHandler {compiler64} -d:JnimPackageName={packageName} -o:build/android/apk/lib/arm64-v8a/libsiwintest.so tests/et_android.nim"
 
 
   # compile java

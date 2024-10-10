@@ -389,7 +389,7 @@ method `dragStatus=`*(window: Window, v: DragStatus) {.base.} = discard
 
 method firstStep*(window: Window, makeVisible = true) {.base.} = discard
   ## init window main loop
-  ## don't call window proc if you will manage window events via run()
+  ## don't call this proc if you will manage window events via run()
 
 method step*(window: Window) {.base.} = discard
   ## make window main loop step

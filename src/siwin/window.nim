@@ -1,8 +1,12 @@
 import vmath
 import ./platforms/any/[window]
 import ./platforms
+
 export window
-when defined(linux):
+
+when defined(android):
+  import ./platforms/android/window as androidWindow
+elif defined(linux):
   import ./platforms/x11/window as x11Window
   import ./platforms/wayland/window as waylandWindow
 elif defined(windows):
@@ -12,7 +16,10 @@ elif defined(macosx):
 
 
 proc screenCount*(preferedPlatform = defaultPreferedPlatform()): int32 =
-  when defined(linux):
+  when defined(android):
+    1
+
+  elif defined(linux):
     case availablePlatforms().platformToUse(preferedPlatform)
     of x11:
       result = screenCountX11()
@@ -23,7 +30,10 @@ proc screenCount*(preferedPlatform = defaultPreferedPlatform()): int32 =
   elif defined(windows): screenCountWinapi()
 
 proc screen*(number: int32, preferedPlatform = defaultPreferedPlatform()): Screen =
-  when defined(linux):
+  when defined(android):
+    Screen()
+
+  elif defined(linux):
     case availablePlatforms().platformToUse(preferedPlatform)
     of x11:
       result = screenX11(number)
@@ -34,7 +44,10 @@ proc screen*(number: int32, preferedPlatform = defaultPreferedPlatform()): Scree
   elif defined(windows): screenWinapi(number)
 
 proc defaultScreen*(preferedPlatform = defaultPreferedPlatform()): Screen =
-  when defined(linux):
+  when defined(android):
+    Screen()
+
+  elif defined(linux):
     case availablePlatforms().platformToUse(preferedPlatform)
     of x11:
       result = defaultScreenX11()
@@ -57,7 +70,14 @@ proc newSoftwareRenderingWindow*(
 
   class = "", # window class (used in x11), equals to title if not specified
 ): Window =
-  when defined(linux):
+  when defined(android):
+    newSoftwareRenderingWindowAndroid(
+      size, title,
+      # (if screen == -1: defaultScreenAndroid() else: screenAndroid(screen)),
+      resizable, fullscreen, frameless, transparent
+    )
+
+  elif defined(linux):
     case availablePlatforms().platformToUse(preferedPlatform)
     of x11:
       result = newSoftwareRenderingWindowX11(
@@ -89,3 +109,8 @@ proc newSoftwareRenderingWindow*(
       (if screen == -1: defaultScreenCocoa() else: screenCocoa(screen)),
       resizable, fullscreen, frameless, transparent
     )
+
+
+when defined(android):
+  proc loadExtensions*() =
+    discard

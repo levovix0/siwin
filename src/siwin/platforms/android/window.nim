@@ -1,11 +1,17 @@
 when not (compiles do: import jnim):
   {.error: "jnim library not installed, required to cross compile to android\n please run `nimble install jnim`".}
 
-import std/[strutils]
+import std/[strutils, macros, importutils, times, os, locks]
 import pkg/[jnim, vmath]
 import ../../[siwindefs]
 import ../any/[window]
 import ./[javalib, android]
+
+
+privateAccess Window
+
+
+{.passl: "-lGLESv2".}  # for opengl to work
 
 
 const siwin_androidLibName* {.strdefine.} = "siwintest"
@@ -13,6 +19,8 @@ const androidLoadStmt = "System.loadLibrary(\"" & siwin_androidLibName & "\");"
 
 
 type
+  Thread = javalib.Thread
+
   SiwinRenderer* = ref object of JVMObject
 
   SiwinGlSurfaceView* = ref object of GLSurfaceView
@@ -21,10 +29,13 @@ type
   SiwinActivity = ref object of Activity
     view: SiwinGlSurfaceView
   
+  NimMainThread = ref object of Thread
+  
 
   WindowAndroid* = ref WindowAndroidObj
   WindowAndroidObj* = object of Window
     self: WindowAndroidCursor
+    notFirstResize: bool
 
 
   WindowAndroidCursor = object
@@ -37,10 +48,13 @@ type
   WindowAndroidOpengl* = ref object of WindowAndroid
 
 
-
 var
   siwinActivity*: SiwinActivity
   openWindows*: seq[WindowAndroidCursor]
+  
+  drawLock: Lock
+
+acquire drawLock
 
 
 proc `=destroy`(window: WindowAndroidObj) {.siwin_destructor.} =
@@ -49,22 +63,59 @@ proc `=destroy`(window: WindowAndroidObj) {.siwin_destructor.} =
     openWindows.delete i
 
 
+
+proc pushEventImpl[T](event: proc(e: T), args: T) =
+  if event != nil: event(args)
+
+macro pushEvent(eventName: untyped, args: untyped) =
+  nnkStmtList.newTree(
+    nnkForStmt.newTree(
+      ident("window"),
+      bindSym("openWindows"),
+      nnkStmtList.newTree(
+        nnkCall.newTree(
+          nnkDotExpr.newTree(
+            nnkDotExpr.newTree(
+              nnkDotExpr.newTree(
+                nnkDotExpr.newTree(
+                  ident("window"),
+                  ident("raw")
+                ),
+                ident("eventsHandler")
+              ),
+              eventName
+            ),
+            bindSym("pushEventImpl")
+          ),
+          args
+        )
+      )
+    )
+  )
+
+
+
 jexport SiwinRenderer implements Renderer:
   proc new* =
     super()
 
   proc onDrawFrame(surface: GL10) =
-    GLES20.glClearColor(0.2, 0.2, 0.2, 1)
-    GLES20.glClear(0x00004000.int32)  # GL_COLOR_BUFFER_BIT
+    acquire drawLock
+    try:
+      pushEvent onRender, RenderEvent(window: window.raw)
+    finally:
+      release drawLock
   
   proc onSurfaceCreated(surface: GL10, config: EGLConfig) =
     ##
   
   proc onSurfaceChanged(surface: GL10, width: jint, height: jint) =
-    ##
-
-
-jclassDef com.levovix.siwintest.MyGLRenderer * of Renderer
+    acquire drawLock
+    try:
+      let size = ivec2(width, height)
+      pushEvent onResize, ResizeEvent(window: window.raw, size: size, initial: not window.raw.notFirstResize)
+    finally:
+      release drawLock
 
 
 jexport SiwinGlSurfaceView extends GLSurfaceView:
@@ -78,6 +129,15 @@ jexport SiwinGlSurfaceView extends GLSurfaceView:
     this.setRenderer(this.renderer)
 
     this.setRenderMode(0)  # RENDERMODE_WHEN_DIRTY
+
+
+jexport NimMainThread extends Thread:
+  proc new* =
+    super()
+
+  proc run() =
+    proc NimMain {.importc.}
+    NimMain()
 
 
 jexport SiwinActivity extends Activity:
@@ -97,8 +157,9 @@ jexport SiwinActivity extends Activity:
 
     this.setContentView(this.view)
 
-    proc NimMain {.importc.}
-    NimMain()
+    initLock drawLock
+    
+    start NimMainThread.new()
 
 
 
@@ -129,6 +190,7 @@ proc initOpenglWindow(
 
 
 method close*(window: WindowAndroid) =
+  window.m_closed = true
   let i = openWindows.find(WindowAndroidCursor(raw: window))
   if i != -1:
     openWindows.delete i
@@ -137,6 +199,8 @@ method close*(window: WindowAndroid) =
 method `title=`*(window: WindowAndroid, title: string) =
   siwinActivity.setTitle(title)
 
+method redraw*(window: WindowAndroid) =
+  siwinActivity.view.requestRender()
 
 
 proc newSoftwareRenderingWindowAndroid*(
@@ -175,7 +239,24 @@ proc newOpenglWindowAndroid*(
   if not resizable: result.resizable = false
 
 
-when isMainModule:
-  let win = newOpenglWindowAndroid(title="Доброе утро!")
-  close win
-  # run win
+method firstStep*(window: WindowAndroid, makeVisible = true) =
+  if makeVisible:
+    window.visible = true
+  
+  redraw window
+
+
+method step*(window: WindowAndroid) =
+  let time = getTime()
+  window.eventsHandler.onTick.pushEventImpl TickEvent(window: window, deltaTime: time - window.lastTickTime)
+  window.lastTickTime = time
+  let timeToSleep =
+    if time - window.lastTickTime > initDuration(milliseconds=10):
+      1
+    else:
+      20
+
+  release drawLock
+  sleep timeToSleep
+  acquire drawLock
+

@@ -1,5 +1,5 @@
 import ./[siwindefs]
-when defined(linux):
+when defined(linux) and not defined(android):
   import ./platforms/wayland/globals as waylandGlobals
 
 
@@ -15,6 +15,7 @@ type
     wayland
     winapi
     cocoa
+    android
   
   PlatformSupportDefect* = object of Defect
   PlatformMatchError* = object of CatchableError
@@ -24,6 +25,9 @@ type
 proc availablePlatforms*: seq[Platform] =
   when defined(windows):
     @[Platform.winapi]
+
+  elif defined(android):
+    @[Platform.android]
   
   elif defined(linux):
     waylandGlobals.init()
@@ -54,6 +58,8 @@ proc getRequiredVulkanExtensions*(platform = defaultPreferedPlatform()): seq[str
   of winapi:
     @["VK_KHR_surface", "VK_KHR_win32_surface"]
   of cocoa:
+    @[]  # todo
+  of android:
     @[]  # todo
 
 
