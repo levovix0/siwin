@@ -1,4 +1,4 @@
-import std/[times, options, sequtils]
+import std/[times, options, sequtils, tables]
 import pkg/[vmath]
 import ../../[siwindefs, colorutils]
 import ./[clipboards]
@@ -32,6 +32,11 @@ type
     capsLock numLock scrollLock printScreen pause
 
     level3_shift level5_shift
+  
+  Touch* = object
+    id*: int
+    pos*: Vec2
+
 
   Mouse* = object
     pos*: IVec2
@@ -39,6 +44,9 @@ type
 
   Keyboard* = object
     pressed*: set[Key]
+  
+  TouchScreen* = object
+    pressed*: Table[int, Touch]  # id -> touch
   
 
   Edge* {.siwinPureEnum.} = enum
@@ -147,6 +155,15 @@ type
     text*: string
     repeated*: bool
   
+  TouchEvent* = object of AnyWindowEvent
+    touchId*: int
+    pressed*: bool
+    pos*: Vec2
+  
+  TouchMoveEvent* = object of AnyWindowEvent
+    touchId*: int
+    pos*: Vec2
+  
   StateBoolChangedEventKind* = enum
     focus
     fullscreen
@@ -178,17 +195,21 @@ type
     onScroll*:       proc(e: ScrollEvent)
     onClick*:        proc(e: ClickEvent)
 
-    onKey*:   proc(e: KeyEvent)
-    onTextInput*:  proc(e: TextInputEvent)
+    onKey*:          proc(e: KeyEvent)
+    onTextInput*:    proc(e: TextInputEvent)
+
+    onTouch*:        proc(e: TouchEvent)
+    onTouchMove*:    proc(e: TouchMoveEvent)
 
     onStateBoolChanged*: proc(e: StateBoolChangedEvent)
 
-    onDrop*:               proc(e: DropEvent)
+    onDrop*:             proc(e: DropEvent)
 
 
   Window* = ref object of RootObj
     mouse*: Mouse
     keyboard*: Keyboard
+    touchScreen*: TouchScreen
     eventsHandler*: WindowEventsHandler
 
     clicking: set[MouseButton]

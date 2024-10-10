@@ -1,11 +1,11 @@
 when not (compiles do: import jnim):
   {.error: "jnim library not installed, required to cross compile to android\n please run `nimble install jnim`".}
 
-import std/[strutils, macros, importutils, times, os, locks]
+import std/[strutils, macros, importutils, times, os, locks, deques, tables]
 import pkg/[jnim, vmath]
 import ../../[siwindefs]
 import ../any/[window]
-import ./[javalib, android]
+import ./[javalib, android, consts]
 
 
 privateAccess Window
@@ -30,7 +30,7 @@ type
     view: SiwinGlSurfaceView
   
   NimMainThread = ref object of Thread
-  
+
 
   WindowAndroid* = ref WindowAndroidObj
   WindowAndroidObj* = object of Window
@@ -53,6 +53,10 @@ var
   openWindows*: seq[WindowAndroidCursor]
   
   drawLock: Lock
+  eventLock: Lock
+
+  eventQueue: Deque[proc()]
+  eventDestroyQueue: seq[proc()]
 
 acquire drawLock
 
@@ -104,6 +108,8 @@ jexport SiwinRenderer implements Renderer:
     try:
       pushEvent onRender, RenderEvent(window: window.raw)
     finally:
+      when defined(refc):
+        GC_fullCollect()
       release drawLock
   
   proc onSurfaceCreated(surface: GL10, config: EGLConfig) =
@@ -113,8 +119,12 @@ jexport SiwinRenderer implements Renderer:
     acquire drawLock
     try:
       let size = ivec2(width, height)
-      pushEvent onResize, ResizeEvent(window: window.raw, size: size, initial: not window.raw.notFirstResize)
+      for window in openWindows:
+        window.raw.m_size = size
+        window.raw.eventsHandler.onResize.pushEventImpl ResizeEvent(window: window.raw, size: size, initial: not window.raw.notFirstResize)
     finally:
+      when defined(refc):
+        GC_fullCollect()
       release drawLock
 
 
@@ -129,6 +139,73 @@ jexport SiwinGlSurfaceView extends GLSurfaceView:
     this.setRenderer(this.renderer)
 
     this.setRenderMode(0)  # RENDERMODE_WHEN_DIRTY
+  
+
+  proc onTouchEvent(event: MotionEvent): jboolean =
+    acquire eventLock
+
+    if eventDestroyQueue.len > 0:
+      eventDestroyQueue = @[]
+      when defined(refc):
+        GC_fullCollect()
+
+    eventQueue.addLast proc =
+      let action = event.getActionMasked
+
+      case action
+      of ACTION_DOWN, ACTION_POINTER_DOWN:
+        let pointerIndex =
+          if action == ACTION_DOWN: 0.jint
+          else: event.getActionIndex
+
+        let pos = vec2(event.getX(pointerIndex), event.getY(pointerIndex)) - vec2(this.getX, this.getY)
+
+        let touch = Touch(
+          id:
+            if action == ACTION_DOWN: 0
+            else: event.getPointerId(pointerIndex),
+          pos: pos
+        )
+        
+        for window in openWindows:
+          window.raw.touchScreen.pressed[touch.id] = touch
+          window.raw.eventsHandler.onTouch.pushEventImpl TouchEvent(window: window.raw, pressed: true, touchId: touch.id, pos: touch.pos)
+
+      of ACTION_UP, ACTION_POINTER_UP:
+        let pointerIndex =
+          if action == ACTION_UP: 0.jint
+          else: event.getActionIndex
+        
+        let touchId =
+          if action == ACTION_UP: 0
+          else: event.getPointerId(pointerIndex)
+        
+        for window in openWindows:
+          if not window.raw.touchScreen.pressed.hasKey(touchId):
+            continue
+
+          let touch = window.raw.touchScreen.pressed[touchId]
+          
+          window.raw.touchScreen.pressed.del touchId
+          window.raw.eventsHandler.onTouch.pushEventImpl TouchEvent(window: window.raw, pressed: false, touchId: touch.id, pos: touch.pos)
+      
+      of ACTION_MOVE:
+        for window in openWindows:
+          for pointerIndex in 0..<event.getPointerCount:
+            let touchId = event.getPointerId(pointerIndex)
+            
+            if not window.raw.touchScreen.pressed.hasKey(touchId):
+              continue
+            
+            let pos = vec2(event.getX(pointerIndex), event.getY(pointerIndex)) - vec2(this.getX, this.getY)
+
+            window.raw.touchScreen.pressed[touchId].pos = pos
+            window.raw.eventsHandler.onTouchMove.pushEventImpl TouchMoveEvent(window: window.raw, touchId: touchId, pos: pos)
+
+      else:
+        discard
+    release eventLock
+    result = true.jboolean
 
 
 jexport NimMainThread extends Thread:
@@ -158,6 +235,7 @@ jexport SiwinActivity extends Activity:
     this.setContentView(this.view)
 
     initLock drawLock
+    initLock eventLock
     
     start NimMainThread.new()
 
@@ -255,6 +333,15 @@ method step*(window: WindowAndroid) =
       1
     else:
       20
+  
+  acquire eventLock
+  while eventQueue.len > 0:
+    let f = eventQueue.popFirst()
+    f()
+    eventDestroyQueue.add f
+  when defined(refc):
+    GC_fullCollect()
+  release eventLock
 
   release drawLock
   sleep timeToSleep

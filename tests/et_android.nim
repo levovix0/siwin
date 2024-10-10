@@ -10,9 +10,20 @@ let window = newOpenglWindow(title="Siwin on android", frameless=true)
 loadExtensions()
 
 
+proc p_echo(args: varargs[string, `$`]) =
+  when defined(android):
+    logE args
+  else:
+    echo args
+
+
+
 var ctx: DrawContext
 
-var i = 0
+var
+  i = 0
+  x = 32/255
+  y = 32/255
 
 run window, WindowEventsHandler(
   onResize: proc(e: ResizeEvent) =
@@ -21,12 +32,9 @@ run window, WindowEventsHandler(
   onRender: proc(e: RenderEvent) =
     if ctx == nil: ctx = newDrawContext()
 
-    when defined(android):
-      logE i
-    else:
-      echo i
+    p_echo "redraw on tick: ", i
 
-    glClearColor(32/255, 32/255, 32/255, 1)
+    glClearColor(x, y, 32/255, 1)
     glClear(GL_COLOR_BUFFER_BIT or GL_DEPTH_BUFFER_BIT)
 
     block rainbowRect:
@@ -50,7 +58,20 @@ run window, WindowEventsHandler(
       draw ctx.rect
   ,
   onTick: proc(e: TickEvent) =
-    redraw window
     inc i
+  ,
+  onTouch: proc(e: TouchEvent) =
+    # p_echo "touch: id=", e.touchId, " pressed=", e.pressed, " pos=", e.pos
+    if e.touchId == 0:
+      x = e.pos.x / e.window.size.x.float32
+      y = e.pos.y / e.window.size.y.float32
+    redraw e.window
+  ,
+  onTouchMove: proc(e: TouchMoveEvent) =
+    # p_echo "touch move: id=", e.touchId, " pos=", e.pos
+    if e.touchId == 0:
+      x = e.pos.x / e.window.size.x.float32
+      y = e.pos.y / e.window.size.y.float32
+    redraw e.window
 )
 
