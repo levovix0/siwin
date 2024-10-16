@@ -29,20 +29,20 @@ type
 
 
 
-proc windowPartAt*(window: Window, mousePos: IVec2): WindowPart =
+proc windowPartAt*(window: Window, mousePos: Vec2): WindowPart =
   if window.titleRegion.isNone and window.borderWidth.isNone: return
   
-  let tr = window.titleRegion.get((ivec2(), ivec2(-1, -1)))
-  let (w, ow, dw) = window.borderWidth.get((0, 0, 0))
-  let ir = window.inputRegion.get((ivec2(), window.m_size))
+  let tr = window.titleRegion.get((vec2(), vec2(-1, -1)))
+  let (w, ow, dw) = window.borderWidth.get((0'f32, 0'f32, 0'f32))
+  let ir = window.inputRegion.get((vec2(), window.m_size.vec2))
 
   if (
     (
-      mousePos.x in (ir.pos.x - ow)..<(ir.pos.x + dw) and
-      mousePos.y in (ir.pos.y - ow)..<(ir.pos.y + w)
+      mousePos.x in (ir.pos.x - ow)..(ir.pos.x + dw - 1) and
+      mousePos.y in (ir.pos.y - ow)..(ir.pos.y + w - 1)
     ) or (
-      mousePos.x in (tr.pos.x - ow)..<(tr.pos.x + w) and
-      mousePos.y in (tr.pos.y - ow)..<(tr.pos.y + dw)
+      mousePos.x in (tr.pos.x - ow)..(tr.pos.x + w - 1) and
+      mousePos.y in (tr.pos.y - ow)..(tr.pos.y + dw - 1)
     )
   ):
     return WindowPart.border_top_left
@@ -50,20 +50,20 @@ proc windowPartAt*(window: Window, mousePos: IVec2): WindowPart =
   elif (
     (
       mousePos.x in (ir.pos.x + ir.size.x - dw)..(ir.pos.x + ir.size.x + ow) and
-      mousePos.y in (ir.pos.y - ow)..<(ir.pos.y + w)  
+      mousePos.y in (ir.pos.y - ow)..(ir.pos.y + w - 1)
     ) or (
       mousePos.x in (tr.pos.x + tr.size.x - w)..(tr.pos.x + tr.size.x + ow) and
-      mousePos.y in (tr.pos.y - ow)..<(tr.pos.y + dw)
+      mousePos.y in (tr.pos.y - ow)..(tr.pos.y + dw - 1)
     )
   ):
     return WindowPart.border_top_right
   
   elif (
     (
-      mousePos.x in (ir.pos.x - ow)..<(ir.pos.x + dw) and
+      mousePos.x in (ir.pos.x - ow)..(ir.pos.x + dw - 1) and
       mousePos.y in (ir.pos.y + ir.size.y - w)..(ir.pos.y + ir.size.y + ow)
     ) or (
-      mousePos.x in (tr.pos.x - ow)..<(tr.pos.x + w) and
+      mousePos.x in (tr.pos.x - ow)..(tr.pos.x + w - 1) and
       mousePos.y in (tr.pos.y + tr.size.y - dw)..(tr.pos.y + tr.size.y + ow)
     )
   ):
@@ -81,26 +81,26 @@ proc windowPartAt*(window: Window, mousePos: IVec2): WindowPart =
     return WindowPart.border_bottom_right
   
   elif (
-    mousePos.x in (ir.pos.x - ow)..<(ir.pos.x + ir.size.x + ow) and
-    mousePos.y in (ir.pos.y - ow)..<(ir.pos.y + w + 2)
+    mousePos.x in (ir.pos.x - ow)..(ir.pos.x + ir.size.x + ow - 1) and
+    mousePos.y in (ir.pos.y - ow)..(ir.pos.y + w + 2 - 1)
   ):
     return WindowPart.border_top
 
   elif (
-    mousePos.x in (ir.pos.x - ow)..<(ir.pos.x + ir.size.x + ow) and
+    mousePos.x in (ir.pos.x - ow)..(ir.pos.x + ir.size.x + ow - 1) and
     mousePos.y in (ir.pos.y + ir.size.y - w)..(ir.pos.y + ir.size.y + ow + 2)
   ):
     return WindowPart.border_bottom
   
   elif (
-    mousePos.x in (ir.pos.x - ow)..<(ir.pos.x + w + 2) and
-    mousePos.y in (ir.pos.y - ow)..<(ir.pos.y + ir.size.y + ow)
+    mousePos.x in (ir.pos.x - ow)..(ir.pos.x + w + 2 - 1) and
+    mousePos.y in (ir.pos.y - ow)..(ir.pos.y + ir.size.y + ow - 1)
   ):
     return WindowPart.border_left
 
   elif (
     mousePos.x in (ir.pos.x + ir.size.x - w)..(ir.pos.x + ir.size.x + ow + 2) and
-    mousePos.y in (ir.pos.y - ow)..<(ir.pos.y + ir.size.y + ow)
+    mousePos.y in (ir.pos.y - ow)..(ir.pos.y + ir.size.y + ow - 1)
   ):
     return WindowPart.border_right
 
@@ -111,8 +111,8 @@ proc windowPartAt*(window: Window, mousePos: IVec2): WindowPart =
     return WindowPart.title
   
   elif (
-    mousePos.x in ir.pos.x..<(ir.pos.x + ir.size.x) and
-    mousePos.y in ir.pos.y..<(ir.pos.y + ir.size.y)
+    mousePos.x in ir.pos.x..(ir.pos.x + ir.size.x - 1) and
+    mousePos.y in ir.pos.y..(ir.pos.y + ir.size.y - 1)
   ):
     return WindowPart.client
   

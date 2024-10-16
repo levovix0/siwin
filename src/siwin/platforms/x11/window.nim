@@ -739,11 +739,11 @@ method `maxSize=`*(window: WindowX11, v: IVec2) =
   discard display.XSetNormalHints(window.handle, hints.addr)
 
 
-method startInteractiveMove*(window: WindowX11, pos: Option[IVec2]) =
+method startInteractiveMove*(window: WindowX11, pos: Option[Vec2]) =
   # todo: remove `pos` argument and use last click event cursor pos
 
   window.releaseAllKeys()
-  let pos = pos.get(cursor().pos - window.m_pos) + window.m_pos
+  let pos = pos.get((cursor().pos - window.m_pos).vec2) + window.m_pos.vec2
   discard display.XUngrabPointer(0)
   discard XFlush display
 
@@ -756,9 +756,9 @@ method startInteractiveMove*(window: WindowX11, pos: Option[IVec2]) =
   )
   # todo: press all keys and mouse buttons that are pressed after move
 
-method startInteractiveResize*(window: WindowX11, edge: Edge, pos: Option[IVec2]) =
+method startInteractiveResize*(window: WindowX11, edge: Edge, pos: Option[Vec2]) =
   window.releaseAllKeys()
-  let pos = pos.get(cursor().pos - window.m_pos) + window.m_pos
+  let pos = pos.get((cursor().pos - window.m_pos).vec2) + window.m_pos.vec2
   discard display.XUngrabPointer(0)
   discard XFlush display
 
@@ -784,11 +784,11 @@ method startInteractiveResize*(window: WindowX11, edge: Edge, pos: Option[IVec2]
   # todo: press all keys and mouse buttons that are pressed after resize
 
 
-method showWindowMenu*(window: WindowX11, pos: Option[IVec2]) =
+method showWindowMenu*(window: WindowX11, pos: Option[Vec2]) =
   discard
 
 
-method setInputRegion*(window: WindowX11, pos, size: IVec2) =
+method setInputRegion*(window: WindowX11, pos, size: Vec2) =
   procCall window.Window.setInputRegion(pos, size)
   # todo: use XShape to cut window input region
 
@@ -879,7 +879,7 @@ method `dragStatus=`*(window: WindowX11, v: DragStatus) =
   window.dragStatusSent = true
 
 
-proc emulateWindowTitleAndBorderBehaviour(window: WindowX11, prevMousePos: IVec2) =
+proc emulateWindowTitleAndBorderBehaviour(window: WindowX11, prevMousePos: Vec2) =
   case window.windowPartAt(prevMousePos)
   of WindowPart.border_top_left:      window.setTemporaryCursor(BuiltinCursor.sizeTopLeft)
   of WindowPart.border_top_right:     window.setTemporaryCursor(BuiltinCursor.sizeTopRight)
@@ -917,7 +917,7 @@ method firstStep*(window: WindowX11, makeVisible = true) =
     window.visible = true
 
   window.m_pos = window.handle.geometry.pos
-  window.mouse.pos = cursor().pos - window.m_pos
+  window.mouse.pos = (cursor().pos - window.m_pos).vec2
   
   if window of WindowX11SoftwareRendering:
     window.WindowX11SoftwareRendering.resizePixelBuffer(window.m_size)
@@ -1016,7 +1016,9 @@ method step*(window: WindowX11) =
       
       elif ev.xclient.message_type == atoms.xDndPosition:
         # todo: xDndPosition sends not only position
-        window.mouse.pos = ivec2(((ev.xclient.data.l[2] shr 16) and 0xFFFF).int32, (ev.xclient.data.l[2] and 0xFFFF).int32) - window.pos
+        window.mouse.pos = (
+          ivec2(((ev.xclient.data.l[2] shr 16) and 0xFFFF).int32, (ev.xclient.data.l[2] and 0xFFFF).int32) - window.pos
+        ).vec2
         window.dragPositionTimestamp = x.Time ev.xclient.data.l[3]
 
         window.dragStatusSent = false
@@ -1076,7 +1078,7 @@ method step*(window: WindowX11) =
 
       if ev.xconfigure.x.int != window.m_pos.x or ev.xconfigure.y.int != window.m_pos.y:
         window.m_pos = ivec2(ev.xconfigure.x.int32, ev.xconfigure.y.int32)
-        window.mouse.pos = cursor().pos - window.m_pos
+        window.mouse.pos = (cursor().pos - window.m_pos).vec2
         window.eventsHandler.onWindowMove.pushEvent WindowMoveEvent(window: window, pos: window.m_pos)
       
       if window.syncState == SyncState.syncRecieved:
@@ -1086,7 +1088,7 @@ method step*(window: WindowX11) =
 
     of MotionNotify:
       emulateWindowTitleAndBorderBehaviour(window, window.mouse.pos)
-      window.mouse.pos = ivec2(ev.xmotion.x.int32, ev.xmotion.y.int32)
+      window.mouse.pos = vec2(ev.xmotion.x.float32, ev.xmotion.y.float32)
       window.clicking = {}
       window.eventsHandler.onMouseMove.pushEvent MouseMoveEvent(window: window, pos: window.mouse.pos, kind: MouseMoveKind.move)
 
@@ -1126,13 +1128,13 @@ method step*(window: WindowX11) =
     of LeaveNotify:
       emulateWindowTitleAndBorderBehaviour(window, window.mouse.pos)
       window.clicking = {}
-      window.mouse.pos = ivec2(ev.xcrossing.x.int32, ev.xcrossing.y.int32)
+      window.mouse.pos = vec2(ev.xcrossing.x.float32, ev.xcrossing.y.float32)
       window.eventsHandler.onMouseMove.pushEvent MouseMoveEvent(window: window, pos: window.mouse.pos, kind: MouseMoveKind.leave)
     
     of EnterNotify:
       emulateWindowTitleAndBorderBehaviour(window, window.mouse.pos)
       window.clicking = {}
-      window.mouse.pos = ivec2(ev.xcrossing.x.int32, ev.xcrossing.y.int32)
+      window.mouse.pos = vec2(ev.xcrossing.x.float32, ev.xcrossing.y.float32)
       window.eventsHandler.onMouseMove.pushEvent MouseMoveEvent(window: window, pos: window.mouse.pos, kind: MouseMoveKind.enter)
 
     of FocusIn:

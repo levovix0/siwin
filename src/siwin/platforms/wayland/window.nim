@@ -453,12 +453,12 @@ method `maxSize=`*(window: WindowWayland, v: IVec2) =
   window.xdgToplevel.set_max_size(v.x, v.y)
 
 
-method startInteractiveMove*(window: WindowWayland, pos: Option[IVec2]) =
+method startInteractiveMove*(window: WindowWayland, pos: Option[Vec2]) =
   expectExtension seat
   window.xdgToplevel.move(seat, window.lastMouseButtonEventSerial)
 
 
-method startInteractiveResize*(window: WindowWayland, edge: Edge, pos: Option[IVec2]) =
+method startInteractiveResize*(window: WindowWayland, edge: Edge, pos: Option[Vec2]) =
   expectExtension seat
   window.xdgToplevel.resize(
     seat, window.lastMouseButtonEventSerial,
@@ -474,20 +474,20 @@ method startInteractiveResize*(window: WindowWayland, edge: Edge, pos: Option[IV
   )
 
 
-method showWindowMenu*(window: WindowWayland, pos: Option[IVec2]) =
-  let pos = pos.get(window.mouse.pos)
+method showWindowMenu*(window: WindowWayland, pos: Option[Vec2]) =
+  let pos = pos.get(window.mouse.pos).ivec2
   window.xdgToplevel.show_window_menu(seat, window.lastMouseButtonEventSerial, pos.x, pos.y)
 
 
-method setInputRegion*(window: WindowWayland, pos, size: IVec2) =
+method setInputRegion*(window: WindowWayland, pos, size: Vec2) =
   procCall window.Window.setInputRegion(pos, size)
   let region = compositor.create_region
-  region.add(pos.x, pos.y, size.x, size.y)
+  region.add(pos.x.int32, pos.y.int32, size.x.int32, size.y.int32)
   window.surface.set_input_region(region)
-  window.xdgSurface.set_window_geometry(pos.x, pos.y, size.x, size.y)
+  window.xdgSurface.set_window_geometry(pos.x.int32, pos.y.int32, size.x.int32, size.y.int32)
 
 
-proc replicateWindowTitleAndBorderBehaviour(window: WindowWayland, prevMousePos: IVec2) =
+proc replicateWindowTitleAndBorderBehaviour(window: WindowWayland, prevMousePos: Vec2) =
   if window.mouse.pressed != {MouseButton.left} or window.clicking != {MouseButton.left}: return
   
   case window.windowPartAt(prevMousePos)
@@ -520,7 +520,7 @@ proc initSeatEvents* =
       
       window.clicking = {}
       window.enterSerial = serial
-      window.mouse.pos = vec2(surface_x, surface_y).ivec2
+      window.mouse.pos = vec2(surface_x, surface_y)
 
       replicateWindowTitleAndBorderBehaviour(window, window.mouse.pos)
 
@@ -550,7 +550,7 @@ proc initSeatEvents* =
         replicateWindowTitleAndBorderBehaviour(window, window.mouse.pos)
 
         window.clicking = {}
-        window.mouse.pos = vec2(surface_x, surface_y).ivec2
+        window.mouse.pos = vec2(surface_x, surface_y)
         window.eventsHandler.pushEvent onMouseMove, MouseMoveEvent(window: window, pos: window.mouse.pos, kind: MouseMoveKind.move)
     
 

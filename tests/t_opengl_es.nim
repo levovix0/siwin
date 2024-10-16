@@ -24,8 +24,8 @@ test "OpenGL ES":
   
   run window, WindowEventsHandler(
     onResize: proc(e: ResizeEvent) =
-      window.setTitleRegion(ivec2(0, 0), ivec2(e.size.x, 80))
-      window.setInputRegion(ivec2(10, 10), ivec2(e.size.x - 20, e.size.y - 20))
+      window.setTitleRegion(vec2(0, 0), vec2(e.size.x.float32, 80))
+      window.setInputRegion(vec2(10, 10), vec2(e.size.x.float32 - 20, e.size.y.float32 - 20))
       
       glViewport 0, 0, e.size.x.GLsizei, e.size.y.GLsizei
     ,
@@ -139,7 +139,7 @@ test "OpenGL ES":
       else:
         case e.button
         of MouseButton.left, MouseButton.right:
-          g = (e.pos.x / e.window.size.x * 2).min(2).max(0)
+          g = (e.pos.x / e.window.size.x.float32 * 2).min(2).max(0)
           redraw e.window
         of MouseButton.middle:
           e.window.maxSize = ivec2(600, 600)
@@ -151,7 +151,7 @@ test "OpenGL ES":
       if e.kind == MouseMoveKind.enter: echo "enter: ", e.pos
       if e.kind == MouseMoveKind.moveWhileDragging: echo "draging: ", e.pos
       if MouseButton.left in e.window.mouse.pressed:
-        g = (e.pos.x / e.window.size.x * 2).min(2).max(0)
+        g = (e.pos.x / e.window.size.x.float32 * 2).min(2).max(0)
         redraw e.window
     ,
     onStateBoolChanged: proc(e: StateBoolChangedEvent) =

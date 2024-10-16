@@ -58,7 +58,7 @@ test "OpenGL":
       else:
         case e.button
         of MouseButton.left, MouseButton.right:
-          g = (e.pos.x / e.window.size.x * 2).min(2).max(0)
+          g = (e.pos.x / e.window.size.x.float32 * 2).min(2).max(0)
           redraw e.window
         of MouseButton.middle:
           e.window.maxSize = ivec2(600, 600)
@@ -69,7 +69,7 @@ test "OpenGL":
       if e.kind == leave: echo "leave: ", e.pos
       if e.kind == MouseMoveKind.enter: echo "enter: ", e.pos
       if MouseButton.left in e.window.mouse.pressed:
-        g = (e.pos.x / e.window.size.x * 2).min(2).max(0)
+        g = (e.pos.x / e.window.size.x.float32 * 2).min(2).max(0)
         redraw e.window
     ,
     onStateBoolChanged: proc(e: StateBoolChangedEvent) =

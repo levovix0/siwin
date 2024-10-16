@@ -465,14 +465,14 @@ method `maxSize=`*(window: WindowWinapi, v: IVec2) =
     discard SetWindowLongW(window.handle, GwlStyle, style or WsThickframe)
 
 
-method startInteractiveMove*(window: WindowWinapi, pos: Option[IVec2]) =
+method startInteractiveMove*(window: WindowWinapi, pos: Option[Vec2]) =
   window.releaseAllKeys()
   ReleaseCapture()
 
   window.handle.PostMessage(WmSysCommand, 0xF012, 0)
   # todo: press all keys and mouse buttons that are pressed after move
 
-method startInteractiveResize*(window: WindowWinapi, edge: Edge, pos: Option[IVec2]) =
+method startInteractiveResize*(window: WindowWinapi, edge: Edge, pos: Option[Vec2]) =
   window.releaseAllKeys()
   ReleaseCapture()
 
@@ -492,7 +492,7 @@ method startInteractiveResize*(window: WindowWinapi, edge: Edge, pos: Option[IVe
   # todo: press all keys and mouse buttons that are pressed after resize
 
 
-method showWindowMenu*(window: WindowWinapi, pos: Option[IVec2]) =
+method showWindowMenu*(window: WindowWinapi, pos: Option[Vec2]) =
   discard
 
 
@@ -583,6 +583,7 @@ method step*(window: WindowWinapi) =
     window.m_resizable = (GetWindowLongW(window.handle, GwlStyle) and WsThickframe) != 0
     
     var p: WindowPlacement
+    p.length = sizeof(WindowPlacement).int32
     GetWindowPlacement(window.handle, p.addr)
     window.m_pos = ivec2(p.rcNormalPosition.left, p.rcNormalPosition.top)
 
@@ -641,18 +642,18 @@ proc poolEvent(window: WindowWinapi, message: Uint, wParam: WParam, lParam: LPar
     PostQuitMessage(0)
 
   of WmMouseMove:
-    window.mouse.pos = ivec2(lParam.GetX_LParam.int32, lParam.GetY_LParam.int32)
+    window.mouse.pos = vec2(lParam.GetX_LParam.float32, lParam.GetY_LParam.float32)
     window.clicking = {}
     window.eventsHandler.pushEvent onMouseMove, MouseMoveEvent(window: window, pos: window.mouse.pos, kind: MouseMoveKind.move)
 
   of WmMouseLeave:
-    window.mouse.pos = ivec2(lParam.GetX_LParam.int32, lParam.GetY_LParam.int32)
+    window.mouse.pos = vec2(lParam.GetX_LParam.float32, lParam.GetY_LParam.float32)
     window.clicking = {}
     window.eventsHandler.pushEvent onMouseMove, MouseMoveEvent(window: window, pos: window.mouse.pos, kind: MouseMoveKind.leave)
     window.handle.trackMouseEvent(TmeHover)
 
   of WmMouseHover:
-    window.mouse.pos = ivec2(lParam.GetX_LParam.int32, lParam.GetY_LParam.int32)
+    window.mouse.pos = vec2(lParam.GetX_LParam.float32, lParam.GetY_LParam.float32)
     window.clicking = {}
     window.eventsHandler.pushEvent onMouseMove, MouseMoveEvent(window: window, pos: window.mouse.pos, kind: MouseMoveKind.enter)
     window.handle.trackMouseEvent(TmeLeave)
@@ -740,7 +741,7 @@ proc poolEvent(window: WindowWinapi, message: Uint, wParam: WParam, lParam: LPar
       info[].ptMaxTrackSize.y = window.m_maxSize.y
 
   of WmNcHitTest:
-    window.mouse.pos = ivec2(lParam.GetX_LParam.int32, lParam.GetY_LParam.int32)
+    window.mouse.pos = vec2(lParam.GetX_LParam.float32, lParam.GetY_LParam.float32) - window.pos.vec2
     ScreenToClient(window.handle, cast[ptr Point](window.mouse.pos.addr))
     case window.windowPartAt(window.mouse.pos)
     of title: return HtCaption
