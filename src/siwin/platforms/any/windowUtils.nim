@@ -30,7 +30,7 @@ type
 
 
 proc windowPartAt*(window: Window, mousePos: Vec2): WindowPart =
-  if window.titleRegion.isNone and window.borderWidth.isNone: return
+  if window.titleRegion.isNone and window.borderWidth.isNone: return WindowPart.client
   
   let tr = window.titleRegion.get((vec2(), vec2(-1, -1)))
   let (w, ow, dw) = window.borderWidth.get((0'f32, 0'f32, 0'f32))

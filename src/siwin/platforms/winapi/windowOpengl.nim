@@ -17,13 +17,14 @@ proc initWindowWinapiOpengl(window: WindowWinapiOpengl; size: IVec2; screen: Scr
   var pfd = PixelFormatDescriptor(
     nSize: Word PixelFormatDescriptor.sizeof,
     nVersion: 1,
-    dwFlags: Pfd_draw_to_window or Pfd_support_opengl or Pfd_double_buffer,
+    dwFlags: Pfd_draw_to_window or Pfd_support_opengl or Pfd_double_buffer or Pfd_support_composition,
     iPixelType: Pfd_type_rgba,
     cColorBits: 32,
     cDepthBits: 24,
-    cStencilBits: 8,
+    cAlphaBits: 8,
     iLayerType: Pfd_main_plane,
   )
+
   window.hdc.SetPixelFormat(window.hdc.ChoosePixelFormat(pfd.addr), pfd.addr)
   window.ctx = WglContext(raw: wglCreateContext(window.hdc))
   discard window.hdc.wglMakeCurrent(window.ctx.raw)

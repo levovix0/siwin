@@ -237,6 +237,20 @@ method `size=`*(window: WindowWinapi, size: IVec2) =
   let bordery = (rcWind.bottom - rcWind.top) - rcClient.bottom
   window.handle.MoveWindow(rcWind.left, rcWind.top, (size.x + borderx).int32, (size.y + bordery).int32, True)
 
+
+proc enableTransparency*(window: WindowWinapi) =
+  let region = CreateRectRgn(0, 0, -1, -1)
+  defer: discard DeleteObject(region)
+
+  var bb = DwmBlurBehind()
+  bb.dwFlags = DwmbbEnable
+  bb.fEnable = True
+
+  window.handle.DwmEnableBlurBehindWindow(bb.addr)
+
+  DeleteObject(region)
+
+
 proc initWindow(window: WindowWinapi; size: IVec2; screen: ScreenWinapi, fullscreen, frameless, transparent: bool, class = wClassName) =
   window.handle = CreateWindow(
     class,
@@ -268,16 +282,7 @@ proc initWindow(window: WindowWinapi; size: IVec2; screen: ScreenWinapi, fullscr
 
   if transparent:
     window.m_transparent = true
-
-    let region = CreateRectRgn(0, 0, -1, -1)
-    defer: discard DeleteObject(region)
-
-    var bb = DwmBlurBehind()
-    bb.dwFlags = DwmbbEnable or DwmbbBlurRegion
-    bb.hRgnBlur = region
-    bb.fEnable = True
-
-    window.handle.DwmEnableBlurBehindWindow(bb.addr)
+    window.enableTransparency()
   
   window.m_clipboard = ClipboardWinapi(availableKinds: {ClipboardContentKind.text})  # todo: other types
   window.m_selectionClipboard = window.m_clipboard
@@ -291,6 +296,9 @@ method close*(window: WindowWinapi) =
   if not window.m_closed: window.handle.SendMessage(WmClose, 0, 0)
 
 method redraw*(window: WindowWinapi) =
+  if window.redrawRequested: return
+  window.redrawRequested = true
+
   var cr = window.handle.clientRect
   window.handle.InvalidateRect(cr.addr, false.WinBool)
 
@@ -567,29 +575,28 @@ method firstStep*(window: WindowWinapi, makeVisible = true) =
   window.lastTickTime = getTime()
 
 
+proc updateWindowState(window: WindowWinapi) =
+  if not window.m_frameless and IsZoomed(window.handle).bool != window.m_maximized:
+    window.m_maximized = not window.m_maximized
+    window.eventsHandler.pushEvent onStateBoolChanged, StateBoolChangedEvent(
+      window: window, kind: StateBoolChangedEventKind.maximized, value: window.m_maximized
+    )
+  
+  window.m_minimized = IsIconic(window.handle) != 0
+  window.m_visible = IsWindowVisible(window.handle) != 0
+  window.m_resizable = (GetWindowLongW(window.handle, GwlStyle) and WsThickframe) != 0
+  
+  var p: WindowPlacement
+  p.length = sizeof(WindowPlacement).int32
+  GetWindowPlacement(window.handle, p.addr)
+  window.m_pos = ivec2(p.rcNormalPosition.left, p.rcNormalPosition.top)
+
+
 method step*(window: WindowWinapi) =
   var msg: Msg
   var catched = false
 
-  proc checkStateChanged =
-    if not window.m_frameless and IsZoomed(window.handle).bool != window.m_maximized:
-      window.m_maximized = not window.m_maximized
-      window.eventsHandler.pushEvent onStateBoolChanged, StateBoolChangedEvent(
-        window: window, kind: StateBoolChangedEventKind.maximized, value: window.m_maximized
-      )
-    
-    window.m_minimized = IsIconic(window.handle) != 0
-    window.m_visible = IsWindowVisible(window.handle) != 0
-    window.m_resizable = (GetWindowLongW(window.handle, GwlStyle) and WsThickframe) != 0
-    
-    var p: WindowPlacement
-    p.length = sizeof(WindowPlacement).int32
-    GetWindowPlacement(window.handle, p.addr)
-    window.m_pos = ivec2(p.rcNormalPosition.left, p.rcNormalPosition.top)
-
   while PeekMessage(msg.addr, 0, 0, 0, PmRemove).bool:
-    checkStateChanged()
-    catched = true
     TranslateMessage(msg.addr)
     DispatchMessage(msg.addr)
 
@@ -607,6 +614,8 @@ method step*(window: WindowWinapi) =
 
 
 proc poolEvent(window: WindowWinapi, message: Uint, wParam: WParam, lParam: LParam): LResult =
+  updateWindowState(window)
+
   template button: MouseButton =
     case message
     of WM_lbuttonDown, WM_lbuttonUp, WM_lbuttonDblclk: MouseButton.left
@@ -624,6 +633,7 @@ proc poolEvent(window: WindowWinapi, message: Uint, wParam: WParam, lParam: LPar
 
   case message
   of WmPaint:
+    window.redrawRequested = false
     let rect = window.handle.clientRect
     if rect.right != window.m_size.x or rect.bottom != window.m_size.y:
       window.m_size = ivec2(rect.right, rect.bottom)
@@ -741,9 +751,13 @@ proc poolEvent(window: WindowWinapi, message: Uint, wParam: WParam, lParam: LPar
       info[].ptMaxTrackSize.y = window.m_maxSize.y
 
   of WmNcHitTest:
-    window.mouse.pos = vec2(lParam.GetX_LParam.float32, lParam.GetY_LParam.float32) - window.pos.vec2
-    ScreenToClient(window.handle, cast[ptr Point](window.mouse.pos.addr))
-    case window.windowPartAt(window.mouse.pos)
+    if window.titleRegion.isNone and window.borderWidth.isNone: return window.handle.DefWindowProc(message, wParam, lParam)
+
+    var pos = Point(x: lParam.GetX_LParam.LONG, y: lParam.GetY_LParam.LONG)
+    ScreenToClient(window.handle, pos.addr)
+    let pos_f32 = vec2(pos.x.float32, pos.y.float32)
+
+    case window.windowPartAt(pos_f32)
     of title: return HtCaption
     of client: return HtClient
     of border_top_left: return HtTopLeft
@@ -754,7 +768,11 @@ proc poolEvent(window: WindowWinapi, message: Uint, wParam: WParam, lParam: LPar
     of border_bottom: return HtBottom
     of border_left: return HtLeft
     of border_right: return HtRight
-    of none: return HtNowhere
+    of none: return HtTransparent
+  
+  of WmDwmCompositionChanged:
+    if window.transparent:
+      window.enableTransparency()
 
   else: return window.handle.DefWindowProc(message, wParam, lParam)
 
