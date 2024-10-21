@@ -1,7 +1,8 @@
 import std/[importutils, tables, times, os, unicode]
 import pkg/[vmath]
 import ../../[siwindefs, colorutils]
-import ../any/window {.all.}, cocoa
+import ../any/[window {.all.}, clipboards]
+import ./[cocoa]
 
 {.experimental: "overloadableEnums".}
 
@@ -18,7 +19,13 @@ type
     lastClickTime: array[MouseButton, Time]
   
   WindowCocoaSoftwareRendering* = ref object of WindowCocoa
+
   WindowCocoaOpengl* = ref object of WindowCocoa
+    openglView: NSOpenGLView
+
+  ClipboardCocoa* = ref object of Clipboard
+
+  ClipboardCocoaDnd* = ref object of Clipboard
 
 
 var
@@ -189,7 +196,7 @@ proc initWindowCocoa(
   window.m_frameless = frameless
 
   window.handle = windowClass.alloc.NsWindow.initWithContentRect(
-    NsMakeRect(0, 0, 400, 400),
+    NsMakeRect(0, 0, size.x.float64, size.y.float64),
     (
       if frameless: NSWindowStyleMaskMiniaturizable or NSWindowStyleMaskResizable or NSWindowStyleMaskBorderless
       else: NSWindowStyleMaskMiniaturizable or NSWindowStyleMaskResizable or NSWindowStyleMaskTitled or NSWindowStyleMaskClosable
@@ -198,6 +205,10 @@ proc initWindowCocoa(
     false
   )
   windows.add window
+
+  window.m_clipboard = ClipboardCocoa(availableKinds: {ClipboardContentKind.text})  # todo: other types
+  window.m_selectionClipboard = window.m_clipboard
+  window.m_dragndropClipboard = ClipboardCocoaDnd()  # todo
 
 
 proc initWindowCocoaOpengl*(
@@ -219,34 +230,39 @@ proc initWindowCocoaOpengl*(
       NSOpenGLPFADepthSize, 24,
       NSOpenGLPFAStencilSize, 8,
       NSOpenGLPFAOpenGLProfile, NSOpenGLProfileVersion4_1Core,
-      NSOpenGLContextParameterSurfaceOpacity, transparent.uint32,
       0
     ]
     pixelFormat = NSOpenGLPixelFormat.alloc().initWithAttributes(
       pixelFormatAttribs[0].unsafeAddr
     )
 
-  let openglView = viewClass.alloc().NSOpenGLView.initWithFrame(
+  window.openglView = viewClass.alloc().NSOpenGLView.initWithFrame(
     window.handle.contentView.frame,
     pixelFormat
   )
-  openglView.setWantsBestResolutionOpenGLSurface(true)
+  window.openglView.setWantsBestResolutionOpenGLSurface(true)
 
-  openglView.openGLContext.makeCurrentContext()
+  window.openglView.openGLContext.makeCurrentContext()
 
   var swapInterval: int32 = if vsync: 1 else: 0
-  openglView.openGLContext.setValues(
+  window.openglView.openGLContext.setValues(
     swapInterval.addr,
     NSOpenGLContextParameterSwapInterval
   )
 
+  var opaque: int32 = if transparent: 0 else: 1
+  window.openglView.openGLContext.setValues(
+    opaque.addr,
+    NSOpenGLContextParameterSurfaceOpacity
+  )
+
   window.handle.setDelegate(window.handle.ID)
-  window.handle.setContentView(openglView.NSView)
-  discard window.handle.makeFirstResponder(openglView.NSView)
+  window.handle.setContentView(window.openglView.NSView)
+  discard window.handle.makeFirstResponder(window.openglView.NSView)
   window.handle.setRestorable(false)
 
 
-method `frameless=`*(window: WindowCocoaOpengl, v: bool) =
+method `frameless=`*(window: WindowCocoa, v: bool) =
   if window.m_frameless == v: return
   window.m_frameless = v
   window.handle.setStyleMask(
@@ -255,14 +271,26 @@ method `frameless=`*(window: WindowCocoaOpengl, v: bool) =
   )
 
 
-method `title=`*(window: WindowCocoaOpengl, title: string) =
+method `title=`*(window: WindowCocoa, title: string) =
   autoreleasepool:
     window.handle.setTitle(@title)
 
 
-method `cursor=`*(window: WindowCocoaOpengl, cursor: Cursor) =
+method `cursor=`*(window: WindowCocoa, cursor: Cursor) =
   if window.m_cursor.kind == builtin and cursor.kind == builtin and window.m_cursor.builtin == cursor.builtin: return
   window.m_cursor = cursor
+
+
+method `visible=`*(window: WindowCocoa, v: bool) =
+  autoreleasepool:
+    if v:
+      window.handle.orderFront(0.ID)
+    else:
+      window.handle.orderOut(0.ID)
+
+
+method makeCurrent*(window: WindowCocoaOpengl) =
+  window.openglView.openGLContext.makeCurrentContext()
 
 
 proc init =
@@ -286,7 +314,7 @@ proc init =
   
 
   proc updateMousePos(window: WindowCocoa, location: NsPoint, kind: MouseMoveKind) =
-    window.mouse.pos = ivec2(round(location.x).int32, round(window.handle.contentView.bounds.size.height - location.y).int32)
+    window.mouse.pos = vec2(location.x.float32, (window.handle.contentView.bounds.size.height - location.y).float32)
     window.eventsHandler.pushEvent onMouseMove, MouseMoveEvent(window: window, pos: window.mouse.pos, kind: kind)
 
   proc handleMouseButton(window: WindowCocoa, button: MouseButton, pressed: bool) =
@@ -312,7 +340,7 @@ proc init =
   autoreleasepool:
     discard NSApplication.sharedApplication()
 
-    addClass "WindyAppDelegate", "NSObject", appDelegateClass:
+    addClass "SiwinAppDelegate", "NSObject", appDelegateClass:
       addMethod "applicationWillFinishLaunching:", proc(self: Id, cmd: Sel, notification: NsNotification): Id {.cdecl.} =
         let
           menuBar = NsMenu.new
@@ -326,7 +354,7 @@ proc init =
           quitTitle = @("Quit " & $processName)
           quitMenuitem = NsMenuItem.alloc().initWithTitle(
             quitTitle,
-            s"terminate:",
+            selector"terminate:",
             @"q"
           )
         appMenu.addItem(quitMenuItem)
@@ -338,7 +366,7 @@ proc init =
         NSApp.activateIgnoringOtherApps(true)
 
 
-    addClass "WindyWindow", "NSWindow", windowClass:
+    addClass "SiwinWindow", "NSWindow", windowClass:
       addMethod "windowDidResize:", proc(self: Id, cmd: Sel, notification: NsNotification): Id {.cdecl.} =
         getWindow()
         updateSize window
@@ -381,7 +409,7 @@ proc init =
         true
 
 
-    addClass "WindyView", "NSOpenGLView", viewClass:
+    addClass "SiwinView", "NSOpenGLView", viewClass:
       addProtocol "NSTextInputClient"
       
       addMethod "acceptsFirstResponder", proc(self: Id, cmd: Sel): bool {.cdecl.} =
@@ -623,6 +651,11 @@ proc init =
     NSApp.finishLaunching()
 
 
+method firstStep*(window: WindowCocoa, makeVisible = true) =
+  if makeVisible:
+    window.visible = true
+
+
 method step*(window: WindowCocoa) =
   var catched = false
   autoreleasepool:
@@ -639,10 +672,15 @@ method step*(window: WindowCocoa) =
       NSApp.sendEvent(event)
 
   if not catched: sleep 1
+
+  window.eventsHandler.pushEvent onTick, TickEvent(window: window)  # todo: lastTickTime
   
   if window.redrawRequested:
     window.redrawRequested = false
     window.eventsHandler.pushEvent onRender, RenderEvent(window: window)
+    
+    if window of WindowCocoaOpengl:
+      window.WindowCocoaOpengl.openglView.openGLContext.flushBuffer()
 
 
 proc newSoftwareRenderingWindowCocoa*(

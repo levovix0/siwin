@@ -13,7 +13,8 @@ type
     receiver*: ID
     super_class*: Class
 
-{.push cdecl, dynlib: "libobjc.dylib".}
+# {.push cdecl, dynlib: "libobjc.dylib".}
+{.push cdecl.}
 
 proc objc_msgSend*() {.importc.}
 proc objc_msgSendSuper*() {.importc.}
@@ -74,8 +75,9 @@ macro objc*(body: untyped) =
     var convertedFunction = quote do:
       cast[proc(): `retType` {.cdecl, raises: [], gcsafe.}](`messageFunction`)
     
-    var messageCall = newCall(convertedFunction)
-    fn[6] = newStmtList(messageCall)
+    let convertedFunctionSym = ident("cvf")
+
+    var messageCall = newCall(convertedFunctionSym)
 
     # For each argument decide what to do
     for defs in fn[3][1..^1]:
@@ -128,12 +130,16 @@ macro objc*(body: untyped) =
       selStr = newStrLitNode(sel)
     header.add quote do:
       let `selVar` = sel_registerName(`selStr`.cstring)
+    
+    fn[6] = quote do:
+      let `convertedFunctionSym` = `convertedFunction`
+      `messageCall`
 
     inc numSel
 
   body.insert(0, header)
 
-  echo body.repr
+  # echo body.repr
 
   return body
 
@@ -161,7 +167,7 @@ template addClass*(className, superName: string, cls: Class, body: untyped) =
       {.cast(raises: []).}:
         discard class_addMethod(
           cls,
-          s(methodName),
+          selector(methodName),
           cast[IMP](fn),
           "".cstring
         )
@@ -193,7 +199,8 @@ template autoreleasepool*(body: untyped) =
     pool.release()
 
 proc `@`*(s: string): NSString =
-  cast[proc(self: ID, cmd: SEL, s: cstring): NSString {.cdecl, raises: [], gcsafe.}](objc_msgSend)(
+  let cvf = cast[proc(self: ID, cmd: SEL, s: cstring): NSString {.cdecl, raises: [], gcsafe.}](objc_msgSend)
+  cvf(
     NSString.getClass().ID,
     selector"stringWithUTF8String:",
     s.cstring
@@ -206,7 +213,8 @@ proc `$`*(error: NSError): string =
   $error.localizedDescription
 
 proc new*(cls: Class): ID =
-  cast[proc(self: ID, cmd: SEL): ID {.cdecl, gcsafe, raises: [].}](objc_msgSend)(
+  let cvf = cast[proc(self: ID, cmd: SEL): ID {.cdecl, gcsafe, raises: [].}](objc_msgSend)
+  cvf(
     cls.ID,
     selector"new"
   )
@@ -215,7 +223,8 @@ proc new*[T](class: typedesc[T]): T =
   class.getClass().new().T
 
 proc alloc*(cls: Class): ID =
-  cast[proc(self: ID, cmd: SEL): ID {.cdecl, gcsafe, raises: [].}](objc_msgSend)(
+  let cvf = cast[proc(self: ID, cmd: SEL): ID {.cdecl, gcsafe, raises: [].}](objc_msgSend)
+  cvf(
     cls.ID,
     selector"alloc"
   )

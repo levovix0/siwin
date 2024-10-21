@@ -1,13 +1,9 @@
-##! INCOMPLETE !##
-##! I don't figure out how to link with cocoa and don't find libcocoa.dynlib in darling default environment
-##! So i will just put it here for someone else to implement
-## note: Copy-pasted from windy.
-##       (i don't have mac)
+## note: Copy-pasted from windy and slightly changed
 
 import objc
 export objc
 
-# {.passL: "-framework Cocoa".}
+{.passL: "-framework Cocoa".}
 
 type
   CGPoint* {.pure, bycopy.} = object
@@ -309,7 +305,8 @@ proc callSuper*(sender: ID, cmd: SEL) =
     receiver: sender,
     super_class: sender.NSObject.superclass
   )
-  cast[proc(super: ptr objc_super, cmd: SEL) {.cdecl.}](objc_msgSendSuper)(
+  let cvf = cast[proc(super: ptr objc_super, cmd: SEL) {.cdecl.}](objc_msgSendSuper)
+  cvf(
     super.addr,
     cmd
   )
