@@ -1,7 +1,7 @@
 import std/[times, importutils, strformat, options, tables, os]
 import pkg/[vmath]
 import ../../[utils, colorutils, siwindefs]
-import ../any/window {.all.}
+import ../any/[window {.all.}, clipboards]
 import ../any/[windowUtils]
 import ./[libwayland, protocol, globals, sharedBuffer, bitfields, xkb]
 
@@ -45,6 +45,11 @@ type
     lastTextEntered: string
     lastKeyPressedTime: Time
     lastKeyRepeatedTime: Time
+  
+  ClipboardWayland* = ref object of Clipboard
+    ## todo
+  
+  ClipboardWaylandDnd* = ref object of Clipboard
 
 
   WindowWaylandSoftwareRendering* = ref WindowWaylandSoftwareRenderingObj
@@ -264,6 +269,10 @@ proc basicInitWindow(window: WindowWayland; size: IVec2; screen: ScreenWayland) 
   window.m_resizable = true
   window.m_frameless = true
 
+  window.m_clipboard = ClipboardWayland()  # todo
+  window.m_selectionClipboard = ClipboardWayland()  # todo
+  window.m_dragndropClipboard = ClipboardWaylandDnd()  # todo
+
 
 method doResize(window: WindowWayland, size: IVec2) {.base.} =
   window.m_size = size
@@ -422,17 +431,19 @@ method `maximized=`*(window: WindowWayland, v: bool) =
     window: window, kind: StateBoolChangedEventKind.maximized, value: window.m_maximized
   )
 
-method setLayer*(window: WindowWayland, layer: Layer) =
-  let converted = `Zwlr_layer_shell_v1/Layer`(layer)
+
+proc setLayer*(window: WindowWayland, layer: Layer) =
+  let converted = `Zwlr_layer_shell_v1/Layer`(layer.int)
 
   if window.layerShellSurface == nil:
     raise newException(
-      ValueError, 
+      ValueError,
       "Attempt to set surface layer when layer shell surface hasn't been initialized." &
       "\nHint: Pass `kind` as `WindowWaylandKind.LayerSurface` when constructing this window."
     )
 
   window.layerShellSurface.set_layer(converted)
+
 
 proc releaseAllKeys(window: WindowWayland) =
   ## release all pressed keys
@@ -775,7 +786,7 @@ proc setupWindow(window: WindowWayland, fullscreen, frameless, transparent: bool
     window.layerShellSurface = layerShell.get_layer_surface(
       window.surface,
       Wl_output(proxy: Wl_proxy(raw: nil)),
-      `Zwlr_layer_shell_v1/Layer`(window.layer),
+      `Zwlr_layer_shell_v1/Layer`(window.layer.int),
       window.namespace.cstring
     )
     window.layerShellSurface.set_size(400, 400)
@@ -807,7 +818,8 @@ proc initSoftwareRenderingWindow(
   window.surface.attach(window.buffer.buffer, 0, 0)
   commit window.surface
 
-method setAnchor*(window: WindowWayland, edge: LayerEdge | array[2, LayerEdge], marginSize: int) {.base.} =
+
+proc setAnchor*(window: WindowWayland, edge: LayerEdge | array[2, LayerEdge], marginSize: int) =
   if window.layerShellSurface == nil:
     raise newException(
       ValueError,
@@ -853,10 +865,11 @@ method setAnchor*(window: WindowWayland, edge: LayerEdge | array[2, LayerEdge], 
 
   window.redraw()
 
-method setKeyboardInteractivity*(window: WindowWayland, mode: LayerInteractivityMode) =
+
+proc setKeyboardInteractivity*(window: WindowWayland, mode: LayerInteractivityMode) =
   if window.layerShellSurface == nil:
     raise newException(
-      ValueError, 
+      ValueError,
       "Attempt to set keyboard interactivity when layer shell surface hasn't been initialized." &
       "\nHint: Pass `kind` as `WindowWaylandKind.LayerSurface` when constructing this window."
     )
@@ -871,15 +884,17 @@ method setKeyboardInteractivity*(window: WindowWayland, mode: LayerInteractivity
       `Zwlr_layer_surface_v1/Keyboard_interactivity`.on_demand
   )
 
-method setExclusiveZone*(window: WindowWayland, zone: int32) =
+
+proc setExclusiveZone*(window: WindowWayland, zone: int32) =
   if window.layerShellSurface == nil:
     raise newException(
-      ValueError, 
+      ValueError,
       "Attempt to set keyboard interactivity when layer shell surface hasn't been initialized." &
       "\nHint: Pass `kind` as `WindowWaylandKind.LayerSurface` when constructing this window."
     )
 
   window.layerShellSurface.set_exclusive_zone(zone)
+
 
 method firstStep*(window: WindowWayland, makeVisible = true) =
   if makeVisible:
