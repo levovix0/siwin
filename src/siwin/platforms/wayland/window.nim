@@ -13,7 +13,10 @@ type
   ScreenWayland* = ref object of Screen
     id: cint
 
-
+  WindowWaylandKind* {.pure.} = enum
+    XdgSurface
+    LayerSurface
+  
   WindowWayland* = ref WindowWaylandObj
   WindowWaylandObj* = object of Window
     surface: Wl_surface
@@ -25,12 +28,18 @@ type
 
     plasmaSurface: Org_kde_plasma_surface
       # will be nil if compositor doesn't support this protocol
+    
+    layerShellSurface: Zwlr_layer_surface_v1
+      # will be nil if compositor doesn't support this protocol (eg. GNOME)
+    layer: Layer
+    namespace: string
 
     lastClickTime: Duration
     doubleClickHandled: bool
 
     lastMouseButtonEventSerial: uint32
     enterSerial: uint32
+    kind: WindowWaylandKind ## is this a normal window or is it a layer shell surface?
 
     lastKeyPressed: Key
     lastTextEntered: string
@@ -279,19 +288,26 @@ proc resize(window: WindowWayland, size: IVec2) =
     
   window.doResize size
   
-  if not window.m_resizable:
-    window.xdgToplevel.set_min_size(window.m_size.x, window.m_size.y)
-    window.xdgToplevel.set_max_size(window.m_size.x, window.m_size.y)
+  case window.kind
+  of WindowWaylandKind.XdgSurface:
+    if not window.m_resizable:
+      window.xdgToplevel.set_min_size(window.m_size.x, window.m_size.y)
+      window.xdgToplevel.set_max_size(window.m_size.x, window.m_size.y)
 
-  commit window.surface
+    commit window.surface
 
-  window.eventsHandler.pushEvent onResize, ResizeEvent(window: window, size: window.m_size)
-  redraw window
-
+    window.eventsHandler.pushEvent onResize, ResizeEvent(window: window, size: window.m_size)
+    redraw window
+  of WindowWaylandKind.LayerSurface:
+    window.layerShellSurface.set_size(window.m_size.x.uint32, window.m_size.y.uint32)
+    window.surface.commit()
+    window.redraw()
 
 method `title=`*(window: WindowWayland, v: string) =
-  window.xdgToplevel.set_title(v)
-
+  case window.kind
+  of WindowWaylandKind.XdgSurface:
+    window.xdgToplevel.set_title(v)
+  else: discard
 
 proc setFrameless(window: WindowWayland, v: bool) =
   if serverDecorationManager != nil:
@@ -406,6 +422,17 @@ method `maximized=`*(window: WindowWayland, v: bool) =
     window: window, kind: StateBoolChangedEventKind.maximized, value: window.m_maximized
   )
 
+method setLayer*(window: WindowWayland, layer: Layer) =
+  let converted = `Zwlr_layer_shell_v1/Layer`(layer)
+
+  if window.layerShellSurface == nil:
+    raise newException(
+      ValueError, 
+      "Attempt to set surface layer when layer shell surface hasn't been initialized." &
+      "\nHint: Pass `kind` as `WindowWaylandKind.LayerSurface` when constructing this window."
+    )
+
+  window.layerShellSurface.set_layer(converted)
 
 proc releaseAllKeys(window: WindowWayland) =
   ## release all pressed keys
@@ -420,7 +447,8 @@ method `minimized=`*(window: WindowWayland, v: bool) =
   if not v:
     ## todo
   else:
-    window.xdgToplevel.set_minimized()
+    if window.kind == WindowWaylandKind.XdgSurface:
+      window.xdgToplevel.set_minimized()
 
 
 method `visible=`*(window: WindowWayland, v: bool) =
@@ -430,6 +458,7 @@ method `visible=`*(window: WindowWayland, v: bool) =
 
 
 method `resizable=`*(window: WindowWayland, v: bool) =
+  if window.kind != WindowWaylandKind.XdgSurface: return
   window.m_resizable = v
   let size = window.size
 
@@ -444,35 +473,35 @@ method `resizable=`*(window: WindowWayland, v: bool) =
 method `minSize=`*(window: WindowWayland, v: IVec2) =
   window.m_minSize = v
   if not window.m_resizable: return
-  window.xdgToplevel.set_min_size(v.x, v.y)
+  if window.kind == WindowWaylandKind.XdgSurface: window.xdgToplevel.set_min_size(v.x, v.y)
 
 
 method `maxSize=`*(window: WindowWayland, v: IVec2) =
   window.m_maxSize = v
   if not window.m_resizable: return
-  window.xdgToplevel.set_max_size(v.x, v.y)
 
+  if window.kind == WindowWaylandKind.XdgSurface: window.xdgToplevel.set_max_size(v.x, v.y)
 
 method startInteractiveMove*(window: WindowWayland, pos: Option[Vec2]) =
   expectExtension seat
-  window.xdgToplevel.move(seat, window.lastMouseButtonEventSerial)
-
+  if window.kind == WindowWaylandKind.XdgSurface: window.xdgToplevel.move(seat, window.lastMouseButtonEventSerial)
 
 method startInteractiveResize*(window: WindowWayland, edge: Edge, pos: Option[Vec2]) =
   expectExtension seat
-  window.xdgToplevel.resize(
-    seat, window.lastMouseButtonEventSerial,
-    case edge
-    of Edge.topLeft:     `Xdg_toplevel/Resize_edge`.top_left
-    of Edge.top:         `Xdg_toplevel/Resize_edge`.top
-    of Edge.topRight:    `Xdg_toplevel/Resize_edge`.top_right
-    of Edge.right:       `Xdg_toplevel/Resize_edge`.right
-    of Edge.bottomRight: `Xdg_toplevel/Resize_edge`.bottom_right
-    of Edge.bottom:      `Xdg_toplevel/Resize_edge`.bottom
-    of Edge.bottomLeft:  `Xdg_toplevel/Resize_edge`.bottom_left
-    of Edge.left:        `Xdg_toplevel/Resize_edge`.left
-  )
 
+  if window.kind == WindowWaylandKind.XdgSurface:
+    window.xdgToplevel.resize(
+      seat, window.lastMouseButtonEventSerial,
+      case edge
+      of Edge.topLeft:     `Xdg_toplevel/Resize_edge`.top_left
+      of Edge.top:         `Xdg_toplevel/Resize_edge`.top
+      of Edge.topRight:    `Xdg_toplevel/Resize_edge`.top_right
+      of Edge.right:       `Xdg_toplevel/Resize_edge`.right
+      of Edge.bottomRight: `Xdg_toplevel/Resize_edge`.bottom_right
+      of Edge.bottom:      `Xdg_toplevel/Resize_edge`.bottom
+      of Edge.bottomLeft:  `Xdg_toplevel/Resize_edge`.bottom_left
+      of Edge.left:        `Xdg_toplevel/Resize_edge`.left
+    )
 
 method showWindowMenu*(window: WindowWayland, pos: Option[Vec2]) =
   let pos = pos.get(window.mouse.pos).ivec2
@@ -685,7 +714,6 @@ proc initSeatEvents* =
     seat_keyboard.onRepeat_info:
       seat_keyboard_repeatSettings = (rate: rate, delay: delay)
 
-
 proc setupWindow(window: WindowWayland, fullscreen, frameless, transparent: bool, size: IVec2, class: string) =
   expectExtension compositor
   expectExtension xdgWmBase
@@ -695,54 +723,73 @@ proc setupWindow(window: WindowWayland, fullscreen, frameless, transparent: bool
   window.surface = compositor.create_surface
   associatedWindows[window.surface.proxy.raw.id] = window
 
-  window.xdgSurface = xdgWmBase.get_xdg_surface(window.surface)
-  window.xdgToplevel = window.xdgSurface.get_toplevel
+  case window.kind
+  of WindowWaylandKind.XdgSurface:
+    window.xdgSurface = xdgWmBase.get_xdg_surface(window.surface)
+    window.xdgToplevel = window.xdgSurface.get_toplevel
 
-  window.xdgSurface.onConfigure:
-    window.xdgSurface.ack_configure(serial)
-    commit window.surface
+    window.xdgSurface.onConfigure:
+      window.xdgSurface.ack_configure(serial)
+      commit window.surface
 
-  window.fullscreen = fullscreen
+    window.fullscreen = fullscreen
 
-  window.m_frameless = frameless
-  window.setFrameless(frameless)
+    window.m_frameless = frameless
+    window.setFrameless(frameless)
 
-  window.m_transparent = transparent
-  if not transparent:
-    let opaqueRegion = compositor.create_region
-    opaqueRegion.add(0, 0, size.x, size.y)
-    window.surface.set_opaque_region(opaqueRegion)
-    destroy opaqueRegion
+    window.m_transparent = transparent
+    if not transparent:
+      let opaqueRegion = compositor.create_region
+      opaqueRegion.add(0, 0, size.x, size.y)
+      window.surface.set_opaque_region(opaqueRegion)
+      destroy opaqueRegion
   
-  if class != "":
-    window.xdgToplevel.set_app_id(class)
+    if class != "":
+      window.xdgToplevel.set_app_id(class)
 
-  window.xdgToplevel.onClose:
-    window.m_closed = true
+    window.xdgToplevel.onClose:
+      window.m_closed = true
 
-  window.xdgToplevel.onConfigure:
-    window.resize(ivec2(width, height))
+    window.xdgToplevel.onConfigure:
+      window.resize(ivec2(width, height))
 
-    let states = states.toSeq(`XdgToplevel / State`)
+      let states = states.toSeq(`XdgToplevel / State`)
     
-    template checkState(state: `XdgToplevel / State`): bool = state in states
-    template handleState(k, n, m: untyped) =
-      if window.m != checkState(`XdgToplevel / State`.n):
-        window.m = checkState(`XdgToplevel / State`.n)
-        window.eventsHandler.pushEvent onStateBoolChanged, StateBoolChangedEvent(
-          window: window, kind: StateBoolChangedEventKind.k, value: window.m, isExternal: true
-        )
+      template checkState(state: `XdgToplevel / State`): bool = state in states
+      template handleState(k, n, m: untyped) =
+        if window.m != checkState(`XdgToplevel / State`.n):
+          window.m = checkState(`XdgToplevel / State`.n)
+          window.eventsHandler.pushEvent onStateBoolChanged, StateBoolChangedEvent(
+            window: window, kind: StateBoolChangedEventKind.k, value: window.m, isExternal: true
+          )
     
-    handleState maximized, maximized, m_maximized
-    handleState fullscreen, fullscreen, m_fullscreen
-    handleState focus, activated, m_focused
+      handleState maximized, maximized, m_maximized
+      handleState fullscreen, fullscreen, m_fullscreen
+      handleState focus, activated, m_focused
 
-    redraw window
+      redraw window
   
-  if plasmaShell != nil:
-    window.plasmaSurface = plasmaShell.get_surface(window.surface)
+    if plasmaShell != nil:
+      window.plasmaSurface = plasmaShell.get_surface(window.surface)
+  of LayerSurface:
+    window.layerShellSurface = layerShell.get_layer_surface(
+      window.surface,
+      Wl_output(proxy: Wl_proxy(raw: nil)),
+      `Zwlr_layer_shell_v1/Layer`(window.layer),
+      window.namespace.cstring
+    )
+    window.layerShellSurface.set_size(400, 400)
+    window.surface.commit()
+    window.redraw()
 
+    window.layerShellSurface.onConfigure:
+      window.layerShellSurface.ack_configure(serial)
+      window.resize(ivec2(width.int32, height.int32))
+      redraw window
 
+    window.layerShellSurface.onClosed:
+      window.m_closed = true
+      window.surface.destroy()
 
 proc initSoftwareRenderingWindow(
   window: WindowWaylandSoftwareRendering,
@@ -760,6 +807,79 @@ proc initSoftwareRenderingWindow(
   window.surface.attach(window.buffer.buffer, 0, 0)
   commit window.surface
 
+method setAnchor*(window: WindowWayland, edge: LayerEdge | array[2, LayerEdge], marginSize: int) {.base.} =
+  if window.layerShellSurface == nil:
+    raise newException(
+      ValueError,
+      "Attempt to set surface anchor when layer shell surface hasn't been initialized." &
+      "\nHint: Pass `kind` as `WindowWaylandKind.LayerSurface` when constructing this window."
+    )
+  
+  when edge is LayerEdge:
+    window.layerShellSurface.set_anchor(
+      case edge
+      of LayerEdge.Top:
+        `Zwlr_layer_surface_v1/Anchor`.top
+      of LayerEdge.Left:
+        `Zwlr_layer_surface_v1/Anchor`.left
+      of LayerEdge.Right:
+        `Zwlr_layer_surface_v1/Anchor`.right
+      of LayerEdge.Bottom:
+        `Zwlr_layer_surface_v1/Anchor`.bottom
+    )
+  else:
+    proc mixWith(l1: `Zwlr_layer_surface_v1/Anchor`): `Zwlr_layer_surface_v1/Anchor` =
+      `Zwlr_layer_surface_v1/Anchor`(case edge[1]
+      of LayerEdge.Top:
+        l1.uint or `Zwlr_layer_surface_v1/Anchor`.top.uint
+      of LayerEdge.Left:
+        l1.uint or `Zwlr_layer_surface_v1/Anchor`.left.uint
+      of LayerEdge.Right:
+        l1.uint or `Zwlr_layer_surface_v1/Anchor`.right.uint
+      of LayerEdge.Bottom:
+        l1.uint or `Zwlr_layer_surface_v1/Anchor`.bottom.uint)
+
+    window.layerShellSurface.set_anchor(
+      case edge[0]
+      of LayerEdge.Top:
+        mixWith `Zwlr_layer_surface_v1/Anchor`.top
+      of LayerEdge.Left:
+        mixWith `Zwlr_layer_surface_v1/Anchor`.left
+      of LayerEdge.Right:
+        mixWith `Zwlr_layer_surface_v1/Anchor`.right
+      of LayerEdge.Bottom:
+        mixWith `Zwlr_layer_surface_v1/Anchor`.bottom
+    )
+
+  window.redraw()
+
+method setKeyboardInteractivity*(window: WindowWayland, mode: LayerInteractivityMode) =
+  if window.layerShellSurface == nil:
+    raise newException(
+      ValueError, 
+      "Attempt to set keyboard interactivity when layer shell surface hasn't been initialized." &
+      "\nHint: Pass `kind` as `WindowWaylandKind.LayerSurface` when constructing this window."
+    )
+
+  window.layerShellSurface.set_keyboard_interactivity(
+    case mode
+    of LayerInteractivityMode.None:
+      `Zwlr_layer_surface_v1/Keyboard_interactivity`.none
+    of LayerInteractivityMode.Exclusive:
+      `Zwlr_layer_surface_v1/Keyboard_interactivity`.exclusive
+    of LayerInteractivityMode.OnDemand:
+      `Zwlr_layer_surface_v1/Keyboard_interactivity`.on_demand
+  )
+
+method setExclusiveZone*(window: WindowWayland, zone: int32) =
+  if window.layerShellSurface == nil:
+    raise newException(
+      ValueError, 
+      "Attempt to set keyboard interactivity when layer shell surface hasn't been initialized." &
+      "\nHint: Pass `kind` as `WindowWaylandKind.LayerSurface` when constructing this window."
+    )
+
+  window.layerShellSurface.set_exclusive_zone(zone)
 
 method firstStep*(window: WindowWayland, makeVisible = true) =
   if makeVisible:
@@ -771,7 +891,6 @@ method firstStep*(window: WindowWayland, makeVisible = true) =
   window.eventsHandler.pushEvent onResize, ResizeEvent(window: window, size: window.m_size, initial: true)
   window.lastTickTime = getTime()
   redraw window
-
 
 method step*(window: WindowWayland) =
   ## make window main loop step
@@ -786,6 +905,9 @@ method step*(window: WindowWayland) =
   closeIfNeeded()
   
   let eventCount = wl_display_roundtrip(globals.display)
+  if eventCount < 0:
+    raise newException(RoundtripFailed, "wl_display_roundtrip() returned " & $eventCount)
+
   closeIfNeeded()
   if eventCount == 0: sleep(1)
 
@@ -847,3 +969,5 @@ proc newSoftwareRenderingWindowWayland*(
   result.initSoftwareRenderingWindow(size, screen, fullscreen, frameless, transparent, (if class == "": title else: class))
   result.title = title
   if not resizable: result.resizable = false
+
+export Layer, LayerEdge, LayerInteractivityMode

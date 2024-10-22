@@ -32,7 +32,7 @@ proc availablePlatforms*: seq[Platform] =
   elif defined(linux):
     waylandGlobals.init()
     # todo: detect if x11 is really available
-    
+
     if waylandGlobals.waylandAvailable:
       @[Platform.wayland, Platform.x11]
     else:
