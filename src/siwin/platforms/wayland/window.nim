@@ -299,7 +299,6 @@ proc resize(window: WindowWayland, size: IVec2) =
     window.eventsHandler.pushEvent onResize, ResizeEvent(window: window, size: window.m_size)
     redraw window
   of WindowWaylandKind.LayerSurface:
-    echo window.m_size
     window.layerShellSurface.set_size(window.m_size.x.uint32, window.m_size.y.uint32)
     window.redraw()
 
