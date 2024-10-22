@@ -300,6 +300,7 @@ proc resize(window: WindowWayland, size: IVec2) =
     redraw window
   of WindowWaylandKind.LayerSurface:
     window.layerShellSurface.set_size(window.m_size.x.uint32, window.m_size.y.uint32)
+    window.surface.commit()
     window.redraw()
 
 method `title=`*(window: WindowWayland, v: string) =
@@ -778,6 +779,8 @@ proc setupWindow(window: WindowWayland, fullscreen, frameless, transparent: bool
       window.namespace.cstring
     )
     window.layerShellSurface.set_size(400, 400)
+    window.surface.commit()
+    window.redraw()
 
     window.layerShellSurface.onConfigure:
       window.layerShellSurface.ack_configure(serial)
