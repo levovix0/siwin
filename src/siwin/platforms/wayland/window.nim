@@ -188,7 +188,6 @@ proc waylandKeyToString(keycode: uint32): string =
 
 method swapBuffers(window: WindowWayland) {.base.} = discard
 
-
 proc screenCountWayland*: int32 =
   globals.init()
   ## todo
@@ -272,7 +271,6 @@ proc basicInitWindow(window: WindowWayland; size: IVec2; screen: ScreenWayland) 
   window.m_clipboard = ClipboardWayland()  # todo
   window.m_selectionClipboard = ClipboardWayland()  # todo
   window.m_dragndropClipboard = ClipboardWaylandDnd()  # todo
-
 
 method doResize(window: WindowWayland, size: IVec2) {.base.} =
   window.m_size = size
