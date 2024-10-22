@@ -33,7 +33,6 @@ method release(window: WindowWaylandOpengl) =
 
   procCall window.WindowWayland.release()
 
-
 proc initOpenglWindow(
   window: WindowWaylandOpengl,
   size: IVec2, screen: ScreenWayland,
@@ -74,10 +73,16 @@ proc newOpenglWindowWayland*(
   frameless = false,
   transparent = false,
   vsync = true,
+  kind = WindowWaylandKind.XdgSurface,
+  layer = Layer.Overlay,
+  namespace = "siwin",
 
   class = "", # window class (used in x11), equals to title if not specified
 ): WindowWaylandOpengl =
   new result
+  result.kind = kind
+  result.namespace = namespace
+  result.layer = layer
   result.initOpenglWindow(size, screen, fullscreen, frameless, transparent, (if class == "": title else: class))
   result.title = title
   result.`vsync=`(vsync, silent=true)

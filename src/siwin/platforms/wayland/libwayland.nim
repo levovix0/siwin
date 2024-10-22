@@ -24,6 +24,23 @@ type
     eventsLen*: int32
     events*: ptr UncheckedArray[WlMessage]
 
+  Layer* {.pure.} = enum
+    Background = 0
+    Bottom = 1
+    Top = 2
+    Overlay = 3
+
+  LayerInteractivityMode* {.pure.} = enum
+    None
+    Exclusive
+    OnDemand
+
+  LayerEdge* {.pure.} = enum
+    Top = 1
+    Bottom = 2
+    Left = 4
+    Right = 8
+
   WlMessage* = object
     name*: cstring
     signature*: cstring
@@ -40,6 +57,8 @@ type
     types*: ptr UncheckedArray[ptr Wl_interface]
   
   WaylandProtocolError* = object of CatchableError
+
+  RoundtripFailed* = object of WaylandProtocolError
 
   Wl_dispatcher_proc* = proc(
       impl: pointer, obj: pointer, opcode: uint32, msg: ptr WlMessage, args: pointer

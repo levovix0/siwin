@@ -20,6 +20,7 @@ var
 
   serverDecorationManager*: Zxdg_decoration_manager_v1
   plasmaShell*: Org_kde_plasma_shell
+  layerShell*: Zwlr_layer_shell_v1
   
   shmFormats*: seq[`WlShm / Format`]
   seatCapabilities*: Bitfield[`WlSeat / Capability`]
@@ -71,10 +72,11 @@ addRegistry Wl_seat:
 addRegistry Zxdg_decoration_manager_v1:
   serverDecorationManager = binded
 
-
 addRegistry Org_kde_plasma_shell:
   plasmaShell = binded
 
+addRegistry Zwlr_layer_shell_v1:
+  layerShell = binded
 
 proc init* =
   if initialized: return
