@@ -23,7 +23,7 @@ var
   serverDecorationManager*: Zxdg_decoration_manager_v1
   plasmaShell*: Org_kde_plasma_shell
   layerShell*: Zwlr_layer_shell_v1
-  idleInhibitor*: Zwp_idle_inhibitor_v1
+  idleInhibitManager*: Zwp_idle_inhibit_manager_v1
   
   shmFormats*: seq[`WlShm / Format`]
   seatCapabilities*: Bitfield[`WlSeat / Capability`]
@@ -87,8 +87,8 @@ addRegistry Org_kde_plasma_shell:
 addRegistry Zwlr_layer_shell_v1:
   layerShell = binded
 
-addRegistry Zwp_idle_inhibitor_v1:
-  idleInhibitor = binded
+addRegistry Zwp_idle_inhibit_manager_v1:
+  idleInhibitManager = binded
 
 addRegistry Wl_data_device_manager:
   dataDeviceManager = binded

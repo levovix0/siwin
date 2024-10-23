@@ -7,7 +7,7 @@ import siwin/platforms/wayland/[window, windowOpengl]
 
 test "zwp_idle_inhibitor_v1":
   let window = newOpenglWindowWayland(
-    kind = WindowWaylandKind.XdgSurface 
+    kind = WindowWaylandKind.XdgSurface
   )
   loadExtensions()
 

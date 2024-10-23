@@ -33,7 +33,6 @@ type
     layerShellSurface: Zwlr_layer_surface_v1
       # will be nil if compositor doesn't support this protocol (eg. GNOME)
     
-    idleInhibitManager: Zwp_idle_inhibit_manager_v1
     idleInhibitor: Zwp_idle_inhibitor_v1
 
     layer: Layer
@@ -251,6 +250,7 @@ method release(window: WindowWayland) {.base, raises: [].} =
   if window.surface != nil:
     associatedWindows.del window.surface.proxy.raw.id
 
+  destroy window.idleInhibitor, destroy
   destroy window.layerShellSurface, destroy
   destroy window.plasmaSurface, destroy
   destroy window.serverDecoration, destroy
@@ -742,19 +742,23 @@ proc initSeatEvents* =
 
 
 proc setIdleInhibit*(window: WindowWayland, state: bool) =
-  if idleInhibitor == nil:
+  #? should the proc be named `idleInhibit=`?
+  if idleInhibitManager == nil:
     return
 
   if state:
     if window.idleInhibitor != nil:
+      #? should we return without an error here instead?
       raise newException(ValueError, "`setIdleInhibit(true)` was called even though this window already has an active inhibitor")
 
-    window.idleInhibitor = window.idleInhibitManager.create_inhibitor(window.surface)
+    window.idleInhibitor = idleInhibitManager.create_inhibitor(window.surface)
   else:
     if window.idleInhibitor == nil:
+      #? should we return without an error here instead?
       raise newException(ValueError, "`setIdleInhibit(false)` was called even though the window has no active inhibitor")
     
     window.idleInhibitor.destroy()
+    window.idleInhibitor.proxy.raw = nil
 
 
 proc initDataDeviceManagerEvents* =
@@ -827,9 +831,6 @@ proc setupWindow(window: WindowWayland, fullscreen, frameless, transparent: bool
   
   window.surface = compositor.create_surface
   associatedWindows[window.surface.proxy.raw.id] = window
-
-  if idleInhibitor != nil:
-    window.idleInhibitManager = cast[Zwp_idle_inhibit_manager_v1](idleInhibitor)
 
   case window.kind
   of WindowWaylandKind.XdgSurface:
