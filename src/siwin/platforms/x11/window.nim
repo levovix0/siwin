@@ -1228,51 +1228,77 @@ method step*(window: WindowX11) =
           sendWeCannotHandleRequest(resp, ev)
           return
       
-      let targetType = $display.XGetAtomName(e.target)
+      if e.target == atoms.targets:
+        # requestor is wanting to know what type of data is available
+        var targets = @[atoms.targets]
 
-      var conv: ClipboardContentConverter
-      for cv in clipboard.ClipboardX11.m_userContent.converters:
-        case cv.kind
+        for cv in clipboard.ClipboardX11.m_userContent.converters:
+          case cv.kind
+          of text:
+            targets.add [atoms.utf8String, XaString, display.XInternAtom("TEXT", 0)]
+          
+          of files:
+            targets.add display.XInternAtom("text/uri-list", 0)
+          
+          of other:
+            targets.add display.XInternAtom(cstring cv.mimeType, 0)
+        
+        discard display.XChangeProperty(
+          e.requestor, e.property, XaAtom,
+          32, PropModeReplace, cast[PCUChar](targets[0].addr), targets.len.cint
+        )
+
+        discard display.XSendEvent(
+          e.requestor, 1, NoEventMask, cast[ptr XEvent](resp.addr)
+        )
+      
+      else:
+        # requestor is wanting the data
+        let targetType = $display.XGetAtomName(e.target)
+
+        var conv: ClipboardContentConverter
+        for cv in clipboard.ClipboardX11.m_userContent.converters:
+          case cv.kind
+          of text:
+            if targetType in ["UTF8_STRING", "STRING", "TEXT"]:
+              conv = cv
+              break
+          
+          of files:
+            if targetType in ["text/uri-list"]:
+              conv = cv
+              break
+          
+          of other:
+            if targetType == cv.mimeType:
+              conv = cv
+              break
+        
+        if conv.f == nil:
+          sendWeCannotHandleRequest(resp, ev)
+          return
+
+        var content = conv.f(clipboard.ClipboardX11.m_userContent.data, conv.kind, conv.mimeType)
+
+        var data = ""
+        case conv.kind
         of text:
-          if targetType in ["UTF8_STRING", "STRING", "TEXT"]:
-            conv = cv
-            break
+          data = content.text
         
         of files:
-          if targetType in ["text/uri-list"]:
-            conv = cv
-            break
+          data = content.files.mapIt($Uri(scheme: "file", path: it.encodeUrl(usePlus=false))).join("\n")
         
         of other:
-          if targetType == cv.mimeType:
-            conv = cv
-            break
-      
-      if conv.f == nil:
-        sendWeCannotHandleRequest(resp, ev)
-        return
+          data = content.data
+        
+        discard display.XChangeProperty(
+          e.requestor, e.property, resp.target,
+          8, PropModeReplace, cast[PCUChar](if data.len != 0: data[0].addr else: nil), data.len.cint
+        )
 
-      var content = conv.f(clipboard.ClipboardX11.m_userContent.data, conv.kind, conv.mimeType)
-
-      var data = ""
-      case conv.kind
-      of text:
-        data = content.text
-      
-      of files:
-        data = content.files.mapIt($Uri(scheme: "file", path: it.encodeUrl(usePlus=false))).join("\n")
-      
-      of other:
-        data = content.data
-      
-      discard display.XChangeProperty(
-        e.requestor, e.property, resp.target,
-        8, PropModeReplace, cast[PCUChar](if data.len != 0: data[0].addr else: nil), data.len.cint
-      )
-
-      discard display.XSendEvent(
-        e.requestor, 1, NoEventMask, cast[ptr XEvent](resp.addr)
-      )
+        discard display.XSendEvent(
+          e.requestor, 1, NoEventMask, cast[ptr XEvent](resp.addr)
+        )
 
 
     else: discard
