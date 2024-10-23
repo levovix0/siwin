@@ -31,6 +31,10 @@ type
     
     layerShellSurface: Zwlr_layer_surface_v1
       # will be nil if compositor doesn't support this protocol (eg. GNOME)
+    
+    idleInhibitManager: Zwp_idle_inhibit_manager_v1
+    idleInhibitor: Zwp_idle_inhibitor_v1
+
     layer: Layer
     namespace: string
 
@@ -39,7 +43,7 @@ type
 
     lastMouseButtonEventSerial: uint32
     enterSerial: uint32
-    kind: WindowWaylandKind ## is this a normal window or is it a layer shell surface?
+    kind: WindowWaylandKind ## Is this a normal window or is it a layer shell surface?
 
     lastKeyPressed: Key
     lastTextEntered: string
@@ -723,6 +727,21 @@ proc initSeatEvents* =
     seat_keyboard.onRepeat_info:
       seat_keyboard_repeatSettings = (rate: rate, delay: delay)
 
+method setIdleInhibit*(window: WindowWayland, state: bool) =
+  if idleInhibitor == nil:
+    return
+
+  if state:
+    if window.idleInhibitor != nil:
+      raise newException(ValueError, "`setIdleInhibit(true)` was called even though this window already has an active inhibitor")
+
+    window.idleInhibitor = window.idleInhibitManager.create_inhibitor(window.surface)
+  else:
+    if window.idleInhibitor == nil:
+      raise newException(ValueError, "`setIdleInhibit(false)` was called even though the window has no active inhibitor")
+    
+    window.idleInhibitor.destroy()
+
 proc setupWindow(window: WindowWayland, fullscreen, frameless, transparent: bool, size: IVec2, class: string) =
   expectExtension compositor
   expectExtension xdgWmBase
@@ -731,6 +750,9 @@ proc setupWindow(window: WindowWayland, fullscreen, frameless, transparent: bool
   
   window.surface = compositor.create_surface
   associatedWindows[window.surface.proxy.raw.id] = window
+
+  if idleInhibitor != nil:
+    window.idleInhibitManager = cast[Zwp_idle_inhibit_manager_v1](idleInhibitor)
 
   case window.kind
   of WindowWaylandKind.XdgSurface:

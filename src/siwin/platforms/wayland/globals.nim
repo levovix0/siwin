@@ -21,6 +21,7 @@ var
   serverDecorationManager*: Zxdg_decoration_manager_v1
   plasmaShell*: Org_kde_plasma_shell
   layerShell*: Zwlr_layer_shell_v1
+  idleInhibitor*: Zwp_idle_inhibitor_v1
   
   shmFormats*: seq[`WlShm / Format`]
   seatCapabilities*: Bitfield[`WlSeat / Capability`]
@@ -77,6 +78,9 @@ addRegistry Org_kde_plasma_shell:
 
 addRegistry Zwlr_layer_shell_v1:
   layerShell = binded
+
+addRegistry Zwp_idle_inhibitor_v1:
+  idleInhibitor = binded
 
 proc init* =
   if initialized: return
