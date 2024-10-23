@@ -6,6 +6,38 @@ import
   libwayland
 
 type
+  Zwp_idle_inhibit_manager_v1* = object
+    ## This interface permits inhibiting the idle behavior such as screen
+    ## blanking, locking, and screensaving.  The client binds the idle manager
+    ## globally, then creates idle-inhibitor objects for each surface.
+    ## 
+    ## Warning! The protocol described in this file is experimental and
+    ## backward incompatible changes may be made. Backward compatible changes
+    ## may be added together with the corresponding interface version bump.
+    ## Backward incompatible changes are done by bumping the version number in
+    ## the protocol and interface names and resetting the interface version.
+    ## Once the protocol is to be declared stable, the 'z' prefix and the
+    ## version number in the protocol and interface names are removed and the
+    ## interface version number is reset.
+    proxy*: Wl_proxy
+  `Zwp_idle_inhibit_manager_v1 / Callbacks`* = object
+    destroy*: proc (cb: pointer) {.cdecl, raises: [].}
+  Zwp_idle_inhibitor_v1* = object
+    ## An idle inhibitor prevents the output that the associated surface is
+    ## visible on from being set to a state where it is not visually usable due
+    ## to lack of user interaction (e.g. blanked, dimmed, locked, set to power
+    ## save, etc.)  Any screensaver processes are also blocked from displaying.
+    ## 
+    ## If the surface is destroyed, unmapped, becomes occluded, loses
+    ## visibility, or otherwise becomes not visually relevant for the user, the
+    ## idle inhibitor will not be honored by the compositor; if the surface
+    ## subsequently regains visibility the inhibitor takes effect once again.
+    ## Likewise, the inhibitor isn't honored if the system was already idled at
+    ## the time the inhibitor was established, although if the system later
+    ## de-idles and re-idles the inhibitor will take effect.
+    proxy*: Wl_proxy
+  `Zwp_idle_inhibitor_v1 / Callbacks`* = object
+    destroy*: proc (cb: pointer) {.cdecl, raises: [].}
   Zwlr_layer_shell_v1* = object
     ## Clients can use this interface to assign the surface_layer role to
     ## wl_surfaces. Such surfaces are assigned to a "layer" of the output and
@@ -1118,6 +1150,14 @@ type
   `Zxdg_toplevel_decoration_v1 / Callbacks`* = object
     destroy*: proc (cb: pointer) {.cdecl, raises: [].}
     configure*: proc (mode: `Zxdg_toplevel_decoration_v1 / Mode`)
+var `Zwp_idle_inhibit_manager_v1 / iface`: WlInterface
+proc iface*(t: typedesc[Zwp_idle_inhibit_manager_v1]): ptr WlInterface =
+  `Zwp_idle_inhibit_manager_v1 / iface`.addr
+
+var `Zwp_idle_inhibitor_v1 / iface`: WlInterface
+proc iface*(t: typedesc[Zwp_idle_inhibitor_v1]): ptr WlInterface =
+  `Zwp_idle_inhibitor_v1 / iface`.addr
+
 var `Zwlr_layer_shell_v1 / iface`: WlInterface
 proc iface*(t: typedesc[Zwlr_layer_shell_v1]): ptr WlInterface =
   `Zwlr_layer_shell_v1 / iface`.addr
@@ -1286,6 +1326,13 @@ var `Zxdg_toplevel_decoration_v1 / iface`: WlInterface
 proc iface*(t: typedesc[Zxdg_toplevel_decoration_v1]): ptr WlInterface =
   `Zxdg_toplevel_decoration_v1 / iface`.addr
 
+`Zwp_idle_inhibit_manager_v1 / iface` = newWlInterface(
+    "zwp_idle_inhibit_manager_v1", 1, [newWlMessage(
+    "zwp_idle_inhibit_manager_v1.destroy", "1", []), newWlMessage(
+    "zwp_idle_inhibit_manager_v1.create_inhibitor", "1no",
+    [iface(Zwp_idle_inhibitor_v1), iface(Wl_surface)])], [])
+`Zwp_idle_inhibitor_v1 / iface` = newWlInterface("zwp_idle_inhibitor_v1", 1,
+    [newWlMessage("zwp_idle_inhibitor_v1.destroy", "1", [])], [])
 `Zwlr_layer_shell_v1 / iface` = newWlInterface("zwlr_layer_shell_v1", 4, [newWlMessage(
     "zwlr_layer_shell_v1.get_layer_surface", "1no?ous", [
     iface(Zwlr_layer_surface_v1), iface(Wl_surface), iface(Wl_output),
@@ -1707,6 +1754,18 @@ proc iface*(t: typedesc[Zxdg_toplevel_decoration_v1]): ptr WlInterface =
     "zxdg_toplevel_decoration_v1.set_mode", "1u", [(ptr WlInterface) nil]), newWlMessage(
     "zxdg_toplevel_decoration_v1.unset_mode", "1", [])], [newWlMessage(
     "zxdg_toplevel_decoration_v1.configure", "1u", [(ptr WlInterface) nil])])
+proc `Zwp_idle_inhibit_manager_v1 / dispatch`*(impl: pointer; obj: pointer;
+    opcode: uint32; msg: ptr WlMessage; args: pointer): int32 {.cdecl.} =
+  case opcode
+  else:
+    discard
+
+proc `Zwp_idle_inhibitor_v1 / dispatch`*(impl: pointer; obj: pointer;
+    opcode: uint32; msg: ptr WlMessage; args: pointer): int32 {.cdecl.} =
+  case opcode
+  else:
+    discard
+
 proc `Zwlr_layer_shell_v1 / dispatch`*(impl: pointer; obj: pointer;
                                        opcode: uint32; msg: ptr WlMessage;
                                        args: pointer): int32 {.cdecl.} =
@@ -2547,6 +2606,23 @@ proc `Zxdg_toplevel_decoration_v1 / dispatch`*(impl: pointer; obj: pointer;
           0]))
   else:
     discard
+
+proc destroy*(this: Zwp_idle_inhibit_manager_v1) =
+  ## Destroy the inhibit manager.
+  destroyCallbacks(this.proxy)
+  discard wl_proxy_marshal_flags(this.proxy.raw, 0, nil, 1, 1)
+
+proc create_inhibitor*(this: Zwp_idle_inhibit_manager_v1; surface: Wl_surface): Zwp_idle_inhibitor_v1 =
+  ## Create a new inhibitor object associated with the given surface.
+  result = construct(wl_proxy_marshal_flags(this.proxy.raw, 1,
+      Zwp_idle_inhibitor_v1.iface, 1, 0, nil, surface), Zwp_idle_inhibitor_v1,
+                     `Zwp_idle_inhibitor_v1 / dispatch`,
+                     `Zwp_idle_inhibitor_v1 / Callbacks`)
+
+proc destroy*(this: Zwp_idle_inhibitor_v1) =
+  ## Remove the inhibitor effect from the associated wl_surface.
+  destroyCallbacks(this.proxy)
+  discard wl_proxy_marshal_flags(this.proxy.raw, 0, nil, 1, 1)
 
 proc get_layer_surface*(this: Zwlr_layer_shell_v1; surface: Wl_surface;
                         output: Wl_output; layer: `Zwlr_layer_shell_v1 / Layer`;
@@ -6680,6 +6756,12 @@ template onConfigure*(this: Zxdg_toplevel_decoration_v1; body) =
       mode {.inject.}: `Zxdg_toplevel_decoration_v1 / Mode`) =
     body
 
+template dispatch*(t: typedesc[Zwp_idle_inhibit_manager_v1]): untyped =
+  `Zwp_idle_inhibit_manager_v1 / dispatch`
+
+template dispatch*(t: typedesc[Zwp_idle_inhibitor_v1]): untyped =
+  `Zwp_idle_inhibitor_v1 / dispatch`
+
 template dispatch*(t: typedesc[Zwlr_layer_shell_v1]): untyped =
   `Zwlr_layer_shell_v1 / dispatch`
 
@@ -6808,6 +6890,12 @@ template dispatch*(t: typedesc[Zxdg_decoration_manager_v1]): untyped =
 
 template dispatch*(t: typedesc[Zxdg_toplevel_decoration_v1]): untyped =
   `Zxdg_toplevel_decoration_v1 / dispatch`
+
+template Callbacks*(t: typedesc[Zwp_idle_inhibit_manager_v1]): untyped =
+  `Zwp_idle_inhibit_manager_v1 / Callbacks`
+
+template Callbacks*(t: typedesc[Zwp_idle_inhibitor_v1]): untyped =
+  `Zwp_idle_inhibitor_v1 / Callbacks`
 
 template Callbacks*(t: typedesc[Zwlr_layer_shell_v1]): untyped =
   `Zwlr_layer_shell_v1 / Callbacks`
