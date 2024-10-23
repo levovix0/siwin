@@ -30,6 +30,8 @@ test "clipboard":
 
   check window.clipboard.text == "hello"
 
+  close window
+
 
 test "pixie":
   var
