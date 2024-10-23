@@ -22,6 +22,12 @@ test "clipboard":
   echo "selection clipboard text: ", window.selectionClipboard.text
   
   window.clipboard.text = "hello"
+
+  check window.clipboard.text == "hello"
+
+  for i in 0..<100:
+    window.step()
+
   check window.clipboard.text == "hello"
 
 
