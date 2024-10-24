@@ -51,6 +51,8 @@ type
     lastKeyRepeatedTime: Time
   
   ClipboardWayland* = ref object of Clipboard
+    userContent: ClipboardConvertableContent
+    dataSource: Wl_data_source
   
   ClipboardWaylandDnd* = ref object of Clipboard
 
@@ -72,6 +74,8 @@ var
   primaryClipboard = ClipboardWayland()
   selectionClipboard = ClipboardWayland()
   dragndropClipboard = ClipboardWaylandDnd()
+
+  lastSeatEventSerial: uint32
 
 
 proc waylandKeyToKey(keycode: uint32): Key =
@@ -580,6 +584,7 @@ proc initSeatEvents* =
       
       window.clicking = {}
       window.enterSerial = serial
+      lastSeatEventSerial = serial
       window.mouse.pos = vec2(surface_x, surface_y)
 
       replicateWindowTitleAndBorderBehaviour(window, window.mouse.pos)
@@ -633,6 +638,7 @@ proc initSeatEvents* =
         ): continue
 
         window.lastMouseButtonEventSerial = serial
+        lastSeatEventSerial = serial
         if state == `WlPointer / Button_state`.pressed:
           window.mouse.pressed.incl button
           window.clicking.incl button
@@ -680,6 +686,7 @@ proc initSeatEvents* =
       if surface == nil or surface.proxy.raw.id notin associatedWindows: return
       let window = associatedWindows[surface.proxy.raw.id]
       seat_keyboard_currentWindow = window
+      lastSeatEventSerial = serial
       
       for key in keys.toSeq(uint32):
         let siwinKey = waylandKeyToKey(key)
@@ -698,6 +705,7 @@ proc initSeatEvents* =
       seat_keyboard_currentWindow = nil
       if surface == nil or surface.proxy.raw.id notin associatedWindows: return
       let window = associatedWindows[surface.proxy.raw.id]
+      lastSeatEventSerial = serial
 
       window.releaseAllKeys()
     
@@ -710,6 +718,7 @@ proc initSeatEvents* =
 
       if pressed:
         window.lastKeyPressedTime = getTime()
+      lastSeatEventSerial = serial
       
       let siwinKey = waylandKeyToKey(key)
 
@@ -739,6 +748,7 @@ proc initSeatEvents* =
 
     
     seat_keyboard.onModifiers:
+      lastSeatEventSerial = serial
       discard global_xkb_state.xkb_state_update_mask(mods_depressed, mods_latched, mods_locked, 0, 0, group)
     
 
@@ -992,7 +1002,7 @@ proc setExclusiveZone*(window: WindowWayland, zone: int32) =
 
 
 proc constructClipboardContent*(
-  data: sink string, kind: ClipboardContentKind, mimeType: string = "text/plain"
+  data: sink string, kind: ClipboardContentKind, mimeType: string
 ): ClipboardContent =
   case kind
   of text:
@@ -1011,6 +1021,44 @@ proc constructClipboardContent*(
   
   of other:
     result = ClipboardContent(kind: other, mimeType: mimeType, data: data)
+
+
+proc toString*(
+  content: ClipboardConvertableContent, targetType: string
+): string =
+  var conv: ClipboardContentConverter
+  for cv in content.converters:
+    case cv.kind
+    of text:
+      if targetType in ["UTF8_STRING", "STRING", "TEXT", "text/plain", "text/plain;charset=utf-8"]:
+        conv = cv
+        break
+    
+    of files:
+      if targetType in ["text/uri-list"]:
+        conv = cv
+        break
+    
+    of other:
+      if targetType == cv.mimeType:
+        conv = cv
+        break
+  
+  if conv.f == nil:
+    return ""
+
+  var content = conv.f(content.data, conv.kind, conv.mimeType)
+
+  case conv.kind
+  of text:
+    result = content.text
+  
+  of files:
+    result = content.files.mapIt($Uri(scheme: "file", path: it.encodeUrl(usePlus=false))).join("\n")
+  
+  of other:
+    result = content.data
+
 
 
 method content*(
@@ -1042,12 +1090,13 @@ method content*(
       return constructClipboardContent("", kind, mimeType)
 
     var fds: array[2, FileHandle]  # [0] - read, [1] - write
-    if pipe(fds) < 0:
+    if pipe(fds) < 0:  #? use O_NONBLOCK?
       raiseOSError(osLastError())
 
     current_selection_data_offer.receive(mimeType.cstring, fds[1])
+    discard close fds[1]
 
-    wl_display_flush display
+    discard wl_display_roundtrip display
 
     var data: string
     var cbuffer: array[1024, char]
@@ -1057,9 +1106,56 @@ method content*(
       if c != 1024: break
 
     discard close fds[0]
-    discard close fds[1]
 
     return constructClipboardContent(data, kind, mimeType)
+
+
+method `content=`*(clipboard: ClipboardWayland, content: ClipboardConvertableContent) =
+  clipboard.userContent = content
+
+  if clipboard.dataSource != nil:
+    destroy clipboard.dataSource
+  
+  if content.converters.len != 0:
+    clipboard.dataSource = dataDeviceManager.create_data_source()
+
+    var offeredMimeTypes: seq[string]
+    proc incl(arr: var seq[string], item: string) =
+      if item notin arr:
+        arr.add item
+
+    for cv in content.converters:
+      case cv.kind
+      of text:
+        offeredMimeTypes.incl "text/plain;charset=utf-8"
+        offeredMimeTypes.incl "UTF8_STRING"
+        offeredMimeTypes.incl "STRING"
+        offeredMimeTypes.incl "TEXT"
+        offeredMimeTypes.incl "text/plain"
+
+      of files:
+        offeredMimeTypes.incl "text/uri-list"
+      
+      of other:
+        offeredMimeTypes.incl cv.mimeType
+    
+    if offeredMimeTypes.len > 0:
+      for mimeType in offeredMimeTypes:
+        clipboard.dataSource.offer(mimeType.cstring)
+    
+    clipboard.dataSource.onSend:
+      let data = content.toString($mimeType)
+
+      discard write(fd, data.cstring, data.len)
+      discard close fd
+
+  else:
+    clipboard.dataSource.proxy.raw = nil
+
+  if clipboard == primaryClipboard:
+    dataDevice.set_selection(clipboard.dataSource, lastSeatEventSerial)
+  
+  discard wl_display_roundtrip display
 
 
 method firstStep*(window: WindowWayland, makeVisible = true) =
