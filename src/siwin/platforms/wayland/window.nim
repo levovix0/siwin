@@ -1,4 +1,5 @@
-import std/[times, importutils, strformat, options, tables, os]
+import std/[times, importutils, strformat, options, tables, os, uri]
+from std/posix import pipe, close, write, read
 import pkg/[vmath]
 import ../../[utils, colorutils, siwindefs]
 import ../any/[window {.all.}, clipboards]
@@ -32,7 +33,6 @@ type
     layerShellSurface: Zwlr_layer_surface_v1
       # will be nil if compositor doesn't support this protocol (eg. GNOME)
     
-    idleInhibitManager: Zwp_idle_inhibit_manager_v1
     idleInhibitor: Zwp_idle_inhibitor_v1
 
     layer: Layer
@@ -51,7 +51,6 @@ type
     lastKeyRepeatedTime: Time
   
   ClipboardWayland* = ref object of Clipboard
-    ## todo
   
   ClipboardWaylandDnd* = ref object of Clipboard
 
@@ -69,6 +68,10 @@ var
   seat_touch_currentWindow: WindowWayland
 
   seat_keyboard_repeatSettings: tuple[rate, delay: int32]
+
+  primaryClipboard = ClipboardWayland()
+  selectionClipboard = ClipboardWayland()
+  dragndropClipboard = ClipboardWaylandDnd()
 
 
 proc waylandKeyToKey(keycode: uint32): Key =
@@ -246,7 +249,9 @@ method release(window: WindowWayland) {.base, raises: [].} =
 
   if window.surface != nil:
     associatedWindows.del window.surface.proxy.raw.id
-  
+
+  destroy window.idleInhibitor, destroy
+  destroy window.layerShellSurface, destroy
   destroy window.plasmaSurface, destroy
   destroy window.serverDecoration, destroy
   destroy window.xdgToplevel, destroy
@@ -261,9 +266,14 @@ method release(window: WindowWaylandSoftwareRendering) =
   procCall window.WindowWayland.release()
 
 
-template pushEvent(eventsHandler: WindowEventsHandler, event, args) =
-  if eventsHandler.event != nil:
-    eventsHandler.event(args)
+proc pushEvent[T](event: proc(e: T), args: T) =
+  if event != nil: event(args)
+
+
+method close*(window: WindowWayland) =
+  window.m_closed = true
+  window.eventsHandler.onClose.pushEvent CloseEvent(window: window)
+  release window
 
 
 proc basicInitWindow(window: WindowWayland; size: IVec2; screen: ScreenWayland) =
@@ -272,9 +282,9 @@ proc basicInitWindow(window: WindowWayland; size: IVec2; screen: ScreenWayland) 
   window.m_resizable = true
   window.m_frameless = true
 
-  window.m_clipboard = ClipboardWayland()  # todo
-  window.m_selectionClipboard = ClipboardWayland()  # todo
-  window.m_dragndropClipboard = ClipboardWaylandDnd()  # todo
+  window.m_clipboard = primaryClipboard
+  window.m_selectionClipboard = selectionClipboard
+  window.m_dragndropClipboard = dragndropClipboard
 
 method doResize(window: WindowWayland, size: IVec2) {.base.} =
   window.m_size = size
@@ -293,8 +303,8 @@ method doResize(window: WindowWaylandSoftwareRendering, size: IVec2) =
 
 
 proc resize(window: WindowWayland, size: IVec2) =
-  if size.x * size.y == 0:
-    ## hmm, ignore
+  if size.x <= 0 or size.y <= 0:
+    ## todo: means we should decide the size by ourselves
     return
     
   window.doResize size
@@ -305,22 +315,20 @@ proc resize(window: WindowWayland, size: IVec2) =
       window.xdgToplevel.set_min_size(window.m_size.x, window.m_size.y)
       window.xdgToplevel.set_max_size(window.m_size.x, window.m_size.y)
 
-    commit window.surface
+    window.eventsHandler.onResize.pushEvent ResizeEvent(window: window, size: window.m_size)
 
-    window.eventsHandler.pushEvent onResize, ResizeEvent(window: window, size: window.m_size)
-    redraw window
   of WindowWaylandKind.LayerSurface:
     window.layerShellSurface.set_size(window.m_size.x.uint32, window.m_size.y.uint32)
-    window.surface.commit()
-
     window.eventsHandler.pushEvent onResize, ResizeEvent(window: window, size: window.m_size)
     window.redraw()
+
 
 method `title=`*(window: WindowWayland, v: string) =
   case window.kind
   of WindowWaylandKind.XdgSurface:
     window.xdgToplevel.set_title(v)
   else: discard
+
 
 proc setFrameless(window: WindowWayland, v: bool) =
   if serverDecorationManager != nil:
@@ -334,7 +342,7 @@ proc setFrameless(window: WindowWayland, v: bool) =
         if newFrameless == window.m_frameless: return
         
         window.m_frameless = newFrameless
-        window.eventsHandler.pushEvent onStateBoolChanged, StateBoolChangedEvent(
+        window.eventsHandler.onStateBoolChanged.pushEvent StateBoolChangedEvent(
           window: window, kind: StateBoolChangedEventKind.frameless, value: window.m_frameless, isExternal: true
         )
 
@@ -342,7 +350,7 @@ proc setFrameless(window: WindowWayland, v: bool) =
       if v: client_side
       else: server_side
     
-    window.eventsHandler.pushEvent onStateBoolChanged, StateBoolChangedEvent(
+    window.eventsHandler.onStateBoolChanged.pushEvent StateBoolChangedEvent(
       window: window, kind: StateBoolChangedEventKind.frameless, value: window.m_frameless, isExternal: false
     )
 
@@ -370,7 +378,12 @@ method `frameless=`*(window: WindowWayland, v: bool) =
 method `size=`*(window: WindowWayland, v: IVec2) =
   if window.fullscreen:
     window.fullscreen = false
+
+  if v.x <= 0 or v.y <= 0:
+    raise RangeDefect.newException("size must be > 0")
+
   window.resize(v)
+  redraw window
 
 
 method `pos=`*(window: WindowWayland, v: IVec2) =
@@ -390,7 +403,7 @@ method `pos=`*(window: WindowWayland, v: IVec2) =
     discard
   
   # since no compositor notifies us about window movement, let's emulate such event
-  window.eventsHandler.pushEvent onWindowMove, WindowMoveEvent(window: window, pos: v)
+  window.eventsHandler.onWindowMove.pushEvent WindowMoveEvent(window: window, pos: v)
 
 
 method `cursor=`*(window: WindowWayland, v: Cursor) =
@@ -417,7 +430,6 @@ method pixelBuffer*(window: WindowWaylandSoftwareRendering): PixelBuffer =
 method swapBuffers(window: WindowWaylandSoftwareRendering) =
   window.surface.attach(window.buffer.buffer, 0, 0)
   window.surface.damage_buffer(0, 0, window.m_size.x, window.m_size.y)
-  commit window.surface
 
 
 method `maximized=`*(window: WindowWayland, v: bool) =
@@ -431,7 +443,7 @@ method `maximized=`*(window: WindowWayland, v: bool) =
   else:
     window.xdgToplevel.unsetMaximized()
 
-  window.eventsHandler.pushEvent onStateBoolChanged, StateBoolChangedEvent(
+  window.eventsHandler.onStateBoolChanged.pushEvent StateBoolChangedEvent(
     window: window, kind: StateBoolChangedEventKind.maximized, value: window.m_maximized
   )
 
@@ -454,7 +466,7 @@ proc releaseAllKeys(window: WindowWayland) =
   ## needed when window loses focus
   for k in window.keyboard.pressed.items.toSeq:
     window.keyboard.pressed.excl k
-    window.eventsHandler.pushEvent onKey, KeyEvent(window: window, key: k, pressed: false, repeated: false, generated: true)
+    window.eventsHandler.onKey.pushEvent KeyEvent(window: window, key: k, pressed: false, repeated: false, generated: true)
 
 
 method `minimized=`*(window: WindowWayland, v: bool) =
@@ -525,10 +537,14 @@ method showWindowMenu*(window: WindowWayland, pos: Option[Vec2]) =
 
 method setInputRegion*(window: WindowWayland, pos, size: Vec2) =
   procCall window.Window.setInputRegion(pos, size)
+  
   let region = compositor.create_region
   region.add(pos.x.int32, pos.y.int32, size.x.int32, size.y.int32)
+  
   window.surface.set_input_region(region)
-  window.xdgSurface.set_window_geometry(pos.x.int32, pos.y.int32, size.x.int32, size.y.int32)
+  # window.xdgSurface.set_window_geometry(pos.x.int32, pos.y.int32, size.x.int32, size.y.int32)
+  
+  destroy region
 
 
 proc replicateWindowTitleAndBorderBehaviour(window: WindowWayland, prevMousePos: Vec2) =
@@ -568,7 +584,7 @@ proc initSeatEvents* =
 
       replicateWindowTitleAndBorderBehaviour(window, window.mouse.pos)
 
-      window.eventsHandler.pushEvent onMouseMove, MouseMoveEvent(window: window, pos: window.mouse.pos, kind: MouseMoveKind.enter)
+      window.eventsHandler.onMouseMove.pushEvent MouseMoveEvent(window: window, pos: window.mouse.pos, kind: MouseMoveKind.enter)
     
 
     seat_pointer.onLeave:
@@ -579,7 +595,7 @@ proc initSeatEvents* =
       replicateWindowTitleAndBorderBehaviour(window, window.mouse.pos)
       
       window.clicking = {}
-      window.eventsHandler.pushEvent onMouseMove, MouseMoveEvent(window: window, pos: window.mouse.pos, kind: MouseMoveKind.leave)
+      window.eventsHandler.onMouseMove.pushEvent MouseMoveEvent(window: window, pos: window.mouse.pos, kind: MouseMoveKind.leave)
       
       # we don't unpress buttons on leave, because we "capture" mouse
     
@@ -595,7 +611,7 @@ proc initSeatEvents* =
 
         window.clicking = {}
         window.mouse.pos = vec2(surface_x, surface_y)
-        window.eventsHandler.pushEvent onMouseMove, MouseMoveEvent(window: window, pos: window.mouse.pos, kind: MouseMoveKind.move)
+        window.eventsHandler.onMouseMove.pushEvent MouseMoveEvent(window: window, pos: window.mouse.pos, kind: MouseMoveKind.move)
     
 
     seat_pointer.onButton:
@@ -622,7 +638,7 @@ proc initSeatEvents* =
           window.clicking.incl button
 
           if (nows - window.lastClickTime).inMilliseconds < 200:
-            window.eventsHandler.pushEvent onClick, ClickEvent(
+            window.eventsHandler.onClick.pushEvent ClickEvent(
               window: window, button: button, pos: window.mouse.pos, double: true
             )
             window.doubleClickHandled = true
@@ -632,13 +648,13 @@ proc initSeatEvents* =
           window.mouse.pressed.excl button
           if button in window.clicking:
             if not window.doubleClickHandled:
-              window.eventsHandler.pushEvent onClick, ClickEvent(
+              window.eventsHandler.onClick.pushEvent ClickEvent(
                 window: window, button: button, pos: window.mouse.pos, double: false
               )
               window.lastClickTime = nows
             window.clicking.excl button
 
-        window.eventsHandler.pushEvent onMouseButton, MouseButtonEvent(window: window, button: button, pressed: state == `WlPointer / Button_state`.pressed, generated: false)
+        window.eventsHandler.onMouseButton.pushEvent MouseButtonEvent(window: window, button: button, pressed: state == `WlPointer / Button_state`.pressed, generated: false)
 
 
     seat_pointer.onAxis:
@@ -646,9 +662,9 @@ proc initSeatEvents* =
       let window = seat_pointer_currentWindow
 
       if axis == `WlPointer / Axis`.vertical_scroll:
-        window.eventsHandler.pushEvent onScroll, ScrollEvent(window: window, delta: value, deltaX: 0)
+        window.eventsHandler.onScroll.pushEvent ScrollEvent(window: window, delta: value, deltaX: 0)
       elif axis == `WlPointer / Axis`.horizontal_scroll:
-        window.eventsHandler.pushEvent onScroll, ScrollEvent(window: window, delta: 0, deltaX: value)
+        window.eventsHandler.onScroll.pushEvent ScrollEvent(window: window, delta: 0, deltaX: value)
       else:
         return
 
@@ -670,7 +686,7 @@ proc initSeatEvents* =
         if siwinKey == Key.unknown: continue
 
         window.keyboard.pressed.incl siwinKey
-        window.eventsHandler.pushEvent onKey, KeyEvent(
+        window.eventsHandler.onKey.pushEvent KeyEvent(
           window: window, key: siwinKey, pressed: true, generated: true
         )
         window.lastKeyPressed = siwinKey
@@ -703,7 +719,7 @@ proc initSeatEvents* =
         else:
           window.keyboard.pressed.excl siwinKey
 
-        window.eventsHandler.pushEvent onKey, KeyEvent(
+        window.eventsHandler.onKey.pushEvent KeyEvent(
           window: window, key: siwinKey, pressed: pressed
         )
 
@@ -715,7 +731,7 @@ proc initSeatEvents* =
       if text.len == 1 and text[0] < 32.char: text = ""
 
       if pressed and text != "":
-        window.eventsHandler.pushEvent onTextInput, TextInputEvent(
+        window.eventsHandler.onTextInput.pushEvent TextInputEvent(
           window: window, text: text
         )
 
@@ -729,20 +745,88 @@ proc initSeatEvents* =
     seat_keyboard.onRepeat_info:
       seat_keyboard_repeatSettings = (rate: rate, delay: delay)
 
-method setIdleInhibit*(window: WindowWayland, state: bool) =
-  if idleInhibitor == nil:
+
+proc setIdleInhibit*(window: WindowWayland, state: bool) =
+  #? should the proc be named `idleInhibit=`?
+  if idleInhibitManager == nil:
     return
 
   if state:
     if window.idleInhibitor != nil:
+      #? should we return without an error here instead?
       raise newException(ValueError, "`setIdleInhibit(true)` was called even though this window already has an active inhibitor")
 
-    window.idleInhibitor = window.idleInhibitManager.create_inhibitor(window.surface)
+    window.idleInhibitor = idleInhibitManager.create_inhibitor(window.surface)
   else:
     if window.idleInhibitor == nil:
+      #? should we return without an error here instead?
       raise newException(ValueError, "`setIdleInhibit(false)` was called even though the window has no active inhibitor")
     
     window.idleInhibitor.destroy()
+    window.idleInhibitor.proxy.raw = nil
+
+
+proc initDataDeviceManagerEvents* =
+  if dataDeviceManagerEventsInitialized: return
+  if not waylandAvailable: return
+  dataDeviceManagerEventsInitialized = true
+
+  if dataDeviceManager == nil: return
+  if seat == nil: return
+
+  data_device = dataDeviceManager.get_data_device(seat)
+
+  data_device.onDataOffer:
+    if unindentified_data_offer != nil:
+      destroy unindentified_data_offer
+      unindentified_data_offer_mimeTypes = @[]
+
+    unindentified_data_offer = id.proxy.raw.construct(
+      Wl_data_offer, `Wl_data_offer/dispatch`, `Wl_data_offer/Callbacks`
+    )
+
+    unindentified_data_offer.onOffer:
+      unindentified_data_offer_mimeTypes.add $mime_type
+
+  data_device.onSelection:
+    if current_selection_data_offer != nil:
+      destroy current_selection_data_offer
+    
+    current_selection_data_offer = unindentified_data_offer
+    var offered_mime_types = unindentified_data_offer_mimeTypes
+    
+    unindentified_data_offer.proxy.raw = nil
+    unindentified_data_offer_mimeTypes = @[]
+  
+    primaryClipboard.availableKinds = {}
+    primaryClipboard.availableMimeTypes = @[]
+
+    if current_selection_data_offer == nil:
+      return
+
+    current_selection_data_offer.onOffer:
+      offered_mime_types.add $mime_type
+    
+    discard wl_display_roundtrip display  # get all the mime types
+    
+    for mime_type in offered_mime_types:
+      if mime_type in ["UTF8_STRING", "STRING", "TEXT", "text/plain", "text/plain;charset=utf-8"]:
+        primaryClipboard.availableKinds.incl text
+
+      if mime_type in ["text/uri-list"]:
+        primaryClipboard.availableKinds.incl files
+
+      if mime_type notin primaryClipboard.availableMimeTypes:
+        primaryClipboard.availableMimeTypes.add mime_type
+
+    primaryClipboard.onContentChanged.pushEvent ClipboardContentChangedEvent(
+      clipboard: primaryClipboard,
+      availableKinds: primaryClipboard.availableKinds,
+      availableMimeTypes: primaryClipboard.availableMimeTypes,
+    )
+
+  discard wl_display_roundtrip display
+
 
 proc setupWindow(window: WindowWayland, fullscreen, frameless, transparent: bool, size: IVec2, class: string) =
   expectExtension compositor
@@ -753,9 +837,6 @@ proc setupWindow(window: WindowWayland, fullscreen, frameless, transparent: bool
   window.surface = compositor.create_surface
   associatedWindows[window.surface.proxy.raw.id] = window
 
-  if idleInhibitor != nil:
-    window.idleInhibitManager = cast[Zwp_idle_inhibit_manager_v1](idleInhibitor)
-
   case window.kind
   of WindowWaylandKind.XdgSurface:
     window.xdgSurface = xdgWmBase.get_xdg_surface(window.surface)
@@ -763,12 +844,10 @@ proc setupWindow(window: WindowWayland, fullscreen, frameless, transparent: bool
 
     window.xdgSurface.onConfigure:
       window.xdgSurface.ack_configure(serial)
-      commit window.surface
+      redraw window
 
     window.fullscreen = fullscreen
-
-    window.m_frameless = frameless
-    window.setFrameless(frameless)
+    window.frameless = frameless
 
     window.m_transparent = transparent
     if not transparent:
@@ -792,18 +871,17 @@ proc setupWindow(window: WindowWayland, fullscreen, frameless, transparent: bool
       template handleState(k, n, m: untyped) =
         if window.m != checkState(`XdgToplevel / State`.n):
           window.m = checkState(`XdgToplevel / State`.n)
-          window.eventsHandler.pushEvent onStateBoolChanged, StateBoolChangedEvent(
+          window.eventsHandler.onStateBoolChanged.pushEvent StateBoolChangedEvent(
             window: window, kind: StateBoolChangedEventKind.k, value: window.m, isExternal: true
           )
     
       handleState maximized, maximized, m_maximized
       handleState fullscreen, fullscreen, m_fullscreen
       handleState focus, activated, m_focused
-
-      redraw window
   
     if plasmaShell != nil:
       window.plasmaSurface = plasmaShell.get_surface(window.surface)
+  
   of LayerSurface:
     window.layerShellSurface = layerShell.get_layer_surface(
       window.surface,
@@ -812,7 +890,6 @@ proc setupWindow(window: WindowWayland, fullscreen, frameless, transparent: bool
       window.namespace.cstring
     )
     window.layerShellSurface.set_size(window.size.x.uint32, window.size.y.uint32)
-    window.surface.commit()
     window.redraw()
 
     window.layerShellSurface.onConfigure:
@@ -822,6 +899,7 @@ proc setupWindow(window: WindowWayland, fullscreen, frameless, transparent: bool
     window.layerShellSurface.onClosed:
       window.m_closed = true
       window.surface.destroy()
+
 
 proc initSoftwareRenderingWindow(
   window: WindowWaylandSoftwareRendering,
@@ -913,6 +991,77 @@ proc setExclusiveZone*(window: WindowWayland, zone: int32) =
   window.layerShellSurface.set_exclusive_zone(zone)
 
 
+proc constructClipboardContent*(
+  data: sink string, kind: ClipboardContentKind, mimeType: string = "text/plain"
+): ClipboardContent =
+  case kind
+  of text:
+    result = ClipboardContent(kind: text, text: data)
+  
+  of files:
+    let uris = data.splitLines
+    var files: seq[string]
+    
+    for uri in uris:
+      let uri = parseUri(uri)
+      if uri.scheme == "file":
+        files.add uri.path.decodeUrl
+    
+    result = ClipboardContent(kind: ClipboardContentKind.files, files: files)
+  
+  of other:
+    result = ClipboardContent(kind: other, mimeType: mimeType, data: data)
+
+
+method content*(
+  clipboard: ClipboardWayland, kind: ClipboardContentKind, mimeType: string = "text/plain"
+): ClipboardContent =
+  initDataDeviceManagerEvents()
+  
+  var mimeType =
+    case kind
+    of text:
+      if "text/plain;charset=utf-8" in clipboard.availableMimeTypes: "text/plain;charset=utf-8"
+      elif "UTF8_STRING" in clipboard.availableMimeTypes: "UTF8_STRING"
+      elif "STRING" in clipboard.availableMimeTypes: "STRING"
+      elif "TEXT" in clipboard.availableMimeTypes: "TEXT"
+      else: "text/plain"
+    
+    of files:
+      "text/uri-list"
+    
+    of other:
+      mimeType
+
+  if mimeType notin clipboard.availableMimeTypes:
+    return constructClipboardContent("", kind, mimeType)
+
+
+  if clipboard == primaryClipboard:
+    if current_selection_data_offer == nil:
+      return constructClipboardContent("", kind, mimeType)
+
+    var fds: array[2, FileHandle]  # [0] - read, [1] - write
+    if pipe(fds) < 0:
+      raiseOSError(osLastError())
+
+    current_selection_data_offer.receive(mimeType.cstring, fds[1])
+
+    wl_display_flush display
+
+    var data: string
+    var cbuffer: array[1024, char]
+
+    while (let c = read(fds[0], cbuffer[0].addr, 1024); c != 0):
+      data.add $cast[cstring](cbuffer[0].addr)
+      if c != 1024: break
+
+    discard close fds[0]
+    discard close fds[1]
+
+    return constructClipboardContent(data, kind, mimeType)
+
+
 method firstStep*(window: WindowWayland, makeVisible = true) =
   if makeVisible:
     window.visible = true
@@ -920,9 +1069,10 @@ method firstStep*(window: WindowWayland, makeVisible = true) =
   # window.m_pos = window.handle.geometry.pos
   # window.mouse.pos = cursor().pos - window.m_pos
   
-  window.eventsHandler.pushEvent onResize, ResizeEvent(window: window, size: window.m_size, initial: true)
+  window.eventsHandler.onResize.pushEvent ResizeEvent(window: window, size: window.m_size, initial: true)
   window.lastTickTime = getTime()
   redraw window
+
 
 method step*(window: WindowWayland) =
   ## make window main loop step
@@ -930,8 +1080,8 @@ method step*(window: WindowWayland) =
 
   template closeIfNeeded =
     if window.m_closed:
+      window.eventsHandler.onClose.pushEvent CloseEvent(window: window)
       release window
-      window.eventsHandler.pushEvent onClose, CloseEvent(window: window)
       return
 
   closeIfNeeded()
@@ -960,30 +1110,33 @@ method step*(window: WindowWayland) =
         window.lastKeyRepeatedTime += interval
         
         if window.lastKeyPressed != Key.unknown:
-          window.eventsHandler.pushEvent onKey, KeyEvent(
+          window.eventsHandler.onKey.pushEvent KeyEvent(
             window: window, key: window.lastKeyPressed, pressed: false, repeated: true
           )
-          window.eventsHandler.pushEvent onKey, KeyEvent(
+          window.eventsHandler.onKey.pushEvent KeyEvent(
             window: window, key: window.lastKeyPressed, pressed: true, repeated: true
           )
 
         if window.lastTextEntered != "":
-          window.eventsHandler.pushEvent onTextInput, TextInputEvent(
+          window.eventsHandler.onTextInput.pushEvent TextInputEvent(
             window: window, text: window.lastTextEntered, repeated: true
           )
 
   let nows = getTime()
-  window.eventsHandler.pushEvent onTick, TickEvent(window: window, deltaTime: nows - window.lastTickTime)
+  window.eventsHandler.onTick.pushEvent TickEvent(window: window, deltaTime: nows - window.lastTickTime)
   closeIfNeeded()
   window.lastTickTime = nows
 
   if window.redrawRequested:
     window.redrawRequested = false
 
-    window.eventsHandler.pushEvent onRender, RenderEvent(window: window)
+    window.eventsHandler.onRender.pushEvent RenderEvent(window: window)
     closeIfNeeded()
 
     window.swapBuffers()
+    commit window.surface
+
+    wl_display_flush display
 
 
 proc newSoftwareRenderingWindowWayland*(
