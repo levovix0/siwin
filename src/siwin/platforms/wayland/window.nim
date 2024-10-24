@@ -319,7 +319,7 @@ proc resize(window: WindowWayland, size: IVec2) =
 
   of WindowWaylandKind.LayerSurface:
     window.layerShellSurface.set_size(window.m_size.x.uint32, window.m_size.y.uint32)
-    window.eventsHandler.pushEvent onResize, ResizeEvent(window: window, size: window.m_size)
+    window.eventsHandler.onResize.pushEvent ResizeEvent(window: window, size: window.m_size)
     window.redraw()
 
 
