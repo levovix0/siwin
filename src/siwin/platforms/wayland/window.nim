@@ -303,8 +303,8 @@ method doResize(window: WindowWaylandSoftwareRendering, size: IVec2) =
 
 
 proc resize(window: WindowWayland, size: IVec2) =
-  if size.x * size.y == 0:
-    ## hmm, ignore
+  if size.x <= 0 or size.y <= 0:
+    ## todo: means we should decide the size by ourselves
     return
     
   window.doResize size
@@ -315,15 +315,10 @@ proc resize(window: WindowWayland, size: IVec2) =
       window.xdgToplevel.set_min_size(window.m_size.x, window.m_size.y)
       window.xdgToplevel.set_max_size(window.m_size.x, window.m_size.y)
 
-    commit window.surface
-
     window.eventsHandler.onResize.pushEvent ResizeEvent(window: window, size: window.m_size)
-    redraw window
 
   of WindowWaylandKind.LayerSurface:
     window.layerShellSurface.set_size(window.m_size.x.uint32, window.m_size.y.uint32)
-    window.surface.commit()
-    window.redraw()
 
 
 method `title=`*(window: WindowWayland, v: string) =
@@ -381,7 +376,12 @@ method `frameless=`*(window: WindowWayland, v: bool) =
 method `size=`*(window: WindowWayland, v: IVec2) =
   if window.fullscreen:
     window.fullscreen = false
+
+  if v.x <= 0 or v.y <= 0:
+    raise RangeDefect.newException("size must be > 0")
+
   window.resize(v)
+  redraw window
 
 
 method `pos=`*(window: WindowWayland, v: IVec2) =
@@ -428,7 +428,6 @@ method pixelBuffer*(window: WindowWaylandSoftwareRendering): PixelBuffer =
 method swapBuffers(window: WindowWaylandSoftwareRendering) =
   window.surface.attach(window.buffer.buffer, 0, 0)
   window.surface.damage_buffer(0, 0, window.m_size.x, window.m_size.y)
-  commit window.surface
 
 
 method `maximized=`*(window: WindowWayland, v: bool) =
@@ -536,10 +535,14 @@ method showWindowMenu*(window: WindowWayland, pos: Option[Vec2]) =
 
 method setInputRegion*(window: WindowWayland, pos, size: Vec2) =
   procCall window.Window.setInputRegion(pos, size)
+  
   let region = compositor.create_region
   region.add(pos.x.int32, pos.y.int32, size.x.int32, size.y.int32)
+  
   window.surface.set_input_region(region)
-  window.xdgSurface.set_window_geometry(pos.x.int32, pos.y.int32, size.x.int32, size.y.int32)
+  # window.xdgSurface.set_window_geometry(pos.x.int32, pos.y.int32, size.x.int32, size.y.int32)
+  
+  destroy region
 
 
 proc replicateWindowTitleAndBorderBehaviour(window: WindowWayland, prevMousePos: Vec2) =
@@ -839,12 +842,10 @@ proc setupWindow(window: WindowWayland, fullscreen, frameless, transparent: bool
 
     window.xdgSurface.onConfigure:
       window.xdgSurface.ack_configure(serial)
-      commit window.surface
+      redraw window
 
     window.fullscreen = fullscreen
-
-    window.m_frameless = frameless
-    window.setFrameless(frameless)
+    window.frameless = frameless
 
     window.m_transparent = transparent
     if not transparent:
@@ -875,8 +876,6 @@ proc setupWindow(window: WindowWayland, fullscreen, frameless, transparent: bool
       handleState maximized, maximized, m_maximized
       handleState fullscreen, fullscreen, m_fullscreen
       handleState focus, activated, m_focused
-
-      redraw window
   
     if plasmaShell != nil:
       window.plasmaSurface = plasmaShell.get_surface(window.surface)
@@ -889,7 +888,6 @@ proc setupWindow(window: WindowWayland, fullscreen, frameless, transparent: bool
       window.namespace.cstring
     )
     window.layerShellSurface.set_size(400, 400)
-    window.surface.commit()
     window.redraw()
 
     window.layerShellSurface.onConfigure:
@@ -1139,6 +1137,9 @@ method step*(window: WindowWayland) =
     closeIfNeeded()
 
     window.swapBuffers()
+    commit window.surface
+
+    wl_display_flush display
 
 
 proc newSoftwareRenderingWindowWayland*(

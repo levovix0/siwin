@@ -193,7 +193,8 @@ proc `==`*(a: Wl_display, b: typeof nil): bool = a.raw == nil
 
 
 proc toSeq*(x: Wl_array, t: type): seq[t] =
-  when t.sizeof != 4: {.error: "invalid type, should be 4 bytes long".}
-  if x[].size == 0: return
-  result = newSeq[t](x[].size)
-  copyMem(result[0].addr, x[].data, x[].size * sizeof(t))
+  when t.sizeof != 4: {.error: "invalid type, must be 4 bytes long".}
+  let len = x[].size div t.sizeof
+  if len == 0: return
+  result = newSeq[t](len)
+  copyMem(result[0].addr, x[].data, len * sizeof(t))
