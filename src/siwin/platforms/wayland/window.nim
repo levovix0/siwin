@@ -312,6 +312,8 @@ proc resize(window: WindowWayland, size: IVec2) =
   of WindowWaylandKind.LayerSurface:
     window.layerShellSurface.set_size(window.m_size.x.uint32, window.m_size.y.uint32)
     window.surface.commit()
+
+    window.eventsHandler.pushEvent onResize, ResizeEvent(window: window, size: window.m_size)
     window.redraw()
 
 method `title=`*(window: WindowWayland, v: string) =
@@ -809,14 +811,13 @@ proc setupWindow(window: WindowWayland, fullscreen, frameless, transparent: bool
       `Zwlr_layer_shell_v1/Layer`(window.layer.int),
       window.namespace.cstring
     )
-    window.layerShellSurface.set_size(400, 400)
+    window.layerShellSurface.set_size(window.size.x.uint32, window.size.y.uint32)
     window.surface.commit()
     window.redraw()
 
     window.layerShellSurface.onConfigure:
       window.layerShellSurface.ack_configure(serial)
       window.resize(ivec2(width.int32, height.int32))
-      redraw window
 
     window.layerShellSurface.onClosed:
       window.m_closed = true
@@ -838,8 +839,7 @@ proc initSoftwareRenderingWindow(
   window.surface.attach(window.buffer.buffer, 0, 0)
   commit window.surface
 
-
-proc setAnchor*(window: WindowWayland, edge: LayerEdge | array[2, LayerEdge], marginSize: int) =
+proc setAnchor*(window: WindowWayland, edge: LayerEdge | seq[LayerEdge]) =
   if window.layerShellSurface == nil:
     raise newException(
       ValueError,
@@ -860,31 +860,28 @@ proc setAnchor*(window: WindowWayland, edge: LayerEdge | array[2, LayerEdge], ma
         `Zwlr_layer_surface_v1/Anchor`.bottom
     )
   else:
-    proc mixWith(l1: `Zwlr_layer_surface_v1/Anchor`): `Zwlr_layer_surface_v1/Anchor` =
-      `Zwlr_layer_surface_v1/Anchor`(case edge[1]
-      of LayerEdge.Top:
-        l1.uint or `Zwlr_layer_surface_v1/Anchor`.top.uint
-      of LayerEdge.Left:
-        l1.uint or `Zwlr_layer_surface_v1/Anchor`.left.uint
-      of LayerEdge.Right:
-        l1.uint or `Zwlr_layer_surface_v1/Anchor`.right.uint
-      of LayerEdge.Bottom:
-        l1.uint or `Zwlr_layer_surface_v1/Anchor`.bottom.uint)
+    if edge.len < 2:
+      raise newException(ValueError, "Not enough edges provided")
 
-    window.layerShellSurface.set_anchor(
-      case edge[0]
+    func convert(x: LayerEdge): `Zwlr_layer_surface_v1/Anchor` {.inline.} =
+      case x
       of LayerEdge.Top:
-        mixWith `Zwlr_layer_surface_v1/Anchor`.top
+        `Zwlr_layer_surface_v1/Anchor`.top
       of LayerEdge.Left:
-        mixWith `Zwlr_layer_surface_v1/Anchor`.left
+        `Zwlr_layer_surface_v1/Anchor`.left
       of LayerEdge.Right:
-        mixWith `Zwlr_layer_surface_v1/Anchor`.right
+        `Zwlr_layer_surface_v1/Anchor`.right
       of LayerEdge.Bottom:
-        mixWith `Zwlr_layer_surface_v1/Anchor`.bottom
-    )
+        `Zwlr_layer_surface_v1/Anchor`.bottom
+
+    var final = edge[0].uint
+
+    for val in edge[1 ..< edge.len]:
+      final = final or val.uint
+
+    window.layerShellSurface.set_anchor(cast[`Zwlr_layer_surface_v1/Anchor`](final))
 
   window.redraw()
-
 
 proc setKeyboardInteractivity*(window: WindowWayland, mode: LayerInteractivityMode) =
   if window.layerShellSurface == nil:

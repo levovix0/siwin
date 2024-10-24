@@ -2,17 +2,18 @@ when not defined(linux):
   {.error: "wlr-layer-shell only works on Wayland (Linux)".}
 
 import std/[unittest]
-import siwin, opengl
+import siwin, opengl, vmath
 import siwin/platforms/wayland/[window, windowOpengl]
 
 test "wlr-layer-shell":
   let window = newOpenglWindowWayland(
+    size = ivec2(1000, 1000),
     kind = WindowWaylandKind.LayerSurface, 
-    layer = Layer.Overlay 
+    layer = Layer.Overlay,
   )
   loadExtensions()
 
-  window.setAnchor(LayerEdge.Left, 4)
+  window.setAnchor(@[LayerEdge.Top, LayerEdge.Bottom, LayerEdge.Left])
   window.setKeyboardInteractivity(LayerInteractivityMode.OnDemand)
   window.setExclusiveZone(1)
   window.run(
