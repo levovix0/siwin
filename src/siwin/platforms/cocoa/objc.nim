@@ -13,18 +13,18 @@ type
     receiver*: ID
     super_class*: Class
 
-# {.push cdecl, dynlib: "libobjc.dylib".}
+
 {.push cdecl.}
 
-proc objc_msgSend*() {.importc.}
-proc objc_msgSendSuper*() {.importc.}
+proc objc_msgSend_c*() {.importc: "objc_msgSend".}
+proc objc_msgSendSuper_c*() {.importc: "objc_msgSendSuper".}
 
-when defined(amd64):
-  proc objc_msgSend_fpret*() {.importc.}
-  proc objc_msgSend_stret*() {.importc.}
+when defined(amd64) or defined(arm64):
+  proc objc_msgSend_fpret_c*() {.importc: "objc_msgSend_fpret".}
+  proc objc_msgSend_stret_c*() {.importc: "objc_msgSend_stret".}
 else:
-  proc objc_msgSend_fpret*() {.importc: "objc_msgSend".}
-  proc objc_msgSend_stret*() {.importc: "objc_msgSend".}
+  proc objc_msgSend_fpret_c*() {.importc: "objc_msgSend".}
+  proc objc_msgSend_stret_c*() {.importc: "objc_msgSend".}
 
 proc objc_getClass*(name: cstring): Class {.importc.}
 proc objc_getProtocol*(name: cstring): Protocol {.importc.}
@@ -38,6 +38,14 @@ proc sel_getName*(sel: SEL): cstring {.importc.}
 proc class_addProtocol*(cls: Class, protocol: Protocol): bool {.importc.}
 
 {.pop.}
+
+
+# force nim to think theese functions are void*
+proc objc_msgSend_p*: pointer {.inline.} = cast[pointer](objc_msgSend_c)
+proc objc_msgSendSuper_p*: pointer {.inline.} = cast[pointer](objc_msgSendSuper_c)
+proc objc_msgSend_fpret_p*: pointer {.inline.} = cast[pointer](objc_msgSend_fpret_c)
+proc objc_msgSend_stret_p*: pointer {.inline.} = cast[pointer](objc_msgSend_stret_c)
+
 
 var
   numClass {.compiletime.} = 1
@@ -66,11 +74,11 @@ macro objc*(body: untyped) =
     var messageFunction =
       # Someday we can look at the retType and be smarter but this works well now.
       if repr(retType) in ["NSRect"]:
-        bindSym("objc_msgSend_stret")
+        newCall(bindSym("objc_msgSend_stret_p"))
       elif repr(retType) in ["float64", "NSPoint"]:
-        bindSym("objc_msgSend_fpret")
+        newCall(bindSym("objc_msgSend_fpret_p"))
       else:
-        bindSym("objc_msgSend")
+        newCall(bindSym("objc_msgSend_p"))
 
     var convertedFunction = quote do:
       cast[proc(): `retType` {.cdecl, raises: [], gcsafe.}](`messageFunction`)
@@ -199,7 +207,7 @@ template autoreleasepool*(body: untyped) =
     pool.release()
 
 proc `@`*(s: string): NSString =
-  let cvf = cast[proc(self: ID, cmd: SEL, s: cstring): NSString {.cdecl, raises: [], gcsafe.}](objc_msgSend)
+  let cvf = cast[proc(self: ID, cmd: SEL, s: cstring): NSString {.cdecl, raises: [], gcsafe.}](objc_msgSend_p())
   cvf(
     NSString.getClass().ID,
     selector"stringWithUTF8String:",
@@ -213,7 +221,7 @@ proc `$`*(error: NSError): string =
   $error.localizedDescription
 
 proc new*(cls: Class): ID =
-  let cvf = cast[proc(self: ID, cmd: SEL): ID {.cdecl, gcsafe, raises: [].}](objc_msgSend)
+  let cvf = cast[proc(self: ID, cmd: SEL): ID {.cdecl, gcsafe, raises: [].}](objc_msgSend_p())
   cvf(
     cls.ID,
     selector"new"
@@ -223,7 +231,7 @@ proc new*[T](class: typedesc[T]): T =
   class.getClass().new().T
 
 proc alloc*(cls: Class): ID =
-  let cvf = cast[proc(self: ID, cmd: SEL): ID {.cdecl, gcsafe, raises: [].}](objc_msgSend)
+  let cvf = cast[proc(self: ID, cmd: SEL): ID {.cdecl, gcsafe, raises: [].}](objc_msgSend_p())
   cvf(
     cls.ID,
     selector"alloc"

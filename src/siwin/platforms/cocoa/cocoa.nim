@@ -305,7 +305,7 @@ proc callSuper*(sender: ID, cmd: SEL) =
     receiver: sender,
     super_class: sender.NSObject.superclass
   )
-  let cvf = cast[proc(super: ptr objc_super, cmd: SEL) {.cdecl.}](objc_msgSendSuper)
+  let cvf = cast[proc(super: ptr objc_super, cmd: SEL) {.cdecl.}](objc_msgSendSuper_p())
   cvf(
     super.addr,
     cmd
