@@ -26,11 +26,13 @@ proc buffer*(buffer: SharedBuffer): WlBuffer =
 
 
 proc `=destroy`(buffer: SharedBuffer) {.siwin_destructor.} =
-  if buffer.buffer.proxy.raw != nil:
-    destroy buffer.buffer
-  
-  if buffer.pool.proxy.raw != nil:
-    destroy buffer.pool
+  try:
+    if buffer.buffer.proxy.raw != nil:
+      destroy buffer.buffer
+    
+    if buffer.pool.proxy.raw != nil:
+      destroy buffer.pool
+  except: discard
 
   try:
     close buffer.addr[].file

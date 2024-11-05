@@ -18,8 +18,6 @@ var atoms*: tuple[
   : Atom
 ]
 
-var clipboardProcessEvents*: TableRef[int, proc()]
-
 
 proc init* {.raises: [OsError].} =
   if display != nil: return

@@ -29,7 +29,10 @@ proc `=destroy`(window: WindowWaylandOpenglObj) {.siwin_destructor.} =
 
 method release(window: WindowWaylandOpengl) =
   ## destroy wayland part of window
-  destroy window.eglContext
+  try:
+    destroy window.eglContext
+  except:
+    discard
 
   procCall window.WindowWayland.release()
 

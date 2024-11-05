@@ -1,3 +1,4 @@
+import std/[dynlib]
 import ../../[siwindefs]
 
 {.pragma: importwayland, cdecl, dynlib: "libwayland-client.so(|.0)".}
@@ -75,51 +76,61 @@ type
   Wl_argument* = int
 
 
-let proxyNimTag: cstring = "nim-side proxy (userdata is ref RootObj and it requires destruction)"
+let
+  proxyNimTag: cstring = "nim-side proxy (userdata is ref RootObj and it requires destruction)"
+
+var
+  waylandAvailable* = true
+
+  libwaylandclientHandle = loadLib("libwayland-client.so")
 
 
-{.push, cdecl, dynlib: "libwayland-client.so(|.0)", importc.}
-
-proc wl_display_disconnect*(this: Wl_display)
-
-proc wl_display_connect*(name: cstring = nil): Wl_display
-proc wl_display_connect_to_fd*(fd: FileHandle): Wl_display
-
-proc wl_display_get_fd*(this: Wl_display): FileHandle
-
-proc wl_display_flush*(this: Wl_display)
-proc wl_display_roundtrip*(this: Wl_display): int32
+if libwaylandclientHandle == nil:
+  waylandAvailable = false
 
 
-proc wl_proxy_set_user_data*(this: Wl_proxy, v: pointer)
-proc wl_proxy_get_user_data*(this: Wl_proxy): pointer
+siwin_loadDynlibIfExists libwaylandclientHandle:
+  proc wl_display_disconnect*(this: Wl_display)
 
-proc wl_proxy_set_tag*(this: Wl_proxy, v: ptr cstring)
-proc wl_proxy_get_tag*(this: Wl_proxy): ptr cstring
+  proc wl_display_connect*(name: cstring): Wl_display
+  proc wl_display_connect_to_fd*(fd: FileHandle): Wl_display
 
-proc wl_proxy_destroy*(this: Wl_proxy)
+  proc wl_display_get_fd*(this: Wl_display): FileHandle
 
-proc wl_proxy_get_version*(this: Wl_proxy): uint32
-proc wl_proxy_get_id*(this: Wl_proxy): uint32
+  proc wl_display_flush*(this: Wl_display)
+  proc wl_display_roundtrip*(this: Wl_display): int32
 
-proc wl_proxy_marshal_array_flags*(
-  proxy: pointer, opcode: uint32, iface: ptr Wl_interface, version: uint32, flags: uint32, args: pointer
-): pointer
 
-proc wl_proxy_marshal_flags*(
-  proxy: pointer, opcode: uint32, iface: ptr Wl_interface, version: uint32, flags: uint32
-): pointer {.varargs.}
+  proc wl_proxy_set_user_data*(this: Wl_proxy, v: pointer)
+  proc wl_proxy_get_user_data*(this: Wl_proxy): pointer
 
-proc wl_proxy_add_dispatcher*(
-  proxy: Wl_proxy, callback: Wl_dispatcher_proc, impl: pointer, proxyUserdata: pointer
-): int32
+  proc wl_proxy_set_tag*(this: Wl_proxy, v: ptr cstring)
+  proc wl_proxy_get_tag*(this: Wl_proxy): ptr cstring
 
-{.pop.}
+  proc wl_proxy_destroy*(this: Wl_proxy)
+
+  proc wl_proxy_get_version*(this: Wl_proxy): uint32
+  proc wl_proxy_get_id*(this: Wl_proxy): uint32
+
+  proc wl_proxy_marshal_array_flags*(
+    proxy: pointer, opcode: uint32, iface: ptr Wl_interface, version: uint32, flags: uint32, args: pointer
+  ): pointer
+
+  proc wl_proxy_marshal_flags*(
+    proxy: pointer, opcode: uint32, iface: ptr Wl_interface, version: uint32, flags: uint32
+  ): pointer {.varargs.}
+
+  proc wl_proxy_add_dispatcher*(
+    proxy: Wl_proxy, callback: Wl_dispatcher_proc, impl: pointer, proxyUserdata: pointer
+  ): int32
 
 
 proc `=destroy`*(this: Wl_display) {.siwin_destructor.} =
   if this.raw != nil:
-    wl_display_disconnect this
+    try:
+      wl_display_disconnect this
+    except:
+      discard
 
 proc destroyCallbacks*(this: Wl_proxy) =
   if this.raw == nil: return

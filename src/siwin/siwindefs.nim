@@ -33,3 +33,52 @@ macro siwin_destructor*(body) =
   
   else:
     discard
+
+
+macro siwin_loadDynlibIfExists*(handle, body) =
+  result = newStmtList()
+
+  for body in body:
+    var pragma =
+      if body.pragma.kind == nnkEmpty: nnkPragma.newTree()
+      else: body.pragma
+    
+    pragma.add(ident("cdecl"))
+
+    result.add(
+      nnkVarSection.newTree(
+        nnkIdentDefs.newTree(
+          body[0],
+          nnkProcTy.newTree(
+            body.params,
+            pragma,
+          ),
+          newEmptyNode()
+        )
+      ),
+      nnkIfStmt.newTree(
+        nnkElifBranch.newTree(
+          nnkInfix.newTree(
+            ident("!="),
+            handle,
+            newNilLit()
+          ),
+          nnkStmtList.newTree(
+            nnkAsgn.newTree(
+              body.name,
+              nnkCast.newTree(
+                nnkProcTy.newTree(
+                  body.params,
+                  pragma,
+                ),
+                nnkCall.newTree(
+                  ident("symAddr"),
+                  handle,
+                  newLit($body.name)
+                )
+              )
+            )
+          )
+        )
+      )
+    )

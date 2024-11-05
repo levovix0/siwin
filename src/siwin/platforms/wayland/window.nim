@@ -254,13 +254,16 @@ method release(window: WindowWayland) {.base, raises: [].} =
   if window.surface != nil:
     associatedWindows.del window.surface.proxy.raw.id
 
-  destroy window.idleInhibitor, destroy
-  destroy window.layerShellSurface, destroy
-  destroy window.plasmaSurface, destroy
-  destroy window.serverDecoration, destroy
-  destroy window.xdgToplevel, destroy
-  destroy window.xdgSurface, destroy
-  destroy window.surface, destroy
+  try:
+    destroy window.idleInhibitor, destroy
+    destroy window.layerShellSurface, destroy
+    destroy window.plasmaSurface, destroy
+    destroy window.serverDecoration, destroy
+    destroy window.xdgToplevel, destroy
+    destroy window.xdgSurface, destroy
+    destroy window.surface, destroy
+  except:
+    discard
 
 
 method release(window: WindowWaylandSoftwareRendering) =
@@ -289,6 +292,7 @@ proc basicInitWindow(window: WindowWayland; size: IVec2; screen: ScreenWayland) 
   window.m_clipboard = primaryClipboard
   window.m_selectionClipboard = selectionClipboard
   window.m_dragndropClipboard = dragndropClipboard
+
 
 method doResize(window: WindowWayland, size: IVec2) {.base.} =
   window.m_size = size
@@ -482,12 +486,6 @@ method `minimized=`*(window: WindowWayland, v: bool) =
       window.xdgToplevel.set_minimized()
 
 
-method `visible=`*(window: WindowWayland, v: bool) =
-  if v == window.m_visible: return
-  window.m_visible = v
-  ## todo
-
-
 method `resizable=`*(window: WindowWayland, v: bool) =
   if window.kind != WindowWaylandKind.XdgSurface: return
   window.m_resizable = v
@@ -565,6 +563,12 @@ proc replicateWindowTitleAndBorderBehaviour(window: WindowWayland, prevMousePos:
   of WindowPart.border_left:          window.startInteractiveResize(Edge.left, some prevMousePos)
   of WindowPart.border_right:         window.startInteractiveResize(Edge.right, some prevMousePos)
   else: discard
+
+
+method `visible=`*(window: WindowWayland, v: bool) =
+  if v == window.m_visible: return
+  window.m_visible = v
+  ## todo
 
 
 proc initSeatEvents* =
@@ -1226,13 +1230,14 @@ method step*(window: WindowWayland) =
   if window.redrawRequested:
     window.redrawRequested = false
 
-    window.eventsHandler.onRender.pushEvent RenderEvent(window: window)
-    closeIfNeeded()
+    if window.m_visible:
+      window.eventsHandler.onRender.pushEvent RenderEvent(window: window)
+      closeIfNeeded()
 
-    window.swapBuffers()
-    commit window.surface
+      window.swapBuffers()
+      commit window.surface
 
-    wl_display_flush display
+      wl_display_flush display
 
 
 proc newSoftwareRenderingWindowWayland*(

@@ -1,6 +1,8 @@
 import tables
 import ./[libwayland, protocol, bitfields]
 
+export waylandAvailable
+
 type
   WaylandExtensionNotFound* = object of CatchableError
 
@@ -27,8 +29,6 @@ var
   
   shmFormats*: seq[`WlShm / Format`]
   seatCapabilities*: Bitfield[`WlSeat / Capability`]
-
-  waylandAvailable* = true
 
   seat_pointer*: Wl_pointer
   seat_keyboard*: Wl_keyboard
@@ -99,7 +99,11 @@ proc init* =
   if not waylandAvailable: return
   initialized = true
 
-  display = wl_display_connect()
+  if wl_display_connect == nil:
+    waylandAvailable = false
+    return
+
+  display = wl_display_connect(nil)
   if display == nil:
     initialized = false
     waylandAvailable = false

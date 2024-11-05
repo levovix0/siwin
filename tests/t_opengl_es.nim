@@ -25,7 +25,8 @@ test "OpenGL ES":
   run window, WindowEventsHandler(
     onResize: proc(e: ResizeEvent) =
       window.setTitleRegion(vec2(0, 0), vec2(e.size.x.float32, 80))
-      window.setInputRegion(vec2(10, 10), vec2(e.size.x.float32 - 20, e.size.y.float32 - 20))
+      if e.size.x > 20 and e.size.y > 20:
+        window.setInputRegion(vec2(10, 10), vec2(e.size.x.float32 - 20, e.size.y.float32 - 20))
       
       glViewport 0, 0, e.size.x.GLsizei, e.size.y.GLsizei
     ,

@@ -1359,8 +1359,6 @@ method step*(window: WindowX11) =
 
     discard XFlush display
 
-  for _, f in clipboardProcessEvents: f()
-
 
 proc newSoftwareRenderingWindowX11*(
   size = ivec2(1280, 720),
