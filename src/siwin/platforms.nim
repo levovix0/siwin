@@ -1,5 +1,7 @@
 import ./[siwindefs]
-when defined(linux) and not defined(android):
+when defined(nimcheck) or defined(nimsuggest):
+  discard
+elif defined(linux) and not defined(android):
   import ./platforms/wayland/globals as waylandGlobals
 
 
@@ -23,7 +25,10 @@ type
 
 
 proc availablePlatforms*: seq[Platform] =
-  when defined(windows):
+  when defined(nimcheck) or defined(nimsuggest):
+    discard
+
+  elif defined(windows):
     @[Platform.winapi]
 
   elif defined(android):

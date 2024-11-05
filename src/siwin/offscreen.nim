@@ -1,7 +1,9 @@
 import platforms
 import platforms/any/window
 
-when defined(android):
+when defined(nimcheck) or defined(nimsuggest):
+  discard
+elif defined(android):
   import platforms/android/window
 elif defined(linux):
   import platforms/x11/offscreen
@@ -13,7 +15,9 @@ proc newOpenglContext*(
     when defined(windows): Platform.winapi
     else: Platform.x11
 ): Window =
-  when defined(android):
+  when defined(nimcheck) or defined(nimsuggest):
+    discard
+  elif defined(android):
     newOpenglWindowAndroid()
   elif defined(linux):
     newOpenglContextX11()

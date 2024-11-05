@@ -1,7 +1,7 @@
-import std/[times, importutils, strformat, options, tables, os, uri]
+import std/[times, importutils, strformat, options, tables, os, uri, sequtils, strutils]
 from std/posix import pipe, close, write, read
 import pkg/[vmath]
-import ../../[utils, colorutils, siwindefs]
+import ../../[colorutils, siwindefs]
 import ../any/[window {.all.}, clipboards]
 import ../any/[windowUtils]
 import ./[libwayland, protocol, globals, sharedBuffer, bitfields, xkb]

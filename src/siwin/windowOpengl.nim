@@ -2,7 +2,9 @@ import vmath
 import window
 import ./platforms
 
-when defined(android):
+when defined(nimcheck) or defined(nimsuggest):
+  discard
+elif defined(android):
   import ./platforms/android/window as androidWindow
 elif defined(linux):
   import ./platforms/x11/window as x11Window
@@ -29,7 +31,10 @@ proc newOpenglWindow*(
 
   class = "", # window class (used in x11), equals to title if not specified
 ): Window =
-  when defined(android):
+  when defined(nimcheck) or defined(nimsuggest):
+    discard
+
+  elif defined(android):
     newOpenglWindowAndroid(
       size, title,
       # (if screen == -1: defaultScreenAndroid() else: screenAndroid(screen)),

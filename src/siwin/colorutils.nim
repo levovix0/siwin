@@ -1,6 +1,6 @@
 import std/[macros]
 import pkg/[vmath]
-import ./[utils, siwindefs, dynutils]
+import ./[siwindefs]
 
 
 when siwin_use_pure_enums:
@@ -60,7 +60,7 @@ type
 
 
 proc at(x: pointer, i: int): var Color32bit {.inline.} =
-  x.cast(ptr UncheckedArray[Color32bit])[i]
+  cast[ptr UncheckedArray[Color32bit]](x)[i]
 
 proc fromPremultiplied(c: byte, a: byte): byte {.inline.} =
   (c.float / a.float * 255).byte
@@ -69,7 +69,7 @@ proc toPremultiplied(c: byte, a: byte): byte {.inline.} =
   (c.float / 255 * a.float).byte
 
 
-proc convertPixelsInplace*(data: pointer, size: IVec2, sourceFormat, targetFormat: PixelBufferFormat) {.siwin_importExport.} =
+proc convertPixelsInplace*(data: pointer, size: IVec2, sourceFormat, targetFormat: PixelBufferFormat) =
   ## convert pixels to proper format
   let size = size.x * size.y
 

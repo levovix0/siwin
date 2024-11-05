@@ -4,7 +4,9 @@ import ./platforms
 
 export window
 
-when defined(android):
+when defined(nimcheck) or defined(nimsuggest):
+  discard
+elif defined(android):
   import ./platforms/android/window as androidWindow
 elif defined(linux):
   import ./platforms/x11/window as x11Window
@@ -16,7 +18,10 @@ elif defined(macosx):
 
 
 proc screenCount*(preferedPlatform = defaultPreferedPlatform()): int32 =
-  when defined(android):
+  when defined(nimcheck) or defined(nimsuggest):
+    discard
+
+  elif defined(android):
     1
 
   elif defined(linux):
@@ -30,7 +35,10 @@ proc screenCount*(preferedPlatform = defaultPreferedPlatform()): int32 =
   elif defined(windows): screenCountWinapi()
 
 proc screen*(number: int32, preferedPlatform = defaultPreferedPlatform()): Screen =
-  when defined(android):
+  when defined(nimcheck) or defined(nimsuggest):
+    discard
+
+  elif defined(android):
     Screen()
 
   elif defined(linux):
@@ -44,7 +52,10 @@ proc screen*(number: int32, preferedPlatform = defaultPreferedPlatform()): Scree
   elif defined(windows): screenWinapi(number)
 
 proc defaultScreen*(preferedPlatform = defaultPreferedPlatform()): Screen =
-  when defined(android):
+  when defined(nimcheck) or defined(nimsuggest):
+    discard
+
+  elif defined(android):
     Screen()
 
   elif defined(linux):
@@ -70,7 +81,10 @@ proc newSoftwareRenderingWindow*(
 
   class = "", # window class (used in x11), equals to title if not specified
 ): Window =
-  when defined(android):
+  when defined(nimcheck) or defined(nimsuggest):
+    discard
+
+  elif defined(android):
     newSoftwareRenderingWindowAndroid(
       size, title,
       # (if screen == -1: defaultScreenAndroid() else: screenAndroid(screen)),

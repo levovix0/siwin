@@ -1,12 +1,12 @@
 when not (compiles do: import pkg/x11/xutil):
   {.error: "x11 library not installed, required to cross compile to linux\n please run `nimble install x11`".}
 
-import std/[times, importutils, strformat, sequtils, os, options, tables, uri]
+import std/[times, importutils, strformat, sequtils, os, options, tables, uri, strutils]
 import pkg/[vmath, chroma]
 import pkg/x11/xlib except Screen
 import pkg/x11/x except Window, Cursor, Time
 import pkg/x11/[xutil, xatom, cursorfont, keysym]
-import ../../[utils, colorutils, siwindefs]
+import ../../[colorutils, siwindefs]
 import ../any/[window, clipboards]
 import ../any/[windowUtils]
 import globalDisplay
@@ -233,7 +233,8 @@ proc newClientMessage[T](window: x.Window, messageKind: Atom, data: openarray[T]
   result.xclient.messageType = messageKind
   if data.len * T.sizeof > XClientMessageData.sizeof:
     raise ValueError.newException(&"to much data in client message (>{XClientMessageData.sizeof} bytes)")
-  copyMem(result.xclient.data.addr, data.dataAddr, data.len * T.sizeof)
+  if data.len != 0:
+    copyMem(result.xclient.data.addr, data[0].addr, data.len * T.sizeof)
   result.xclient.format = case T.sizeof
     of 1: 8
     of 2: 16
@@ -447,11 +448,11 @@ proc initSoftwareRenderingWindow(
 method `title=`*(window: WindowX11, v: string) =
   discard display.XChangeProperty(
     window.handle, atoms.netWmName, atoms.utf8String, 8,
-    PropModeReplace, cast[PCUchar](v.dataAddr), v.len.cint
+    PropModeReplace, cast[PCUchar]((if v.len != 0: v[0].addr else: nil)), v.len.cint
   )
   discard display.XChangeProperty(
     window.handle, atoms.netWmIconName, atoms.utf8String, 8,
-    PropModeReplace, cast[PCUchar](v.dataAddr), v.len.cint
+    PropModeReplace, cast[PCUchar]((if v.len != 0: v[0].addr else: nil)), v.len.cint
   )
   display.Xutf8SetWMProperties(window.handle, v, v, nil, 0, nil, nil, nil)
 
@@ -617,14 +618,14 @@ method `icon=`*(window: WindowX11, v: PixelBuffer) =
   case v.format
   of PixelBufferFormat.bgrx_32bit, PixelBufferFormat.rgba_32bit, PixelBufferFormat.rgbx_32bit, PixelBufferFormat.bgra_32bit:
     proc alphaAt(buffer: PixelBuffer, i: int): byte =
-      buffer.data.cast(ptr UncheckedArray[array[4, byte]])[i][3]
+      cast[ptr UncheckedArray[array[4, byte]]](buffer.data)[i][3]
 
     for i in 0..<pixelCount:
       mask[i] = (if v.alphaAt(i) > 127: 0xff000000'u32 else: 0xffffffff'u32)
   
   of PixelBufferFormat.xrgb_32bit:
     proc alphaAt(buffer: PixelBuffer, i: int): byte =
-      buffer.data.cast(ptr UncheckedArray[array[4, byte]])[i][0]
+      cast[ptr UncheckedArray[array[4, byte]]](buffer.data)[i][0]
 
     for i in 0..<pixelCount:
       mask[i] = (if v.alphaAt(i) > 127: 0xff000000'u32 else: 0xffffffff'u32)

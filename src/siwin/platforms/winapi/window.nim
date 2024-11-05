@@ -1,7 +1,7 @@
-import std/[times, os, options, importutils]
+import std/[times, os, options, importutils, sequtils]
 import pkg/[vmath]
 import ./[winapi]
-import ../../[utils, colorutils, siwindefs]
+import ../../[colorutils, siwindefs]
 import ../any/[window, clipboards]
 import ../any/[windowUtils]
 
