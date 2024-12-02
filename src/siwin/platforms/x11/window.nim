@@ -329,8 +329,9 @@ proc `=trace`(x: var WindowX11SoftwareRenderingObj, env: pointer) =
 
 proc `=destroy`(x: WindowX11SoftwareRenderingObj) {.siwin_destructor.} =
   #? for some reason, without this, nim produces invalid C code for =trace implementation
-  `=destroy`(cast[ptr WindowX11Obj](x.addr)[])
   `=destroy`(x.gc)
+  if x.pixels != nil: dealloc(x.pixels)
+  `=destroy`(cast[ptr WindowX11Obj](x.addr)[])
 
 
 proc pushEvent[T](event: proc(e: T), args: T) =
