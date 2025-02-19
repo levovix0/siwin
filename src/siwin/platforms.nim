@@ -6,13 +6,13 @@ elif defined(linux) and not defined(android):
 
 
 when siwin_use_pure_enums:
-  {.pragma: siwinPureEnum, pure.}
+  {.pragma: siwin_enum, pure.}
 else:
-  {.pragma: siwinPureEnum.}
+  {.pragma: siwin_enum.}
 
 
 type
-  Platform* {.siwinPureEnum.} = enum
+  Platform* {.siwin_enum.} = enum
     x11
     wayland
     winapi

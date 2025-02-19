@@ -807,16 +807,16 @@ method content*(clipboard: ClipboardX11, kind: ClipboardContentKind, mimeType: s
 
   var mimeType =
     case kind
-    of text:
+    of ClipboardContentKind.text:
       if "UTF8_STRING" in clipboard.availableMimeTypes: "UTF8_STRING"
       elif "STRING" in clipboard.availableMimeTypes: "STRING"
       elif "TEXT" in clipboard.availableMimeTypes: "TEXT"
       else: "text/plain"
     
-    of files:
+    of ClipboardContentKind.files:
       "text/uri-list"
     
-    of other:
+    of ClipboardContentKind.other:
       mimeType
 
   if kind == ClipboardContentKind.other and mimeType notin clipboard.availableMimeTypes:
@@ -836,10 +836,10 @@ method content*(clipboard: ClipboardX11, kind: ClipboardContentKind, mimeType: s
     clipboard.attachedToWindow.step()
 
   case kind
-  of text:
+  of ClipboardContentKind.text:
     result = ClipboardContent(kind: kind, text: clipboard.m_data.get)
   
-  of files:
+  of ClipboardContentKind.files:
     let uris = clipboard.m_data.get.splitLines
     var files: seq[string]
     for uri in uris:
@@ -849,7 +849,7 @@ method content*(clipboard: ClipboardX11, kind: ClipboardContentKind, mimeType: s
 
     result = ClipboardContent(kind: kind, files: files)
   
-  of other:
+  of ClipboardContentKind.other:
     result = ClipboardContent(kind: kind, mimeType: mimeType, data: clipboard.m_data.get)
   
   clipboard.m_data = options.none string
@@ -1236,13 +1236,13 @@ method step*(window: WindowX11) =
 
         for cv in clipboard.ClipboardX11.m_userContent.converters:
           case cv.kind
-          of text:
+          of ClipboardContentKind.text:
             targets.add [atoms.utf8String, XaString, display.XInternAtom("TEXT", 0)]
           
-          of files:
+          of ClipboardContentKind.files:
             targets.add display.XInternAtom("text/uri-list", 0)
           
-          of other:
+          of ClipboardContentKind.other:
             targets.add display.XInternAtom(cstring cv.mimeType, 0)
         
         discard display.XChangeProperty(
@@ -1261,17 +1261,17 @@ method step*(window: WindowX11) =
         var conv: ClipboardContentConverter
         for cv in clipboard.ClipboardX11.m_userContent.converters:
           case cv.kind
-          of text:
+          of ClipboardContentKind.text:
             if targetType in ["UTF8_STRING", "STRING", "TEXT"]:
               conv = cv
               break
           
-          of files:
+          of ClipboardContentKind.files:
             if targetType in ["text/uri-list"]:
               conv = cv
               break
           
-          of other:
+          of ClipboardContentKind.other:
             if targetType == cv.mimeType:
               conv = cv
               break
@@ -1284,13 +1284,13 @@ method step*(window: WindowX11) =
 
         var data = ""
         case conv.kind
-        of text:
+        of ClipboardContentKind.text:
           data = content.text
         
-        of files:
+        of ClipboardContentKind.files:
           data = content.files.mapIt($Uri(scheme: "file", path: it.encodeUrl(usePlus=false))).join("\n")
         
-        of other:
+        of ClipboardContentKind.other:
           data = content.data
         
         discard display.XChangeProperty(

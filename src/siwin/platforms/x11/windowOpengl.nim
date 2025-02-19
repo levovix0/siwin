@@ -103,7 +103,9 @@ method makeCurrent*(window: WindowX11Opengl) =
 
 
 method `vsync=`*(window: WindowX11Opengl, v: bool, silent = false) =
+  if window.vsyncEnabled == v: return
   window.vsyncEnabled = v
+  
   if glxSwapIntervalExt != nil:
     display.glxSwapIntervalExt(window.handle, if v: 1 else: 0)
   elif glxSwapIntervalMesa != nil:

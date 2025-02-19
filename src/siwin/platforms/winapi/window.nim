@@ -758,17 +758,17 @@ proc poolEvent(window: WindowWinapi, message: Uint, wParam: WParam, lParam: LPar
     let pos_f32 = vec2(pos.x.float32, pos.y.float32)
 
     case window.windowPartAt(pos_f32)
-    of title: return HtCaption
-    of client: return HtClient
-    of border_top_left: return HtTopLeft
-    of border_top_right: return HtTopRight
-    of border_bottom_left: return HtBottomLeft
-    of border_bottom_right: return HtBottomRight
-    of border_top: return HtTop
-    of border_bottom: return HtBottom
-    of border_left: return HtLeft
-    of border_right: return HtRight
-    of none: return HtTransparent
+    of WindowPart.title: return HtCaption
+    of WindowPart.client: return HtClient
+    of WindowPart.border_top_left: return HtTopLeft
+    of WindowPart.border_top_right: return HtTopRight
+    of WindowPart.border_bottom_left: return HtBottomLeft
+    of WindowPart.border_bottom_right: return HtBottomRight
+    of WindowPart.border_top: return HtTop
+    of WindowPart.border_bottom: return HtBottom
+    of WindowPart.border_left: return HtLeft
+    of WindowPart.border_right: return HtRight
+    of WindowPart.none: return HtTransparent
   
   of WmDwmCompositionChanged:
     if window.transparent:

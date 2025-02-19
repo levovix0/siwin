@@ -5,17 +5,17 @@ import ./[clipboards]
 
 
 when siwin_use_pure_enums:
-  {.pragma: siwinPureEnum, pure.}
+  {.pragma: siwin_enum, pure.}
 else:
-  {.pragma: siwinPureEnum.}
+  {.pragma: siwin_enum.}
 
 
 {.push, warning[Deprecated]: off.}
 type
-  MouseButton* {.siwinPureEnum.} = enum
+  MouseButton* {.siwin_enum.} = enum
     left right middle forward backward
 
-  Key* {.siwinPureEnum.} = enum
+  Key* {.siwin_enum.} = enum
     unknown = 0
 
     a b c d e f g h i j k l m n o p q r s t u v w x y z
@@ -49,7 +49,7 @@ type
     pressed*: Table[int, Touch]  # id -> touch
   
 
-  Edge* {.siwinPureEnum.} = enum
+  Edge* {.siwin_enum.} = enum
     left
     right
     top
@@ -60,7 +60,7 @@ type
     bottomRight
 
 
-  CursorKind* {.siwinPureEnum.} = enum
+  CursorKind* {.siwin_enum.} = enum
     builtin
     image
 
@@ -69,7 +69,7 @@ type
     of builtin: builtin*: BuiltinCursor
     of image: image*: ImageCursor
 
-  BuiltinCursor* {.siwinPureEnum.} = enum
+  BuiltinCursor* {.siwin_enum.} = enum
     arrow arrowUp arrowRight
     wait arrowWait
     pointingHand grab
@@ -90,14 +90,14 @@ type
   Screen* = ref object of RootObj
 
 
-  MouseMoveKind* {.siwinPureEnum.} = enum
+  MouseMoveKind* {.siwin_enum.} = enum
     move
     enter
     leave
     moveWhileDragging  ## (from this or other window)
 
   
-  DragStatus* {.siwinPureEnum.} = enum
+  DragStatus* {.siwin_enum.} = enum
     rejected
     accepted
 
@@ -117,15 +117,6 @@ type
   
   WindowMoveEvent* = object of AnyWindowEvent
     pos*: IVec2
-
-  FocusChangedEvent* {.deprecated: "use StateBoolChangedEvent instead".} = object of AnyWindowEvent
-    focus*: bool
-  
-  FullscreenChangedEvent* {.deprecated: "use StateBoolChangedEvent instead".} = object of AnyWindowEvent
-    fullscreen*: bool
-  
-  MaximizedChangedEvent* {.deprecated: "use StateBoolChangedEvent instead".} = object of AnyWindowEvent
-    maximized*: bool
 
   MouseMoveEvent* = object of AnyWindowEvent
     pos*: Vec2
@@ -164,7 +155,7 @@ type
     touchId*: int
     pos*: Vec2
   
-  StateBoolChangedEventKind* = enum
+  StateBoolChangedEventKind* {.siwin_enum.} = enum
     focus
     fullscreen
     maximized
@@ -186,10 +177,6 @@ type
     onResize*:      proc(e: ResizeEvent)
     onWindowMove*:  proc(e: WindowMoveEvent)
 
-    onFocusChanged* {.deprecated #[use onStateBoolChanged instead]#.}:       proc(e: FocusChangedEvent)
-    onFullscreenChanged* {.deprecated #[use onStateBoolChanged instead]#.}:  proc(e: FullscreenChangedEvent)  ## note: sends BEFORE ResizeEvent
-    onMaximizedChanged* {.deprecated #[use onStateBoolChanged instead]#.}:   proc(e: MaximizedChangedEvent)  ## note: sends BEFORE ResizeEvent
-
     onMouseMove*:    proc(e: MouseMoveEvent)
     onMouseButton*:  proc(e: MouseButtonEvent)
     onScroll*:       proc(e: ScrollEvent)
@@ -202,6 +189,8 @@ type
     onTouchMove*:    proc(e: TouchMoveEvent)
 
     onStateBoolChanged*: proc(e: StateBoolChangedEvent)
+      ## binary state of focus/fullscreen/maximized/frameless changed
+      ## fullscreen and maximized changes are sent before ResizeEvent
 
     onDrop*:             proc(e: DropEvent)
 
@@ -377,9 +366,6 @@ method setBorderWidth*(window: Window, innerWidth, outerWidth: float32, diagonal
   ## this is used on Windows to allow user to resize window interactivly. siwin will replicate this behaviour on other platforms.
   ## it's recomended to set border width if you have custom titlebar.
   window.borderWidth = some (innerWidth, outerWidth, diagonalSize)
-
-
-proc drawImage*(window: Window, pixels: auto, size: IVec2, pos: IVec2 = ivec2(), srcPos: IVec2 = ivec2()) {.deprecated: "use pixelBuffer method instead".} = discard
 
 
 method pixelBuffer*(window: Window): PixelBuffer {.base.} =

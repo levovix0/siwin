@@ -131,7 +131,7 @@ test "OpenGL ES":
         of Key.f5:
           e.window.pos = e.window.size
         of Key.f6:
-          e.window.cursor = Cursor(kind: builtin, builtin: cross)
+          e.window.cursor = Cursor(kind: builtin, builtin: BuiltinCursor.cross)
         else: discard
     ,
     onClick: proc(e: ClickEvent) =

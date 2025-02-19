@@ -4,13 +4,13 @@ import ./[siwindefs]
 
 
 when siwin_use_pure_enums:
-  {.pragma: siwinPureEnum, pure.}
+  {.pragma: siwin_enum, pure.}
 else:
-  {.pragma: siwinPureEnum.}
+  {.pragma: siwin_enum.}
 
 
 type
-  PixelBufferFormat* {.siwinPureEnum.} = enum
+  PixelBufferFormat* {.siwin_enum.} = enum
     bgra_32bit
       ## byte array of [blue, green, red, alpha],
       ## where alpha in 0..255, and blue, green, red in 0..255

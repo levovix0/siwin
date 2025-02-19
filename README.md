@@ -167,14 +167,11 @@ run newSoftwareRenderingWindow(title="pixie example"), WindowEventsHandler(
 
 ## clipboard
 ```nim
-import siwin
-
-let clipboard = clipboard()
+let clipboard = window.clipboard
 
 echo clipboard.text
 clipboard.text = "some text"
 ```
-note: on x11 setting cliboard text requires creating window
 
 ## offscreen rendering
 note: this will create invisible window. `ctx` mustn't be discarded as its destructor will close the window.  

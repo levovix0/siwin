@@ -2,13 +2,13 @@ import ../../[siwindefs]
 
 
 when siwin_use_pure_enums:
-  {.pragma: siwinPureEnum, pure.}
+  {.pragma: siwin_enum, pure.}
 else:
-  {.pragma: siwinPureEnum.}
+  {.pragma: siwin_enum.}
 
 
 type
-  ClipboardContentKind* {.siwinPureEnum.} = enum
+  ClipboardContentKind* {.siwin_enum.} = enum
     text
     files
     other
@@ -138,8 +138,3 @@ proc `[]=`*(clipboard: Clipboard, mimeType: string, v: string) =
 
   clipboard.content = cc
 
-
-proc `$`*(a: var Clipboard): string {.deprecated: "use .text instead".} = a.text
-proc `$=`*(a: var Clipboard, s: string) {.deprecated: "use .text= instead".} = a.text = s
-
-proc clipboard*(): Clipboard {.deprecated: "user window.clipboard instead".} = discard

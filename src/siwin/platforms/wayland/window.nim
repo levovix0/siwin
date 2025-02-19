@@ -825,10 +825,10 @@ proc initDataDeviceManagerEvents* =
     
     for mime_type in offered_mime_types:
       if mime_type in ["UTF8_STRING", "STRING", "TEXT", "text/plain", "text/plain;charset=utf-8"]:
-        primaryClipboard.availableKinds.incl text
+        primaryClipboard.availableKinds.incl ClipboardContentKind.text
 
       if mime_type in ["text/uri-list"]:
-        primaryClipboard.availableKinds.incl files
+        primaryClipboard.availableKinds.incl ClipboardContentKind.files
 
       if mime_type notin primaryClipboard.availableMimeTypes:
         primaryClipboard.availableMimeTypes.add mime_type
@@ -1009,10 +1009,10 @@ proc constructClipboardContent*(
   data: sink string, kind: ClipboardContentKind, mimeType: string
 ): ClipboardContent =
   case kind
-  of text:
-    result = ClipboardContent(kind: text, text: data)
+  of ClipboardContentKind.text:
+    result = ClipboardContent(kind: ClipboardContentKind.text, text: data)
   
-  of files:
+  of ClipboardContentKind.files:
     let uris = data.splitLines
     var files: seq[string]
     
@@ -1023,8 +1023,8 @@ proc constructClipboardContent*(
     
     result = ClipboardContent(kind: ClipboardContentKind.files, files: files)
   
-  of other:
-    result = ClipboardContent(kind: other, mimeType: mimeType, data: data)
+  of ClipboardContentKind.other:
+    result = ClipboardContent(kind: ClipboardContentKind.other, mimeType: mimeType, data: data)
 
 
 proc toString*(
@@ -1033,17 +1033,17 @@ proc toString*(
   var conv: ClipboardContentConverter
   for cv in content.converters:
     case cv.kind
-    of text:
+    of ClipboardContentKind.text:
       if targetType in ["UTF8_STRING", "STRING", "TEXT", "text/plain", "text/plain;charset=utf-8"]:
         conv = cv
         break
     
-    of files:
+    of ClipboardContentKind.files:
       if targetType in ["text/uri-list"]:
         conv = cv
         break
     
-    of other:
+    of ClipboardContentKind.other:
       if targetType == cv.mimeType:
         conv = cv
         break
@@ -1054,13 +1054,13 @@ proc toString*(
   var content = conv.f(content.data, conv.kind, conv.mimeType)
 
   case conv.kind
-  of text:
+  of ClipboardContentKind.text:
     result = content.text
   
-  of files:
+  of ClipboardContentKind.files:
     result = content.files.mapIt($Uri(scheme: "file", path: it.encodeUrl(usePlus=false))).join("\n")
   
-  of other:
+  of ClipboardContentKind.other:
     result = content.data
 
 
@@ -1072,17 +1072,17 @@ method content*(
   
   var mimeType =
     case kind
-    of text:
+    of ClipboardContentKind.text:
       if "text/plain;charset=utf-8" in clipboard.availableMimeTypes: "text/plain;charset=utf-8"
       elif "UTF8_STRING" in clipboard.availableMimeTypes: "UTF8_STRING"
       elif "STRING" in clipboard.availableMimeTypes: "STRING"
       elif "TEXT" in clipboard.availableMimeTypes: "TEXT"
       else: "text/plain"
     
-    of files:
+    of ClipboardContentKind.files:
       "text/uri-list"
     
-    of other:
+    of ClipboardContentKind.other:
       mimeType
 
   if mimeType notin clipboard.availableMimeTypes:
@@ -1130,17 +1130,17 @@ method `content=`*(clipboard: ClipboardWayland, content: ClipboardConvertableCon
 
     for cv in content.converters:
       case cv.kind
-      of text:
+      of ClipboardContentKind.text:
         offeredMimeTypes.incl "text/plain;charset=utf-8"
         offeredMimeTypes.incl "UTF8_STRING"
         offeredMimeTypes.incl "STRING"
         offeredMimeTypes.incl "TEXT"
         offeredMimeTypes.incl "text/plain"
 
-      of files:
+      of ClipboardContentKind.files:
         offeredMimeTypes.incl "text/uri-list"
       
-      of other:
+      of ClipboardContentKind.other:
         offeredMimeTypes.incl cv.mimeType
     
     if offeredMimeTypes.len > 0:

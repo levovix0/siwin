@@ -5,16 +5,16 @@ import ../../[siwindefs]
 
 
 when siwin_use_pure_enums:
-  {.pragma: siwinPureEnum, pure.}
+  {.pragma: siwin_enum, pure.}
 else:
-  {.pragma: siwinPureEnum.}
+  {.pragma: siwin_enum.}
 
 
 privateAccess Window
 
 
 type
-  WindowPart* {.siwinPureEnum.} = enum
+  WindowPart* {.siwin_enum.} = enum
     none
     client
     title
