@@ -76,6 +76,8 @@ type
     dragPositionTimestamp: x.Time
     lastDragStatus: DragStatus
     dragStatusSent: bool
+    
+    isBeengInteractivelyResizedOrMoved: bool
   
   WindowX11SoftwareRendering* = ref WindowX11SoftwareRenderingObj
   WindowX11SoftwareRenderingObj* = object of WindowX11
@@ -742,7 +744,7 @@ method `maxSize=`*(window: WindowX11, v: IVec2) =
 
 
 method startInteractiveMove*(window: WindowX11, pos: Option[Vec2]) =
-  # todo: remove `pos` argument and use last click event cursor pos
+  # todo?: remove `pos` argument and use last click event cursor pos
 
   window.releaseAllKeys()
   let pos = pos.get((cursor().pos - window.m_pos).vec2) + window.m_pos.vec2
@@ -751,12 +753,12 @@ method startInteractiveMove*(window: WindowX11, pos: Option[Vec2]) =
 
   var event = window.handle.newClientMessage(
     atoms.netWmMoveResize,
-    [pos.x.int64, pos.y.int64, 8, 1, 0] #? int32 is working strange, but int64 is ok
+    [pos.x.int64, pos.y.int64, 8, 1, 0]  # int64 means clong, 8 means _NET_WM_MOVERESIZE_MOVE, 1 means left mouse button
   )
   discard display.XSendEvent(
     display.DefaultRootWindow, 0, SubstructureNotifyMask or SubstructureRedirectMask, event.addr
   )
-  # todo: press all keys and mouse buttons that are pressed after move
+  window.isBeengInteractivelyResizedOrMoved = true
 
 method startInteractiveResize*(window: WindowX11, edge: Edge, pos: Option[Vec2]) =
   window.releaseAllKeys()
@@ -767,7 +769,7 @@ method startInteractiveResize*(window: WindowX11, edge: Edge, pos: Option[Vec2])
   var event = window.handle.newClientMessage(
     atoms.netWmMoveResize,
     [
-      pos.x.int64, pos.y.int64, #? int32 is working strange, but int64 is ok
+      pos.x.int64, pos.y.int64,  # int64 means clong
       case edge
       of Edge.topLeft: 0
       of Edge.top: 1
@@ -777,13 +779,19 @@ method startInteractiveResize*(window: WindowX11, edge: Edge, pos: Option[Vec2])
       of Edge.bottom: 5
       of Edge.bottomLeft: 6
       of Edge.left: 7,
-      1, 0
+      1, 0  # 1 means left mouse button
     ]
   )
   discard display.XSendEvent(
     display.DefaultRootWindow, 0, SubstructureNotifyMask or SubstructureRedirectMask, event.addr
   )
-  # todo: press all keys and mouse buttons that are pressed after resize
+  window.isBeengInteractivelyResizedOrMoved = true
+
+
+proc onInteractiveResizeOrMoveFinished(window: WindowX11) =
+  window.isBeengInteractivelyResizedOrMoved = false
+
+  # todo: "press" all keys and mouse buttons currently beeng pressed
 
 
 method showWindowMenu*(window: WindowX11, pos: Option[Vec2]) =
@@ -1113,6 +1121,17 @@ method step*(window: WindowX11) =
         window.eventsHandler.onScroll.pushEvent ScrollEvent(window: window, delta: scrollDeltaY, deltaX: scrollDeltaX)
 
     of ButtonRelease:
+      if window.isBeengInteractivelyResizedOrMoved and button == MouseButton.left:
+        let pos = cursor().pos - window.m_pos
+        var event = window.handle.newClientMessage(
+          atoms.netWmMoveResize,
+          [pos.x.int64, pos.y.int64, 11, 1, 0]  # int64 means clong, 11 means _NET_WM_MOVERESIZE_CANCEL, 1 means left mouse button
+        )
+        discard display.XSendEvent(
+          display.DefaultRootWindow, 0, SubstructureNotifyMask or SubstructureRedirectMask, event.addr
+        )
+        window.onInteractiveResizeOrMoveFinished()
+
       if not isScroll:
         let nows = getTime()
         window.mouse.pressed.excl button
@@ -1134,6 +1153,13 @@ method step*(window: WindowX11) =
       window.eventsHandler.onMouseMove.pushEvent MouseMoveEvent(window: window, pos: window.mouse.pos, kind: MouseMoveKind.leave)
     
     of EnterNotify:
+      if window.isBeengInteractivelyResizedOrMoved:
+        # for some reason, window.handle.geometry.pos returns (0, 0), but we can deduce window position using
+        # difference between global mouse position and window-based mouse position we got from EnterNotify
+        window.m_pos = cursor().pos - ivec2(ev.xcrossing.x, ev.xcrossing.y)
+
+        window.onInteractiveResizeOrMoveFinished()
+
       emulateWindowTitleAndBorderBehaviour(window, window.mouse.pos)
       window.clicking = {}
       window.mouse.pos = vec2(ev.xcrossing.x.float32, ev.xcrossing.y.float32)
