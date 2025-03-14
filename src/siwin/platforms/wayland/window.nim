@@ -64,6 +64,8 @@ type
 
 var
   associatedWindows: Table[uint32, WindowWayland]  # surface proxy id -> window
+  associatedWindows_queueRemove_insteadOf_removingInstantly = false
+  associatedWindows_removeQueue: seq[uint32]
 
   seat_pointer_currentWindow: WindowWayland
   seat_keyboard_currentWindow: WindowWayland
@@ -252,7 +254,10 @@ method release(window: WindowWayland) {.base, raises: [].} =
       x = typeof(x).default
 
   if window.surface != nil:
-    associatedWindows.del window.surface.proxy.raw.id
+    if associatedWindows_queueRemove_insteadOf_removingInstantly:
+      associatedWindows_removeQueue.add window.surface.proxy.raw.id
+    else:
+      associatedWindows.del window.surface.proxy.raw.id
 
   try:
     destroy window.idleInhibitor, destroy
@@ -264,6 +269,12 @@ method release(window: WindowWayland) {.base, raises: [].} =
     destroy window.surface, destroy
   except:
     discard
+
+
+proc removeQueuedAssociatedWindows =
+  for id in associatedWindows_removeQueue:
+    associatedWindows.del id
+  associatedWindows_removeQueue = @[]
 
 
 method release(window: WindowWaylandSoftwareRendering) =
@@ -411,7 +422,7 @@ method `pos=`*(window: WindowWayland, v: IVec2) =
     discard
   
   # since no compositor notifies us about window movement, let's emulate such event
-  window.eventsHandler.onWindowMove.pushEvent WindowMoveEvent(window: window, pos: v)
+  if window.opened: window.eventsHandler.onWindowMove.pushEvent WindowMoveEvent(window: window, pos: v)
 
 
 method `cursor=`*(window: WindowWayland, v: Cursor) =
@@ -451,7 +462,7 @@ method `maximized=`*(window: WindowWayland, v: bool) =
   else:
     window.xdgToplevel.unsetMaximized()
 
-  window.eventsHandler.onStateBoolChanged.pushEvent StateBoolChangedEvent(
+  if window.opened: window.eventsHandler.onStateBoolChanged.pushEvent StateBoolChangedEvent(
     window: window, kind: StateBoolChangedEventKind.maximized, value: window.m_maximized
   )
 
@@ -474,7 +485,7 @@ proc releaseAllKeys(window: WindowWayland) =
   ## needed when window loses focus
   for k in window.keyboard.pressed.items.toSeq:
     window.keyboard.pressed.excl k
-    window.eventsHandler.onKey.pushEvent KeyEvent(window: window, key: k, pressed: false, repeated: false, generated: true)
+    if window.opened: window.eventsHandler.onKey.pushEvent KeyEvent(window: window, key: k, pressed: false, repeated: false, generated: true)
 
 
 method `minimized=`*(window: WindowWayland, v: bool) =
@@ -582,8 +593,9 @@ proc initSeatEvents* =
     seat_pointer = seat.get_pointer
 
     seat_pointer.onEnter:
-      if surface == nil or surface.proxy.raw.id notin associatedWindows: return
-      let window = associatedWindows[surface.proxy.raw.id]
+      if surface == nil: return
+      let window = associatedWindows.getOrDefault(surface.proxy.raw.id, nil)
+      if window == nil: return
       seat_pointer_currentWindow = window
       
       window.clicking = {}
@@ -593,23 +605,29 @@ proc initSeatEvents* =
 
       replicateWindowTitleAndBorderBehaviour(window, window.mouse.pos)
 
-      window.eventsHandler.onMouseMove.pushEvent MouseMoveEvent(window: window, pos: window.mouse.pos, kind: MouseMoveKind.enter)
+      if window.opened: window.eventsHandler.onMouseMove.pushEvent MouseMoveEvent(window: window, pos: window.mouse.pos, kind: MouseMoveKind.enter)
     
 
     seat_pointer.onLeave:
       seat_pointer_currentWindow = nil
-      if surface == nil or surface.proxy.raw.id notin associatedWindows: return
-      let window = associatedWindows[surface.proxy.raw.id]
+      if surface == nil: return
+      let window = associatedWindows.getOrDefault(surface.proxy.raw.id, nil)
+      if window == nil: return
 
       replicateWindowTitleAndBorderBehaviour(window, window.mouse.pos)
       
       window.clicking = {}
-      window.eventsHandler.onMouseMove.pushEvent MouseMoveEvent(window: window, pos: window.mouse.pos, kind: MouseMoveKind.leave)
+      if window.opened: window.eventsHandler.onMouseMove.pushEvent MouseMoveEvent(window: window, pos: window.mouse.pos, kind: MouseMoveKind.leave)
       
       # we don't unpress buttons on leave, because we "capture" mouse
     
 
     seat_pointer.onMotion:
+      associatedWindows_queueRemove_insteadOf_removingInstantly = true
+      defer:
+        associatedWindows_queueRemove_insteadOf_removingInstantly = false
+        removeQueuedAssociatedWindows()
+
       for window in associatedWindows.values:
         if (
           (window.mouse.pressed.len == 0) and
@@ -620,7 +638,7 @@ proc initSeatEvents* =
 
         window.clicking = {}
         window.mouse.pos = vec2(surface_x, surface_y)
-        window.eventsHandler.onMouseMove.pushEvent MouseMoveEvent(window: window, pos: window.mouse.pos, kind: MouseMoveKind.move)
+        if window.opened: window.eventsHandler.onMouseMove.pushEvent MouseMoveEvent(window: window, pos: window.mouse.pos, kind: MouseMoveKind.move)
     
 
     seat_pointer.onButton:
@@ -635,6 +653,11 @@ proc initSeatEvents* =
       let nows = initDuration(milliseconds = time.int64)
 
       # iterate over all windows, in case there are some which currently "holding" pressed mouse
+      associatedWindows_queueRemove_insteadOf_removingInstantly = true
+      defer:
+        associatedWindows_queueRemove_insteadOf_removingInstantly = false
+        removeQueuedAssociatedWindows()
+      
       for window in associatedWindows.values:
         if (
           (state != `WlPointer / Button_state`.released or button notin window.mouse.pressed) and
@@ -648,7 +671,7 @@ proc initSeatEvents* =
           window.clicking.incl button
 
           if (nows - window.lastClickTime).inMilliseconds < 200:
-            window.eventsHandler.onClick.pushEvent ClickEvent(
+            if window.opened: window.eventsHandler.onClick.pushEvent ClickEvent(
               window: window, button: button, pos: window.mouse.pos, double: true
             )
             window.doubleClickHandled = true
@@ -658,13 +681,13 @@ proc initSeatEvents* =
           window.mouse.pressed.excl button
           if button in window.clicking:
             if not window.doubleClickHandled:
-              window.eventsHandler.onClick.pushEvent ClickEvent(
+              if window.opened: window.eventsHandler.onClick.pushEvent ClickEvent(
                 window: window, button: button, pos: window.mouse.pos, double: false
               )
               window.lastClickTime = nows
             window.clicking.excl button
 
-        window.eventsHandler.onMouseButton.pushEvent MouseButtonEvent(window: window, button: button, pressed: state == `WlPointer / Button_state`.pressed, generated: false)
+        if window.opened: window.eventsHandler.onMouseButton.pushEvent MouseButtonEvent(window: window, button: button, pressed: state == `WlPointer / Button_state`.pressed, generated: false)
 
 
     seat_pointer.onAxis:
@@ -672,9 +695,9 @@ proc initSeatEvents* =
       let window = seat_pointer_currentWindow
 
       if axis == `WlPointer / Axis`.vertical_scroll:
-        window.eventsHandler.onScroll.pushEvent ScrollEvent(window: window, delta: value, deltaX: 0)
+        if window.opened: window.eventsHandler.onScroll.pushEvent ScrollEvent(window: window, delta: value, deltaX: 0)
       elif axis == `WlPointer / Axis`.horizontal_scroll:
-        window.eventsHandler.onScroll.pushEvent ScrollEvent(window: window, delta: 0, deltaX: value)
+        if window.opened: window.eventsHandler.onScroll.pushEvent ScrollEvent(window: window, delta: 0, deltaX: value)
       else:
         return
 
@@ -697,7 +720,7 @@ proc initSeatEvents* =
         if siwinKey == Key.unknown: continue
 
         window.keyboard.pressed.incl siwinKey
-        window.eventsHandler.onKey.pushEvent KeyEvent(
+        if window.opened: window.eventsHandler.onKey.pushEvent KeyEvent(
           window: window, key: siwinKey, pressed: true, generated: true
         )
         window.lastKeyPressed = siwinKey
@@ -732,7 +755,7 @@ proc initSeatEvents* =
         else:
           window.keyboard.pressed.excl siwinKey
 
-        window.eventsHandler.onKey.pushEvent KeyEvent(
+        if window.opened: window.eventsHandler.onKey.pushEvent KeyEvent(
           window: window, key: siwinKey, pressed: pressed
         )
 
@@ -744,7 +767,7 @@ proc initSeatEvents* =
       if text.len == 1 and text[0] < 32.char: text = ""
 
       if pressed and text != "":
-        window.eventsHandler.onTextInput.pushEvent TextInputEvent(
+        if window.opened: window.eventsHandler.onTextInput.pushEvent TextInputEvent(
           window: window, text: text
         )
 
@@ -885,7 +908,7 @@ proc setupWindow(window: WindowWayland, fullscreen, frameless, transparent: bool
       template handleState(k, n, m: untyped) =
         if window.m != checkState(`XdgToplevel / State`.n):
           window.m = checkState(`XdgToplevel / State`.n)
-          window.eventsHandler.onStateBoolChanged.pushEvent StateBoolChangedEvent(
+          if window.opened: window.eventsHandler.onStateBoolChanged.pushEvent StateBoolChangedEvent(
             window: window, kind: StateBoolChangedEventKind.k, value: window.m, isExternal: true
           )
     
@@ -1169,7 +1192,7 @@ method firstStep*(window: WindowWayland, makeVisible = true) =
   # window.m_pos = window.handle.geometry.pos
   # window.mouse.pos = cursor().pos - window.m_pos
   
-  window.eventsHandler.onResize.pushEvent ResizeEvent(window: window, size: window.m_size, initial: true)
+  if window.opened: window.eventsHandler.onResize.pushEvent ResizeEvent(window: window, size: window.m_size, initial: true)
   window.lastTickTime = getTime()
   redraw window
 
@@ -1191,7 +1214,8 @@ method step*(window: WindowWayland) =
     raise newException(RoundtripFailed, "wl_display_roundtrip() returned " & $eventCount)
 
   closeIfNeeded()
-  if eventCount == 0: sleep(1)
+  if eventCount <= 2:  # seems like idle event count is 2
+    sleep(1)
 
   if seat_keyboard_currentWindow == window:
     # repeat keys if needed
@@ -1210,20 +1234,20 @@ method step*(window: WindowWayland) =
         window.lastKeyRepeatedTime += interval
         
         if window.lastKeyPressed != Key.unknown:
-          window.eventsHandler.onKey.pushEvent KeyEvent(
+          if window.opened: window.eventsHandler.onKey.pushEvent KeyEvent(
             window: window, key: window.lastKeyPressed, pressed: false, repeated: true
           )
-          window.eventsHandler.onKey.pushEvent KeyEvent(
+          if window.opened: window.eventsHandler.onKey.pushEvent KeyEvent(
             window: window, key: window.lastKeyPressed, pressed: true, repeated: true
           )
 
         if window.lastTextEntered != "":
-          window.eventsHandler.onTextInput.pushEvent TextInputEvent(
+          if window.opened: window.eventsHandler.onTextInput.pushEvent TextInputEvent(
             window: window, text: window.lastTextEntered, repeated: true
           )
 
   let nows = getTime()
-  window.eventsHandler.onTick.pushEvent TickEvent(window: window, deltaTime: nows - window.lastTickTime)
+  if window.opened: window.eventsHandler.onTick.pushEvent TickEvent(window: window, deltaTime: nows - window.lastTickTime)
   closeIfNeeded()
   window.lastTickTime = nows
 
@@ -1231,7 +1255,7 @@ method step*(window: WindowWayland) =
     window.redrawRequested = false
 
     if window.m_visible:
-      window.eventsHandler.onRender.pushEvent RenderEvent(window: window)
+      if window.opened: window.eventsHandler.onRender.pushEvent RenderEvent(window: window)
       closeIfNeeded()
 
       window.swapBuffers()
