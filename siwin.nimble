@@ -58,7 +58,7 @@ task installAndroidDeps, "install android dependencies":
   buildBasiaIfNeeded()
 
 
-const testTargets = ["t_opengl_es", "t_opengl", "tests", "t_vulkan", "t_offscreen"]
+const testTargets = ["t_opengl_es", "t_opengl", "t_swrendering", "t_multiwindow", "t_vulkan", "t_offscreen"]
 
 proc runTests(args: string) =
   withDir "tests":
