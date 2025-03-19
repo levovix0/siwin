@@ -51,7 +51,7 @@ proc initOpenglWindow(
   window.eglContext = newOpenglContext(window.surface.proxy.raw, size.x, size.y)
   makeCurrent window.eglContext
 
-  commit window.surface
+  # commit window.surface
 
 
 method makeCurrent*(window: WindowWaylandOpengl) =
@@ -60,6 +60,7 @@ method makeCurrent*(window: WindowWaylandOpengl) =
 
 method swapBuffers(window: WindowWaylandOpengl) =
   swapBuffers window.eglContext
+  commit window.surface
 
 
 method doResize(window: WindowWaylandOpengl, size: IVec2) =

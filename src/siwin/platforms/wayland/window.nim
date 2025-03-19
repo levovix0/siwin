@@ -45,9 +45,9 @@ type
     enterSerial: uint32
     kind: WindowWaylandKind ## Is this a normal window or is it a layer shell surface?
 
-    lastKeyPressed: Key
+    lastPressedKey: Key
     lastTextEntered: string
-    lastKeyPressedTime: Time
+    lastPressedKeyTime: Time
     lastKeyRepeatedTime: Time
   
   ClipboardWayland* = ref object of Clipboard
@@ -60,6 +60,7 @@ type
   WindowWaylandSoftwareRendering* = ref WindowWaylandSoftwareRenderingObj
   WindowWaylandSoftwareRenderingObj* = object of WindowWayland
     buffer: SharedBuffer
+    oldBuffer: SharedBuffer
 
 
 var
@@ -279,7 +280,16 @@ proc removeQueuedAssociatedWindows =
 
 method release(window: WindowWaylandSoftwareRendering) =
   ## destroy wayland part of window
-  window.buffer = SharedBuffer()
+  
+  try:
+    if window.buffer != nil:
+      release window.buffer
+      window.buffer = nil  # should call destructor
+    
+    if window.oldBuffer != nil:
+      release window.oldBuffer
+      window.oldBuffer = nil
+  except: discard
 
   procCall window.WindowWayland.release()
 
@@ -317,7 +327,15 @@ method doResize(window: WindowWayland, size: IVec2) {.base.} =
 
 method doResize(window: WindowWaylandSoftwareRendering, size: IVec2) =
   procCall window.WindowWayland.doResize(size)
-  window.buffer.resize(size)
+
+  if window.buffer.locked:
+    swap window.buffer, window.oldBuffer
+
+  if window.buffer == nil:
+    window.buffer = shm.create(size, (if window.m_transparent: argb8888 else: xrgb8888), bufferCount = 2)
+  else:
+    window.buffer.resize(size)
+
   # no need to attach buffer yet
 
 
@@ -449,6 +467,8 @@ method pixelBuffer*(window: WindowWaylandSoftwareRendering): PixelBuffer =
 method swapBuffers(window: WindowWaylandSoftwareRendering) =
   window.surface.attach(window.buffer.buffer, 0, 0)
   window.surface.damage_buffer(0, 0, window.m_size.x, window.m_size.y)
+  commit window.surface
+  window.buffer.swapBuffers()
 
 
 method `maximized=`*(window: WindowWayland, v: bool) =
@@ -694,10 +714,16 @@ proc initSeatEvents* =
       if seat_pointer_currentWindow == nil: return
       let window = seat_pointer_currentWindow
 
+      const kde_default_mousewheel_scroll_length = 15
+
       if axis == `WlPointer / Axis`.vertical_scroll:
-        if window.opened: window.eventsHandler.onScroll.pushEvent ScrollEvent(window: window, delta: value, deltaX: 0)
+        if window.opened: window.eventsHandler.onScroll.pushEvent ScrollEvent(
+          window: window, delta: value / kde_default_mousewheel_scroll_length, deltaX: 0
+        )
       elif axis == `WlPointer / Axis`.horizontal_scroll:
-        if window.opened: window.eventsHandler.onScroll.pushEvent ScrollEvent(window: window, delta: 0, deltaX: value)
+        if window.opened: window.eventsHandler.onScroll.pushEvent ScrollEvent(
+          window: window, delta: 0, deltaX: value / kde_default_mousewheel_scroll_length
+        )
       else:
         return
 
@@ -723,9 +749,9 @@ proc initSeatEvents* =
         if window.opened: window.eventsHandler.onKey.pushEvent KeyEvent(
           window: window, key: siwinKey, pressed: true, generated: true
         )
-        window.lastKeyPressed = siwinKey
+        window.lastPressedKey = siwinKey
         window.lastTextEntered = ""
-        window.lastKeyPressedTime = getTime()
+        window.lastPressedKeyTime = getTime()
 
 
     seat_keyboard.onLeave:
@@ -744,7 +770,7 @@ proc initSeatEvents* =
       let pressed = state == `WlKeyboard / Key_state`.pressed
 
       if pressed:
-        window.lastKeyPressedTime = getTime()
+        window.lastPressedKeyTime = getTime()
       lastSeatEventSerial = serial
       
       let siwinKey = waylandKeyToKey(key)
@@ -759,8 +785,13 @@ proc initSeatEvents* =
           window: window, key: siwinKey, pressed: pressed
         )
 
-        if pressed and siwinKey notin Key.lcontrol..Key.rsystem:
-          window.lastKeyPressed = siwinKey
+        if pressed:
+          if siwinKey notin Key.lcontrol..Key.rsystem:
+            window.lastPressedKey = siwinKey
+          else:
+            window.lastPressedKey = Key.unknown
+      else:
+        window.lastPressedKey = Key.unknown
 
       var text = waylandKeyToString(key)
       if Key.lcontrol in window.keyboard.pressed or Key.rcontrol in window.keyboard.pressed: text = ""
@@ -950,9 +981,8 @@ proc initSoftwareRenderingWindow(
   
   window.setupWindow fullscreen, frameless, transparent, size, class
 
-  window.buffer = shm.create(size, (if transparent: argb8888 else: xrgb8888))
-  window.surface.attach(window.buffer.buffer, 0, 0)
-  commit window.surface
+  window.buffer = shm.create(size, (if transparent: argb8888 else: xrgb8888), bufferCount = 2)
+
 
 proc setAnchor*(window: WindowWayland, edge: LayerEdge | seq[LayerEdge]) =
   if window.layerShellSurface == nil:
@@ -1223,7 +1253,7 @@ method step*(window: WindowWayland) =
       (seat_keyboard_repeatSettings.rate > 0 and seat_keyboard_repeatSettings.rate < 1000) and
       (window.keyboard.pressed - {Key.lcontrol, Key.lshift, Key.lalt, Key.rcontrol, Key.rshift, Key.ralt}).len != 0
     ):
-      let repeatStartTime = window.lastKeyPressedTime + initDuration(milliseconds = seat_keyboard_repeatSettings.delay)
+      let repeatStartTime = window.lastPressedKeyTime + initDuration(milliseconds = seat_keyboard_repeatSettings.delay)
       let nows = getTime()
       let interval = initDuration(milliseconds = 1000 div seat_keyboard_repeatSettings.rate)
 
@@ -1233,12 +1263,14 @@ method step*(window: WindowWayland) =
       while repeatStartTime <= nows and window.lastKeyRepeatedTime + interval <= nows:
         window.lastKeyRepeatedTime += interval
         
-        if window.lastKeyPressed != Key.unknown:
+        if window.lastPressedKey != Key.unknown and window.keyboard.pressed.contains(window.lastPressedKey):
+          window.keyboard.pressed.excl window.lastPressedKey
           if window.opened: window.eventsHandler.onKey.pushEvent KeyEvent(
-            window: window, key: window.lastKeyPressed, pressed: false, repeated: true
+            window: window, key: window.lastPressedKey, pressed: false, repeated: true
           )
+          window.keyboard.pressed.incl window.lastPressedKey
           if window.opened: window.eventsHandler.onKey.pushEvent KeyEvent(
-            window: window, key: window.lastKeyPressed, pressed: true, repeated: true
+            window: window, key: window.lastPressedKey, pressed: true, repeated: true
           )
 
         if window.lastTextEntered != "":
@@ -1259,7 +1291,6 @@ method step*(window: WindowWayland) =
       closeIfNeeded()
 
       window.swapBuffers()
-      commit window.surface
 
       wl_display_flush display
 
