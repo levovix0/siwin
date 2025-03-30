@@ -23,7 +23,9 @@ import siwin, vmath
 
 const color = [32'u8, 32, 32, 255]
 
-run newSoftwareRenderingWindow(), WindowEventsHandler(
+let siwinGlobals = newSiwinGlobals()
+
+run siwinGlobals.newSoftwareRenderingWindow(), WindowEventsHandler(
   onRender: proc(e: RenderEvent) =
     let pixelBuffer = e.window.pixelBuffer
     
@@ -44,7 +46,9 @@ run newSoftwareRenderingWindow(), WindowEventsHandler(
 ```nim
 import siwin, opengl, vmath
 
-var window = newOpenglWindow(
+let siwinGlobals = newSiwinGlobals()
+
+var window = siwinGlobals.newOpenglWindow(
   title="OpenGL example",
   preferedPlatform = (when defined(linux): x11 else: defaultPreferedPlatform)
   # note: glBegin and other non- OpenGL ES functions don't work on Wayland
@@ -111,7 +115,9 @@ var instanceCreateInfo = newVkInstanceCreateInfo(
 var instance: VkInstance
 doassert vkCreateInstance(instanceCreateInfo.addr, nil, result.addr) == VKSuccess
 
-let window = newVulkanWindow(cast[pointer](instance), title="Vulkan example")
+let siwinGlobals = newSiwinGlobals()
+
+let window = siwinGlobals.newVulkanWindow(cast[pointer](instance), title="Vulkan example")
 let surface = cast[VkSurfaceKHR](window.vulkanSurface)
 
 # do other initialization using instance and surface...
@@ -137,7 +143,9 @@ import siwin, pixie
 
 var image: Image
 
-run newSoftwareRenderingWindow(title="pixie example"), WindowEventsHandler(
+let siwinGlobals = newSiwinGlobals()
+
+run siwinGlobals.newSoftwareRenderingWindow(title="pixie example"), WindowEventsHandler(
   onResize: proc(e: ResizeEvent) =
     if e.size.x * e.size.y <= 0: return
     image = newImage(e.size.x, e.size.y)
@@ -179,7 +187,9 @@ If you have multiple contexts, use `makeCurrent` to select.
 ```nim
 import siwin/offscreen, opengl
 
-let ctx {.used.} = newOpenglContext()
+let siwinGlobals = newSiwinGlobals()
+
+let ctx {.used.} = siwinGlobals.newOpenglContext()
 loadExtensions()
 
 # do any opengl computing
@@ -189,7 +199,8 @@ loadExtensions()
 ```nim
 import siwin
 
-let window = newOenglWindow()
+let siwinGlobals = newSiwinGlobals()
+let window = siwinGlobals.newOenglWindow()
 loadExtensions()
 
 let eventsHandler = WindowEventsHandler(
@@ -206,8 +217,10 @@ while window.opened:
 ```nim
 import siwin
 
-let win1 = newOpenglWindow()
-let win2 = newOpenglWindow()
+let siwinGlobals = newSiwinGlobals()
+
+let win1 = siwinGlobals.newOpenglWindow()
+let win2 = siwinGlobals.newOpenglWindow()
 loadExtensions()
 
 let win1_eventsHandler = WindowEventsHandler(
@@ -239,7 +252,9 @@ runMultiple(
 ```nim
 import siwin
 
-let window = newOpenglWindow(transparent=true, frameless=true)
+let siwinGlobals = newSiwinGlobals()
+
+let window = siwinGlobals.newOpenglWindow(transparent=true, frameless=true)
 loadExtensions()
 
 run window, WindowEventsHandler(
