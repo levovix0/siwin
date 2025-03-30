@@ -1,3 +1,3 @@
 import siwin
 
-run newOpenglWindow()
+run newSiwinGlobals().newOpenglWindow()

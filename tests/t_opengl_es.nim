@@ -1,12 +1,14 @@
 import unittest
-import opengl, pixie
+import opengl, vmath
 import siwin
 import ./gl
+
+let globals = newSiwinGlobals()
 
 test "OpenGL ES":
   var g = 1.0
   
-  let window = newOpenglWindow(title="OpenGL ES test", transparent=true, frameless=true)
+  let window = globals.newOpenglWindow(title="OpenGL ES test", transparent=true, frameless=true)
   loadExtensions()
 
   window.setBorderWidth(10, 10, 10)

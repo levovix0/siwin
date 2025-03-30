@@ -4,7 +4,7 @@ import x11/x except Window
 import x11/[xlib, xutil, xrender]
 import ../../[siwindefs]
 import ../any/window as anyWindow
-import window {.all.}, glx, globalDisplay
+import ./[window {.all.}, glx, siwinGlobals]
 
 privateAccess Window
 privateAccess WindowX11
@@ -22,8 +22,8 @@ proc `=trace`(x: var WindowX11OpenglObj, env: pointer) =
 
 proc `=destroy`(x: WindowX11OpenglObj) {.siwin_destructor.} =
   #? for some reason, without this, nim produces invalid C code for =trace implementation
+  x.globals.display.destroy(x.glxContext)
   `=destroy`(cast[ptr WindowX11Obj](x.addr)[])
-  `=destroy`(x.glxContext)
 
 
 proc initOpenglWindow(
@@ -31,17 +31,16 @@ proc initOpenglWindow(
   size: IVec2, screen: ScreenX11,
   fullscreen, frameless, transparent: bool, class: string
 ) =
-  globalDisplay.init()
   window.basicInitWindow size, screen
 
   window.m_transparent = transparent
-  let root = display.DefaultRootWindow
+  let root = window.globals.display.DefaultRootWindow
   
   var vi: XVisualInfo
   var fbc: GlxFbConfig
 
   if transparent:
-    let fbcs = glxChooseFbConfig(screen.number, [
+    let fbcs = window.globals.display.glxChooseFbConfig(screen.number, [
       GLX_RENDER_TYPE, GLX_RGBA_BIT,
       GLX_DRAWABLE_TYPE, GLX_WINDOW_BIT,
       GLX_DOUBLEBUFFER, 1,
@@ -70,21 +69,23 @@ proc initOpenglWindow(
           direct*: XRenderDirectFormat
           colormap*: Colormap
 
-      if x.glxGetVisualFromFBConfig == nil: continue
-      var pf = cast[ptr XRenderPictFormat](display.XRenderFindVisualFormat(x.glxGetVisualFromFBConfig.visual))
+      if window.globals.display.glxGetVisualFromFBConfig(x) == nil: continue
+      var pf = cast[ptr XRenderPictFormat](
+        window.globals.display.XRenderFindVisualFormat(window.globals.display.glxGetVisualFromFBConfig(x).visual)
+      )
       if pf == nil: continue
       if pf.direct.alphaMask > 0:
-        vi = x.glxGetVisualFromFBConfig[]
+        vi = window.globals.display.glxGetVisualFromFBConfig(x)[]
         fbc = x
         break
   
   else:
-    discard display.XMatchVisualInfo(window.screen, 24, TrueColor, vi.addr)
+    discard window.globals.display.XMatchVisualInfo(window.screen, 24, TrueColor, vi.addr)
   
-  let cmap = display.XCreateColormap(root, vi.visual, AllocNone)
+  let cmap = window.globals.display.XCreateColormap(root, vi.visual, AllocNone)
   var swa = XSetWindowAttributes(colormap: cmap)
 
-  window.handle = display.XCreateWindow(
+  window.handle = window.globals.display.XCreateWindow(
     root, 0, 0, size.x.cuint, size.y.cuint, 0, vi.depth, InputOutput, vi.visual,
     CwColormap or CwEventMask or CwBorderPixel or CwBackPixel, swa.addr
   )
@@ -92,14 +93,14 @@ proc initOpenglWindow(
   window.setupWindow fullscreen, frameless, class
 
   if transparent:
-    window.glxContext = newGlxContext(fbc)
+    window.glxContext = window.globals.display.newGlxContext(fbc)
   else:
-    window.glxContext = newGlxContext(vi.addr)
-  window.handle.makeCurrent window.glxContext
+    window.glxContext = window.globals.display.newGlxContext(vi.addr)
+  window.globals.display.makeCurrent(window.handle, window.glxContext)
 
 
 method makeCurrent*(window: WindowX11Opengl) =
-  window.handle.makeCurrent window.glxContext
+  window.globals.display.makeCurrent(window.handle, window.glxContext)
 
 
 method `vsync=`*(window: WindowX11Opengl, v: bool, silent = false) =
@@ -107,7 +108,7 @@ method `vsync=`*(window: WindowX11Opengl, v: bool, silent = false) =
   window.vsyncEnabled = v
   
   if glxSwapIntervalExt != nil:
-    display.glxSwapIntervalExt(window.handle, if v: 1 else: 0)
+    window.globals.display.glxSwapIntervalExt(window.handle, if v: 1 else: 0)
   elif glxSwapIntervalMesa != nil:
     glxSwapIntervalMesa(if v: 1 else: 0)
   elif glxSwapIntervalSgi != nil:
@@ -121,7 +122,7 @@ method beginSwapBuffers*(window: WindowX11Opengl) =
   if window.vsyncEnabled and window.syncState == SyncState.syncAndConfigureRecieved:
     window.vsync = false  # temporary disable vsync to avoid flickering
 
-  window.handle.glxSwapBuffers()
+  window.globals.display.glxSwapBuffers(window.handle)
 
 method endSwapBuffers*(window: WindowX11Opengl) =
   if window.vsyncEnabled:
@@ -129,9 +130,10 @@ method endSwapBuffers*(window: WindowX11Opengl) =
 
 
 proc newOpenglWindowX11*(
+  globals: SiwinGlobalsX11,
   size = ivec2(1280, 720),
   title = "",
-  screen = defaultScreenX11(),
+  screen = globals.defaultScreenX11(),
   resizable = true,
   fullscreen = false,
   frameless = false,
@@ -141,6 +143,7 @@ proc newOpenglWindowX11*(
   class = "", # window class (used in x11), equals to title if not specified
 ): WindowX11Opengl =
   new result
+  result.globals = globals
   result.initOpenglWindow(size, screen, fullscreen, frameless, transparent, (if class == "": title else: class))
   result.title = title
   result.`vsync=`(vsync, silent=true)

@@ -1,14 +1,15 @@
 import unittest
-import opengl, pixie
+import opengl, vmath
 import siwin
+
+let globals = newSiwinGlobals(
+  preferedPlatform = (when defined(linux): x11 else: defaultPreferedPlatform())
+)
 
 test "OpenGL":
   var g = 1.0
   
-  let window = newOpenglWindow(
-    title="OpenGL test", transparent=true,
-    # preferedPlatform = (when defined(linux): x11 else: defaultPreferedPlatform)
-  )
+  let window = globals.newOpenglWindow(title="OpenGL test", transparent=true)
   loadExtensions()
   
   run window, WindowEventsHandler(

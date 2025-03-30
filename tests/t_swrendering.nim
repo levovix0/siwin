@@ -1,21 +1,23 @@
 import unittest, strformat
 import pixie
-import siwin/[window, colorutils, clipboards]
+import siwin/[platforms, window, colorutils, clipboards]
 
 {.experimental: "overloadableEnums".}
 
+let globals = newSiwinGlobals()
+
 test "screen":
-  if screenCount() == 1:
-    let size = defaultScreen().size
+  if globals.screenCount() == 1:
+    let size = globals.defaultScreen().size
     echo &"screen().size: {size.x}x{size.y}"
   else:
-    for i in 0..<screenCount():
-      let size = screen(i).size
+    for i in 0..<globals.screenCount():
+      let size = globals.screen(i).size
       echo &"screen({i}).size: {size.x}x{size.y}"
 
 
 test "clipboard":
-  let window = newSoftwareRenderingWindow()
+  let window = globals.newSoftwareRenderingWindow()
   window.firstStep(makeVisible = false)
   
   echo "clipboard text: ", window.clipboard.text
@@ -36,7 +38,7 @@ test "clipboard":
 test "pixie":
   var
     image: Image
-    window = newSoftwareRenderingWindow(title="pixie test", frameless=true, transparent=true)
+    window = globals.newSoftwareRenderingWindow(title="pixie test", frameless=true, transparent=true)
     cursorImage = newImage(32, 32)
   
   window.cursor = block:
@@ -94,7 +96,7 @@ test "pixie":
 
 test "bgrx image":
   var
-    window = newSoftwareRenderingWindow(title="bgrx image test", frameless=true, transparent=true)
+    window = globals.newSoftwareRenderingWindow(title="bgrx image test", frameless=true, transparent=true)
   
   window.setBorderWidth(10, 0, 10)
 

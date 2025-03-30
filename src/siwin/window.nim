@@ -4,12 +4,12 @@ import ./platforms
 
 export window
 
-when defined(nimcheck) or defined(nimsuggest):
-  discard
-elif defined(android):
+when defined(android):
   import ./platforms/android/window as androidWindow
 elif defined(linux):
+  import ./platforms/x11/siwinGlobals as x11SiwinGlobals
   import ./platforms/x11/window as x11Window
+  # import ./platforms/wayland/siwinGlobals as waylandSiwinGlobals
   import ./platforms/wayland/window as waylandWindow
 elif defined(windows):
   import ./platforms/winapi/window as winapiWindow
@@ -17,59 +17,51 @@ elif defined(macosx):
   import ./platforms/cocoa/window as cocoaWindow
 
 
-proc screenCount*(preferedPlatform = defaultPreferedPlatform()): int32 =
-  when defined(nimcheck) or defined(nimsuggest):
-    discard
-
-  elif defined(android):
+proc screenCount*(globals: SiwinGlobals): int32 =
+  when defined(android):
     1
 
   elif defined(linux):
-    case availablePlatforms().platformToUse(preferedPlatform)
-    of x11:
-      result = screenCountX11()
-    of wayland:
-      result = screenCountWayland()
-    else: discard
+    if globals of SiwinGlobalsX11:
+      result = globals.SiwinGlobalsX11.screenCountX11()
+    # elif globals of SiwinGlobalsWayland:
+    #   result = screenCountWayland()
+    else:
+      raise SiwinPlatformSupportDefect.newException("Unsupported platform")
   
   elif defined(windows): screenCountWinapi()
 
-proc screen*(number: int32, preferedPlatform = defaultPreferedPlatform()): Screen =
-  when defined(nimcheck) or defined(nimsuggest):
-    discard
-
-  elif defined(android):
+proc screen*(globals: SiwinGlobals, number: int32): Screen =
+  when defined(android):
     Screen()
 
   elif defined(linux):
-    case availablePlatforms().platformToUse(preferedPlatform)
-    of x11:
-      result = screenX11(number)
-    of wayland:
-      result = screenWayland(number)
-    else: discard
+    if globals of SiwinGlobalsX11:
+      result = globals.SiwinGlobalsX11.screenX11(number)
+    # elif globals of SiwinGlobalsWayland:
+      # result = screenWayland(number)
+    else:
+      raise SiwinPlatformSupportDefect.newException("Unsupported platform")
   
   elif defined(windows): screenWinapi(number)
 
-proc defaultScreen*(preferedPlatform = defaultPreferedPlatform()): Screen =
-  when defined(nimcheck) or defined(nimsuggest):
-    discard
-
-  elif defined(android):
+proc defaultScreen*(globals: SiwinGlobals): Screen =
+  when defined(android):
     Screen()
 
   elif defined(linux):
-    case availablePlatforms().platformToUse(preferedPlatform)
-    of x11:
-      result = defaultScreenX11()
-    of wayland:
-      result = defaultScreenWayland()
-    else: discard
+    if globals of SiwinGlobalsX11:
+      result = globals.SiwinGlobalsX11.defaultScreenX11()
+    # elif globals of SiwinGlobalsWayland:
+      # result = defaultScreenWayland()
+    else:
+      raise SiwinPlatformSupportDefect.newException("Unsupported platform")
   
   elif defined(windows): defaultScreenWinapi()
 
 
 proc newSoftwareRenderingWindow*(
+  globals: SiwinGlobals,
   size = ivec2(1280, 720),
   title = "",
   screen: int32 = -1,
@@ -77,14 +69,10 @@ proc newSoftwareRenderingWindow*(
   resizable = true,
   frameless = false,
   transparent = false,
-  preferedPlatform = defaultPreferedPlatform(),
 
   class = "", # window class (used in x11), equals to title if not specified
 ): Window =
-  when defined(nimcheck) or defined(nimsuggest):
-    discard
-
-  elif defined(android):
+  when defined(android):
     newSoftwareRenderingWindowAndroid(
       size, title,
       # (if screen == -1: defaultScreenAndroid() else: screenAndroid(screen)),
@@ -92,23 +80,21 @@ proc newSoftwareRenderingWindow*(
     )
 
   elif defined(linux):
-    case availablePlatforms().platformToUse(preferedPlatform)
-    of x11:
-      result = newSoftwareRenderingWindowX11(
+    if globals of SiwinGlobalsX11:
+      result = globals.SiwinGlobalsX11.newSoftwareRenderingWindowX11(
         size, title,
-        (if screen == -1: defaultScreenX11() else: screenX11(screen)),
+        (if screen == -1: globals.SiwinGlobalsX11.defaultScreenX11() else: globals.SiwinGlobalsX11.screenX11(screen)),
         resizable, fullscreen, frameless, transparent,
         (if class == "": title else: class)
       )
-    
-    of wayland:
-      result = newSoftwareRenderingWindowWayland(
-        size, title,
-        (if screen == -1: defaultScreenWayland() else: screenWayland(screen)),
-        resizable, fullscreen, frameless, transparent
-      )
-    
-    else: discard
+    # elif globals of SiwinGlobalsWayland:
+      # result = newSoftwareRenderingWindowWayland(
+      #   size, title,
+      #   (if screen == -1: defaultScreenWayland() else: screenWayland(screen)),
+      #   resizable, fullscreen, frameless, transparent
+      # )
+    else:
+      raise SiwinPlatformSupportDefect.newException("Unsupported platform")
 
   elif defined(windows):
     newSoftwareRenderingWindowWinapi(

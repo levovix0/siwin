@@ -8,7 +8,7 @@ import siwin/platforms/wayland/[window, windowOpengl]
 test "wlr-layer-shell":
   let window = newOpenglWindowWayland(
     size = ivec2(1000, 1000),
-    kind = WindowWaylandKind.LayerSurface, 
+    kind = WindowWaylandKind.LayerSurface,
     layer = Layer.Overlay,
   )
   loadExtensions()

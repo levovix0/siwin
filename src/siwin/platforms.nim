@@ -1,8 +1,14 @@
 import ./[siwindefs]
-when defined(nimcheck) or defined(nimsuggest):
-  discard
-elif defined(linux) and not defined(android):
+import ./platforms/any/window
+when defined(android):
+  ##
+when defined(linux) and not defined(android):
   import ./platforms/wayland/globals as waylandGlobals
+  import ./platforms/x11/siwinGlobals as x11Globals
+when defined(windows):
+  ##
+when defined(macosx):
+  ##
 
 
 when siwin_use_pure_enums:
@@ -19,16 +25,13 @@ type
     cocoa
     android
   
-  PlatformSupportDefect* = object of Defect
-  PlatformMatchError* = object of CatchableError
+  SiwinPlatformSupportDefect* = object of Defect
+  SiwinPlatformMatchError* = object of CatchableError
     ## raised if tried to force run wayland window on x11 compositor, or if tried to run window without any compositor at all
 
 
 proc availablePlatforms*: seq[Platform] =
-  when defined(nimcheck) or defined(nimsuggest):
-    discard
-
-  elif defined(windows):
+  when defined(windows):
     @[Platform.winapi]
 
   elif defined(android):
@@ -74,5 +77,23 @@ proc platformToUse*(available: seq[Platform], prefered: Platform): Platform =
 
   if prefered == Platform.wayland and Platform.x11 in available:
     return Platform.x11
+  
+  if available.len != 0:
+    return available[0]
+  else:
+    raise SiwinPlatformSupportDefect.newException("No platforms available to open a window")
 
-  raise PlatformSupportDefect.newException("Platform " & $prefered & " is not supported")
+
+proc newSiwinGlobals*(preferedPlatform: Platform = defaultPreferedPlatform()): SiwinGlobals =
+  when defined(android):
+    ##
+
+  elif defined(linux):
+    case availablePlatforms().platformToUse(preferedPlatform)
+    of x11:
+      return x11Globals.newX11Globals()
+    # of wayland:
+    #   waylandGlobals.newSiwinGlobalsWayland()
+    else:
+      raise SiwinPlatformSupportDefect.newException("Unsupported platform")
+

@@ -5,8 +5,9 @@ import ./gl
 when defined(android):
   import siwin/platforms/android/android
 
+let globals = newSiwinGlobals()
 
-let window = newOpenglWindow(title="Siwin on android", frameless=true)
+let window = globals.newOpenglWindow(title="Siwin on android", frameless=true)
 loadExtensions()
 
 

@@ -9,7 +9,7 @@ import pkg/x11/[xutil, xatom, cursorfont, keysym]
 import ../../[colorutils, siwindefs]
 import ../any/[window, clipboards]
 import ../any/[windowUtils]
-import globalDisplay
+import ./[siwinGlobals]
 
 {.experimental: "overloadableEnums".}
 
@@ -55,6 +55,7 @@ type
 
   WindowX11* = ref WindowX11Obj
   WindowX11Obj* = object of Window
+    globals: SiwinGlobalsX11
     handle: x.Window
     screen: cint
     xIcon: Pixmap
@@ -112,10 +113,6 @@ proc XcursorImageLoadCursor(d: ptr Display, image: ptr CursorImage): x.Cursor
 
 {.pop.}
 
-
-proc `=destroy`(gc: GraphicsContext) {.siwin_destructor.} =
-  if gc.gc != nil:
-    discard display.XFreeGC(gc.gc)
 
 
 proc xkeyToKey(sym: KeySym): Key =
@@ -230,7 +227,7 @@ proc xkeyToKey(sym: KeySym): Key =
   else:               Key.unknown
 
 
-proc newClientMessage[T](window: x.Window, messageKind: Atom, data: openarray[T], serial: int = 0, sendEvent: bool = false): XEvent =
+proc newClientMessage[T](globals: SiwinGlobalsX11, window: x.Window, messageKind: Atom, data: openarray[T], serial: int = 0, sendEvent: bool = false): XEvent =
   result.theType = ClientMessage
   result.xclient.messageType = messageKind
   if data.len * T.sizeof > XClientMessageData.sizeof:
@@ -244,21 +241,21 @@ proc newClientMessage[T](window: x.Window, messageKind: Atom, data: openarray[T]
     of 8: 32
     else: 8
   result.xclient.window = window
-  result.xclient.display = display
+  result.xclient.display = globals.display
   result.xclient.serial = serial.culong
   result.xclient.sendEvent = sendEvent.XBool
 
-proc geometry(a: x.Window): tuple[root: x.Window; pos: IVec2; size: IVec2; borderW: int, depth: int] =
+proc geometry(globals: SiwinGlobalsX11, xwin: x.Window): tuple[root: x.Window; pos: IVec2; size: IVec2; borderW: int, depth: int] =
   var
     root: x.Window
     x, y: cint
     w, h: cuint
     borderW: cuint
     depth: cuint
-  discard display.XGetGeometry(a, root.addr, x.addr, y.addr, w.addr, h.addr, borderW.addr, depth.addr)
+  discard globals.display.XGetGeometry(xwin, root.addr, x.addr, y.addr, w.addr, h.addr, borderW.addr, depth.addr)
   (root, ivec2(x.int32, y.int32), ivec2(w.int32, h.int32), borderW.int, depth.int)
 
-proc asXImage(data: pointer, size: IVec2, transparent = false): XImage = XImage(
+proc asXImage(globals: SiwinGlobalsX11, data: pointer, size: IVec2, transparent = false): XImage = XImage(
   width: cint size.x,
   height: cint size.y,
   depth: if transparent: 32 else: 24,
@@ -266,21 +263,23 @@ proc asXImage(data: pointer, size: IVec2, transparent = false): XImage = XImage(
   format: ZPixmap,
   data: cast[cstring](data),
   byteOrder: LSBFirst,
-  bitmapUnit: display.BitmapUnit,
+  bitmapUnit: globals.display.BitmapUnit,
   bitmapBitOrder: LSBFirst,
   bitmapPad: 32,
   bytesPerLine: cint size.x * uint32.sizeof
 )
 
-proc cursor: tuple[pos: IVec2; root, child: x.Window; winX, winY: int; mask: uint; exists: bool] =
+proc cursor(globals: SiwinGlobalsX11): tuple[pos: IVec2; root, child: x.Window; winX, winY: int; mask: uint; exists: bool] =
   ## find cursor and return where it is
   var
     root, child: x.Window
     x, y: cint
     winX, winY: cint
     mask: cuint
-  for i in 0..display.ScreenCount:
-    if display.XQueryPointer(display.XRootWindow(i), root.addr, child.addr, x.addr, y.addr, winX.addr, winY.addr, mask.addr) != 0:
+  for i in 0..globals.display.ScreenCount:
+    if globals.display.XQueryPointer(
+      globals.display.XRootWindow(i), root.addr, child.addr, x.addr, y.addr, winX.addr, winY.addr, mask.addr
+    ) != 0:
       return (ivec2(x.int32, y.int32), root, child, winX.int, winY.int, mask.uint, true)
 
 
@@ -288,20 +287,17 @@ method beginSwapBuffers(window: WindowX11) {.base.} = discard
 method endSwapBuffers(window: WindowX11) {.base.} = discard
 
 
-proc screenCountX11*: int32 =
-  globalDisplay.init()
-  display.ScreenCount.int32
+proc screenCountX11*(globals: SiwinGlobalsX11): int32 =
+  globals.display.ScreenCount.int32
 
-proc screenX11*(number: int32): ScreenX11 =
+proc screenX11*(globals: SiwinGlobalsX11, number: int32): ScreenX11 =
   new result
-  globalDisplay.init()
-  if number notin 0..<screenCountX11(): raise IndexDefect.newException(&"screen {number} doesn't exist")
+  if number notin 0..<globals.screenCountX11: raise IndexDefect.newException(&"screen {number} doesn't exist")
   result.id = number.cint
-  result.handle = display.ScreenOfDisplay(result.id)
+  result.handle = globals.display.ScreenOfDisplay(result.id)
 
-proc defaultScreenX11*: ScreenX11 =
-  globalDisplay.init()
-  screenX11(display.DefaultScreen.int32)
+proc defaultScreenX11*(globals: SiwinGlobalsX11): ScreenX11 =
+  globals.screenX11(globals.display.DefaultScreen.int32)
 
 method number*(screen: ScreenX11): int32 = screen.id
 
@@ -316,13 +312,13 @@ proc `=destroy`(window: WindowX11Obj) {.siwin_destructor.} =
 
   destroy window.xInContext: XDestroyIC window.xInContext
   destroy window.xInMethod:  discard XCloseIM window.xInMethod
-  destroy window.xCursor:    discard display.XFreeCursor window.xCursor
-  destroy window.xIcon:      discard display.XFreePixmap window.xIcon
-  destroy window.xIconMask:  discard display.XFreePixmap window.xIconMask
-  destroy window.handle:     discard display.XDestroyWindow window.handle
+  destroy window.xCursor:    discard window.globals.display.XFreeCursor window.xCursor
+  destroy window.xIcon:      discard window.globals.display.XFreePixmap window.xIcon
+  destroy window.xIconMask:  discard window.globals.display.XFreePixmap window.xIconMask
+  destroy window.handle:     discard window.globals.display.XDestroyWindow window.handle
   
   if window.xSyncCounter.int != 0:
-    display.XSyncDestroyCounter(window.xSyncCounter)
+    window.globals.display.XSyncDestroyCounter(window.xSyncCounter)
 
 
 proc `=trace`(x: var WindowX11SoftwareRenderingObj, env: pointer) =
@@ -330,9 +326,12 @@ proc `=trace`(x: var WindowX11SoftwareRenderingObj, env: pointer) =
   `=trace`(cast[ptr WindowX11Obj](x.addr)[], env)
 
 proc `=destroy`(x: WindowX11SoftwareRenderingObj) {.siwin_destructor.} =
-  #? for some reason, without this, nim produces invalid C code for =trace implementation
-  `=destroy`(x.gc)
-  if x.pixels != nil: dealloc(x.pixels)
+  if x.gc.gc != nil:
+    discard x.globals.display.XFreeGC(x.gc.gc)
+  
+  if x.pixels != nil:
+    dealloc(x.pixels)
+  
   `=destroy`(cast[ptr WindowX11Obj](x.addr)[])
 
 
@@ -350,7 +349,7 @@ proc basicInitWindow(window: WindowX11; size: IVec2; screen: ScreenX11) =
   window.m_focused = true
 
 proc setupWindow(window: WindowX11, fullscreen, frameless: bool, class: string) =
-  discard display.XSelectInput(
+  discard window.globals.display.XSelectInput(
     window.handle,
     ExposureMask or KeyPressMask or KeyReleaseMask or PointerMotionMask or ButtonPressMask or
     ButtonReleaseMask or StructureNotifyMask or EnterWindowMask or LeaveWindowMask or FocusChangeMask
@@ -358,14 +357,16 @@ proc setupWindow(window: WindowX11, fullscreen, frameless: bool, class: string) 
 
   window.m_fullscreen = fullscreen
   if fullscreen:
-    var state = [atoms.netWmStateFullscreen]
-    discard display.XChangeProperty(window.handle, atoms.netWmState, XaAtom, 32, PropModeReplace, cast[PCUchar](state[0].addr), state.len.cint)
-    window.m_size = window.screen.screenX11.size
+    var state = [window.globals.atoms.netWmStateFullscreen]
+    discard window.globals.display.XChangeProperty(
+      window.handle, window.globals.atoms.netWmState, XaAtom, 32, PropModeReplace, cast[PCUchar](state[0].addr), state.len.cint
+    )
+    window.m_size = window.globals.screenX11(window.screen).size
 
-  var protocols = [atoms.wmDeleteWindow, atoms.netWmSyncRequest]
-  discard display.XSetWMProtocols(window.handle, protocols[0].addr, protocols.len.cint)
+  var protocols = [window.globals.atoms.wmDeleteWindow, window.globals.atoms.netWmSyncRequest]
+  discard window.globals.display.XSetWMProtocols(window.handle, protocols[0].addr, protocols.len.cint)
 
-  window.xinMethod = display.XOpenIM(nil, nil, nil)
+  window.xinMethod = window.globals.display.XOpenIM(nil, nil, nil)
   if window.xinMethod != nil:
     window.xinContext = window.xinMethod.XCreateIC(
       XNClientWindow, window.handle, XNFocusWindow, window.handle, XnInputStyle, XimPreeditNothing or XimStatusNothing, nil
@@ -376,13 +377,13 @@ proc setupWindow(window: WindowX11, fullscreen, frameless: bool, class: string) 
   # init sync counter
   block xsync:
     var vEv, vEr: cint
-    if display.XSyncQueryExtension(vEv.addr, vEr.addr):
+    if window.globals.display.XSyncQueryExtension(vEv.addr, vEr.addr):
       var vMaj, vMin: cint
-      display.XSyncInitialize(vMaj.addr, vMin.addr)
-      window.xSyncCounter = display.XSyncCreateCounter(XSyncValue())
-      discard display.XChangeProperty(
+      window.globals.display.XSyncInitialize(vMaj.addr, vMin.addr)
+      window.xSyncCounter = window.globals.display.XSyncCreateCounter(XSyncValue())
+      discard window.globals.display.XChangeProperty(
         window.handle,
-        atoms.netWmSyncRequestCounter,
+        window.globals.atoms.netWmSyncRequestCounter,
         XaCardinal,
         32,
         0,
@@ -395,23 +396,25 @@ proc setupWindow(window: WindowX11, fullscreen, frameless: bool, class: string) 
     let name = getAppFilename()
     hint.res_name = name.cstring    # use filename as application name
     hint.res_class = class.cstring  # use class (same as title by default) as window class
-    discard display.XSetClassHint(window.handle, hint.addr)
+    discard window.globals.display.XSetClassHint(window.handle, hint.addr)
 
   let supportedDndVersion = 4
-  discard display.XChangeProperty(window.handle, atoms.xDndAware, XaAtom, 32, PropModeReplace, cast[PCUchar](supportedDndVersion.addr), 1)
+  discard window.globals.display.XChangeProperty(
+    window.handle, window.globals.atoms.xDndAware, XaAtom, 32, PropModeReplace, cast[PCUchar](supportedDndVersion.addr), 1
+  )
 
   window.m_clipboard = ClipboardX11(
-    attachedToWindow: window, selectionAtom: atoms.clipboard,
+    attachedToWindow: window, selectionAtom: window.globals.atoms.clipboard,
     availableKinds: {ClipboardContentKind.text, ClipboardContentKind.other}, availableMimeTypes: @["UTF8_STRING"]
     # todo: detect available kinds/mimetypes
   )
   window.m_selectionClipboard = ClipboardX11(
-    attachedToWindow: window, selectionAtom: atoms.primary,
+    attachedToWindow: window, selectionAtom: window.globals.atoms.primary,
     availableKinds: {ClipboardContentKind.text, ClipboardContentKind.other}, availableMimeTypes: @["UTF8_STRING"]
     # todo: detect available kinds/mimetypes
   )
   window.m_dragndropClipboard = ClipboardX11(
-    attachedToWindow: window, selectionAtom: atoms.xDndSelection,
+    attachedToWindow: window, selectionAtom: window.globals.atoms.xDndSelection,
   )
 
 
@@ -421,59 +424,61 @@ proc initSoftwareRenderingWindow(
   size: IVec2, screen: ScreenX11,
   fullscreen, frameless, transparent: bool, class: string
 ) =
-  globalDisplay.init()
   window.basicInitWindow size, screen
   
   if transparent:
     window.m_transparent = true
-    let root = display.DefaultRootWindow
+    let root = window.globals.display.DefaultRootWindow
 
     var vi: XVisualInfo
-    discard display.XMatchVisualInfo(window.screen, if transparent: 32 else: 24, TrueColor, vi.addr)
+    discard window.globals.display.XMatchVisualInfo(window.screen, if transparent: 32 else: 24, TrueColor, vi.addr)
 
-    let cmap = display.XCreateColormap(root, vi.visual, AllocNone)
+    let cmap = window.globals.display.XCreateColormap(root, vi.visual, AllocNone)
     var swa = XSetWindowAttributes(colormap: cmap)
 
-    window.handle = display.XCreateWindow(
+    window.handle = window.globals.display.XCreateWindow(
       root, 0, 0, size.x.cuint, size.y.cuint, 0, vi.depth, InputOutput, vi.visual,
       CwColormap or CwEventMask or CwBorderPixel or CwBackPixel, swa.addr
     )
   else:
-    window.handle = display.XCreateSimpleWindow(
-      display.DefaultRootWindow, 0, 0, size.x.cuint, size.y.cuint, 0, 0, display.BlackPixel(window.screen)
+    window.handle = window.globals.display.XCreateSimpleWindow(
+      window.globals.display.DefaultRootWindow, 0, 0, size.x.cuint, size.y.cuint,
+      0, 0, window.globals.display.BlackPixel(window.screen)
     )
 
   window.setupWindow fullscreen, frameless, class
 
-  window.gc.gc = display.XCreateGC(window.handle, GCForeground or GCBackground, window.gc.gcv.addr)
+  window.gc.gc = window.globals.display.XCreateGC(window.handle, GCForeground or GCBackground, window.gc.gcv.addr)
 
 
 method `title=`*(window: WindowX11, v: string) =
-  discard display.XChangeProperty(
-    window.handle, atoms.netWmName, atoms.utf8String, 8,
+  discard window.globals.display.XChangeProperty(
+    window.handle, window.globals.atoms.netWmName, window.globals.atoms.utf8String, 8,
     PropModeReplace, cast[PCUchar]((if v.len != 0: v[0].addr else: nil)), v.len.cint
   )
-  discard display.XChangeProperty(
-    window.handle, atoms.netWmIconName, atoms.utf8String, 8,
+  discard window.globals.display.XChangeProperty(
+    window.handle, window.globals.atoms.netWmIconName, window.globals.atoms.utf8String, 8,
     PropModeReplace, cast[PCUchar]((if v.len != 0: v[0].addr else: nil)), v.len.cint
   )
-  display.Xutf8SetWMProperties(window.handle, v, v, nil, 0, nil, nil, nil)
+  window.globals.display.Xutf8SetWMProperties(window.handle, v, v, nil, 0, nil, nil, nil)
 
 
 method `fullscreen=`*(window: WindowX11, v: bool) =
-  var event = window.handle.newClientMessage(atoms.netWmState, [Atom 2, atoms.netWmStateFullscreen])
-  discard display.XSendEvent(
+  var event = window.globals.newClientMessage(
+    window.handle, window.globals.atoms.netWmState, [Atom 2, window.globals.atoms.netWmStateFullscreen]
+  )
+  discard window.globals.display.XSendEvent(
     window.handle, 0, SubstructureNotifyMask or SubstructureRedirectMask, event.addr
   )
 
-  discard XFlush display
+  discard XFlush window.globals.display
 
 
 method `frameless=`*(window: WindowX11, v: bool) =
   if window.m_frameless == v: return
   window.m_frameless = v
   
-  case wmForFramelessKind
+  case window.globals.wmForFramelessKind
   of WmForFramelessKind.motiv:
     type MWMHints = object
       flags: culong
@@ -483,24 +488,24 @@ method `frameless=`*(window: WindowX11, v: bool) =
       status: culong
     
     var hints = MWMHints(flags: culong (if v: 1 else: 0) shl 1)
-    discard display.XChangeProperty(
-      window.handle, atoms.frameless, atoms.frameless, 32, PropModeReplace,
+    discard window.globals.display.XChangeProperty(
+      window.handle, window.globals.atoms.frameless, window.globals.atoms.frameless, 32, PropModeReplace,
       cast[cstring](hints.addr), MWMHints.sizeof div 4
     )
 
   of WmForFramelessKind.kwm, WmForFramelessKind.other:
     var hints: clong = if v: 0 else: 1
-    discard display.XChangeProperty(
-      window.handle, atoms.frameless, atoms.frameless, 32, PropModeReplace,
+    discard window.globals.display.XChangeProperty(
+      window.handle, window.globals.atoms.frameless, window.globals.atoms.frameless, 32, PropModeReplace,
       cast[cstring](hints.addr), clong.sizeof div 4
     )
 
-  else: discard display.XSetTransientForHint(window.handle, display.RootWindow(window.screen))
+  else: discard window.globals.display.XSetTransientForHint(window.handle, window.globals.display.RootWindow(window.screen))
   
   if window.visible and not v:
     # "reopen" window to apply the changes
-    discard display.XUnmapWindow(window.handle)
-    discard display.XMapWindow(window.handle)
+    discard window.globals.display.XUnmapWindow(window.handle)
+    discard window.globals.display.XMapWindow(window.handle)
 
   window.eventsHandler.onStateBoolChanged.pushEvent StateBoolChangedEvent(
     window: window, kind: StateBoolChangedEventKind.frameless, value: v
@@ -511,43 +516,45 @@ method `size=`*(window: WindowX11, v: IVec2) =
   if window.fullscreen:
     window.fullscreen = false
   
-  discard display.XResizeWindow(window.handle, v.x.cuint, v.y.cuint)
+  discard window.globals.display.XResizeWindow(window.handle, v.x.cuint, v.y.cuint)
 
 method `pos=`*(window: WindowX11, v: IVec2) =
   if window.m_fullscreen: return
-  discard display.XMoveWindow(window.handle, v.x.cint, v.y.cint)
+  discard window.globals.display.XMoveWindow(window.handle, v.x.cint, v.y.cint)
 
 
 proc setX11Cursor(window: WindowX11, v: Cursor) =
   if window.xCursor != 0:
-    discard display.XFreeCursor(window.xCursor)
+    discard window.globals.display.XFreeCursor(window.xCursor)
     window.xCursor = 0
   
   case v.kind
   of builtin:
     case v.builtin
-    of BuiltinCursor.arrow:           window.xcursor = display.XCreateFontCursor(XcLeftPtr)
-    of BuiltinCursor.arrowUp:         window.xcursor = display.XCreateFontCursor(XcCenterPtr)
-    of BuiltinCursor.arrowRight:      window.xcursor = display.XCreateFontCursor(XcRightPtr)
-    of BuiltinCursor.wait:            window.xcursor = display.XCreateFontCursor(XcWatch)
-    of BuiltinCursor.arrowWait:       window.xcursor = display.XCreateFontCursor(XcWatch) #! no needed cursor
-    of BuiltinCursor.pointingHand:    window.xcursor = display.XCreateFontCursor(XcHand1)
-    of BuiltinCursor.grab:            window.xcursor = display.XCreateFontCursor(XcHand2)
-    of BuiltinCursor.text:            window.xcursor = display.XCreateFontCursor(XcXterm)
-    of BuiltinCursor.cross:           window.xcursor = display.XCreateFontCursor(XcTCross)
-    of BuiltinCursor.sizeAll:         window.xcursor = display.XCreateFontCursor(XcFleur)
-    of BuiltinCursor.sizeVertical:    window.xcursor = display.XCreateFontCursor(XcSb_v_doubleArrow)
-    of BuiltinCursor.sizeHorizontal:  window.xcursor = display.XCreateFontCursor(XcSb_h_doubleArrow)
-    of BuiltinCursor.sizeTopLeft:     window.xcursor = display.XCreateFontCursor(XC_ul_angle)
-    of BuiltinCursor.sizeTopRight:    window.xcursor = display.XCreateFontCursor(XC_ur_angle)
-    of BuiltinCursor.sizeBottomLeft:  window.xcursor = display.XCreateFontCursor(XC_ll_angle)
-    of BuiltinCursor.sizeBottomRight: window.xcursor = display.XCreateFontCursor(XC_lr_angle)
+    of BuiltinCursor.arrow:           window.xcursor = window.globals.display.XCreateFontCursor(XcLeftPtr)
+    of BuiltinCursor.arrowUp:         window.xcursor = window.globals.display.XCreateFontCursor(XcCenterPtr)
+    of BuiltinCursor.arrowRight:      window.xcursor = window.globals.display.XCreateFontCursor(XcRightPtr)
+    of BuiltinCursor.wait:            window.xcursor = window.globals.display.XCreateFontCursor(XcWatch)
+    of BuiltinCursor.arrowWait:       window.xcursor = window.globals.display.XCreateFontCursor(XcWatch) #! no needed cursor
+    of BuiltinCursor.pointingHand:    window.xcursor = window.globals.display.XCreateFontCursor(XcHand1)
+    of BuiltinCursor.grab:            window.xcursor = window.globals.display.XCreateFontCursor(XcHand2)
+    of BuiltinCursor.text:            window.xcursor = window.globals.display.XCreateFontCursor(XcXterm)
+    of BuiltinCursor.cross:           window.xcursor = window.globals.display.XCreateFontCursor(XcTCross)
+    of BuiltinCursor.sizeAll:         window.xcursor = window.globals.display.XCreateFontCursor(XcFleur)
+    of BuiltinCursor.sizeVertical:    window.xcursor = window.globals.display.XCreateFontCursor(XcSb_v_doubleArrow)
+    of BuiltinCursor.sizeHorizontal:  window.xcursor = window.globals.display.XCreateFontCursor(XcSb_h_doubleArrow)
+    of BuiltinCursor.sizeTopLeft:     window.xcursor = window.globals.display.XCreateFontCursor(XC_ul_angle)
+    of BuiltinCursor.sizeTopRight:    window.xcursor = window.globals.display.XCreateFontCursor(XC_ur_angle)
+    of BuiltinCursor.sizeBottomLeft:  window.xcursor = window.globals.display.XCreateFontCursor(XC_ll_angle)
+    of BuiltinCursor.sizeBottomRight: window.xcursor = window.globals.display.XCreateFontCursor(XC_lr_angle)
     of BuiltinCursor.hided:
       var data: array[1, char]
-      let blank = display.XCreateBitmapFromData(display.DefaultRootWindow, cast[cstring](data[0].addr), 1, 1)
+      let blank = window.globals.display.XCreateBitmapFromData(
+        window.globals.display.DefaultRootWindow, cast[cstring](data[0].addr), 1, 1
+      )
       var pass: XColor
-      window.xcursor = x.Cursor display.XCreatePixmapCursor(blank, blank, pass.addr, pass.addr, 0, 0)
-      discard display.XFreePixmap blank
+      window.xcursor = x.Cursor window.globals.display.XCreatePixmapCursor(blank, blank, pass.addr, pass.addr, 0, 0)
+      discard window.globals.display.XFreePixmap blank
 
   of image:
     if v.image.pixels.size.x * v.image.pixels.size.y == 0:
@@ -565,12 +572,12 @@ proc setX11Cursor(window: WindowX11, v: Cursor) =
       origin: v.image.origin,
       pixels: buffer.data
     )
-    window.xCursor = display.XcursorImageLoadCursor(ci.addr)
+    window.xCursor = window.globals.display.XcursorImageLoadCursor(ci.addr)
     
     convertPixelsInplace(buffer.data, buffer.size, PixelBufferFormat.xrgb_32bit, sourceFormat)
 
-  discard display.XDefineCursor(window.handle, window.xCursor)
-  discard display.XSync(0)
+  discard window.globals.display.XDefineCursor(window.handle, window.xCursor)
+  discard window.globals.display.XSync(0)
 
 
 proc setTemporaryCursor(window: WindowX11, v: BuiltinCursor) =
@@ -592,26 +599,28 @@ method `cursor=`*(window: WindowX11, v: Cursor) =
 
 
 proc newPixmap(buffer: PixelBuffer, window: WindowX11): Pixmap =
-  result = display.XCreatePixmap(window.handle, buffer.size.x.cuint, buffer.size.y.cuint, cuint display.DefaultDepth(window.screen))
-  var image = asXImage(buffer.data, ivec2(buffer.size.x, buffer.size.y))
+  result = window.globals.display.XCreatePixmap(
+    window.handle, buffer.size.x.cuint, buffer.size.y.cuint, cuint window.globals.display.DefaultDepth(window.screen)
+  )
+  var image = window.globals.asXImage(buffer.data, ivec2(buffer.size.x, buffer.size.y))
   var gc: GraphicsContext
-  gc.gc = display.XCreateGC(result, GCForeground or GCBackground, gc.gcv.addr)
-  discard display.XPutImage(result, gc.gc, image.addr, 0, 0, 0, 0, buffer.size.x.cuint, buffer.size.y.cuint)
+  gc.gc = window.globals.display.XCreateGC(result, GCForeground or GCBackground, gc.gcv.addr)
+  discard window.globals.display.XPutImage(result, gc.gc, image.addr, 0, 0, 0, 0, buffer.size.x.cuint, buffer.size.y.cuint)
 
 
 method `icon=`*(window: WindowX11, v: nil.typeof) =
-  if window.xicon != 0: discard display.XFreePixmap(window.xicon)
-  if window.xiconMask != 0: discard display.XFreePixmap(window.xiconMask)
+  if window.xicon != 0: discard window.globals.display.XFreePixmap(window.xicon)
+  if window.xiconMask != 0: discard window.globals.display.XFreePixmap(window.xiconMask)
   window.xicon = 0.Pixmap
   window.xiconMask = 0.Pixmap
   var hints = XWmHints(flags: IconPixmapHint or IconMaskHint, iconPixmap: window.xicon, iconMask: window.xiconMask)
-  discard display.XSetWMHints(window.handle, hints.addr)
+  discard window.globals.display.XSetWMHints(window.handle, hints.addr)
 
 
 method `icon=`*(window: WindowX11, v: PixelBuffer) =
   if v.size.x * v.size.y == 0: window.icon = nil
-  if window.xicon != 0: discard display.XFreePixmap(window.xicon)
-  if window.xiconMask != 0: discard display.XFreePixmap(window.xiconMask)
+  if window.xicon != 0: discard window.globals.display.XFreePixmap(window.xicon)
+  if window.xiconMask != 0: discard window.globals.display.XFreePixmap(window.xiconMask)
   let pixelCount = v.size.x * v.size.y
 
   window.xicon = newPixmap(v, window)
@@ -640,7 +649,7 @@ method `icon=`*(window: WindowX11, v: PixelBuffer) =
   window.xiconMask = newPixmap(PixelBuffer(data: mask[0].addr, size: v.size), window)
 
   var hints = XWmHints(flags: IconPixmapHint or IconMaskHint, iconPixmap: window.xicon, iconMask: window.xiconMask)
-  discard display.XSetWMHints(window.handle, hints.addr)
+  discard window.globals.display.XSetWMHints(window.handle, hints.addr)
 
 
 method pixelBuffer*(window: WindowX11SoftwareRendering): PixelBuffer =
@@ -653,9 +662,9 @@ method pixelBuffer*(window: WindowX11SoftwareRendering): PixelBuffer =
 
 method endSwapBuffers(window: WindowX11SoftwareRendering) =
   if window.pixels == nil: return
-  var ximg = asXImage(window.pixels, window.m_size, window.transparent)
+  var ximg = window.globals.asXImage(window.pixels, window.m_size, window.transparent)
   
-  discard display.XPutImage(
+  discard window.globals.display.XPutImage(
     window.handle, window.gc.gc, ximg.addr, 0, 0, 0, 0, window.m_size.x.cuint, window.m_size.y.cuint
   )
 
@@ -664,13 +673,15 @@ method `maximized=`*(window: WindowX11, v: bool) =
   if window.m_maximized == v: return
   if window.fullscreen:
     window.fullscreen = false
-  var event = window.handle.newClientMessage(atoms.netWmState, [Atom v, atoms.netWmStateMaximizedHorz])
-  discard display.XSendEvent(
-    display.DefaultRootWindow, 0, SubstructureNotifyMask or SubstructureRedirectMask, event.addr
+  var event = window.globals.newClientMessage(
+    window.handle, window.globals.atoms.netWmState, [Atom v, window.globals.atoms.netWmStateMaximizedHorz]
   )
-  event.xclient.data.l[1] = atoms.netWmStateMaximizedVert.int
-  discard display.XSendEvent(
-    display.DefaultRootWindow, 0, SubstructureNotifyMask or SubstructureRedirectMask, event.addr
+  discard window.globals.display.XSendEvent(
+    window.globals.display.DefaultRootWindow, 0, SubstructureNotifyMask or SubstructureRedirectMask, event.addr
+  )
+  event.xclient.data.l[1] = window.globals.atoms.netWmStateMaximizedVert.int
+  discard window.globals.display.XSendEvent(
+    window.globals.display.DefaultRootWindow, 0, SubstructureNotifyMask or SubstructureRedirectMask, event.addr
   )
   window.m_maximized = v
   window.eventsHandler.onStateBoolChanged.pushEvent StateBoolChangedEvent(
@@ -693,19 +704,19 @@ proc releaseAllKeys(window: WindowX11) =
 method `minimized=`*(window: WindowX11, v: bool) =
   window.m_minimized = v
   if not v:
-    discard display.XRaiseWindow(window.handle)
+    discard window.globals.display.XRaiseWindow(window.handle)
   else:
     window.releaseAllKeys()
-    discard display.XIconifyWindow(window.handle, display.DefaultScreen)
+    discard window.globals.display.XIconifyWindow(window.handle, window.globals.display.DefaultScreen)
 
 
 method `visible=`*(window: WindowX11, v: bool) =
   if v == window.m_visible: return
   window.m_visible = v
   if v:
-    discard display.XMapRaised(window.handle)
+    discard window.globals.display.XMapRaised(window.handle)
   else:
-    discard display.XUnmapWindow(window.handle)
+    discard window.globals.display.XUnmapWindow(window.handle)
 
 
 method `resizable=`*(window: WindowX11, v: bool) =
@@ -713,61 +724,63 @@ method `resizable=`*(window: WindowX11, v: bool) =
   let size = window.size
 
   var hints: XSizeHints
-  discard display.XGetNormalHints(window.handle, hints.addr)
+  discard window.globals.display.XGetNormalHints(window.handle, hints.addr)
   if v: hints.flags = hints.flags and not 0b110000
   else: hints.flags = hints.flags or 0b110000
   hints.minWidth = size.x
   hints.minHeight = size.y
   hints.maxWidth = size.x
   hints.maxHeight = size.y
-  discard display.XSetNormalHints(window.handle, hints.addr)
+  discard window.globals.display.XSetNormalHints(window.handle, hints.addr)
 
 
 method `minSize=`*(window: WindowX11, v: IVec2) =
   window.m_minSize = v
   var hints: XSizeHints
-  discard display.XGetNormalHints(window.handle, hints.addr)
+  discard window.globals.display.XGetNormalHints(window.handle, hints.addr)
   hints.flags = hints.flags or 0b010000
   hints.minWidth = v.x
   hints.minHeight = v.y
-  discard display.XSetNormalHints(window.handle, hints.addr)
+  discard window.globals.display.XSetNormalHints(window.handle, hints.addr)
 
 
 method `maxSize=`*(window: WindowX11, v: IVec2) =
   window.m_maxSize = v
   var hints: XSizeHints
-  discard display.XGetNormalHints(window.handle, hints.addr)
+  discard window.globals.display.XGetNormalHints(window.handle, hints.addr)
   hints.flags = hints.flags or 0b100000
   hints.maxWidth = v.x
   hints.maxHeight = v.y
-  discard display.XSetNormalHints(window.handle, hints.addr)
+  discard window.globals.display.XSetNormalHints(window.handle, hints.addr)
 
 
 method startInteractiveMove*(window: WindowX11, pos: Option[Vec2]) =
   # todo?: remove `pos` argument and use last click event cursor pos
 
   window.releaseAllKeys()
-  let pos = pos.get((cursor().pos - window.m_pos).vec2) + window.m_pos.vec2
-  discard display.XUngrabPointer(0)
-  discard XFlush display
+  let pos = pos.get((window.globals.cursor().pos - window.m_pos).vec2) + window.m_pos.vec2
+  discard window.globals.display.XUngrabPointer(0)
+  discard XFlush window.globals.display
 
-  var event = window.handle.newClientMessage(
-    atoms.netWmMoveResize,
+  var event = window.globals.newClientMessage(
+    window.handle,
+    window.globals.atoms.netWmMoveResize,
     [pos.x.int64, pos.y.int64, 8, 1, 0]  # int64 means clong, 8 means _NET_WM_MOVERESIZE_MOVE, 1 means left mouse button
   )
-  discard display.XSendEvent(
-    display.DefaultRootWindow, 0, SubstructureNotifyMask or SubstructureRedirectMask, event.addr
+  discard window.globals.display.XSendEvent(
+    window.globals.display.DefaultRootWindow, 0, SubstructureNotifyMask or SubstructureRedirectMask, event.addr
   )
   window.isBeengInteractivelyResizedOrMoved = true
 
 method startInteractiveResize*(window: WindowX11, edge: Edge, pos: Option[Vec2]) =
   window.releaseAllKeys()
-  let pos = pos.get((cursor().pos - window.m_pos).vec2) + window.m_pos.vec2
-  discard display.XUngrabPointer(0)
-  discard XFlush display
+  let pos = pos.get((window.globals.cursor().pos - window.m_pos).vec2) + window.m_pos.vec2
+  discard window.globals.display.XUngrabPointer(0)
+  discard XFlush window.globals.display
 
-  var event = window.handle.newClientMessage(
-    atoms.netWmMoveResize,
+  var event = window.globals.newClientMessage(
+    window.handle,
+    window.globals.atoms.netWmMoveResize,
     [
       pos.x.int64, pos.y.int64,  # int64 means clong
       case edge
@@ -782,8 +795,8 @@ method startInteractiveResize*(window: WindowX11, edge: Edge, pos: Option[Vec2])
       1, 0  # 1 means left mouse button
     ]
   )
-  discard display.XSendEvent(
-    display.DefaultRootWindow, 0, SubstructureNotifyMask or SubstructureRedirectMask, event.addr
+  discard window.globals.display.XSendEvent(
+    window.globals.display.DefaultRootWindow, 0, SubstructureNotifyMask or SubstructureRedirectMask, event.addr
   )
   window.isBeengInteractivelyResizedOrMoved = true
 
@@ -832,12 +845,13 @@ method content*(clipboard: ClipboardX11, kind: ClipboardContentKind, mimeType: s
 
   clipboard.m_data = options.none string
 
-  if display.XGetSelectionOwner(clipboard.selectionAtom) == None:
+  let globals = clipboard.attachedToWindow.globals
+  if globals.display.XGetSelectionOwner(clipboard.selectionAtom) == None:
     return emptyContent(kind, mimeType)
 
-  discard display.XConvertSelection(
-    clipboard.selectionAtom, display.XInternAtom(cstring mimeType, 0),
-    atoms.siwin_clipboardTargetProperty, clipboard.attachedToWindow.handle, CurrentTime
+  discard globals.display.XConvertSelection(
+    clipboard.selectionAtom, globals.display.XInternAtom(cstring mimeType, 0),
+    globals.atoms.siwin_clipboardTargetProperty, clipboard.attachedToWindow.handle, CurrentTime
   )
 
   while clipboard.m_data.isNone:
@@ -865,7 +879,7 @@ method content*(clipboard: ClipboardX11, kind: ClipboardContentKind, mimeType: s
 
 method `content=`*(clipboard: ClipboardX11, content: ClipboardConvertableContent) =
   clipboard.m_userContent = content
-  discard display.XSetSelectionOwner(
+  discard clipboard.attachedToWindow.globals.display.XSetSelectionOwner(
     clipboard.selectionAtom, clipboard.attachedToWindow.handle, CurrentTime
   )
 
@@ -873,16 +887,18 @@ method `content=`*(clipboard: ClipboardX11, content: ClipboardConvertableContent
 method `dragStatus=`*(window: WindowX11, v: DragStatus) =
   if window.dragSourceWindow == 0: return
 
-  var event = window.dragSourceWindow.newClientMessage(atoms.xDndStatus, [window.handle.clong])
+  var event = window.globals.newClientMessage(
+    window.dragSourceWindow, window.globals.atoms.xDndStatus, [window.handle.clong]
+  )
   event.xclient.data.l[1] = (if v != DragStatus.rejected: 1 else: 0).clong
 
   case v
   of DragStatus.accepted:
-    event.xclient.data.l[4] = atoms.xDndActionPrivate.clong
+    event.xclient.data.l[4] = window.globals.atoms.xDndActionPrivate.clong
   of DragStatus.rejected:
     discard
 
-  discard display.XSendEvent(
+  discard window.globals.display.XSendEvent(
     window.dragSourceWindow, 0, NoEventMask, event.addr
   )
   window.lastDragStatus = v
@@ -926,8 +942,8 @@ method firstStep*(window: WindowX11, makeVisible = true) =
   if makeVisible:
     window.visible = true
 
-  window.m_pos = window.handle.geometry.pos
-  window.mouse.pos = (cursor().pos - window.m_pos).vec2
+  window.m_pos = window.globals.geometry(window.handle).pos
+  window.mouse.pos = (window.globals.cursor().pos - window.m_pos).vec2
   
   if window of WindowX11SoftwareRendering:
     window.WindowX11SoftwareRendering.resizePixelBuffer(window.m_size)
@@ -972,10 +988,10 @@ method step*(window: WindowX11) =
     ## needed when window gets focus
     proc queryKeyboardState: set[0..255] =
       var r: array[32, char]
-      discard display.XQueryKeymap(r)
+      discard window.globals.display.XQueryKeymap(r)
       result = cast[ptr set[0..255]](r.addr)[]
 
-    let keys = queryKeyboardState().mapit(xkeyToKey display.XKeycodeToKeysym(it.char, 0))
+    let keys = queryKeyboardState().mapit(xkeyToKey window.globals.display.XKeycodeToKeysym(it.char, 0))
     for k in keys: # press pressed in system keys
       if k == Key.unknown: continue
       window.keyboard.pressed.incl k
@@ -994,18 +1010,18 @@ method step*(window: WindowX11) =
       ##
     
     of ClientMessage:
-      if ev.xclient.message_type == atoms.xDndEnter:
+      if ev.xclient.message_type == window.globals.atoms.xDndEnter:
         window.dragSourceWindow = x.Window ev.xclient.data.l[0]
 
         var availableMimeTypes: seq[string]
         if (ev.xclient.data.l[1] and 1) == 1:
-          let typeList = window.dragSourceWindow.property(atoms.xDndTypeList, Atom)
+          let typeList = window.globals.property(window.dragSourceWindow, window.globals.atoms.xDndTypeList, Atom)
           for atom in typeList.data:
-            availableMimeTypes.add $display.XGetAtomName(atom)
+            availableMimeTypes.add $window.globals.display.XGetAtomName(atom)
         else:
-          if ev.xclient.data.l[2] != 0: availableMimeTypes.add $display.XGetAtomName(ev.xclient.data.l[2].Atom)
-          if ev.xclient.data.l[3] != 0: availableMimeTypes.add $display.XGetAtomName(ev.xclient.data.l[3].Atom)
-          if ev.xclient.data.l[4] != 0: availableMimeTypes.add $display.XGetAtomName(ev.xclient.data.l[4].Atom)
+          if ev.xclient.data.l[2] != 0: availableMimeTypes.add $window.globals.display.XGetAtomName(ev.xclient.data.l[2].Atom)
+          if ev.xclient.data.l[3] != 0: availableMimeTypes.add $window.globals.display.XGetAtomName(ev.xclient.data.l[3].Atom)
+          if ev.xclient.data.l[4] != 0: availableMimeTypes.add $window.globals.display.XGetAtomName(ev.xclient.data.l[4].Atom)
         
         availableMimeTypes = availableMimeTypes.deduplicate
 
@@ -1024,7 +1040,7 @@ method step*(window: WindowX11) =
           availableMimeTypes: window.m_dragndropClipboard.availableMimeTypes,
         )
       
-      elif ev.xclient.message_type == atoms.xDndPosition:
+      elif ev.xclient.message_type == window.globals.atoms.xDndPosition:
         # todo: xDndPosition sends not only position
         window.mouse.pos = (
           ivec2(((ev.xclient.data.l[2] shr 16) and 0xFFFF).int32, (ev.xclient.data.l[2] and 0xFFFF).int32) - window.pos
@@ -1038,7 +1054,7 @@ method step*(window: WindowX11) =
           window.dragStatus = window.lastDragStatus
 
       
-      elif ev.xclient.message_type == atoms.xDndLeave:
+      elif ev.xclient.message_type == window.globals.atoms.xDndLeave:
         window.clearDragState()
         window.m_dragndropClipboard.availableKinds = {}
         window.m_dragndropClipboard.availableMimeTypes = @[]
@@ -1046,7 +1062,7 @@ method step*(window: WindowX11) =
           clipboard: window.m_dragndropClipboard
         )
       
-      elif ev.xclient.message_type == atoms.xDndDrop:
+      elif ev.xclient.message_type == window.globals.atoms.xDndDrop:
         window.eventsHandler.onDrop.pushEvent DropEvent(window: window)
         window.clearDragState()
         window.m_dragndropClipboard.availableKinds = {}
@@ -1055,10 +1071,10 @@ method step*(window: WindowX11) =
           clipboard: window.m_dragndropClipboard
         )
       
-      elif ev.xclient.data.l[0] == atoms.wmDeleteWindow.clong:
+      elif ev.xclient.data.l[0] == window.globals.atoms.wmDeleteWindow.clong:
         close window
 
-      elif ev.xclient.data.l[0] == atoms.netWmSyncRequest.clong:
+      elif ev.xclient.data.l[0] == window.globals.atoms.netWmSyncRequest.clong:
         window.lastSync = XSyncValue(
           lo: cast[uint32](ev.xclient.data.l[2]),
           hi: cast[int32](ev.xclient.data.l[3])
@@ -1067,14 +1083,19 @@ method step*(window: WindowX11) =
         window.redrawRequested = false  # hold on, wait for ConfigureNotify
 
     of ConfigureNotify:
-      let state = (let (kind, data) = window.handle.property(atoms.netWmState, Atom); if kind == XaAtom: data else: @[])
-      if atoms.netWmStateFullscreen in state != window.m_fullscreen:
+      let state = (let (kind, data) = window.globals.property(
+        window.handle, window.globals.atoms.netWmState, Atom); if kind == XaAtom: data else: @[]
+      )
+      if window.globals.atoms.netWmStateFullscreen in state != window.m_fullscreen:
         window.m_fullscreen = not window.m_fullscreen
         window.eventsHandler.onStateBoolChanged.pushEvent StateBoolChangedEvent(
           window: window, kind: StateBoolChangedEventKind.fullscreen, value: window.m_fullscreen
         )
       
-      if (atoms.netWmStateMaximizedHorz in state and atoms.netWmStateMaximizedVert in state) != window.m_maximized:
+      if (
+        window.globals.atoms.netWmStateMaximizedHorz in state and
+        window.globals.atoms.netWmStateMaximizedVert in state
+      ) != window.m_maximized:
         window.m_maximized = not window.m_maximized
         window.eventsHandler.onStateBoolChanged.pushEvent StateBoolChangedEvent(
           window: window, kind: StateBoolChangedEventKind.maximized, value: window.m_maximized
@@ -1088,7 +1109,7 @@ method step*(window: WindowX11) =
 
       if ev.xconfigure.x.int != window.m_pos.x or ev.xconfigure.y.int != window.m_pos.y:
         window.m_pos = ivec2(ev.xconfigure.x.int32, ev.xconfigure.y.int32)
-        window.mouse.pos = (cursor().pos - window.m_pos).vec2
+        window.mouse.pos = (window.globals.cursor().pos - window.m_pos).vec2
         window.eventsHandler.onWindowMove.pushEvent WindowMoveEvent(window: window, pos: window.m_pos)
       
       if window.syncState == SyncState.syncRecieved:
@@ -1122,13 +1143,14 @@ method step*(window: WindowX11) =
 
     of ButtonRelease:
       if window.isBeengInteractivelyResizedOrMoved and button == MouseButton.left:
-        let pos = cursor().pos - window.m_pos
-        var event = window.handle.newClientMessage(
-          atoms.netWmMoveResize,
+        let pos = window.globals.cursor().pos - window.m_pos
+        var event = window.globals.newClientMessage(
+          window.handle,
+          window.globals.atoms.netWmMoveResize,
           [pos.x.int64, pos.y.int64, 11, 1, 0]  # int64 means clong, 11 means _NET_WM_MOVERESIZE_CANCEL, 1 means left mouse button
         )
-        discard display.XSendEvent(
-          display.DefaultRootWindow, 0, SubstructureNotifyMask or SubstructureRedirectMask, event.addr
+        discard window.globals.display.XSendEvent(
+          window.globals.display.DefaultRootWindow, 0, SubstructureNotifyMask or SubstructureRedirectMask, event.addr
         )
         window.onInteractiveResizeOrMoveFinished()
 
@@ -1156,7 +1178,7 @@ method step*(window: WindowX11) =
       if window.isBeengInteractivelyResizedOrMoved:
         # for some reason, window.handle.geometry.pos returns (0, 0), but we can deduce window position using
         # difference between global mouse position and window-based mouse position we got from EnterNotify
-        window.m_pos = cursor().pos - ivec2(ev.xcrossing.x, ev.xcrossing.y)
+        window.m_pos = window.globals.cursor().pos - ivec2(ev.xcrossing.x, ev.xcrossing.y)
 
         window.onInteractiveResizeOrMoveFinished()
 
@@ -1214,18 +1236,20 @@ method step*(window: WindowX11) =
     
     of SelectionNotify:
       let clipboard =
-        if ev.xselection.selection == atoms.clipboard:
+        if ev.xselection.selection == window.globals.atoms.clipboard:
           window.m_clipboard
-        elif ev.xselection.selection == atoms.primary:
+        elif ev.xselection.selection == window.globals.atoms.primary:
           window.m_selectionClipboard
-        elif ev.xselection.selection == atoms.xDndSelection:
+        elif ev.xselection.selection == window.globals.atoms.xDndSelection:
           window.m_dragndropClipboard
         else:
           return
 
       if ev.xselection.property != None:
-        clipboard.ClipboardX11.m_data = options.some window.handle.property(ev.xselection.property, string).data
-        discard display.XDeleteProperty(window.handle, ev.xselection.target)
+        clipboard.ClipboardX11.m_data = options.some window.globals.property(
+          window.handle, ev.xselection.property, string
+        ).data
+        discard window.globals.display.XDeleteProperty(window.handle, ev.xselection.target)
       else:
         clipboard.ClipboardX11.m_data = some ""
     
@@ -1241,48 +1265,48 @@ method step*(window: WindowX11) =
       resp.target    = e.target
 
       proc sendWeCannotHandleRequest(resp: XSelectionEvent, ev: XEvent) =
-        discard display.XSendEvent(
+        discard window.globals.display.XSendEvent(
           e.requestor, 1, NoEventMask, cast[ptr XEvent](resp.addr)
         )
 
       let clipboard =
-        if e.selection == atoms.clipboard:
+        if e.selection == window.globals.atoms.clipboard:
           window.m_clipboard
-        elif e.selection == atoms.primary:
+        elif e.selection == window.globals.atoms.primary:
           window.m_selectionClipboard
-        elif e.selection == atoms.xDndSelection:
+        elif e.selection == window.globals.atoms.xDndSelection:
           window.m_dragndropClipboard
         else:
           sendWeCannotHandleRequest(resp, ev)
           return
       
-      if e.target == atoms.targets:
+      if e.target == window.globals.atoms.targets:
         # requestor is wanting to know what type of data is available
-        var targets = @[atoms.targets]
+        var targets = @[window.globals.atoms.targets]
 
         for cv in clipboard.ClipboardX11.m_userContent.converters:
           case cv.kind
           of ClipboardContentKind.text:
-            targets.add [atoms.utf8String, XaString, display.XInternAtom("TEXT", 0)]
+            targets.add [window.globals.atoms.utf8String, XaString, window.globals.display.XInternAtom("TEXT", 0)]
           
           of ClipboardContentKind.files:
-            targets.add display.XInternAtom("text/uri-list", 0)
+            targets.add window.globals.display.XInternAtom("text/uri-list", 0)
           
           of ClipboardContentKind.other:
-            targets.add display.XInternAtom(cstring cv.mimeType, 0)
+            targets.add window.globals.display.XInternAtom(cstring cv.mimeType, 0)
         
-        discard display.XChangeProperty(
+        discard window.globals.display.XChangeProperty(
           e.requestor, e.property, XaAtom,
           32, PropModeReplace, cast[PCUChar](targets[0].addr), targets.len.cint
         )
 
-        discard display.XSendEvent(
+        discard window.globals.display.XSendEvent(
           e.requestor, 1, NoEventMask, cast[ptr XEvent](resp.addr)
         )
       
       else:
         # requestor is wanting the data
-        let targetType = $display.XGetAtomName(e.target)
+        let targetType = $window.globals.display.XGetAtomName(e.target)
 
         var conv: ClipboardContentConverter
         for cv in clipboard.ClipboardX11.m_userContent.converters:
@@ -1319,12 +1343,12 @@ method step*(window: WindowX11) =
         of ClipboardContentKind.other:
           data = content.data
         
-        discard display.XChangeProperty(
+        discard window.globals.display.XChangeProperty(
           e.requestor, e.property, resp.target,
           8, PropModeReplace, cast[PCUChar](if data.len != 0: data[0].addr else: nil), data.len.cint
         )
 
-        discard display.XSendEvent(
+        discard window.globals.display.XSendEvent(
           e.requestor, 1, NoEventMask, cast[ptr XEvent](resp.addr)
         )
 
@@ -1345,7 +1369,7 @@ method step*(window: WindowX11) =
     proc checkEvent(_: PDisplay, event: PXEvent, userData: XPointer): XBool {.cdecl.} =
       if cast[int](event.xany.window) == cast[int](userData): 1 else: 0
     
-    while display.XCheckIfEvent(nextEv.addr, checkEvent, cast[XPointer](window.handle)) == 1:
+    while window.globals.display.XCheckIfEvent(nextEv.addr, checkEvent, cast[XPointer](window.handle)) == 1:
       if not catched:
         ev = nextEv
         catched = true
@@ -1360,7 +1384,7 @@ method step*(window: WindowX11) =
       if (getTime() - window.lastTickTime) > initDuration(milliseconds=10):
         break
 
-      discard XFlush display
+      discard XFlush window.globals.display
 
     if catched:
       handleEvent(ev, nextEv, false)
@@ -1380,18 +1404,19 @@ method step*(window: WindowX11) =
     window.beginSwapBuffers()
 
     if window.syncState == SyncState.syncAndConfigureRecieved:
-      display.XSyncSetCounter(window.xSyncCounter, window.lastSync)
+      window.globals.display.XSyncSetCounter(window.xSyncCounter, window.lastSync)
       window.syncState = SyncState.none
 
     window.endSwapBuffers()
 
-    discard XFlush display
+    discard XFlush window.globals.display
 
 
 proc newSoftwareRenderingWindowX11*(
+  globals: SiwinGlobalsX11,
   size = ivec2(1280, 720),
   title = "",
-  screen = defaultScreenX11(),
+  screen = globals.defaultScreenX11(),
   resizable = true,
   fullscreen = false,
   frameless = false,
@@ -1400,6 +1425,9 @@ proc newSoftwareRenderingWindowX11*(
   class = "", # window class (used in x11), equals to title if not specified
 ): WindowX11SoftwareRendering =
   new result
-  result.initSoftwareRenderingWindow(size, screen, fullscreen, frameless, transparent, (if class == "": title else: class))
+  result.globals = globals
+  result.initSoftwareRenderingWindow(
+    size, screen, fullscreen, frameless, transparent, (if class == "": title else: class)
+  )
   result.title = title
   if not resizable: result.resizable = false

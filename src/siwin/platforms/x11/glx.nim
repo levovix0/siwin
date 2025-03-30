@@ -1,6 +1,5 @@
 import macros, unicode, strutils, sequtils, dynlib
 import x11/[x, xlib, xutil]
-import globalDisplay
 import ../../[siwindefs]
 
 type
@@ -86,7 +85,7 @@ const
   GLX_PBUFFER_CLOBBER_MASK* = 0x08000000'i32
 
 
-const dllname = 
+const dllname =
   when defined(linux): "libGL.so.1"
   elif defined(windows): "GL.dll"
   elif defined(macosx): "/usr/X11R6/lib/libGL.dylib"
@@ -99,13 +98,13 @@ macro glx(f: static[string], def: untyped) =
   result.pragma = quote do: {.cdecl, dynlib: dllname, importc: `cname`.}
 
 
-proc glxChooseVisual*(screen: int, attr: openarray[int32]): PXVisualInfo =
+proc glxChooseVisual*(display: ptr Display, screen: int, attr: openarray[int32]): PXVisualInfo =
   proc impl(dpy: ptr Display, screen: cint, attribList: ptr int32): PXVisualInfo {.glx: "chooseVisual".}
   let attr = attr.toSeq & 0
   result = display.impl(screen.cint, attr[0].addr)
 
 
-proc glxChooseFbConfig*(screen: int, attr: openarray[int32]): seq[GlxFbConfig] =
+proc glxChooseFbConfig*(display: ptr Display, screen: int, attr: openarray[int32]): seq[GlxFbConfig] =
   proc impl(dpy: ptr Display, screen: cint, attribList: ptr int32, nitems: ptr cint): ptr UncheckedArray[GlxFbConfig] {.glx: "chooseFBConfig".}
   let attr = attr.toSeq & 0
   var nitems: cint
@@ -116,7 +115,7 @@ proc glxChooseFbConfig*(screen: int, attr: openarray[int32]): seq[GlxFbConfig] =
     result[i] = p[i]
 
 
-proc glxGetVisualFromFBConfig*(config: GlxFbConfig): PXVisualInfo =
+proc glxGetVisualFromFBConfig*(display: ptr Display, config: GlxFbConfig): PXVisualInfo =
   proc impl(dpy: ptr Display, config: GlxFbConfig): PXVisualInfo {.glx: "getVisualFromFBConfig".}
   result = display.impl(config)
 
@@ -126,12 +125,12 @@ proc glxCurrentContext*(): GlxContext {.glx: "getCurrentContext".}
 
 
 proc cMakeCurrent(dpy: PDisplay, drawable: Drawable, ctx: pointer): cint {.glx: "makeCurrent".}
-proc makeCurrent*(a: Drawable, ctx: GlxContext) =
+proc makeCurrent*(display: ptr Display, a: Drawable, ctx: GlxContext) =
   proc impl(dpy: PDisplay, drawable: Drawable, ctx: pointer): cint {.glx: "makeCurrent".}
   discard display.impl(a, ctx.raw)
 
 
-proc `=destroy`*(context: GlxContext) {.siwin_destructor.} =
+proc destroy*(display: ptr Display, context: GlxContext) {.siwin_destructor.} =
   proc impl(dpy: PDisplay, ctx: GlxContext) {.glx: "destroyContext".}
   if context.raw == nil: return
   if cGlxCurrentContext() == context.raw:
@@ -139,17 +138,19 @@ proc `=destroy`*(context: GlxContext) {.siwin_destructor.} =
   if context.raw != nil: display.impl(context)
 
 
-proc newGlxContext*(vis: PXVisualInfo, direct: bool = true, shareList: GlxContext = GlxContext()): GlxContext =
+proc newGlxContext*(display: ptr Display, vis: PXVisualInfo, direct: bool = true, shareList: GlxContext = GlxContext()): GlxContext =
   proc impl(dpy: PDisplay, vis: PXVisualInfo, shareList: GlxContext, direct: cint): GlxContext {.glx: "createContext".}
   display.impl(vis, shareList, direct.cint)
 
 
-proc newGlxContext*(fbc: GlxFbConfig, renderType: cint = GLX_RGBA_TYPE, direct: bool = true, shareList: GlxContext = GlxContext()): GlxContext =
+proc newGlxContext*(
+  display: ptr Display, fbc: GlxFbConfig, renderType: cint = GLX_RGBA_TYPE, direct: bool = true, shareList: GlxContext = GlxContext()
+): GlxContext =
   proc impl(dpy: PDisplay, fbc: GlxFbConfig, renderType: cint, shareList: GlxContext, direct: cint): GlxContext {.glx: "createNewContext".}
   display.impl(fbc, renderType, shareList, direct.cint)
 
 
-proc glxSwapBuffers*(d: Drawable) =
+proc glxSwapBuffers*(display: ptr Display, d: Drawable) =
   proc impl(dpy: PDisplay, drawable: Drawable) {.glx: "swapBuffers".}
   display.impl(d)
 

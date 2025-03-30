@@ -87,6 +87,9 @@ type
     ## raised when trying to get pixel buffer from non-softwareRendering window
   
 
+  SiwinGlobals* = ref object of RootObj
+  
+
   Screen* = ref object of RootObj
 
 

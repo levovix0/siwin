@@ -244,7 +244,9 @@ proc `=destroy`(window: WindowWaylandSoftwareRenderingObj) {.siwin_destructor.} 
 
   for x in window.fields:
     when compiles(`=destroy`(x)):
-      `=destroy`(x)
+      try:
+        `=destroy`(x)
+      except: discard
 
 
 method release(window: WindowWayland) {.base, raises: [].} =

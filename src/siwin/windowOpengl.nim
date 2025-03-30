@@ -2,23 +2,28 @@ import vmath
 import window
 import ./platforms
 
-when defined(nimcheck) or defined(nimsuggest):
-  discard
-elif defined(android):
+when defined(android):
   import ./platforms/android/window as androidWindow
+
 elif defined(linux):
+  import ./platforms/x11/siwinGlobals as x11SiwinGlobals
   import ./platforms/x11/window as x11Window
   import ./platforms/x11/windowOpengl as x11WindowOpengl
+  
+  # import ./platforms/wayland/siwinGlobals as waylandSiwinGlobals
   import ./platforms/wayland/window as waylandWindow
   import ./platforms/wayland/windowOpengl as waylandWindowOpengl
+
 elif defined(windows):
   import ./platforms/winapi/window as winapiWindow
   import ./platforms/winapi/windowOpengl as winapiWindowOpengl
+
 elif defined(macosx):
   import ./platforms/cocoa/window as cocoaWindow
 
 
 proc newOpenglWindow*(
+  globals: SiwinGlobals,
   size = ivec2(1280, 720),
   title = "",
   screen: int32 = -1,
@@ -27,14 +32,10 @@ proc newOpenglWindow*(
   frameless = false,
   transparent = false,
   vsync = true,
-  preferedPlatform = defaultPreferedPlatform(),
 
   class = "", # window class (used in x11), equals to title if not specified
 ): Window =
-  when defined(nimcheck) or defined(nimsuggest):
-    discard
-
-  elif defined(android):
+  when defined(android):
     newOpenglWindowAndroid(
       size, title,
       # (if screen == -1: defaultScreenAndroid() else: screenAndroid(screen)),
@@ -42,23 +43,21 @@ proc newOpenglWindow*(
     )
 
   elif defined(linux):
-    case availablePlatforms().platformToUse(preferedPlatform)
-    of x11:
-      result = newOpenglWindowX11(
+    if globals of SiwinGlobalsX11:
+      result = globals.SiwinGlobalsX11.newOpenglWindowX11(
         size, title,
-        (if screen == -1: defaultScreenX11() else: screenX11(screen)),
+        (if screen == -1: globals.SiwinGlobalsX11.defaultScreenX11() else: globals.SiwinGlobalsX11.screenX11(screen)),
         resizable, fullscreen, frameless, transparent, vsync,
         (if class == "": title else: class)
       )
-    
-    of wayland:
-      result = newOpenglWindowWayland(
-        size, title,
-        (if screen == -1: defaultScreenWayland() else: screenWayland(screen)),
-        resizable, fullscreen, frameless, transparent, vsync
-      )
-    
-    else: discard
+    # elif globals of SiwinGlobalsWayland:
+      # result = newOpenglWindowWayland(
+      #   size, title,
+      #   (if screen == -1: defaultScreenWayland() else: screenWayland(screen)),
+      #   resizable, fullscreen, frameless, transparent, vsync
+      # )
+    else:
+      raise SiwinPlatformSupportDefect.newException("Unsupported platform")
 
   elif defined(windows):
     newOpenglWindowWinapi(

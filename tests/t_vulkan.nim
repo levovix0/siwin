@@ -622,7 +622,11 @@ test "Vulkan":
 
   instance = createInstance(cast[cstringArray](cexts[0].addr), exts.len.uint32)
 
-  let window = newVulkanWindow(cast[pointer](instance), title="Vulkan test", size = ivec2(WIDTH.int32, HEIGHT.int32), resizable=false)
+  let globals = newSiwinGlobals()
+
+  let window = globals.newVulkanWindow(
+    cast[pointer](instance), title="Vulkan test", size = ivec2(WIDTH.int32, HEIGHT.int32), resizable=false
+  )
   surface = cast[VkSurfaceKHR](window.vulkanSurface)
   
   init()
