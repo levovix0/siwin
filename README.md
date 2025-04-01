@@ -6,7 +6,8 @@
 
 Can be used as an alternative to GLFW/GLUT/windy  
 
-![Language](https://img.shields.io/badge/language-Nim-orange.svg?style=flat-square) ![Code size](https://img.shields.io/github/languages/code-size/levovix0/siwin?style=flat-square) ![Total Lines](https://img.shields.io/tokei/lines/github/levovix0/siwin?color=purple&style=flat-square)
+![Language](https://img.shields.io/badge/language-Nim-orange.svg?style=flat-square) ![Code size](https://img.shields.io/github/languages/code-size/levovix0/siwin?style=flat-square) ![Latest version](https://img.shields.io/github/v/tag/levovix0/siwin?label=Latest%20version&color=purple&style=flat-square)
+
 
 
 # Features
