@@ -3,7 +3,7 @@ import ./platforms/any/window
 when defined(android):
   ##
 when defined(linux) and not defined(android):
-  import ./platforms/wayland/globals as waylandGlobals
+  import ./platforms/wayland/siwinGlobals as waylandGlobals
   import ./platforms/x11/siwinGlobals as x11Globals
 when defined(windows):
   ##
@@ -38,10 +38,7 @@ proc availablePlatforms*: seq[Platform] =
     @[Platform.android]
   
   elif defined(linux):
-    waylandGlobals.init()
-    # todo: detect if x11 is really available
-
-    if waylandGlobals.waylandAvailable:
+    if isWaylandAvailable():
       @[Platform.wayland, Platform.x11]
     else:
       @[Platform.x11]
@@ -91,9 +88,10 @@ proc newSiwinGlobals*(preferedPlatform: Platform = defaultPreferedPlatform()): S
   elif defined(linux):
     case availablePlatforms().platformToUse(preferedPlatform)
     of x11:
-      return x11Globals.newX11Globals()
-    # of wayland:
-    #   waylandGlobals.newSiwinGlobalsWayland()
+      return newX11Globals()
+    of wayland:
+      result = newWaylandGlobals()
+      result.SiwinGlobalsWayland.roundtrip()
     else:
       raise SiwinPlatformSupportDefect.newException("Unsupported platform")
 

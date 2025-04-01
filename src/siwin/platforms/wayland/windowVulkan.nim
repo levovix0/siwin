@@ -2,7 +2,7 @@ import std/[importutils]
 import pkg/[vmath]
 import ../../[siwindefs]
 import ../any/window {.all.}
-import ./[libwayland, globals, vkWayland]
+import ./[libwayland, siwinGlobals, vkWayland]
 import window {.all.}
 
 privateAccess Window
@@ -28,7 +28,9 @@ proc `=destroy`*(window: WindowWaylandVulkanObj) {.siwin_destructor.} =
 
   for x in window.fields:
     when compiles(`=destroy`(x)):
-      `=destroy`(x)
+      try:
+        `=destroy`(x)
+      except: discard
 
 method release(window: WindowWaylandVulkan) =
   ## destroy wayland part of window
@@ -48,8 +50,6 @@ proc initVulkanWindow(
   size: IVec2, screen: ScreenWayland,
   fullscreen, frameless, transparent: bool, class: string
 ) =
-  globals.init()
-
   window.basicInitWindow size, screen
   
   window.setupWindow fullscreen, frameless, transparent, size, class
@@ -64,7 +64,7 @@ proc initVulkanWindow(
     sType: VK_STRUCTURE_TYPE_WAYLAND_SURFACE_CREATE_INFO_KHR,
     pNext: nil,
     flags: 0.uint32,
-    display: display,
+    display: window.globals.display,
     surface: window.surface,
   )
   let res = vkCreateWaylandSurfaceKHR(vkInstance, info.addr, nil, window.vulkan_surface.raw.addr)
@@ -73,10 +73,11 @@ proc initVulkanWindow(
 
 
 proc newVulkanWindowWayland*(
+  globals: SiwinGlobalsWayland,
   vkInstance: pointer,
   size = ivec2(1280, 720),
   title = "",
-  screen = defaultScreenWayland(),
+  screen: ScreenWayland,
   resizable = true,
   fullscreen = false,
   frameless = false,
@@ -85,6 +86,7 @@ proc newVulkanWindowWayland*(
   class = "", # window class (used in x11), equals to title if not specified
 ): WindowWaylandVulkan =
   new result
+  result.globals = globals
   result.initVulkanWindow(vkInstance, size, screen, fullscreen, frameless, transparent, (if class == "": title else: class))
   result.title = title
   if not resizable: result.resizable = false

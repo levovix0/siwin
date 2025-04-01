@@ -80,13 +80,7 @@ let
   proxyNimTag: cstring = "nim-side proxy (userdata is ref RootObj and it requires destruction)"
 
 var
-  waylandAvailable* = true
-
   libwaylandclientHandle = loadLib("libwayland-client.so")
-
-
-if libwaylandclientHandle == nil:
-  waylandAvailable = false
 
 
 siwin_loadDynlibIfExists libwaylandclientHandle:
@@ -135,7 +129,7 @@ proc `=destroy`*(this: Wl_display) {.siwin_destructor.} =
 proc destroyCallbacks*(this: Wl_proxy) =
   if this.raw == nil: return
   if this.wl_proxy_get_tag == proxyNimTag.addr:
-    cast[ptr proc(cb: pointer) {.cdecl, raises: [].}](this.raw.impl)[](this.raw.impl)
+    cast[ptr tuple[a: pointer, f: proc(cb: pointer) {.cdecl, raises: [].}]](this.raw.impl)[].f(this.raw.impl)
     this.wl_proxy_set_tag nil
 
 proc destroy*(this: Wl_proxy) =
@@ -182,10 +176,11 @@ proc newWl_interface*(
   for i, x in events:
     result.events[i] = x
 
-proc construct*(proxy: pointer, t: type, dispatcher: Wl_dispatcher_proc, callbacksT: type): t =
+proc construct*(proxy: pointer, interfaces: pointer, t: type, dispatcher: Wl_dispatcher_proc, callbacksT: type): t =
   result.proxy.raw = cast[ptr Wl_object](proxy)
   result.proxy.wl_proxy_set_tag(proxyNimTag.addr)
   let callbacks = cast[ptr callbacksT](alloc0(callbacksT.sizeof))
+  cast[ptr pointer](callbacks)[] = interfaces
   callbacks[].destroy = proc(cb: pointer) {.cdecl, raises: [].} =
     `=destroy`(cast[ptr callbacksT](cb)[])
     dealloc(cb)

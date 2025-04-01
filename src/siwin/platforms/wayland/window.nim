@@ -4,7 +4,7 @@ import pkg/[vmath]
 import ../../[colorutils, siwindefs]
 import ../any/[window {.all.}, clipboards]
 import ../any/[windowUtils]
-import ./[libwayland, protocol, globals, sharedBuffer, bitfields, xkb]
+import ./[libwayland, protocol, siwinGlobals, sharedBuffer, bitfields, xkb]
 
 {.experimental: "overloadableEnums".}
 
@@ -20,6 +20,7 @@ type
   
   WindowWayland* = ref WindowWaylandObj
   WindowWaylandObj* = object of Window
+    globals: SiwinGlobalsWayland
     surface: Wl_surface
     xdgSurface: Xdg_surface
     xdgToplevel: Xdg_toplevel
@@ -51,34 +52,18 @@ type
     lastKeyRepeatedTime: Time
   
   ClipboardWayland* = ref object of Clipboard
+    globals: SiwinGlobalsWayland
     userContent: ClipboardConvertableContent
     dataSource: Wl_data_source
   
   ClipboardWaylandDnd* = ref object of Clipboard
+    globals: SiwinGlobalsWayland
 
 
   WindowWaylandSoftwareRendering* = ref WindowWaylandSoftwareRenderingObj
   WindowWaylandSoftwareRenderingObj* = object of WindowWayland
     buffer: SharedBuffer
     oldBuffer: SharedBuffer
-
-
-var
-  associatedWindows: Table[uint32, WindowWayland]  # surface proxy id -> window
-  associatedWindows_queueRemove_insteadOf_removingInstantly = false
-  associatedWindows_removeQueue: seq[uint32]
-
-  seat_pointer_currentWindow: WindowWayland
-  seat_keyboard_currentWindow: WindowWayland
-  seat_touch_currentWindow: WindowWayland
-
-  seat_keyboard_repeatSettings: tuple[rate, delay: int32]
-
-  primaryClipboard = ClipboardWayland()
-  selectionClipboard = ClipboardWayland()
-  dragndropClipboard = ClipboardWaylandDnd()
-
-  lastSeatEventSerial: uint32
 
 
 proc waylandKeyToKey(keycode: uint32): Key =
@@ -202,19 +187,16 @@ proc waylandKeyToString(keycode: uint32): string =
 
 method swapBuffers(window: WindowWayland) {.base.} = discard
 
-proc screenCountWayland*: int32 =
-  globals.init()
+proc screenCountWayland*(globals: SiwinGlobalsWayland): int32 =
   ## todo
   1
 
-proc screenWayland*(number: int32): ScreenWayland =
+proc screenWayland*(globals: SiwinGlobalsWayland, number: int32): ScreenWayland =
   new result
-  globals.init()
-  if number notin 0..<screenCountWayland(): raise IndexDefect.newException(&"screen {number} doesn't exist")
+  if number notin 0..<globals.screenCountWayland(): raise IndexDefect.newException(&"screen {number} doesn't exist")
   result.id = number.cint
 
-proc defaultScreenWayland*: ScreenWayland =
-  globals.init()
+proc defaultScreenWayland*(globals: SiwinGlobalsWayland): ScreenWayland =
   ScreenWayland(id: 0.cint)
 
 method number*(screen: ScreenWayland): int32 = screen.id
@@ -231,7 +213,9 @@ proc `=destroy`(window: WindowWaylandObj) {.siwin_destructor.} =
 
   for x in window.fields:
     when compiles(`=destroy`(x)):
-      `=destroy`(x)
+      try:
+        `=destroy`(x)
+      except: discard
 
 
 proc `=trace`(x: var WindowWaylandSoftwareRenderingObj, env: pointer) =
@@ -257,10 +241,10 @@ method release(window: WindowWayland) {.base, raises: [].} =
       x = typeof(x).default
 
   if window.surface != nil:
-    if associatedWindows_queueRemove_insteadOf_removingInstantly:
-      associatedWindows_removeQueue.add window.surface.proxy.raw.id
+    if window.globals.associatedWindows_queueRemove_insteadOf_removingInstantly:
+      window.globals.associatedWindows_removeQueue.add window.surface.proxy.raw.id
     else:
-      associatedWindows.del window.surface.proxy.raw.id
+      window.globals.associatedWindows.del window.surface.proxy.raw.id
 
   try:
     destroy window.idleInhibitor, destroy
@@ -274,10 +258,10 @@ method release(window: WindowWayland) {.base, raises: [].} =
     discard
 
 
-proc removeQueuedAssociatedWindows =
-  for id in associatedWindows_removeQueue:
-    associatedWindows.del id
-  associatedWindows_removeQueue = @[]
+proc removeQueuedAssociatedWindows(globals: SiwinGlobalsWayland) =
+  for id in globals.associatedWindows_removeQueue:
+    globals.associatedWindows.del id
+  globals.associatedWindows_removeQueue = @[]
 
 
 method release(window: WindowWaylandSoftwareRendering) =
@@ -306,22 +290,33 @@ method close*(window: WindowWayland) =
   release window
 
 
+proc initClipboardsIfNeeded(globals: SiwinGlobalsWayland) =
+  if globals.primaryClipboard == nil:
+    globals.primaryClipboard = ClipboardWayland(globals: globals)
+  if globals.selectionClipboard == nil:
+    globals.selectionClipboard = ClipboardWayland(globals: globals)
+  if globals.dragndropClipboard == nil:
+    globals.dragndropClipboard = ClipboardWaylandDnd(globals: globals)
+
+
 proc basicInitWindow(window: WindowWayland; size: IVec2; screen: ScreenWayland) =
   window.m_size = size
   window.m_focused = false
   window.m_resizable = true
   window.m_frameless = true
 
-  window.m_clipboard = primaryClipboard
-  window.m_selectionClipboard = selectionClipboard
-  window.m_dragndropClipboard = dragndropClipboard
+  window.globals.initClipboardsIfNeeded()
+
+  window.m_clipboard = window.globals.primaryClipboard
+  window.m_selectionClipboard = window.globals.selectionClipboard
+  window.m_dragndropClipboard = window.globals.dragndropClipboard
 
 
 method doResize(window: WindowWayland, size: IVec2) {.base.} =
   window.m_size = size
 
   if not window.m_transparent:
-    let opaqueRegion = compositor.create_region
+    let opaqueRegion = window.globals.compositor.create_region
     opaqueRegion.add(0, 0, window.m_size.x, window.m_size.y)
     window.surface.set_opaque_region(opaqueRegion)
     destroy opaqueRegion
@@ -334,7 +329,7 @@ method doResize(window: WindowWaylandSoftwareRendering, size: IVec2) =
     swap window.buffer, window.oldBuffer
 
   if window.buffer == nil:
-    window.buffer = shm.create(size, (if window.m_transparent: argb8888 else: xrgb8888), bufferCount = 2)
+    window.buffer = window.globals.create(window.globals.shm, size, (if window.m_transparent: argb8888 else: xrgb8888), bufferCount = 2)
   else:
     window.buffer.resize(size)
 
@@ -370,9 +365,9 @@ method `title=`*(window: WindowWayland, v: string) =
 
 
 proc setFrameless(window: WindowWayland, v: bool) =
-  if serverDecorationManager != nil:
+  if window.globals.serverDecorationManager != nil:
     if window.serverDecoration == nil:
-      window.serverDecoration = serverDecorationManager.get_toplevel_decoration(window.xdg_toplevel)
+      window.serverDecoration = window.globals.serverDecorationManager.get_toplevel_decoration(window.xdg_toplevel)
       
       window.serverDecoration.onConfigure:
         let newFrameless = case mode
@@ -545,15 +540,16 @@ method `maxSize=`*(window: WindowWayland, v: IVec2) =
   if window.kind == WindowWaylandKind.XdgSurface: window.xdgToplevel.set_max_size(v.x, v.y)
 
 method startInteractiveMove*(window: WindowWayland, pos: Option[Vec2]) =
-  expectExtension seat
-  if window.kind == WindowWaylandKind.XdgSurface: window.xdgToplevel.move(seat, window.lastMouseButtonEventSerial)
+  expectExtension window.globals.seat
+  if window.kind == WindowWaylandKind.XdgSurface:
+    window.xdgToplevel.move(window.globals.seat, window.lastMouseButtonEventSerial)
 
 method startInteractiveResize*(window: WindowWayland, edge: Edge, pos: Option[Vec2]) =
-  expectExtension seat
+  expectExtension window.globals.seat
 
   if window.kind == WindowWaylandKind.XdgSurface:
     window.xdgToplevel.resize(
-      seat, window.lastMouseButtonEventSerial,
+      window.globals.seat, window.lastMouseButtonEventSerial,
       case edge
       of Edge.topLeft:     `Xdg_toplevel/Resize_edge`.top_left
       of Edge.top:         `Xdg_toplevel/Resize_edge`.top
@@ -567,13 +563,13 @@ method startInteractiveResize*(window: WindowWayland, edge: Edge, pos: Option[Ve
 
 method showWindowMenu*(window: WindowWayland, pos: Option[Vec2]) =
   let pos = pos.get(window.mouse.pos).ivec2
-  window.xdgToplevel.show_window_menu(seat, window.lastMouseButtonEventSerial, pos.x, pos.y)
+  window.xdgToplevel.show_window_menu(window.globals.seat, window.lastMouseButtonEventSerial, pos.x, pos.y)
 
 
 method setInputRegion*(window: WindowWayland, pos, size: Vec2) =
   procCall window.Window.setInputRegion(pos, size)
   
-  let region = compositor.create_region
+  let region = window.globals.compositor.create_region
   region.add(pos.x.int32, pos.y.int32, size.x.int32, size.y.int32)
   
   window.surface.set_input_region(region)
@@ -604,25 +600,24 @@ method `visible=`*(window: WindowWayland, v: bool) =
   ## todo
 
 
-proc initSeatEvents* =
-  if seatEventsInitialized: return
-  if not waylandAvailable: return
-  seatEventsInitialized = true
+proc initSeatEvents*(globals: SiwinGlobalsWayland) =
+  if globals.seatEventsInitialized: return
+  globals.seatEventsInitialized = true
 
-  if seat == nil: return
+  if globals.seat == nil: return
 
-  if `WlSeat / Capability`.`pointer` in seatCapabilities:
-    seat_pointer = seat.get_pointer
+  if `WlSeat / Capability`.`pointer` in globals.seatCapabilities:
+    globals.seat_pointer = globals.seat.get_pointer
 
-    seat_pointer.onEnter:
+    globals.seat_pointer.onEnter:
       if surface == nil: return
-      let window = associatedWindows.getOrDefault(surface.proxy.raw.id, nil)
+      let window = globals.associatedWindows.getOrDefault(surface.proxy.raw.id, nil).WindowWayland
       if window == nil: return
-      seat_pointer_currentWindow = window
+      globals.seat_pointer_currentWindow = window
       
       window.clicking = {}
       window.enterSerial = serial
-      lastSeatEventSerial = serial
+      globals.lastSeatEventSerial = serial
       window.mouse.pos = vec2(surface_x, surface_y)
 
       replicateWindowTitleAndBorderBehaviour(window, window.mouse.pos)
@@ -630,10 +625,10 @@ proc initSeatEvents* =
       if window.opened: window.eventsHandler.onMouseMove.pushEvent MouseMoveEvent(window: window, pos: window.mouse.pos, kind: MouseMoveKind.enter)
     
 
-    seat_pointer.onLeave:
-      seat_pointer_currentWindow = nil
+    globals.seat_pointer.onLeave:
+      globals.seat_pointer_currentWindow = nil
       if surface == nil: return
-      let window = associatedWindows.getOrDefault(surface.proxy.raw.id, nil)
+      let window = globals.associatedWindows.getOrDefault(surface.proxy.raw.id, nil).WindowWayland
       if window == nil: return
 
       replicateWindowTitleAndBorderBehaviour(window, window.mouse.pos)
@@ -644,16 +639,17 @@ proc initSeatEvents* =
       # we don't unpress buttons on leave, because we "capture" mouse
     
 
-    seat_pointer.onMotion:
-      associatedWindows_queueRemove_insteadOf_removingInstantly = true
+    globals.seat_pointer.onMotion:
+      globals.associatedWindows_queueRemove_insteadOf_removingInstantly = true
       defer:
-        associatedWindows_queueRemove_insteadOf_removingInstantly = false
-        removeQueuedAssociatedWindows()
+        globals.associatedWindows_queueRemove_insteadOf_removingInstantly = false
+        globals.removeQueuedAssociatedWindows()
 
-      for window in associatedWindows.values:
+      for window in globals.associatedWindows.values:
+        let window = window.WindowWayland
         if (
           (window.mouse.pressed.len == 0) and
-          window != seat_pointer_currentWindow
+          window != globals.seat_pointer_currentWindow.WindowWayland
         ): continue
 
         replicateWindowTitleAndBorderBehaviour(window, window.mouse.pos)
@@ -663,7 +659,7 @@ proc initSeatEvents* =
         if window.opened: window.eventsHandler.onMouseMove.pushEvent MouseMoveEvent(window: window, pos: window.mouse.pos, kind: MouseMoveKind.move)
     
 
-    seat_pointer.onButton:
+    globals.seat_pointer.onButton:
       let button = case button
       of 0x110: MouseButton.left
       of 0x111: MouseButton.right
@@ -675,19 +671,20 @@ proc initSeatEvents* =
       let nows = initDuration(milliseconds = time.int64)
 
       # iterate over all windows, in case there are some which currently "holding" pressed mouse
-      associatedWindows_queueRemove_insteadOf_removingInstantly = true
+      globals.associatedWindows_queueRemove_insteadOf_removingInstantly = true
       defer:
-        associatedWindows_queueRemove_insteadOf_removingInstantly = false
-        removeQueuedAssociatedWindows()
+        globals.associatedWindows_queueRemove_insteadOf_removingInstantly = false
+        globals.removeQueuedAssociatedWindows()
       
-      for window in associatedWindows.values:
+      for window in globals.associatedWindows.values:
+        let window = window.WindowWayland
         if (
           (state != `WlPointer / Button_state`.released or button notin window.mouse.pressed) and
-          window != seat_pointer_currentWindow
+          window != globals.seat_pointer_currentWindow.WindowWayland
         ): continue
 
         window.lastMouseButtonEventSerial = serial
-        lastSeatEventSerial = serial
+        globals.lastSeatEventSerial = serial
         if state == `WlPointer / Button_state`.pressed:
           window.mouse.pressed.incl button
           window.clicking.incl button
@@ -712,9 +709,9 @@ proc initSeatEvents* =
         if window.opened: window.eventsHandler.onMouseButton.pushEvent MouseButtonEvent(window: window, button: button, pressed: state == `WlPointer / Button_state`.pressed, generated: false)
 
 
-    seat_pointer.onAxis:
-      if seat_pointer_currentWindow == nil: return
-      let window = seat_pointer_currentWindow
+    globals.seat_pointer.onAxis:
+      if globals.seat_pointer_currentWindow == nil: return
+      let window = globals.seat_pointer_currentWindow.WindowWayland
 
       const kde_default_mousewheel_scroll_length = 15
 
@@ -730,18 +727,18 @@ proc initSeatEvents* =
         return
 
 
-  if `WlSeat / Capability`.keyboard in seatCapabilities:
-    seat_keyboard = seat.get_keyboard
+  if `WlSeat / Capability`.keyboard in globals.seatCapabilities:
+    globals.seat_keyboard = globals.seat.get_keyboard
 
-    seat_keyboard.onKeymap:
+    globals.seat_keyboard.onKeymap:
       updateKeymap(fd, size)
 
 
-    seat_keyboard.onEnter:
-      if surface == nil or surface.proxy.raw.id notin associatedWindows: return
-      let window = associatedWindows[surface.proxy.raw.id]
-      seat_keyboard_currentWindow = window
-      lastSeatEventSerial = serial
+    globals.seat_keyboard.onEnter:
+      if surface == nil or surface.proxy.raw.id notin globals.associatedWindows: return
+      let window = globals.associatedWindows[surface.proxy.raw.id].WindowWayland
+      globals.seat_keyboard_currentWindow = window
+      globals.lastSeatEventSerial = serial
       
       for key in keys.toSeq(uint32):
         let siwinKey = waylandKeyToKey(key)
@@ -756,24 +753,24 @@ proc initSeatEvents* =
         window.lastPressedKeyTime = getTime()
 
 
-    seat_keyboard.onLeave:
-      seat_keyboard_currentWindow = nil
-      if surface == nil or surface.proxy.raw.id notin associatedWindows: return
-      let window = associatedWindows[surface.proxy.raw.id]
-      lastSeatEventSerial = serial
+    globals.seat_keyboard.onLeave:
+      globals.seat_keyboard_currentWindow = nil
+      if surface == nil or surface.proxy.raw.id notin globals.associatedWindows: return
+      let window = globals.associatedWindows[surface.proxy.raw.id].WindowWayland
+      globals.lastSeatEventSerial = serial
 
       window.releaseAllKeys()
     
 
-    seat_keyboard.onKey:
-      if seat_keyboard_currentWindow == nil: return
-      let window = seat_keyboard_currentWindow
+    globals.seat_keyboard.onKey:
+      if globals.seat_keyboard_currentWindow == nil: return
+      let window = globals.seat_keyboard_currentWindow.WindowWayland
 
       let pressed = state == `WlKeyboard / Key_state`.pressed
 
       if pressed:
         window.lastPressedKeyTime = getTime()
-      lastSeatEventSerial = serial
+      globals.lastSeatEventSerial = serial
       
       let siwinKey = waylandKeyToKey(key)
 
@@ -807,18 +804,18 @@ proc initSeatEvents* =
         window.lastTextEntered = text
 
     
-    seat_keyboard.onModifiers:
-      lastSeatEventSerial = serial
+    globals.seat_keyboard.onModifiers:
+      globals.lastSeatEventSerial = serial
       discard global_xkb_state.xkb_state_update_mask(mods_depressed, mods_latched, mods_locked, 0, 0, group)
     
 
-    seat_keyboard.onRepeat_info:
-      seat_keyboard_repeatSettings = (rate: rate, delay: delay)
+    globals.seat_keyboard.onRepeat_info:
+      globals.seat_keyboard_repeatSettings = (rate: rate, delay: delay)
 
 
 proc setIdleInhibit*(window: WindowWayland, state: bool) =
   #? should the proc be named `idleInhibit=`?
-  if idleInhibitManager == nil:
+  if window.globals.idleInhibitManager == nil:
     return
 
   if state:
@@ -826,7 +823,7 @@ proc setIdleInhibit*(window: WindowWayland, state: bool) =
       #? should we return without an error here instead?
       raise newException(ValueError, "`setIdleInhibit(true)` was called even though this window already has an active inhibitor")
 
-    window.idleInhibitor = idleInhibitManager.create_inhibitor(window.surface)
+    window.idleInhibitor = window.globals.idleInhibitManager.create_inhibitor(window.surface)
   else:
     if window.idleInhibitor == nil:
       #? should we return without an error here instead?
@@ -836,80 +833,81 @@ proc setIdleInhibit*(window: WindowWayland, state: bool) =
     window.idleInhibitor.proxy.raw = nil
 
 
-proc initDataDeviceManagerEvents* =
-  if dataDeviceManagerEventsInitialized: return
-  if not waylandAvailable: return
-  dataDeviceManagerEventsInitialized = true
+proc initDataDeviceManagerEvents*(globals: SiwinGlobalsWayland) =
+  if globals.dataDeviceManagerEventsInitialized: return
+  globals.dataDeviceManagerEventsInitialized = true
 
-  if dataDeviceManager == nil: return
-  if seat == nil: return
+  if globals.dataDeviceManager == nil: return
+  if globals.seat == nil: return
 
-  data_device = dataDeviceManager.get_data_device(seat)
+  globals.data_device = globals.dataDeviceManager.get_data_device(globals.seat)
 
-  data_device.onDataOffer:
-    if unindentified_data_offer != nil:
-      destroy unindentified_data_offer
-      unindentified_data_offer_mimeTypes = @[]
+  globals.data_device.onDataOffer:
+    if globals.unindentified_data_offer != nil:
+      destroy globals.unindentified_data_offer
+      globals.unindentified_data_offer_mimeTypes = @[]
 
-    unindentified_data_offer = id.proxy.raw.construct(
-      Wl_data_offer, `Wl_data_offer/dispatch`, `Wl_data_offer/Callbacks`
+    globals.unindentified_data_offer = id.proxy.raw.construct(
+      globals.interfaces.`iface Wl_data_offer`.addr, Wl_data_offer, `Wl_data_offer/dispatch`, `Wl_data_offer/Callbacks`
     )
 
-    unindentified_data_offer.onOffer:
-      unindentified_data_offer_mimeTypes.add $mime_type
+    globals.unindentified_data_offer.onOffer:
+      globals.unindentified_data_offer_mimeTypes.add $mime_type
 
-  data_device.onSelection:
-    if current_selection_data_offer != nil:
-      destroy current_selection_data_offer
+  globals.data_device.onSelection:
+    if globals.current_selection_data_offer != nil:
+      destroy globals.current_selection_data_offer
     
-    current_selection_data_offer = unindentified_data_offer
-    var offered_mime_types = unindentified_data_offer_mimeTypes
+    globals.current_selection_data_offer = globals.unindentified_data_offer
+    var offered_mime_types = globals.unindentified_data_offer_mimeTypes
     
-    unindentified_data_offer.proxy.raw = nil
-    unindentified_data_offer_mimeTypes = @[]
+    globals.unindentified_data_offer.proxy.raw = nil
+    globals.unindentified_data_offer_mimeTypes = @[]
   
-    primaryClipboard.availableKinds = {}
-    primaryClipboard.availableMimeTypes = @[]
+    globals.initClipboardsIfNeeded()
+  
+    globals.primaryClipboard.availableKinds = {}
+    globals.primaryClipboard.availableMimeTypes = @[]
 
-    if current_selection_data_offer == nil:
+    if globals.current_selection_data_offer == nil:
       return
 
-    current_selection_data_offer.onOffer:
+    globals.current_selection_data_offer.onOffer:
       offered_mime_types.add $mime_type
     
-    discard wl_display_roundtrip display  # get all the mime types
+    discard wl_display_roundtrip globals.display  # get all the mime types
     
     for mime_type in offered_mime_types:
       if mime_type in ["UTF8_STRING", "STRING", "TEXT", "text/plain", "text/plain;charset=utf-8"]:
-        primaryClipboard.availableKinds.incl ClipboardContentKind.text
+        globals.primaryClipboard.availableKinds.incl ClipboardContentKind.text
 
       if mime_type in ["text/uri-list"]:
-        primaryClipboard.availableKinds.incl ClipboardContentKind.files
+        globals.primaryClipboard.availableKinds.incl ClipboardContentKind.files
 
-      if mime_type notin primaryClipboard.availableMimeTypes:
-        primaryClipboard.availableMimeTypes.add mime_type
+      if mime_type notin globals.primaryClipboard.availableMimeTypes:
+        globals.primaryClipboard.availableMimeTypes.add mime_type
 
-    primaryClipboard.onContentChanged.pushEvent ClipboardContentChangedEvent(
-      clipboard: primaryClipboard,
-      availableKinds: primaryClipboard.availableKinds,
-      availableMimeTypes: primaryClipboard.availableMimeTypes,
+    globals.primaryClipboard.onContentChanged.pushEvent ClipboardContentChangedEvent(
+      clipboard: globals.primaryClipboard,
+      availableKinds: globals.primaryClipboard.availableKinds,
+      availableMimeTypes: globals.primaryClipboard.availableMimeTypes,
     )
 
-  discard wl_display_roundtrip display
+  discard wl_display_roundtrip globals.display
 
 
 proc setupWindow(window: WindowWayland, fullscreen, frameless, transparent: bool, size: IVec2, class: string) =
-  expectExtension compositor
-  expectExtension xdgWmBase
+  expectExtension window.globals.compositor
+  expectExtension window.globals.xdgWmBase
   
-  initSeatEvents()
+  window.globals.initSeatEvents()
   
-  window.surface = compositor.create_surface
-  associatedWindows[window.surface.proxy.raw.id] = window
+  window.surface = window.globals.compositor.create_surface
+  window.globals.associatedWindows[window.surface.proxy.raw.id] = window
 
   case window.kind
   of WindowWaylandKind.XdgSurface:
-    window.xdgSurface = xdgWmBase.get_xdg_surface(window.surface)
+    window.xdgSurface = window.globals.xdgWmBase.get_xdg_surface(window.surface)
     window.xdgToplevel = window.xdgSurface.get_toplevel
 
     window.xdgSurface.onConfigure:
@@ -921,7 +919,7 @@ proc setupWindow(window: WindowWayland, fullscreen, frameless, transparent: bool
 
     window.m_transparent = transparent
     if not transparent:
-      let opaqueRegion = compositor.create_region
+      let opaqueRegion = window.globals.compositor.create_region
       opaqueRegion.add(0, 0, size.x, size.y)
       window.surface.set_opaque_region(opaqueRegion)
       destroy opaqueRegion
@@ -949,11 +947,11 @@ proc setupWindow(window: WindowWayland, fullscreen, frameless, transparent: bool
       handleState fullscreen, fullscreen, m_fullscreen
       handleState focus, activated, m_focused
   
-    if plasmaShell != nil:
-      window.plasmaSurface = plasmaShell.get_surface(window.surface)
+    if window.globals.plasmaShell != nil:
+      window.plasmaSurface = window.globals.plasmaShell.get_surface(window.surface)
   
   of LayerSurface:
-    window.layerShellSurface = layerShell.get_layer_surface(
+    window.layerShellSurface = window.globals.layerShell.get_layer_surface(
       window.surface,
       Wl_output(proxy: Wl_proxy(raw: nil)),
       `Zwlr_layer_shell_v1/Layer`(window.layer.int),
@@ -976,14 +974,13 @@ proc initSoftwareRenderingWindow(
   size: IVec2, screen: ScreenWayland,
   fullscreen, frameless, transparent: bool, class: string
 ) =
-  globals.init()
-  expectExtension shm
+  expectExtension window.globals.shm
 
   window.basicInitWindow size, screen
   
   window.setupWindow fullscreen, frameless, transparent, size, class
 
-  window.buffer = shm.create(size, (if transparent: argb8888 else: xrgb8888), bufferCount = 2)
+  window.buffer = window.globals.create(window.globals.shm, size, (if transparent: argb8888 else: xrgb8888), bufferCount = 2)
 
 
 proc setAnchor*(window: WindowWayland, edge: LayerEdge | seq[LayerEdge]) =
@@ -1123,7 +1120,7 @@ proc toString*(
 method content*(
   clipboard: ClipboardWayland, kind: ClipboardContentKind, mimeType: string = "text/plain"
 ): ClipboardContent =
-  initDataDeviceManagerEvents()
+  clipboard.globals.initDataDeviceManagerEvents()
   
   var mimeType =
     case kind
@@ -1144,18 +1141,18 @@ method content*(
     return constructClipboardContent("", kind, mimeType)
 
 
-  if clipboard == primaryClipboard:
-    if current_selection_data_offer == nil:
+  if clipboard == clipboard.globals.primaryClipboard.ClipboardWayland:
+    if clipboard.globals.current_selection_data_offer == nil:
       return constructClipboardContent("", kind, mimeType)
 
     var fds: array[2, FileHandle]  # [0] - read, [1] - write
     if pipe(fds) < 0:  #? use O_NONBLOCK?
       raiseOSError(osLastError())
 
-    current_selection_data_offer.receive(mimeType.cstring, fds[1])
+    clipboard.globals.current_selection_data_offer.receive(mimeType.cstring, fds[1])
     discard close fds[1]
 
-    discard wl_display_roundtrip display
+    discard wl_display_roundtrip clipboard.globals.display
 
     var data: string
     var cbuffer: array[1024, char]
@@ -1176,7 +1173,7 @@ method `content=`*(clipboard: ClipboardWayland, content: ClipboardConvertableCon
     destroy clipboard.dataSource
   
   if content.converters.len != 0:
-    clipboard.dataSource = dataDeviceManager.create_data_source()
+    clipboard.dataSource = clipboard.globals.dataDeviceManager.create_data_source()
 
     var offeredMimeTypes: seq[string]
     proc incl(arr: var seq[string], item: string) =
@@ -1211,10 +1208,10 @@ method `content=`*(clipboard: ClipboardWayland, content: ClipboardConvertableCon
   else:
     clipboard.dataSource.proxy.raw = nil
 
-  if clipboard == primaryClipboard:
-    dataDevice.set_selection(clipboard.dataSource, lastSeatEventSerial)
+  if clipboard == clipboard.globals.primaryClipboard.CLipboardWayland:
+    clipboard.globals.dataDevice.set_selection(clipboard.dataSource, clipboard.globals.lastSeatEventSerial)
   
-  discard wl_display_roundtrip display
+  discard wl_display_roundtrip clipboard.globals.display
 
 
 method firstStep*(window: WindowWayland, makeVisible = true) =
@@ -1241,7 +1238,7 @@ method step*(window: WindowWayland) =
 
   closeIfNeeded()
   
-  let eventCount = wl_display_roundtrip(globals.display)
+  let eventCount = wl_display_roundtrip(window.globals.display)
   if eventCount < 0:
     raise newException(RoundtripFailed, "wl_display_roundtrip() returned " & $eventCount)
 
@@ -1249,15 +1246,15 @@ method step*(window: WindowWayland) =
   if eventCount <= 2:  # seems like idle event count is 2
     sleep(1)
 
-  if seat_keyboard_currentWindow == window:
+  if window.globals.seat_keyboard_currentWindow == window:
     # repeat keys if needed
     if (
-      (seat_keyboard_repeatSettings.rate > 0 and seat_keyboard_repeatSettings.rate < 1000) and
+      (window.globals.seat_keyboard_repeatSettings.rate > 0 and window.globals.seat_keyboard_repeatSettings.rate < 1000) and
       (window.keyboard.pressed - {Key.lcontrol, Key.lshift, Key.lalt, Key.rcontrol, Key.rshift, Key.ralt}).len != 0
     ):
-      let repeatStartTime = window.lastPressedKeyTime + initDuration(milliseconds = seat_keyboard_repeatSettings.delay)
+      let repeatStartTime = window.lastPressedKeyTime + initDuration(milliseconds = window.globals.seat_keyboard_repeatSettings.delay)
       let nows = getTime()
-      let interval = initDuration(milliseconds = 1000 div seat_keyboard_repeatSettings.rate)
+      let interval = initDuration(milliseconds = 1000 div window.globals.seat_keyboard_repeatSettings.rate)
 
       if repeatStartTime <= nows and window.lastKeyRepeatedTime < repeatStartTime - interval:
         window.lastKeyRepeatedTime = repeatStartTime - interval
@@ -1294,13 +1291,14 @@ method step*(window: WindowWayland) =
 
       window.swapBuffers()
 
-      wl_display_flush display
+      wl_display_flush window.globals.display
 
 
 proc newSoftwareRenderingWindowWayland*(
+  globals: SiwinGlobalsWayland,
   size = ivec2(1280, 720),
   title = "",
-  screen = defaultScreenWayland(),
+  screen: ScreenWayland,
   resizable = true,
   fullscreen = false,
   frameless = false,
@@ -1309,6 +1307,7 @@ proc newSoftwareRenderingWindowWayland*(
   class = "", # window class (used on linux), equals to title if not specified
 ): WindowWaylandSoftwareRendering =
   new result
+  result.globals = globals
   result.initSoftwareRenderingWindow(size, screen, fullscreen, frameless, transparent, (if class == "": title else: class))
   result.title = title
   if not resizable: result.resizable = false

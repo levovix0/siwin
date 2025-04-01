@@ -1,8 +1,8 @@
 import std/[times, importutils, strformat, options, tables, os]
 import pkg/[vmath]
-import ../../utils, ../../bgrx
+import ../../siwindefs, ../../colorutils
 import ../any/window {.all.}
-import ./[libwayland, protocol, globals, sharedBuffer, bitfields, xkb]
+import ./[libwayland, protocol, siwinGlobals, sharedBuffer, bitfields, xkb]
 
 
 type
@@ -63,9 +63,9 @@ proc findCurrentCursorThemeDirectory*(): string =
     return getHomeDir() / (".local/share/icons/" & themeName & "/cursors")
 
 
-proc loadBuiltinCursor*(kind: BuiltinCursor): CursorWayland =
+proc loadBuiltinCursor*(globals: SiwinGlobalsWayland, kind: BuiltinCursor): CursorWayland =
   if kind == BuiltinCursor.hided:
-    result.surface = compositor.create_surface()
+    result.surface = globals.compositor.create_surface()
     return
   
   else:
@@ -100,6 +100,6 @@ proc loadBuiltinCursor*(kind: BuiltinCursor): CursorWayland =
       cursorPath = cursorDir / name & ".png"
     
     if not fileExists(cursorPath):
-      return loadBuiltinCursor(BuiltinCursor.hided)
+      return globals.loadBuiltinCursor(BuiltinCursor.hided)
 
-    result.surface = compositor.create_surface()
+    result.surface = globals.compositor.create_surface()

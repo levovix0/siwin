@@ -79,10 +79,6 @@ var
   libwaylandeglHandle = loadLib("libwayland-egl.so")
 
 
-if libeglHandle == nil or libwaylandeglHandle == nil:
-  waylandAvailable = false
-
-
 siwin_loadDynlibIfExists libeglHandle:
   proc eglGetError*(): EglError
   proc eglGetDisplay*(native: pointer): EglDisplay

@@ -10,7 +10,7 @@ elif defined(linux):
   import ./platforms/x11/window as x11Window
   import ./platforms/x11/windowVulkan as x11WindowVulkan
 
-  # import ./platforms/wayland/siwinGlobals as waylandSiwinGlobals
+  import ./platforms/wayland/siwinGlobals as waylandSiwinGlobals
   import ./platforms/wayland/window as waylandWindow
   import ./platforms/wayland/windowVulkan as waylandWindowVulkan
 
@@ -49,13 +49,13 @@ proc newVulkanWindow*(
         resizable, fullscreen, frameless, transparent,
         (if class == "": title else: class)
       )
-    # elif globals of SiwinGlobalsWayland:
-      # newVulkanWindowWayland(
-      #   vkInstance,
-      #   size, title,
-      #   (if screen == -1: defaultScreenWayland() else: screenWayland(screen)),
-      #   resizable, fullscreen, frameless, transparent
-      # )
+    elif globals of SiwinGlobalsWayland:
+      globals.SiwinGlobalsWayland.newVulkanWindowWayland(
+        vkInstance,
+        size, title,
+        (if screen == -1: globals.SiwinGlobalsWayland.defaultScreenWayland() else: globals.SiwinGlobalsWayland.screenWayland(screen)),
+        resizable, fullscreen, frameless, transparent
+      )
     else:
       raise SiwinPlatformSupportDefect.newException("Unsupported platform")
 

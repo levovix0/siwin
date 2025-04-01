@@ -10,7 +10,7 @@ elif defined(linux):
   import ./platforms/x11/window as x11Window
   import ./platforms/x11/windowOpengl as x11WindowOpengl
   
-  # import ./platforms/wayland/siwinGlobals as waylandSiwinGlobals
+  import ./platforms/wayland/siwinGlobals as waylandSiwinGlobals
   import ./platforms/wayland/window as waylandWindow
   import ./platforms/wayland/windowOpengl as waylandWindowOpengl
 
@@ -50,12 +50,12 @@ proc newOpenglWindow*(
         resizable, fullscreen, frameless, transparent, vsync,
         (if class == "": title else: class)
       )
-    # elif globals of SiwinGlobalsWayland:
-      # result = newOpenglWindowWayland(
-      #   size, title,
-      #   (if screen == -1: defaultScreenWayland() else: screenWayland(screen)),
-      #   resizable, fullscreen, frameless, transparent, vsync
-      # )
+    elif globals of SiwinGlobalsWayland:
+      result = globals.SiwinGlobalsWayland.newOpenglWindowWayland(
+        size, title,
+        (if screen == -1: globals.SiwinGlobalsWayland.defaultScreenWayland() else: globals.SiwinGlobalsWayland.screenWayland(screen)),
+        resizable, fullscreen, frameless, transparent, vsync
+      )
     else:
       raise SiwinPlatformSupportDefect.newException("Unsupported platform")
 

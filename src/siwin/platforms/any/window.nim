@@ -10,7 +10,6 @@ else:
   {.pragma: siwin_enum.}
 
 
-{.push, warning[Deprecated]: off.}
 type
   MouseButton* {.siwin_enum.} = enum
     left right middle forward backward
@@ -234,7 +233,6 @@ type
 
     inputRegion, titleRegion: Option[tuple[pos, size: Vec2]]
     borderWidth: Option[tuple[innerWidth, outerWidrth, diagonalSize: float32]]
-{.pop.}
 
 
 method number*(screen: Screen): int32 {.base.} = discard
@@ -414,10 +412,8 @@ proc run*(window: sink Window, makeVisible = true) =
 
 proc run*(window: sink Window, eventsHandler: WindowEventsHandler, makeVisible = true) =
   ## set window eventsHandler and run whole window main loops
-  {.push, warning[Deprecated]: off.}
   if eventsHandler != WindowEventsHandler():
     window.eventsHandler = eventsHandler
-  {.pop.}
   run(window, makeVisible)
 
 proc runMultiple*(windows: varargs[tuple[window: Window, makeVisible: bool]]) =

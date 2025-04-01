@@ -9,11 +9,11 @@ macro generateProtocolWrapperFromXmlStringImpl(outNimFile: static[string], insta
   ##       <arg name="a" type="int"/>
   ##       <arg name="result" type="new_id" interface="r"/>
   ##     </request>
-  ##   
+  ##
   ##     <event name="e">
   ##       <arg name="a" type="uint" enum="e"/>
   ##     </event>
-  ##   
+  ##
   ##     <enum name="e">
   ##       <entry name="ea" value="3"/>
   ##       <entry name="eb" value="1"/>
@@ -28,52 +28,59 @@ macro generateProtocolWrapperFromXmlStringImpl(outNimFile: static[string], insta
   ##     T* = object
   ##       proxy*: WlProxy
   ##     `T/Callbacks`* = object
+  ##       interfaces*: ptr WaylandInterfaces
   ##       destroy*: proc(cb: pointer) {.cdecl, raises: [].}
-  ##       e*: proc(a: E)
-  ##     E* = enum
+  ##       e*: proc(a: `T/E`)
+  ##     `T/E`* = enum
   ##       eb = 1
   ##       ec = 2
   ##       ea = 3
-  ##   
-  ##   # interface decl section
-  ##   proc ifaceName*(t: type T): string = "wl_t"
-  ##   var `T/iface`: WlInterface
-  ##   proc iface*(t: type T): ptr WlInterface = `T/iface`.addr
-  ## 
-  ##   # interface body section
-  ##   `T/iface` = newWlInterface(
-  ##     "T", 1,
-  ##     [
-  ##       newWlMessage("f", "1in", [nil, R.iface]),
-  ##     ],
-  ##     [
-  ##       newWlMessage("e", "1i", [nil]),
-  ##     ]
-  ##   )
-  ## 
+  ##
+  ##     WaylandInterfaces* = object
+  ##       # interface type section
+  ##       `T`*: WlInterface
+  ##
+  ##   # iface name section
+  ##   template ifaceName*(t: typedesc[T]): string = "t"
+  ##
+  ##   proc initInterfaces*(interfaces: var WaylandInterfaces) =
+  ##     # interface body section
+  ##     interfaces.`T` = newWlInterface(
+  ##       "T", 1,
+  ##       [
+  ##         newWlMessage("f", "1in", [nil, R.iface]),
+  ##       ],
+  ##       [
+  ##         newWlMessage("e", "1i", [nil]),
+  ##       ]
+  ##     )
+  ##
   ##   # dispatcher section
   ##   proc `T/dispatch`(impl: pointer, obj: pointer, opcode: uint32, msg: ptr WlMessage, args: pointer): int32 {.cdecl.} =
-  ##     let callbacks = cast[`T/Callbacks`](target.userdata)
+  ##     let callbacks = cast[ptr `T/Callbacks`](impl)
   ##     case opcode
   ##     of 1:
   ##       let (a) = cast[ptr (int32)](args)[]
   ##       callbacks.e(a)
   ##     else: discard
-  ## 
+  ##
   ##   # wrapper functions section (requests)
   ##   proc f*(this: T; a: int32): R =
+  ##     let interfaces = cast[ptr ptr WaylandInterfaces](this.proxy.raw.impl)
   ##     let args = (a,)
-  ##     wl_proxy_marshal_array_flags(this.proxy, 0, T.iface, 1, 0, args.addr).construct(R, `R/dispatch`, `R/Callbacks`)
+  ##     wl_proxy_marshal_array_flags(this.proxy, 0, interfaces.`T`, 1, 0, args.addr)
+  ##       .construct(interfaces, R, `R/dispatch`, `R/Callbacks`)
   ##
   ##   # event handler templates section (events)
   ##   template onE*(x: T; body) =
-  ##     cast[`T/Callbacks`](x.userdata).e = proc(a {.inject.}: int) =
+  ##     cast[`T/Callbacks`](this.proxy.raw.impl).e = proc(a {.inject.}: int) =
   ##       body
 
   let res = newStmtList()
   let
     typesection = nnkTypeSection.newTree()
-    ifaceDeclSection = newStmtList()
+    ifaceTypeSection = nnkRecList.newTree()
+    ifaceNameSection = newStmtList()
     ifaceBodySection = newStmtList()
     dispatcherSection = newStmtList()
     wrapperFunctionsSection = newStmtList()
@@ -170,53 +177,18 @@ macro generateProtocolWrapperFromXmlStringImpl(outNimFile: static[string], insta
             ),
           ),
         )
-        
-        # interface decl
-        ifaceDeclSection.add nnkVarSection.newTree(
-          nnkIdentDefs.newTree(
-            nnkAccQuoted.newTree(
-              typename,
-              ident("/"),
-              ident("iface")
-            ),
-            ident("WlInterface"),
-            newEmptyNode()
-          )
-        )
 
-        # interface link (from type to ptr WlInterface) proc
-        ifaceDeclSection.add nnkProcDef.newTree(
+        # interface type
+        ifaceTypeSection.add nnkIdentDefs.newTree(
           nnkPostfix.newTree(
-            ident("*"),
-            ident("iface")
-          ),
-          newEmptyNode(),
-          newEmptyNode(),
-          nnkFormalParams.newTree(
-            nnkPtrTy.newTree(
-              ident("WlInterface")
-            ),
-            nnkIdentDefs.newTree(
-              ident("t"),
-              nnkBracketExpr.newTree(
-                ident("typedesc"),
-                typename
-              ),
-              newEmptyNode()
+            ident"*",
+            nnkAccQuoted.newTree(
+              ident("iface"),
+              typename,
             )
           ),
-          newEmptyNode(),
-          newEmptyNode(),
-          nnkStmtList.newTree(
-            nnkDotExpr.newTree(
-              nnkAccQuoted.newTree(
-                typename,
-                ident("/"),
-                ident("iface")
-              ),
-              ident("addr")
-            )
-          )
+          ident("WlInterface"),
+          newEmptyNode()
         )
       
       var requests: seq[Message]
@@ -329,30 +301,46 @@ macro generateProtocolWrapperFromXmlStringImpl(outNimFile: static[string], insta
             newEmptyNode(),
             newEmptyNode(),
             nnkRecList.newTree(
-              nnkIdentDefs.newTree(
-                nnkPostfix.newTree(
-                  ident"*",
-                  ident("destroy"),
-                ),
-                nnkProcTy.newTree(
-                  nnkFormalParams.newTree(
-                    newEmptyNode(),
-                    nnkIdentDefs.newTree(
-                      ident("cb"),
-                      ident("pointer"),
-                      newEmptyNode()
+              @[
+                # pointer to interfaces
+                nnkIdentDefs.newTree(
+                  nnkPostfix.newTree(
+                    ident("*"),
+                    ident("interfaces")
+                  ),
+                  nnkPtrTy.newTree(
+                    nnkPtrTy.newTree(
+                      ident("WaylandInterfaces")
                     )
                   ),
-                  nnkPragma.newTree(
-                    ident("cdecl"),
-                    nnkExprColonExpr.newTree(
-                      ident("raises"),
-                      nnkBracket.newTree()
-                    )
-                  )
+                  newEmptyNode()
                 ),
-                newEmptyNode()
-              ) & events.mapit(
+                # destructor
+                nnkIdentDefs.newTree(
+                  nnkPostfix.newTree(
+                    ident"*",
+                    ident("destroy"),
+                  ),
+                  nnkProcTy.newTree(
+                    nnkFormalParams.newTree(
+                      newEmptyNode(),
+                      nnkIdentDefs.newTree(
+                        ident("cb"),
+                        ident("pointer"),
+                        newEmptyNode()
+                      )
+                    ),
+                    nnkPragma.newTree(
+                      ident("cdecl"),
+                      nnkExprColonExpr.newTree(
+                        ident("raises"),
+                        nnkBracket.newTree()
+                      )
+                    )
+                  ),
+                  newEmptyNode()
+                ),
+              ] & events.mapit(
                 nnkIdentDefs.newTree(
                   nnkPostfix.newTree(
                     ident"*",
@@ -392,7 +380,6 @@ macro generateProtocolWrapperFromXmlStringImpl(outNimFile: static[string], insta
             of "fd": "h"
             else:
               error("unexpected type: " & t)
-              ""
           
           if x.name == "bind" and ifaceName == "wl_registry":
             # in wayland protocol it's declared as taking 2 args, BUT in actual code... it takes 4.
@@ -412,8 +399,14 @@ macro generateProtocolWrapperFromXmlStringImpl(outNimFile: static[string], insta
               )
             else:
               types.add nnkCall.newTree(
-                ident("iface"),
-                ident(iface.capitalize)
+                ident("addr"),
+                nnkDotExpr.newTree(
+                  ident("interfaces"),
+                  nnkAccQuoted.newTree(
+                    ident("iface"),
+                    ident(iface.capitalize),
+                  )
+                ),
               )
 
           nnkCall.newTree(
@@ -423,16 +416,44 @@ macro generateProtocolWrapperFromXmlStringImpl(outNimFile: static[string], insta
             types
           )
 
+        # interface name
+        ifaceNameSection.add nnkTemplateDef.newTree(
+          nnkPostfix.newTree(
+            ident("*"),
+            ident("ifaceName")
+          ),
+          newEmptyNode(),
+          newEmptyNode(),
+          nnkFormalParams.newTree(
+            ident("string"),
+            nnkIdentDefs.newTree(
+              ident("t"),
+              nnkBracketExpr.newTree(
+                ident("typedesc"),
+                typename
+              ),
+              newEmptyNode()
+            )
+          ),
+          newEmptyNode(),
+          newEmptyNode(),
+          nnkStmtList.newTree(
+            newLit(ifaceName)
+          )
+        )
+
         # interface body
         ifaceBodySection.add nnkAsgn.newTree(
-          nnkAccQuoted.newTree(
-            typename,
-            ident("/"),
-            ident("iface")
+          nnkDotExpr.newTree(
+            ident("interfaces"),
+            nnkAccQuoted.newTree(
+              ident("iface"),
+              typename,
+            )
           ),
           nnkCall.newTree(
             ident("newWlInterface"),
-            newLit ifaceName,
+            newLit(ifaceName),
             newLit(iface.attr("version").parseInt),
             nnkBracket.newTree(
               requests.map(messageToWlMessage)
@@ -610,7 +631,10 @@ macro generateProtocolWrapperFromXmlStringImpl(outNimFile: static[string], insta
 
       # wrapper functions
       for i, req in requests:
+        if typename.strVal == "Wl_display": continue
+
         let rt = req.rettype
+        var needInterfaces = false
         let marshal = nnkCall.newTree(
           @[ident("wl_proxy_marshal_flags")] &
           nnkDotExpr.newTree(
@@ -624,9 +648,18 @@ macro generateProtocolWrapperFromXmlStringImpl(outNimFile: static[string], insta
           (if rt.kind == nnkEmpty or rt == ident("uint32"):
             newNilLit()
           else:
-            nnkDotExpr.newTree(
-              rt,
-              ident("iface")
+            needInterfaces = true
+            nnkCall.newTree(
+              ident("addr"),
+              nnkDotExpr.newTree(
+                nnkBracketExpr.newTree(
+                  ident("interfaces")
+                ),
+                nnkAccQuoted.newTree(
+                  ident("iface"),
+                  rt,
+                )
+              )
             )
           ) &
           newLit(req.version) &
@@ -665,6 +698,31 @@ macro generateProtocolWrapperFromXmlStringImpl(outNimFile: static[string], insta
           newEmptyNode(),
           nnkStmtList.newTree(
             (if req.desc != "": @[newCommentStmtNode(req.desc)] else: @[]) &
+            ( if needInterfaces: @[
+              nnkLetSection.newTree(
+                nnkIdentDefs.newTree(
+                  ident("interfaces"),
+                  newEmptyNode(),
+                  nnkCast.newTree(
+                    nnkPtrTy.newTree(
+                      nnkPtrTy.newTree(
+                        ident("WaylandInterfaces")
+                      )
+                    ),
+                    nnkDotExpr.newTree(
+                      nnkDotExpr.newTree(
+                        nnkDotExpr.newTree(
+                          ident("this"),
+                          ident("proxy")
+                        ),
+                        ident("raw")
+                      ),
+                      ident("impl")
+                    )
+                  )
+                )
+              )
+            ] else: @[] ) &
             ( if req.isDestructor: @[
               nnkCall.newTree(
                 ident("destroyCallbacks"),
@@ -680,8 +738,13 @@ macro generateProtocolWrapperFromXmlStringImpl(outNimFile: static[string], insta
               nnkAsgn.newTree(
                 ident("result"),
                 nnkCall.newTree(
-                  ident("construct"),
-                  marshal,
+                  nnkDotExpr.newTree(
+                    marshal,
+                    ident("construct")
+                  ),
+                  nnkBracketExpr.newTree(
+                    ident("interfaces")
+                  ),
                   rt,
                   nnkAccQuoted.newTree(
                     rt.unaccquote,
@@ -847,7 +910,42 @@ macro generateProtocolWrapperFromXmlStringImpl(outNimFile: static[string], insta
   for (kind, path) in walkDir(instantiatedFrom.splitPath.head / "protocols"):
     parse staticRead path
 
-  res.add [typesection, ifaceDeclSection, ifaceBodySection, dispatcherSection, wrapperFunctionsSection, eventHandlerTemplatesSection, dispatchTemplatesSection, callbacksTemplatesSection]
+  typesection.add nnkTypeDef.newTree(
+    nnkPostfix.newTree(
+      ident"*",
+      ident "WaylandInterfaces"
+    ),
+    newEmptyNode(),
+    nnkObjectTy.newTree(
+      newEmptyNode(),
+      newEmptyNode(),
+      ifaceTypeSection
+    )
+  )
+
+  let ifaceInitProc = nnkProcDef.newTree(
+    nnkPostfix.newTree(
+      ident("*"),
+      ident("initInterfaces")
+    ),
+    newEmptyNode(),
+    newEmptyNode(),
+    nnkFormalParams.newTree(
+      newEmptyNode(),
+      nnkIdentDefs.newTree(
+        ident("interfaces"),
+        nnkVarTy.newTree(
+          ident("WaylandInterfaces")
+        ),
+        newEmptyNode()
+      )
+    ),
+    newEmptyNode(),
+    newEmptyNode(),
+    ifaceBodySection
+  )
+
+  res.add [typesection, ifaceInitProc, ifaceNameSection, dispatcherSection, wrapperFunctionsSection, eventHandlerTemplatesSection, dispatchTemplatesSection, callbacksTemplatesSection]
 
   writeFile(instantiatedFrom.splitPath.head / outNimFile, res.repr)
 

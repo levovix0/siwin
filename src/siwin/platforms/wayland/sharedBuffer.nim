@@ -1,12 +1,13 @@
 import std/[memfiles, os, times, sequtils]
 import pkg/[vmath]
 import ../../[siwindefs]
-import ./[protocol, libwayland, globals]
+import ./[protocol, libwayland, siwinGlobals]
 
 type
   SharedBuffer* = ref SharedBufferObj
   SharedBufferObj* = object
     ## memmaped file that can be shared between processes
+    globals: SiwinGlobalsWayland
     shm: WlShm
     pool: WlShmPool
     file: MemFile
@@ -49,7 +50,7 @@ proc `=destroy`(buffer: SharedBufferObj) {.siwin_destructor.} =
     if buffer.pool.proxy.raw != nil:
       destroy buffer.pool
 
-    discard wl_display_roundtrip display  # make sure server don't use the memory we about to dealloc
+    discard wl_display_roundtrip buffer.globals.display  # make sure server don't use the memory we about to dealloc
   except: discard
 
   try:
@@ -86,7 +87,7 @@ proc swapBuffers*(
             buffer.currentBuffer = i
             break waiting_for_unlocked_buffer
         
-        discard wl_display_roundtrip display  # let libwayland process events
+        discard wl_display_roundtrip buffer.globals.display  # let libwayland process events
   
   if buffer.buffers[buffer.currentBuffer].locked:
     raise OsError.newException("timed out waiting for all buffers to be unlocked by server. (needed to commit shared buffer)")
@@ -110,8 +111,9 @@ proc create_wl_buffers(buffer: SharedBuffer) =
 
 
 
-proc create*(shm: WlShm, size: IVec2, format: `WlShm / Format`, bytesPerPixel: int32 = 4, bufferCount = 2): SharedBuffer =
+proc create*(globals: SiwinGlobalsWayland, shm: WlShm, size: IVec2, format: `WlShm / Format`, bytesPerPixel: int32 = 4, bufferCount = 2): SharedBuffer =
   new result
+  result.globals = globals
   result.shm = shm
   result.format = format
   result.bytesPerPixel = bytesPerPixel
@@ -142,7 +144,7 @@ proc resize*(buffer: var SharedBuffer, size: IVec2, timeout: Duration = initDura
 
   let deadline = now() + timeout
   while now() < deadline and buffer.buffers.anyIt(it.locked):
-    discard wl_display_roundtrip display
+    discard wl_display_roundtrip buffer.globals.display
 
   if newSizeInBytes > buffer.file.size:
     buffer.file.resize(newSizeInBytes)

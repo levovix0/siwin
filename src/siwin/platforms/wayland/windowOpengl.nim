@@ -2,7 +2,7 @@ import std/[importutils]
 import pkg/[vmath]
 import ../../[siwindefs]
 import ../any/window {.all.}
-import ./[libwayland, protocol, egl, globals]
+import ./[libwayland, protocol, egl, siwinGlobals]
 import window {.all.}
 
 privateAccess Window
@@ -24,7 +24,9 @@ proc `=destroy`(window: WindowWaylandOpenglObj) {.siwin_destructor.} =
 
   for x in window.fields:
     when compiles(`=destroy`(x)):
-      `=destroy`(x)
+      try:
+        `=destroy`(x)
+      except: discard
 
 
 method release(window: WindowWaylandOpengl) =
@@ -41,8 +43,7 @@ proc initOpenglWindow(
   size: IVec2, screen: ScreenWayland,
   fullscreen, frameless, transparent: bool, class: string
 ) =
-  globals.init()
-  initEgl(globals.display.raw)
+  initEgl(window.globals.display.raw)
 
   window.basicInitWindow size, screen
   
@@ -69,9 +70,10 @@ method doResize(window: WindowWaylandOpengl, size: IVec2) =
 
 
 proc newOpenglWindowWayland*(
+  globals: SiwinGlobalsWayland,
   size = ivec2(1280, 720),
   title = "",
-  screen = defaultScreenWayland(),
+  screen: ScreenWayland,
   resizable = true,
   fullscreen = false,
   frameless = false,
@@ -84,6 +86,7 @@ proc newOpenglWindowWayland*(
   class = "", # window class (used in x11), equals to title if not specified
 ): WindowWaylandOpengl =
   new result
+  result.globals = globals
   result.kind = kind
   result.namespace = namespace
   result.layer = layer
