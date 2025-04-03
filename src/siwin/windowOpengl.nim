@@ -1,11 +1,12 @@
 import vmath
 import window
-import ./platforms
 
 when defined(android):
   import ./platforms/android/window as androidWindow
 
 elif defined(linux):
+  import ./platforms
+  
   import ./platforms/x11/siwinGlobals as x11SiwinGlobals
   import ./platforms/x11/window as x11Window
   import ./platforms/x11/windowOpengl as x11WindowOpengl

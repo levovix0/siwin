@@ -40,6 +40,7 @@ proc availablePlatforms*: seq[Platform] =
   elif defined(linux):
     if isWaylandAvailable():
       @[Platform.wayland, Platform.x11]
+      # x11 is available on wayland compositors through XWayland
     else:
       @[Platform.x11]
   
@@ -83,7 +84,7 @@ proc platformToUse*(available: seq[Platform], prefered: Platform): Platform =
 
 proc newSiwinGlobals*(preferedPlatform: Platform = defaultPreferedPlatform()): SiwinGlobals =
   when defined(android):
-    ##
+    result = SiwinGlobals()
 
   elif defined(linux):
     case availablePlatforms().platformToUse(preferedPlatform)
@@ -94,4 +95,13 @@ proc newSiwinGlobals*(preferedPlatform: Platform = defaultPreferedPlatform()): S
       result.SiwinGlobalsWayland.roundtrip()
     else:
       raise SiwinPlatformSupportDefect.newException("Unsupported platform")
+  
+  elif defined(windows):
+    result = SiwinGlobals()
+  
+  elif defined(macosx):
+    result = SiwinGlobals()
+  
+  else:
+    {.error.}
 

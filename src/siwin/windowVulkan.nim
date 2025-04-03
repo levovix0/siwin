@@ -1,11 +1,12 @@
 import vmath
 import window
-import ./platforms
 
 when defined(android):
   import ./platforms/android/window as androidWindow
 
 elif defined(linux):
+  import ./platforms
+  
   import ./platforms/x11/siwinGlobals as x11SiwinGlobals
   import ./platforms/x11/window as x11Window
   import ./platforms/x11/windowVulkan as x11WindowVulkan
@@ -60,13 +61,9 @@ proc newVulkanWindow*(
       raise SiwinPlatformSupportDefect.newException("Unsupported platform")
 
   elif defined(windows):
-    case platform
-    of winapi:
-      newVulkanWindowWinapi(
-        vkInstance,
-        size, title,
-        (if screen == -1: defaultScreenWinapi() else: screenWinapi(screen)),
-        resizable, fullscreen, frameless, transparent
-      )
-    else:
-      raise SiwinPlatformSupportDefect.newException("Unsupported platform: " & $platform)
+    newVulkanWindowWinapi(
+      vkInstance,
+      size, title,
+      (if screen == -1: defaultScreenWinapi() else: screenWinapi(screen)),
+      resizable, fullscreen, frameless, transparent
+    )

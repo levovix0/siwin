@@ -1,18 +1,22 @@
 import vmath
 import ./platforms/any/[window]
-import ./platforms
 
 export window
 
 when defined(android):
   import ./platforms/android/window as androidWindow
+
 elif defined(linux):
+  import ./platforms
+  
   import ./platforms/x11/siwinGlobals as x11SiwinGlobals
   import ./platforms/x11/window as x11Window
   import ./platforms/wayland/siwinGlobals as waylandSiwinGlobals
   import ./platforms/wayland/window as waylandWindow
+
 elif defined(windows):
   import ./platforms/winapi/window as winapiWindow
+
 elif defined(macosx):
   import ./platforms/cocoa/window as cocoaWindow
 
