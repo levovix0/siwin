@@ -240,11 +240,12 @@ method `size=`*(window: WindowWinapi, size: IVec2) =
 
 proc enableTransparency*(window: WindowWinapi) =
   let region = CreateRectRgn(0, 0, -1, -1)
-  defer: discard DeleteObject(region)
 
+  # enabling blur will force Windows to compose our window with transparency
   var bb = DwmBlurBehind()
-  bb.dwFlags = DwmbbEnable
+  bb.dwFlags = DwmbbEnable or DwmbbBlurRegion
   bb.fEnable = True
+  bb.hRgnBlur = region  # "blur" somewhere outside the window, ideally nothing
 
   window.handle.DwmEnableBlurBehindWindow(bb.addr)
 
@@ -255,10 +256,9 @@ proc initWindow(window: WindowWinapi; size: IVec2; screen: ScreenWinapi, fullscr
   window.handle = CreateWindow(
     class,
     "",
-    if frameless: WsPopup or WsSysMenu
+    if frameless: WsPopup or WsMinimizeBox
     else: WsOverlappedWindow,
-    CwUseDefault,
-    CwUseDefault,
+    CwUseDefault, CwUseDefault,
     size.x, size.y,
     0, 0,
     hInstance,
@@ -556,7 +556,10 @@ method displayImpl(window: WindowWinapi) {.base.} =
   window.eventsHandler.pushEvent onRender, RenderEvent(window: window)
   
   if window of WindowWinapiSoftwareRendering:
-    window.hdc.BitBlt(0, 0, window.m_size.x, window.m_size.y, window.WindowWinapiSoftwareRendering.buffer.hdc, 0, 0, SrcCopy)
+    BitBlt(
+      window.hdc, 0, 0, window.m_size.x, window.m_size.y,
+      window.WindowWinapiSoftwareRendering.buffer.hdc, 0, 0, SrcCopy
+    )
   
   window.handle.EndPaint(ps.addr)
 

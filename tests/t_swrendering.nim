@@ -128,6 +128,8 @@ test "bgrx image":
           e.window.size = ivec2(300, 300)
         of Key.f5:
           e.window.frameless = not window.frameless
+        of Key.space:
+          redraw e.window
         else: discard
     ,
     onClick: proc(e: ClickEvent) =

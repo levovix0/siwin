@@ -1,4 +1,4 @@
-import macros, tables, sequtils
+import macros, tables, sequtils, strutils
 import vmath, opengl, pixie, fusion/astdsl, fusion/matching, shady
 import siwin/siwindefs
 
@@ -328,7 +328,10 @@ macro makeShader*(ctx: DrawContext, body: untyped): auto =
     for x in body:
       case x
       of Pragma[ExprColonExpr[Ident(strVal: "version"), @ver]]:
-        version = ver
+        if defined(windows) and "es" in ver.strVal:
+          warning("ignoring OpenGL ES shader version on windows, since OpenGL ES is not supported there")
+        else:
+          version = ver
       of ProcDef[@name is Ident(strVal: "vert"), _, _, FormalParams[Empty(), all @params], .._]:
         x
         vert = name
