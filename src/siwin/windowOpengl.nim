@@ -62,7 +62,7 @@ proc newOpenglWindow*(
       raise SiwinPlatformSupportDefect.newException("Unsupported platform")
 
   elif defined(windows):
-    newOpenglWindowWinapi(
+    globals.newOpenglWindowWinapi(
       size, title,
       (if screen == -1: defaultScreenWinapi() else: screenWinapi(screen)),
       resizable, fullscreen, frameless, transparent, vsync

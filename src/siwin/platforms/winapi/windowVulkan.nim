@@ -1,19 +1,23 @@
 import std/importutils
 import vmath
-import ../../[siwindefs]
-import ../any/window as anyWindow
+import ../../[colorutils, siwindefs]
+import ../any/[window {.all.} as anyWindow, windowUtils]
 import window {.all.}, winapi, vkWin32
 
 privateAccess Window
 privateAccess WindowWinapi
+privateAccess SiwinGlobalsObj
+
 
 type
   Surface = object
     instance: pointer
     raw: pointer
 
-  WindowWinapiVulkan* = ref object of WindowWinapi
+  WindowWinapiVulkan* = ptr WindowWinapiVulkanObj
+  WindowWinapiVulkanObj* = object of WindowWinapi
     surface: Surface
+
 
 proc `=destroy`*(surface: Surface) {.siwin_destructor.} =
   if surface.instance != nil and surface.raw != nil:
@@ -22,7 +26,13 @@ proc `=destroy`*(surface: Surface) {.siwin_destructor.} =
     # vkDestroySurfaceKHR(surface.instance, surface.raw, nil)  #? causes crash
 
 
-method vulkanSurface*(window: WindowWinapiVulkan): pointer =
+
+proc winapi_vulkan_pixelBuffer(window: WindowWinapiVulkan): PixelBuffer = discard
+
+proc winapi_vulkan_makeCurrent(window: WindowWinapiVulkan) = discard
+proc winapi_vulkan_set_vsync(window: WindowWinapiVulkan, v: bool, silent = false) = discard
+
+proc winapi_vulkan_vulkanSurface(window: WindowWinapiVulkan): pointer =
   window.surface.raw
 
 
@@ -56,12 +66,24 @@ proc initWindowWinapiVulkan(window: WindowWinapiVulkan; vkInstance: pointer, siz
     raise OSError.newException("Failed to create Vulkan surface, error: " & $res)
 
 
-method displayImpl(window: WindowWinapiVulkan) =
+
+proc winapi_vulkan_displayImpl(window: WindowWinapiVulkan) =
   window.eventsHandler.pushEvent onRender, RenderEvent(window: window)
   window.hdc.SwapBuffers
 
 
+proc winapi_vulkan_destroy(window: WindowWinapiVulkan) =
+  `=destroy`(window.surface)
+  `=destroy`(cast[WindowWinapi](window)[])
+
+
+
+proc winapiVulkanWindowVtalbe: WindowVtable =
+  makeWindowVtable(winapi, winapi_vulkan)
+
+
 proc newVulkanWindowWinapi*(
+  globals: SiwinGlobals,
   vkInstance: pointer,
   size = ivec2(1280, 720),
   title = "",
@@ -71,7 +93,12 @@ proc newVulkanWindowWinapi*(
   frameless = false,
   transparent = false,
 ): WindowWinapiVulkan =
-  new result
+  if globals.vulkanVtable.close == nil:
+    globals.vulkanVtable = winapiVulkanWindowVtalbe()
+
+  result = create(WindowWinapiVulkanObj)
+  result.globals = globals
+  result.vtable = globals.vulkanVtable.addr
   result.initWindowWinapiVulkan(vkInstance, size, screen, fullscreen, frameless, transparent)
   result.title = title
   if not resizable: result.resizable = false

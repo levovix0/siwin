@@ -1,13 +1,17 @@
 import std/importutils
 import vmath
-import ../any/window as anyWindow
+import ../../[colorutils]
+import ../any/[window {.all.} as anyWindow, windowUtils]
 import window {.all.}, winapi
 
 privateAccess Window
 privateAccess WindowWinapi
+privateAccess SiwinGlobalsObj
+
 
 type
-  WindowWinapiOpengl* = ref object of WindowWinapi
+  WindowWinapiOpengl* = ptr WindowWinapiOpenglObj
+  WindowWinapiOpenglObj = object of WindowWinapi
     ctx: WglContext
 
 
@@ -30,22 +34,43 @@ proc initWindowWinapiOpengl(window: WindowWinapiOpengl; size: IVec2; screen: Scr
   discard window.hdc.wglMakeCurrent(window.ctx.raw)
 
 
-method makeCurrent*(window: WindowWinapiOpengl) =
+
+proc winapi_opengl_displayImpl(window: WindowWinapiOpengl) =
+  window.eventsHandler.pushEvent onRender, RenderEvent(window: window)
+  window.hdc.SwapBuffers
+
+
+proc winapi_opengl_destroy(window: WindowWinapiOpengl) =
+  `=destroy`(window.ctx)
+  `=destroy`(cast[WindowWinapi](window)[])
+
+
+
+proc winapi_opengl_pixelBuffer(window: WindowWinapiOpengl): PixelBuffer = discard
+
+
+proc winapi_opengl_makeCurrent(window: WindowWinapiOpengl) =
   discard window.hdc.wglMakeCurrent(window.ctx.raw)
 
-method `vsync=`*(window: WindowWinapiOpengl, v: bool, silent = false) =
+
+proc winapi_opengl_set_vsync(window: WindowWinapiOpengl, v: bool, silent = false) =
   if wglSwapIntervalExt == nil:
     wglSwapIntervalExt = cast[typeof wglSwapIntervalExt](wglGetProcAddress("wglSwapIntervalEXT"))
   if wglSwapIntervalExt == nil or wglSwapIntervalExt(if v: 1 else: 0) == 0:
     if not silent:
       raise OSError.newException("failed to " & (if v: "enable" else: "disable") & " vsync")
 
-method displayImpl(window: WindowWinapiOpengl) =
-  window.eventsHandler.pushEvent onRender, RenderEvent(window: window)
-  window.hdc.SwapBuffers
+
+proc winapi_opengl_vulkanSurface(window: WindowWinapiOpengl): pointer = discard
+
+
+
+proc winapiOpenglWindowVtalbe: WindowVtable =
+  makeWindowVtable(winapi, winapi_opengl)
 
 
 proc newOpenglWindowWinapi*(
+  globals: SiwinGlobals,
   size = ivec2(1280, 720),
   title = "",
   screen = defaultScreenWinapi(),
@@ -55,7 +80,12 @@ proc newOpenglWindowWinapi*(
   transparent = false,
   vsync = true,
 ): WindowWinapiOpengl =
-  new result
+  if globals.openglVtable.close == nil:
+    globals.openglVtable = winapiOpenglWindowVtalbe()
+
+  result = create(WindowWinapiOpenglObj)
+  result.globals = globals
+  result.vtable = globals.openglVtable.addr
   result.initWindowWinapiOpengl(size, screen, fullscreen, frameless, transparent)
   result.title = title
   result.`vsync=`(vsync, silent=true)

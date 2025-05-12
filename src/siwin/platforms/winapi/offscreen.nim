@@ -1,23 +1,38 @@
+import std/[importutils]
 import winapi
-import ../../[siwindefs]
-import ../any/window
+import ../any/[window {.all.} as anyWindow]
+
+
+privateAccess Window
+
 
 type
-  InvisibleOpenglWindowWinapi* = ref InvisibleOpenglWindowWinapiObj
+  InvisibleOpenglWindowWinapi* = ptr InvisibleOpenglWindowWinapiObj
   InvisibleOpenglWindowWinapiObj = object of Window
     handle: HWnd
     hdc: Hdc
     ctx: WglContext
 
 
-proc `=destroy`(windows: InvisibleOpenglWindowWinapiObj) {.siwin_destructor.} =
-  if windows.hdc != 0:
-    DeleteDC windows.hdc
-  if windows.handle != 0:
-    DestroyWindow(windows.handle)
+proc winapi_invisible_close(window: InvisibleOpenglWindowWinapi) =
+  if window.hdc != 0:
+    DeleteDC window.hdc
+  if window.handle != 0:
+    DestroyWindow(window.handle)
+  dealloc window.vtable
+  dealloc window
+
+
+proc winapi_invisible_makeCurrent(window: InvisibleOpenglWindowWinapi) =
+  window.hdc.wglMakeCurrent(window.ctx.raw)
+
 
 proc newOpenglContextWinapi*: InvisibleOpenglWindowWinapi =
-  new result
+  result = create(InvisibleOpenglWindowWinapiObj)
+  result.vtable = create(WindowVtable)
+  result.vtable.close = cast[proc(window: Window) {.nimcall.}](winapi_invisible_close)
+  result.vtable.makeCurrent = cast[proc(window: Window) {.nimcall.}](winapi_invisible_makeCurrent)
+
   proc registerWindowClass(
     class: string,
     wndProc: proc(handle: HWnd, message: Uint, wParam: WParam, lParam: LParam): LResult {.stdcall.}
@@ -65,6 +80,3 @@ proc newOpenglContextWinapi*: InvisibleOpenglWindowWinapi =
   result.hdc.SetPixelFormat(result.hdc.ChoosePixelFormat(pfd.addr), pfd.addr)
   result.ctx.raw = wglCreateContext(result.hdc)
   discard result.hdc.wglMakeCurrent(result.ctx.raw)
-
-method makeCurrent*(windows: InvisibleOpenglWindowWinapi) =
-  windows.hdc.wglMakeCurrent(windows.ctx.raw)

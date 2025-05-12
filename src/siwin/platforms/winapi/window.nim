@@ -2,10 +2,11 @@ import std/[times, os, options, importutils, sequtils]
 import pkg/[vmath]
 import ./[winapi]
 import ../../[colorutils, siwindefs]
-import ../any/[window, clipboards]
+import ../any/[window {.all.}, clipboards]
 import ../any/[windowUtils]
 
 privateAccess Window
+privateAccess SiwinGlobalsObj
 
 {.experimental: "overloadableEnums".}
 
@@ -22,7 +23,7 @@ type
 
   ClipboardWinapiDnd* = ref object of Clipboard
 
-  WindowWinapi* = ref WindowWinapiObj
+  WindowWinapi* = ptr WindowWinapiObj
   WindowWinapiObj* = object of Window
     handle: HWnd
     wicon: HIcon
@@ -30,7 +31,8 @@ type
     wcursor: HCursor
     restoreSize, restorePos: IVec2
 
-  WindowWinapiSoftwareRendering* = ref object of WindowWinapi
+  WindowWinapiSoftwareRendering* = ptr WindowWinapiSoftwareRenderingObj
+  WindowWinapiSoftwareRenderingObj = object of WindowWinapi
     buffer: Buffer
 
 
@@ -216,29 +218,8 @@ template pushEvent(eventsHandler: WindowEventsHandler, event, args) =
   if eventsHandler.event != nil:
     eventsHandler.event(args)
 
-method `fullscreen=`*(window: WindowWinapi, v: bool) =
-  if window.m_fullscreen == v: return
-  window.m_fullscreen = v
-  if v:
-    window.handle.SetWindowLongPtr(GwlStyle, WsVisible)
-    discard window.handle.ShowWindow(SwMaximize)
-  else:
-    window.handle.ShowWindow(SwShowNormal)
-    discard window.handle.SetWindowLongPtr(GwlStyle, WsVisible or WsOverlappedWindow)
-    window.eventsHandler.pushEvent onStateBoolChanged, StateBoolChangedEvent(
-      window: window, kind: StateBoolChangedEventKind.fullscreen, value: v
-    )
 
-method `size=`*(window: WindowWinapi, size: IVec2) =
-  window.fullscreen = false
-  let rcClient = window.handle.clientRect
-  var rcWind = window.handle.windowRect
-  let borderx = (rcWind.right - rcWind.left) - rcClient.right
-  let bordery = (rcWind.bottom - rcWind.top) - rcClient.bottom
-  window.handle.MoveWindow(rcWind.left, rcWind.top, (size.x + borderx).int32, (size.y + bordery).int32, True)
-
-
-proc enableTransparency*(window: WindowWinapi) =
+proc enableTransparency(window: WindowWinapi) =
   let region = CreateRectRgn(0, 0, -1, -1)
 
   # enabling blur will force Windows to compose our window with transparency
@@ -289,19 +270,71 @@ proc initWindow(window: WindowWinapi; size: IVec2; screen: ScreenWinapi, fullscr
   window.m_dragndropClipboard = ClipboardWinapiDnd()  # todo
 
 
-method `title=`*(window: WindowWinapi, title: string) =
-  window.handle.SetWindowText(title)
+proc releaseAllKeys(window: WindowWinapi) =
+  for key in window.keyboard.pressed:
+    window.keyboard.pressed.excl key
+    window.eventsHandler.pushEvent onKey, KeyEvent(window: window, key: key, pressed: false, repeated: false, generated: true)
 
-method close*(window: WindowWinapi) =
+  for button in window.mouse.pressed:
+    window.mouse.pressed.excl button
+    window.eventsHandler.pushEvent onMouseButton, MouseButtonEvent(window: window, button: button, pressed: false, generated: true)
+
+
+proc resizeBufferIfNeeded(buffer: var Buffer, size: IVec2) =
+  if size.x != buffer.x or size.y != buffer.y:
+    if buffer.hdc != 0:
+      DeleteDC buffer.hdc
+      DeleteObject buffer.bitmap
+    
+    buffer.x = size.x
+    buffer.y = size.y
+  
+    var bmi = BitmapInfo(
+      bmiHeader: BitmapInfoHeader(
+        biSize: BitmapInfoHeader.sizeof.int32, biWidth: size.x.Long, biHeight: -size.y.Long,
+        biPlanes: 1, biBitCount: 32, biCompression: Bi_rgb
+      )
+    )
+    buffer.bitmap = CreateDibSection(0, bmi.addr, Dib_rgb_colors, cast[ptr pointer](buffer.pixels.addr), 0, 0)
+    buffer.hdc = CreateCompatibleDC(0)
+    buffer.hdc.SelectObject buffer.bitmap
+
+
+
+proc winapi_close(window: WindowWinapi) =
   if not window.m_closed: window.handle.SendMessage(WmClose, 0, 0)
 
-
-method `pos=`*(window: WindowWinapi, v: IVec2) =
-  if window.m_fullscreen: return
-  window.handle.SetWindowPos(0, v.x, v.y, 0, 0, SwpNoSize)
+proc winapi_redraw(window: WindowWinapi) =
+  window.redrawRequested = true
 
 
-method `cursor=`*(window: WindowWinapi, v: Cursor) =
+
+proc winapi_sw_displayImpl(window: WindowWinapiSoftwareRendering) =
+  var ps: PaintStruct
+  window.handle.BeginPaint(ps.addr)
+  
+  window.eventsHandler.pushEvent onRender, RenderEvent(window: window)
+  
+  BitBlt(
+    window.hdc, 0, 0, window.m_size.x, window.m_size.y,
+    window.buffer.hdc, 0, 0, SrcCopy
+  )
+  
+  window.handle.EndPaint(ps.addr)
+
+
+proc winapi_sw_destroy(window: WindowWinapi) =
+  `=destroy`(window[])
+
+
+
+proc winapi_set_frameless(window: WindowWinapi, v: bool) =
+  if window.m_frameless == v: return
+  window.m_frameless = v
+  SetWindowLongPtr(window.handle, GWL_STYLE, (if v: WsPopup or WsMinimizeBox else: WsOverlappedWindow))
+
+
+proc winapi_set_cursor(window: WindowWinapi, v: Cursor) =
   if window.m_cursor.kind == builtin and v.kind == builtin and v.builtin == window.m_cursor.builtin: return
   if window.wcursor != 0: DestroyCursor window.wcursor
   window.m_cursor = v
@@ -346,75 +379,47 @@ method `cursor=`*(window: WindowWinapi, v: Cursor) =
     SetCursor window.wcursor
 
     convertPixelsInplace(buffer.data, buffer.size, PixelBufferFormat.bgra_32bit, sourceFormat)
-  
-
-method `icon=`*(window: WindowWinapi, _: nil.typeof) =
-  ## clear icon
-  if window.wicon != 0:
-    DestroyIcon window.wicon
-    window.wicon = 0
-  
-  window.handle.SendMessageW(WmSetIcon, IconBig, 0)
-  window.handle.SendMessageW(WmSetIcon, IconSmall, 0)
-
-method `icon=`*(window: WindowWinapi, v: PixelBuffer) =
-  ## set icon
-  if v.size.x * v.size.y == 0:
-    window.icon = nil
-    return
-
-  if window.wicon != 0: DestroyIcon window.wicon
-  
-  let sourceFormat = v.format  # to convert pixels back later
-  var buffer = v
-  convertPixelsInplace(buffer.data, buffer.size, sourceFormat, PixelBufferFormat.bgra_32bit)
-
-  window.wicon = CreateIcon(hInstance, v.size.x, v.size.y, 1, 32, nil, cast[ptr Byte](v.data))
-  window.handle.SendMessageW(WmSetIcon, IconBig, window.wicon)
-  window.handle.SendMessageW(WmSetIcon, IconSmall, window.wicon)
-
-  convertPixelsInplace(buffer.data, buffer.size, PixelBufferFormat.bgra_32bit, sourceFormat)
 
 
-proc resizeBufferIfNeeded(buffer: var Buffer, size: IVec2) =
-  if size.x != buffer.x or size.y != buffer.y:
-    if buffer.hdc != 0:
-      DeleteDC buffer.hdc
-      DeleteObject buffer.bitmap
-    
-    buffer.x = size.x
-    buffer.y = size.y
-  
-    var bmi = BitmapInfo(
-      bmiHeader: BitmapInfoHeader(
-        biSize: BitmapInfoHeader.sizeof.int32, biWidth: size.x.Long, biHeight: -size.y.Long,
-        biPlanes: 1, biBitCount: 32, biCompression: Bi_rgb
-      )
+proc winapi_set_separateTouch(window: WindowWinapi, v: bool) =
+  ## todo
+
+
+
+proc winapi_set_size(window: WindowWinapi, size: IVec2) =
+  window.fullscreen = false
+  let rcClient = window.handle.clientRect
+  var rcWind = window.handle.windowRect
+  let borderx = (rcWind.right - rcWind.left) - rcClient.right
+  let bordery = (rcWind.bottom - rcWind.top) - rcClient.bottom
+  window.handle.MoveWindow(rcWind.left, rcWind.top, (size.x + borderx).int32, (size.y + bordery).int32, True)
+
+
+proc winapi_set_pos(window: WindowWinapi, v: IVec2) =
+  if window.m_fullscreen: return
+  window.handle.SetWindowPos(0, v.x, v.y, 0, 0, SwpNoSize)
+
+
+proc winapi_set_title(window: WindowWinapi, title: string) =
+  window.handle.SetWindowText(title)
+
+
+
+proc winapi_set_fullscreen(window: WindowWinapi, v: bool) =
+  if window.m_fullscreen == v: return
+  window.m_fullscreen = v
+  if v:
+    window.handle.SetWindowLongPtr(GwlStyle, WsVisible)
+    discard window.handle.ShowWindow(SwMaximize)
+  else:
+    window.handle.ShowWindow(SwShowNormal)
+    discard window.handle.SetWindowLongPtr(GwlStyle, WsVisible or WsOverlappedWindow)
+    window.eventsHandler.pushEvent onStateBoolChanged, StateBoolChangedEvent(
+      window: window, kind: StateBoolChangedEventKind.fullscreen, value: v
     )
-    buffer.bitmap = CreateDibSection(0, bmi.addr, Dib_rgb_colors, cast[ptr pointer](buffer.pixels.addr), 0, 0)
-    buffer.hdc = CreateCompatibleDC(0)
-    buffer.hdc.SelectObject buffer.bitmap
 
 
-method pixelBuffer*(window: WindowWinapiSoftwareRendering): PixelBuffer =
-  result = PixelBuffer(
-    data: window.buffer.pixels,
-    size: ivec2(window.buffer.x.int32, window.buffer.y.int32),
-    format: (if window.transparent: PixelBufferFormat.bgrx_32bit else: PixelBufferFormat.bgru_32bit)
-  )
-
-
-proc releaseAllKeys(window: WindowWinapi) =
-  for key in window.keyboard.pressed:
-    window.keyboard.pressed.excl key
-    window.eventsHandler.pushEvent onKey, KeyEvent(window: window, key: key, pressed: false, repeated: false, generated: true)
-
-  for button in window.mouse.pressed:
-    window.mouse.pressed.excl button
-    window.eventsHandler.pushEvent onMouseButton, MouseButtonEvent(window: window, button: button, pressed: false, generated: true)
-
-
-method `maximized=`*(window: WindowWinapi, v: bool) =
+proc winapi_set_maximized(window: WindowWinapi, v: bool) =
   if window.m_maximized == v: return
   if window.m_frameless:
     if v:
@@ -435,18 +440,19 @@ method `maximized=`*(window: WindowWinapi, v: bool) =
   )
 
 
-method `minimized=`*(window: WindowWinapi, v: bool) =
+proc winapi_set_minimized(window: WindowWinapi, v: bool) =
   window.releaseAllKeys()
   window.m_minimized = v
   discard ShowWindow(window.handle, if v: SwShowMinNoActive  else: SwNormal)
 
 
-method `visible=`*(window: WindowWinapi, v: bool) =
+proc winapi_set_visible(window: WindowWinapi, v: bool) =
   window.m_visible = v
   discard ShowWindow(window.handle, if v: SwShow else: SwHide)
 
 
-method `resizable=`*(window: WindowWinapi, v: bool) =
+
+proc winapi_set_resizable(window: WindowWinapi, v: bool) =
   if not window.m_frameless:
     let style = GetWindowLongW(window.handle, GwlStyle)
     discard SetWindowLongW(window.handle, GwlStyle, if v: style or WsThickframe else: style and not WsThickframe)
@@ -454,27 +460,59 @@ method `resizable=`*(window: WindowWinapi, v: bool) =
   window.m_maxSize = ivec2()
 
 
-method `minSize=`*(window: WindowWinapi, v: IVec2) =
+proc winapi_set_minSize(window: WindowWinapi, v: IVec2) =
   window.m_minSize = v
   if not window.m_frameless:
     let style = GetWindowLongW(window.handle, GwlStyle)
     discard SetWindowLongW(window.handle, GwlStyle, style or WsThickframe)
 
-method `maxSize=`*(window: WindowWinapi, v: IVec2) =
+proc winapi_set_maxSize(window: WindowWinapi, v: IVec2) =
   window.m_maxSize = v
   if not window.m_frameless:
     let style = GetWindowLongW(window.handle, GwlStyle)
     discard SetWindowLongW(window.handle, GwlStyle, style or WsThickframe)
 
 
-method startInteractiveMove*(window: WindowWinapi, pos: Option[Vec2]) =
+
+proc winapi_set_icon(window: WindowWinapi, _: nil.typeof) =
+  ## clear icon
+  if window.wicon != 0:
+    DestroyIcon window.wicon
+    window.wicon = 0
+  
+  window.handle.SendMessageW(WmSetIcon, IconBig, 0)
+  window.handle.SendMessageW(WmSetIcon, IconSmall, 0)
+
+
+proc winapi_clear_icon(window: WindowWinapi, v: PixelBuffer) =
+  ## set icon
+  if v.size.x * v.size.y == 0:
+    window.icon = nil
+    return
+
+  if window.wicon != 0: DestroyIcon window.wicon
+  
+  let sourceFormat = v.format  # to convert pixels back later
+  var buffer = v
+  convertPixelsInplace(buffer.data, buffer.size, sourceFormat, PixelBufferFormat.bgra_32bit)
+
+  window.wicon = CreateIcon(hInstance, v.size.x, v.size.y, 1, 32, nil, cast[ptr Byte](v.data))
+  window.handle.SendMessageW(WmSetIcon, IconBig, window.wicon)
+  window.handle.SendMessageW(WmSetIcon, IconSmall, window.wicon)
+
+  convertPixelsInplace(buffer.data, buffer.size, PixelBufferFormat.bgra_32bit, sourceFormat)
+
+
+
+proc winapi_startInteractiveMove(window: WindowWinapi, pos: Option[Vec2]) =
   window.releaseAllKeys()
   ReleaseCapture()
 
   window.handle.PostMessage(WmSysCommand, 0xF012, 0)
   # todo: press all keys and mouse buttons that are pressed after move
 
-method startInteractiveResize*(window: WindowWinapi, edge: Edge, pos: Option[Vec2]) =
+
+proc winapi_startInteractiveResize(window: WindowWinapi, edge: Edge, pos: Option[Vec2]) =
   window.releaseAllKeys()
   ReleaseCapture()
 
@@ -494,76 +532,47 @@ method startInteractiveResize*(window: WindowWinapi, edge: Edge, pos: Option[Vec
   # todo: press all keys and mouse buttons that are pressed after resize
 
 
-method showWindowMenu*(window: WindowWinapi, pos: Option[Vec2]) =
+
+proc winapi_showWindowMenu(window: WindowWinapi, pos: Option[Vec2]) =
   discard
 
 
-method content*(clipboard: ClipboardWinapi, kind: ClipboardContentKind, mimeType: string): ClipboardContent =
-  discard OpenClipboard(0)
+proc winapi_setInputRegion(window: WindowWinapi, pos, size: Vec2) =
+  window.inputRegion = some (pos: pos, size: size)
 
-  let hcpb = GetClipboardData(CfUnicodeText)
-  if hcpb == 0:
-    CloseClipboard()
-    return
+
+proc winapi_setTitleRegion(window: WindowWinapi, pos, size: Vec2) =
+  window.titleRegion = some (pos: pos, size: size)
+
+
+proc winapi_setBorderWidth(window: WindowWinapi, innerWidth, outerWidth: float32, diagonalSize: float32) =
+  window.borderWidth = some (innerWidth: innerWidth, outerWidrth: outerWidth, diagonalSize: diagonalSize)
+
   
-  result = ClipboardContent(kind: ClipboardContentKind.text, text: $cast[PWChar](GlobalLock hcpb))  # todo: other types
-  GlobalUnlock hcpb
-  discard CloseClipboard()
+proc winapi_set_dragStatus(window: WindowWinapi, v: DragStatus) =
+  ## todo
 
 
-method `content=`*(clipboard: ClipboardWinapi, content: ClipboardConvertableContent) =
-  var conv: ClipboardContentConverter
-  for cv in content.converters:
-    case cv.kind
-    of ClipboardContentKind.text:
-      conv = cv
-    else:
-      ## todo
 
-  if conv.f == nil: return
+proc winapi_sw_pixelBuffer(window: WindowWinapiSoftwareRendering): PixelBuffer =
+  result = PixelBuffer(
+    data: window.buffer.pixels,
+    size: ivec2(window.buffer.x.int32, window.buffer.y.int32),
+    format: (if window.transparent: PixelBufferFormat.bgrx_32bit else: PixelBufferFormat.bgru_32bit)
+  )
 
-  let content = conv.f(content.data, conv.kind, conv.mimeType)
-  if content.kind != ClipboardContentKind.text: return
-
-  let s = content.text
-
-  discard OpenClipboard(0)
-  discard EmptyClipboard()
-  
-  let ws = +$s
-  let ts = (ws.len + 1) * WChar.sizeof
-  let hstr = GlobalAlloc(GMemMoveable, ts)
-  if hstr == 0:
-    CloseClipboard()
-    raise OSError.newException("failed to alloc string")
-
-  copyMem(GlobalLock hstr, ws.winstrConverterWStringToLPWstr, ts)
-  GlobalUnlock hstr
-  SetClipboardData(CfUnicodeText, hstr)
-  CloseClipboard()
+proc winapi_sw_makeCurrent(window: WindowWinapiSoftwareRendering) = discard
+proc winapi_sw_set_vsync(window: WindowWinapiSoftwareRendering, v: bool, silent = false) = discard
+proc winapi_sw_vulkanSurface(window: WindowWinapiSoftwareRendering): pointer = discard
 
 
-method displayImpl(window: WindowWinapi) {.base.} =
-  var ps: PaintStruct
-  window.handle.BeginPaint(ps.addr)
-  
-  window.eventsHandler.pushEvent onRender, RenderEvent(window: window)
-  
-  if window of WindowWinapiSoftwareRendering:
-    BitBlt(
-      window.hdc, 0, 0, window.m_size.x, window.m_size.y,
-      window.WindowWinapiSoftwareRendering.buffer.hdc, 0, 0, SrcCopy
-    )
-  
-  window.handle.EndPaint(ps.addr)
 
-
-method firstStep*(window: WindowWinapi, makeVisible = true) =
+proc winapi_firstStep(window: WindowWinapi, makeVisible = true) =
   if makeVisible:
     window.visible = true
   
-  if window of WindowWinapiSoftwareRendering:
-    resizeBufferIfNeeded window.WindowWinapiSoftwareRendering.buffer, window.m_size
+  if window.vtable.pixelBuffer == window.globals.softwareRenderingVtable.pixelBuffer:
+    resizeBufferIfNeeded cast[WindowWinapiSoftwareRendering](window).buffer, window.m_size
 
   window.eventsHandler.pushEvent onResize, ResizeEvent(window: window, size: window.m_size, initial: true)
   window.redrawRequested = true
@@ -590,7 +599,7 @@ proc updateWindowState(window: WindowWinapi) =
   window.m_pos = ivec2(p.rcNormalPosition.left, p.rcNormalPosition.top)
 
 
-method step*(window: WindowWinapi) =
+proc winapi_step(window: WindowWinapi): bool =
   var msg: Msg
   var catched = false
 
@@ -609,9 +618,13 @@ method step*(window: WindowWinapi) =
     else:
       catched = true
 
-    if window.m_closed: return
+    if window.m_closed:
+      window.vtable.destroy(window)
+      dealloc window
+      return true
 
   if not catched: sleep(1)
+  return false
 
 
 proc poolEvent(window: WindowWinapi, message: Uint, wParam: WParam, lParam: LParam): LResult =
@@ -638,8 +651,8 @@ proc poolEvent(window: WindowWinapi, message: Uint, wParam: WParam, lParam: LPar
     if rect.right != window.m_size.x or rect.bottom != window.m_size.y:
       window.m_size = ivec2(rect.right, rect.bottom)
   
-      if window of WindowWinapiSoftwareRendering:
-        resizeBufferIfNeeded window.WindowWinapiSoftwareRendering.buffer, window.m_size
+      if window.vtable.pixelBuffer == window.globals.softwareRenderingVtable.pixelBuffer:
+        resizeBufferIfNeeded cast[WindowWinapiSoftwareRendering](window).buffer, window.m_size
 
       window.eventsHandler.pushEvent onResize, ResizeEvent(window: window, size: window.m_size, initial: false)
       window.redrawRequested = true
@@ -647,7 +660,7 @@ proc poolEvent(window: WindowWinapi, message: Uint, wParam: WParam, lParam: LPar
     if window.redrawRequested:
       window.redrawRequested = false
       if window.m_size.x * window.m_size.y > 0:
-        window.displayImpl()
+        window.vtable.displayImpl(window)
 
 
   of WmDestroy:
@@ -781,7 +794,57 @@ proc poolEvent(window: WindowWinapi, message: Uint, wParam: WParam, lParam: LPar
   else: return window.handle.DefWindowProc(message, wParam, lParam)
 
 
+method content*(clipboard: ClipboardWinapi, kind: ClipboardContentKind, mimeType: string): ClipboardContent =
+  discard OpenClipboard(0)
+
+  let hcpb = GetClipboardData(CfUnicodeText)
+  if hcpb == 0:
+    CloseClipboard()
+    return
+  
+  result = ClipboardContent(kind: ClipboardContentKind.text, text: $cast[PWChar](GlobalLock hcpb))  # todo: other types
+  GlobalUnlock hcpb
+  discard CloseClipboard()
+
+
+method `content=`*(clipboard: ClipboardWinapi, content: ClipboardConvertableContent) =
+  var conv: ClipboardContentConverter
+  for cv in content.converters:
+    case cv.kind
+    of ClipboardContentKind.text:
+      conv = cv
+    else:
+      ## todo
+
+  if conv.f == nil: return
+
+  let content = conv.f(content.data, conv.kind, conv.mimeType)
+  if content.kind != ClipboardContentKind.text: return
+
+  let s = content.text
+
+  discard OpenClipboard(0)
+  discard EmptyClipboard()
+  
+  let ws = +$s
+  let ts = (ws.len + 1) * WChar.sizeof
+  let hstr = GlobalAlloc(GMemMoveable, ts)
+  if hstr == 0:
+    CloseClipboard()
+    raise OSError.newException("failed to alloc string")
+
+  copyMem(GlobalLock hstr, ws.winstrConverterWStringToLPWstr, ts)
+  GlobalUnlock hstr
+  SetClipboardData(CfUnicodeText, hstr)
+  CloseClipboard()
+
+
+proc winapiSoftwareRenderingWindowVtalbe: WindowVtable =
+  makeWindowVtable(winapi, winapi_sw)
+
+
 proc newSoftwareRenderingWindowWinapi*(
+  globals: SiwinGlobals,
   size = ivec2(1280, 720),
   title = "",
   screen = defaultScreenWinapi(),
@@ -790,7 +853,12 @@ proc newSoftwareRenderingWindowWinapi*(
   frameless = false,
   transparent = false,
 ): WindowWinapiSoftwareRendering =
-  new result
+  if globals.softwareRenderingVtable.close == nil:
+    globals.softwareRenderingVtable = winapiSoftwareRenderingWindowVtalbe()
+
+  result = create(WindowWinapiSoftwareRenderingObj)
+  result.globals = globals
+  result.vtable = globals.softwareRenderingVtable.addr
   result.initWindow(size, screen, fullscreen, frameless, transparent)
   result.title = title
   if not resizable: result.resizable = false

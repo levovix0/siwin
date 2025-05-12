@@ -8,8 +8,8 @@ let globals = newSiwinGlobals()
 
 
 test "2 windows at once":
-  let win1 = globals.newOpenglWindow(title="1", transparent=true, class="siwin example")
-  let win2 = globals.newOpenglWindow(title="2", size=ivec2(800, 600), class="siwin example")
+  var win1 = globals.newOpenglWindow(title="1", transparent=true, class="siwin example")
+  var win2 = globals.newOpenglWindow(title="2", size=ivec2(800, 600), class="siwin example")
   loadExtensions()
 
   let win1eh = WindowEventsHandler(
@@ -24,7 +24,8 @@ test "2 windows at once":
     ,
     onClick: proc(e: ClickEvent) =
       if e.double:
-        close (if win2.opened: win2 else: e.window)
+        if win1 != nil: close win1
+        if win2 != nil: close win2
     ,
     onKey: proc(e: KeyEvent) =
       if e.pressed and not e.generated:
@@ -33,6 +34,9 @@ test "2 windows at once":
           close win1
           close win2
         else: discard
+    ,
+    onClose: proc(e: CloseEvent) =
+      win1 = nil
   )
   var win2eh = win1eh
   
@@ -41,9 +45,8 @@ test "2 windows at once":
     glClearColor 0.7, 0.7, 0.7, 1
     glClear GlColorBufferBit or GlDepthBufferBit
   
-  win2eh.onClick = proc(e: ClickEvent) =
-    if e.double:
-      close (if win1.opened: win1 else: e.window)
+  win2eh.onClose = proc(e: CloseEvent) =
+    win2 = nil
 
   runMultiple(
     (win1, win1eh, true),

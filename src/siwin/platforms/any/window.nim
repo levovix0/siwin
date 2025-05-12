@@ -96,6 +96,10 @@ type
   SiwinGlobals* = ptr SiwinGlobalsObj
   SiwinGlobalsObj* = object of RootObj
     platform*: Platform
+
+    softwareRenderingVtable: WindowVtable
+    openglVtable: WindowVtable
+    vulkanVtable: WindowVtable
   
 
   Screen* = ref object of RootObj
@@ -206,7 +210,58 @@ type
     onDrop*:             proc(e: DropEvent)
 
 
-  Window* = ref object of RootObj
+  WindowVtable = object
+    close*: proc(window: Window) {.nimcall.}
+    redraw*: proc(window: Window) {.nimcall.}
+
+    destroy*: proc(window: Window) {.nimcall.}
+    displayImpl*: proc(window: Window) {.nimcall.}
+
+    set_frameless*: proc(window: Window, v: bool) {.nimcall.}
+    set_cursor*: proc(window: Window, v: Cursor) {.nimcall.}
+    set_separateTouch*: proc(window: Window, v: bool) {.nimcall.}
+    
+    set_size*: proc(window: Window, v: IVec2) {.nimcall.}
+    set_pos*: proc(window: Window, v: IVec2) {.nimcall.}
+    set_title*: proc(window: Window, v: string) {.nimcall.}
+    
+    set_fullscreen*: proc(window: Window, v: bool) {.nimcall.}
+    set_maximized*: proc(window: Window, v: bool) {.nimcall.}
+    set_minimized*: proc(window: Window, v: bool) {.nimcall.}
+    set_visible*: proc(window: Window, v: bool) {.nimcall.}
+    
+    set_resizable*: proc(window: Window, v: bool) {.nimcall.}
+    set_minSize*: proc(window: Window, v: IVec2) {.nimcall.}
+    set_maxSize*: proc(window: Window, v: IVec2) {.nimcall.}
+    
+    set_icon*: proc(window: Window, v: PixelBuffer) {.nimcall.}
+    clear_icon*: proc(window: Window) {.nimcall.}
+    
+    startInteractiveMove*: proc(window: Window, pos: Option[Vec2] = none Vec2) {.nimcall.}
+    startInteractiveResize*: proc(window: Window, edge: Edge, pos: Option[Vec2] = none Vec2) {.nimcall.}
+    
+    showWindowMenu*: proc(window: Window, pos: Option[Vec2] = none Vec2) {.nimcall.}
+    setInputRegion*: proc(window: Window, pos, size: Vec2) {.nimcall.}
+    setTitleRegion*: proc(window: Window, pos, size: Vec2) {.nimcall.}
+    setBorderWidth*: proc(window: Window, innerWidth, outerWidth: float32, diagonalSize: float32) {.nimcall.}
+    
+    set_dragStatus*: proc(window: Window, v: DragStatus) {.nimcall.}
+    
+    pixelBuffer*: proc(window: Window): PixelBuffer {.nimcall.}
+    
+    makeCurrent*: proc(window: Window) {.nimcall.}
+    set_vsync*: proc(window: Window, v: bool, silent = false) {.nimcall.}
+    
+    vulkanSurface*: proc(window: Window): pointer {.nimcall.}
+    
+    firstStep*: proc(window: Window, makeVisible = true) {.nimcall.}
+    step*: proc(window: Window): bool {.nimcall.}
+
+
+  Window* = ptr object of RootObj
+    globals*: SiwinGlobals
+    vtable: ptr WindowVtable
+    
     mouse*: Mouse
     keyboard*: Keyboard
     touchScreen*: TouchScreen
@@ -252,13 +307,6 @@ method height*(screen: Screen): int32 {.base.} = discard
 proc size*(screen: Screen): IVec2 = ivec2(screen.width, screen.height)
 
 
-proc closed*(window: Window): bool = window.m_closed
-proc opened*(window: Window): bool = not window.closed
-
-method close*(window: Window) {.base.} =
-  ## request window close
-  window.m_closed = true
-
 proc transparent*(window: Window): bool = window.m_transparent
 proc frameless*(window: Window): bool = window.m_frameless
 proc cursor*(window: Window): Cursor = window.m_cursor
@@ -278,120 +326,131 @@ proc maxSize*(window: Window): IVec2 = window.m_maxSize
 proc focused*(window: Window): bool = window.m_focused
 
 
-# note: locks: "unknown" usualy means that function can cause event outside of event loop
 
+proc close*(window: Window) = window.vtable.close(window)
+  ## request window close
 
-method redraw*(window: Window) {.base.} = window.redrawRequested = true
+proc redraw*(window: Window) = window.vtable.redraw(window)
   ## request render
 
-method `frameless=`*(window: Window, v: bool) {.base.} = discard
 
-method `cursor=`*(window: Window, v: Cursor) {.base.} = discard
+proc `frameless=`*(window: Window, v: bool) = window.vtable.set_frameless(window, v)
+  ## enable/disable window decorations
+
+proc `cursor=`*(window: Window, v: Cursor) = window.vtable.set_cursor(window, v)
   ## set cursor
   ## used when mouse hover window
 
-
-method `separateTouch=`*(window: Window, v: bool) {.base.} = discard
+proc `separateTouch=`*(window: Window, v: bool) = window.vtable.set_separateTouch(window, v)
   ## enable/disable handling touch events separately from mouse events
 
 
-method `size=`*(window: Window, v: IVec2) {.base.} = discard
+proc `size=`*(window: Window, v: IVec2) = window.vtable.set_size(window, v)
   ## resize window
   ## exit fullscreen if window is fullscreen
 
-method `pos=`*(window: Window, v: IVec2) {.base.} = discard
+proc `pos=`*(window: Window, v: IVec2) = window.vtable.set_pos(window, v)
   ## move window
   ## do nothing if window is fullscreen
 
-method `title=`*(window: Window, v: string) {.base.} = discard
+
+proc `title=`*(window: Window, v: string) = window.vtable.set_title(window, v)
   ## set window title
 
-method `fullscreen=`*(window: Window, v: bool) {.base.} = discard
+
+proc `fullscreen=`*(window: Window, v: bool) = window.vtable.set_fullscreen(window, v)
   ## fullscreen/unfullscreen window
 
-method `maximized=`*(window: Window, v: bool) {.base.} = discard
+proc `maximized=`*(window: Window, v: bool) = window.vtable.set_maximized(window, v)
   ## maximize/unmaximize window
   ## exit fullscreen if window is fullscreen
 
-method `minimized=`*(window: Window, v: bool) {.base.} = discard
+proc `minimized=`*(window: Window, v: bool) = window.vtable.set_minimized(window, v)
   ## minimize/unminimize window
 
-method `visible=`*(window: Window, v: bool) {.base.} = discard
+proc `visible=`*(window: Window, v: bool) = window.vtable.set_visible(window, v)
   ## show/hide window
 
-method `resizable=`*(window: Window, v: bool) {.base.} = discard
+
+proc `resizable=`*(window: Window, v: bool) = window.vtable.set_resizable(window, v)
   ## enable/disable resizing
 
-method `minSize=`*(window: Window, v: IVec2) {.base.} = discard
+proc `minSize=`*(window: Window, v: IVec2) = window.vtable.set_minSize(window, v)
   ## set minimum size
   ## `window.resizable=` will disable this
 
-method `maxSize=`*(window: Window, v: IVec2) {.base.} = discard
+proc `maxSize=`*(window: Window, v: IVec2) = window.vtable.set_maxSize(window, v)
   ## set maximum size
   ## `window.resizable=` will disable this
 
-method `icon=`*(window: Window, v: nil.typeof) {.base.} = discard
-  ## clear window icon
 
-method `icon=`*(window: Window, v: PixelBuffer) {.base.} = discard
+proc `icon=`*(window: Window, v: PixelBuffer) = window.vtable.set_icon(window, v)
   ## set window icon
 
+proc `icon=`*(window: Window, v: typeof(nil)) = window.vtable.clear_icon(window)
+  ## clear window icon
 
-method startInteractiveMove*(window: Window, pos: Option[Vec2] = none Vec2) {.base.} = discard
+
+proc startInteractiveMove*(window: Window, pos: Option[Vec2] = none Vec2) = window.vtable.startInteractiveMove(window, pos)
   ## allow user to move window interactivly
   ## useful to create client-side decorated windows
   ## it's recomended to start interactive move after user grabbed window header and started to move mouse
 
-
-method startInteractiveResize*(window: Window, edge: Edge, pos: Option[Vec2] = none Vec2) {.base.} = discard
+proc startInteractiveResize*(window: Window, edge: Edge, pos: Option[Vec2] = none Vec2) = window.vtable.startInteractiveResize(window, edge, pos)
   ## allow user to resize window interactivly
   ## useful to create client-side decorated windows
   ## it's recomended to start interactive resize after user grabbed window border and started to move mouse
 
 
-method showWindowMenu*(window: Window, pos: Option[Vec2] = none Vec2) {.base.} = discard
+proc showWindowMenu*(window: Window, pos: Option[Vec2] = none Vec2) = window.vtable.showWindowMenu(window, pos)
   ## show OS/platform/DE-specific window menu
   ## it's recomended to show menu after user right-clicked on window header
   ## for now works only on Linux(Wayland)
 
-
-method setInputRegion*(window: Window, pos, size: Vec2) {.base.} =
+proc setInputRegion*(window: Window, pos, size: Vec2) = window.vtable.setInputRegion(window, pos, size)
   ## set the rect (in window-local coordinates) where actual window is placed (inluding titlebar, if has one).
   ## this is used by Windows and Linux(Wayland) to correctly anchor the window and to correctly send mouse and touch events.
   ## it's recomended to set input region if you draw shadows for window.
   ## setInputRegion, if called once, must be called after each resize of the window
-  assert size.x > 0 and size.y > 0, "there must be at least one pixel of the actual window"
-  window.inputRegion = some (pos, size)
 
-
-method setTitleRegion*(window: Window, pos, size: Vec2) {.base.} =
+proc setTitleRegion*(window: Window, pos, size: Vec2) = window.vtable.setTitleRegion(window, pos, size)
   ## set the rect (in window-local coordinates) where titlebar is placed.
   ## this is used by Windows to allow user to move window interactivly. siwin will replicate this behaviour on other platforms.
   ## it's recomended to set title region if you have custom titlebar.
-  window.titleRegion = some (pos, size)
 
-
-method setBorderWidth*(window: Window, innerWidth, outerWidth: float32, diagonalSize: float32) {.base.} =
+proc setBorderWidth*(window: Window, innerWidth, outerWidth: float32, diagonalSize: float32) =
   ## set window border width. This will not change the look of window, it is for resizing window.
   ## this is used on Windows to allow user to resize window interactivly. siwin will replicate this behaviour on other platforms.
   ## it's recomended to set border width if you have custom titlebar.
-  window.borderWidth = some (innerWidth, outerWidth, diagonalSize)
+  window.vtable.setBorderWidth(window, innerWidth, outerWidth, diagonalSize)
 
 
-method pixelBuffer*(window: Window): PixelBuffer {.base.} =
+proc `dragStatus=`*(window: Window, v: DragStatus) = window.vtable.set_dragStatus(window, v)
+  ## respond to a drop request
+
+
+proc pixelBuffer*(window: Window): PixelBuffer = window.vtable.pixelBuffer(window)
   ## returns pixel buffer attached to window
-  raise WindowTypeDefect.newException("this Window has no pixel buffer. only SoftwareRendering windows have one")
 
 
-method makeCurrent*(window: Window) {.base.} = discard
+proc makeCurrent*(window: Window) = window.vtable.makeCurrent(window)
   ## set window as current opengl rendering target
 
-method `vsync=`*(window: Window, v: bool, silent = false) {.base.} = discard
+proc `vsync=`*(window: Window, v: bool, silent = false) = window.vtable.set_vsync(window, v, silent)
   ## enable/disable vsync
 
 
-method vulkanSurface*(window: Window): pointer {.base.} = discard
+proc vulkanSurface*(window: Window): pointer = window.vtable.vulkanSurface(window)
   ## get a VkSurfaceKHR attached to window
+
+
+proc firstStep*(window: Window, makeVisible = true) = window.vtable.firstStep(window, makeVisible)
+  ## init window main loop
+  ## don't call this proc if you will manage window events via run()
+
+proc step*(window: Window): bool = window.vtable.step(window)
+  ## make window main loop step
+  ## ! don't forget to call firstStep()
 
 
 proc clipboard*(window: Window): Clipboard = window.m_clipboard
@@ -401,23 +460,11 @@ proc selectionClipboard*(window: Window): Clipboard = window.m_selectionClipboar
 proc dragndropClipboard*(window: Window): Clipboard = window.m_dragndropClipboard
 
 
-method `dragStatus=`*(window: Window, v: DragStatus) {.base.} = discard
-
-
-method firstStep*(window: Window, makeVisible = true) {.base.} = discard
-  ## init window main loop
-  ## don't call this proc if you will manage window events via run()
-
-method step*(window: Window) {.base.} = discard
-  ## make window main loop step
-  ## ! don't forget to call firstStep()
-
-
 proc run*(window: sink Window, makeVisible = true) =
   ## run whole window main loops
   window.firstStep(makeVisible)
-  while window.opened:
-    window.step()
+  while true:
+    if window.step(): break
 
 proc run*(window: sink Window, eventsHandler: WindowEventsHandler, makeVisible = true) =
   ## set window eventsHandler and run whole window main loops
@@ -435,11 +482,10 @@ proc runMultiple*(windows: varargs[tuple[window: Window, makeVisible: bool]]) =
     var i = 0
     while i < windows.len:
       let window = windows[i]
-      if window.closed:
+      if window.step():
         windows.del i
-        continue
-      window.step()
-      inc i
+      else:
+        inc i
 
 proc runMultiple*(windows: varargs[tuple[window: Window, eventsHandler: WindowEventsHandler, makeVisible: bool]]) =
   ## run for multiple windows
@@ -453,8 +499,7 @@ proc runMultiple*(windows: varargs[tuple[window: Window, eventsHandler: WindowEv
     var i = 0
     while i < windows.len:
       let window = windows[i]
-      if window.closed:
+      if window.step():
         windows.del i
-        continue
-      window.step()
-      inc i
+      else:
+        inc i

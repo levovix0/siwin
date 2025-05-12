@@ -26,10 +26,11 @@ proc screenCount*(globals: SiwinGlobals): int32 =
     1
 
   elif defined(linux):
-    if globals of SiwinGlobalsX11:
-      result = globals.SiwinGlobalsX11.screenCountX11()
-    elif globals of SiwinGlobalsWayland:
-      result = globals.SiwinGlobalsWayland.screenCountWayland()
+    case globals.platform
+    of Platform.x11:
+      result = cast[SiwinGlobalsX11](globals).screenCountX11()
+    of Platform.wayland:
+      result = cast[SiwinGlobalsWayland](globals).screenCountWayland()
     else:
       raise SiwinPlatformSupportDefect.newException("Unsupported platform")
   
@@ -40,10 +41,11 @@ proc screen*(globals: SiwinGlobals, number: int32): Screen =
     Screen()
 
   elif defined(linux):
-    if globals of SiwinGlobalsX11:
-      result = globals.SiwinGlobalsX11.screenX11(number)
-    elif globals of SiwinGlobalsWayland:
-      result = globals.SiwinGlobalsWayland.screenWayland(number)
+    case globals.platform
+    of Platform.x11:
+      result = cast[SiwinGlobalsX11](globals).screenX11(number)
+    of Platform.wayland:
+      result = cast[SiwinGlobalsWayland](globals).screenWayland(number)
     else:
       raise SiwinPlatformSupportDefect.newException("Unsupported platform")
   
@@ -54,10 +56,11 @@ proc defaultScreen*(globals: SiwinGlobals): Screen =
     Screen()
 
   elif defined(linux):
-    if globals of SiwinGlobalsX11:
-      result = globals.SiwinGlobalsX11.defaultScreenX11()
-    elif globals of SiwinGlobalsWayland:
-      result = globals.SiwinGlobalsWayland.defaultScreenWayland()
+    case globals.platform
+    of Platform.x11:
+      result = cast[SiwinGlobalsX11](globals).defaultScreenX11()
+    of Platform.wayland:
+      result = cast[SiwinGlobalsWayland](globals).defaultScreenWayland()
     else:
       raise SiwinPlatformSupportDefect.newException("Unsupported platform")
   
@@ -86,23 +89,29 @@ proc newSoftwareRenderingWindow*(
   elif defined(linux):
     case globals.platform
     of Platform.x11:
-      result = globals.SiwinGlobalsX11.newSoftwareRenderingWindowX11(
+      result = cast[SiwinGlobalsX11](globals).newSoftwareRenderingWindowX11(
         size, title,
-        (if screen == -1: globals.SiwinGlobalsX11.defaultScreenX11() else: globals.SiwinGlobalsX11.screenX11(screen)),
+        (
+          if screen == -1: cast[SiwinGlobalsX11](globals).defaultScreenX11()
+          else: cast[SiwinGlobalsX11](globals).screenX11(screen)
+        ),
         resizable, fullscreen, frameless, transparent,
         (if class == "": title else: class)
       )
     of Platform.wayland:
-      result = globals.SiwinGlobalsWayland.newSoftwareRenderingWindowWayland(
+      result = cast[SiwinGlobalsWayland](globals).newSoftwareRenderingWindowWayland(
         size, title,
-        (if screen == -1: globals.SiwinGlobalsWayland.defaultScreenWayland() else: globals.SiwinGlobalsWayland.screenWayland(screen)),
+        (
+          if screen == -1: cast[SiwinGlobalsWayland](globals).defaultScreenWayland()
+          else: cast[SiwinGlobalsWayland](globals).screenWayland(screen)
+        ),
         resizable, fullscreen, frameless, transparent
       )
     else:
       raise SiwinPlatformSupportDefect.newException("Unsupported platform")
 
   elif defined(windows):
-    newSoftwareRenderingWindowWinapi(
+    globals.newSoftwareRenderingWindowWinapi(
       size, title,
       (if screen == -1: defaultScreenWinapi() else: screenWinapi(screen)),
       resizable, fullscreen, frameless, transparent

@@ -86,7 +86,7 @@ proc newSiwinGlobals*(preferedPlatform: Platform = defaultPreferedPlatform()): S
       return newX11Globals()
     of wayland:
       result = newWaylandGlobals()
-      result.SiwinGlobalsWayland.roundtrip()
+      cast[SiwinGlobalsWayland](result).roundtrip()
     else:
       raise SiwinPlatformSupportDefect.newException("Unsupported platform")
   
@@ -109,9 +109,9 @@ proc destroy*(globals: SiwinGlobals) =
   elif defined(linux):
     case globals.platform
     of Platform.x11:
-      x11Globals.`=destroy`(globals.SiwinGlobalsX11[])
+      x11Globals.`=destroy`(cast[SiwinGlobalsX11](globals)[])
     of Platform.wayland:
-      waylandGlobals.`=destroy`(globals.SiwinGlobalsWayland[])
+      waylandGlobals.`=destroy`(cast[SiwinGlobalsWayland](globals)[])
     else: discard
     dealloc globals
   

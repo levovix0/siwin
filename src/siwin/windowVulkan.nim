@@ -62,7 +62,7 @@ proc newVulkanWindow*(
       raise SiwinPlatformSupportDefect.newException("Unsupported platform")
 
   elif defined(windows):
-    newVulkanWindowWinapi(
+    globals.newVulkanWindowWinapi(
       vkInstance,
       size, title,
       (if screen == -1: defaultScreenWinapi() else: screenWinapi(screen)),

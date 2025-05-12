@@ -1,6 +1,6 @@
 import std/[options, importutils]
 import pkg/[vmath]
-import ./[window]
+import ./[window {.all.}]
 import ../../[siwindefs]
 
 
@@ -118,4 +118,54 @@ proc windowPartAt*(window: Window, mousePos: Vec2): WindowPart =
   
   else:
     return WindowPart.none
+
+
+template makeWindowVtable*(baseProcName, extendedProcName: untyped): WindowVtable =
+  WindowVtable(
+    close: cast[proc(window: Window) {.nimcall.}](`baseProcName close`),
+    redraw: cast[proc(window: Window) {.nimcall.}](`baseProcName redraw`),
+
+    destroy: cast[proc(window: Window) {.nimcall.}](`extendedProcName destroy`),
+    displayImpl: cast[proc(window: Window) {.nimcall.}](`extendedProcName displayImpl`),
+
+    set_frameless: cast[proc(window: Window, v: bool) {.nimcall.}](`baseProcName set_frameless`),
+    set_cursor: cast[proc(window: Window, v: Cursor) {.nimcall.}](`baseProcName set_cursor`),
+    set_separateTouch: cast[proc(window: Window, v: bool) {.nimcall.}](`baseProcName set_separateTouch`),
+    
+    set_size: cast[proc(window: Window, v: IVec2) {.nimcall.}](`baseProcName set_size`),
+    set_pos: cast[proc(window: Window, v: IVec2) {.nimcall.}](`baseProcName set_pos`),
+    set_title: cast[proc(window: Window, v: string) {.nimcall.}](`baseProcName set_title`),
+    
+    set_fullscreen: cast[proc(window: Window, v: bool) {.nimcall.}](`baseProcName set_fullscreen`),
+    set_maximized: cast[proc(window: Window, v: bool) {.nimcall.}](`baseProcName set_maximized`),
+    set_minimized: cast[proc(window: Window, v: bool) {.nimcall.}](`baseProcName set_minimized`),
+    set_visible: cast[proc(window: Window, v: bool) {.nimcall.}](`baseProcName set_visible`),
+    
+    set_resizable: cast[proc(window: Window, v: bool) {.nimcall.}](`baseProcName set_resizable`),
+    set_minSize: cast[proc(window: Window, v: IVec2) {.nimcall.}](`baseProcName set_minSize`),
+    set_maxSize: cast[proc(window: Window, v: IVec2) {.nimcall.}](`baseProcName set_maxSize`),
+    
+    set_icon: cast[proc(window: Window, v: PixelBuffer) {.nimcall.}](`baseProcName set_icon`),
+    clear_icon: cast[proc(window: Window) {.nimcall.}](`baseProcName clear_icon`),
+    
+    startInteractiveMove: cast[proc(window: Window, pos: Option[Vec2] = none Vec2) {.nimcall.}](`baseProcName startInteractiveMove`),
+    startInteractiveResize: cast[proc(window: Window, edge: Edge, pos: Option[Vec2] = none Vec2) {.nimcall.}](`baseProcName startInteractiveResize`),
+    
+    showWindowMenu: cast[proc(window: Window, pos: Option[Vec2] = none Vec2) {.nimcall.}](`baseProcName showWindowMenu`),
+    setInputRegion: cast[proc(window: Window, pos, size: Vec2) {.nimcall.}](`baseProcName setInputRegion`),
+    setTitleRegion: cast[proc(window: Window, pos, size: Vec2) {.nimcall.}](`baseProcName setTitleRegion`),
+    setBorderWidth: cast[proc(window: Window, innerWidth, outerWidth: float32, diagonalSize: float32) {.nimcall.}](`baseProcName setBorderWidth`),
+    
+    set_dragStatus: cast[proc(window: Window, v: DragStatus) {.nimcall.}](`baseProcName set_dragStatus`),
+    
+    pixelBuffer: cast[proc(window: Window): PixelBuffer {.nimcall.}](`extendedProcName pixelBuffer`),
+    
+    makeCurrent: cast[proc(window: Window) {.nimcall.}](`extendedProcName makeCurrent`),
+    set_vsync: cast[proc(window: Window, v: bool, silent = false) {.nimcall.}](`extendedProcName set_vsync`),
+    
+    vulkanSurface: cast[proc(window: Window): pointer {.nimcall.}](`extendedProcName vulkanSurface`),
+    
+    firstStep: cast[proc(window: Window, makeVisible = true) {.nimcall.}](`baseProcName firstStep`),
+    step: cast[proc(window: Window): bool {.nimcall.}](`baseProcName step`),
+  )
 
