@@ -44,14 +44,15 @@ proc newOpenglWindow*(
     )
 
   elif defined(linux):
-    if globals of SiwinGlobalsX11:
+    case globals.platform
+    of Platform.x11:
       result = globals.SiwinGlobalsX11.newOpenglWindowX11(
         size, title,
         (if screen == -1: globals.SiwinGlobalsX11.defaultScreenX11() else: globals.SiwinGlobalsX11.screenX11(screen)),
         resizable, fullscreen, frameless, transparent, vsync,
         (if class == "": title else: class)
       )
-    elif globals of SiwinGlobalsWayland:
+    of Platform.wayland:
       result = globals.SiwinGlobalsWayland.newOpenglWindowWayland(
         size, title,
         (if screen == -1: globals.SiwinGlobalsWayland.defaultScreenWayland() else: globals.SiwinGlobalsWayland.screenWayland(screen)),

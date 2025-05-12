@@ -50,3 +50,5 @@ test "2 windows at once":
     (win2, win2eh, true),
   )
 
+destroy globals
+

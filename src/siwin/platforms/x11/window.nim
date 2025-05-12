@@ -679,7 +679,7 @@ method `maximized=`*(window: WindowX11, v: bool) =
   discard window.globals.display.XSendEvent(
     window.globals.display.DefaultRootWindow, 0, SubstructureNotifyMask or SubstructureRedirectMask, event.addr
   )
-  event.xclient.data.l[1] = window.globals.atoms.netWmStateMaximizedVert.int
+  event.xclient.data.l[1] = window.globals.atoms.netWmStateMaximizedVert.clong
   discard window.globals.display.XSendEvent(
     window.globals.display.DefaultRootWindow, 0, SubstructureNotifyMask or SubstructureRedirectMask, event.addr
   )

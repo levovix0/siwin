@@ -166,3 +166,5 @@ test "OpenGL ES":
     onDrop: proc(e: DropEvent) =
       echo "drop;"
   )
+
+destroy globals

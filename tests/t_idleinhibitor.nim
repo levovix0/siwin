@@ -3,11 +3,14 @@ when not defined(linux):
 
 import std/[unittest]
 import siwin, opengl
-import siwin/platforms/wayland/[window, windowOpengl]
+import siwin/platforms/wayland/[window, windowOpengl, siwinGlobals]
+
+let globals = newWaylandGlobals()
 
 test "zwp_idle_inhibitor_v1":
-  let window = newOpenglWindowWayland(
-    kind = WindowWaylandKind.XdgSurface
+  let window = globals.newOpenglWindowWayland(
+    kind = WindowWaylandKind.XdgSurface,
+    screen = globals.defaultScreenWayland(),
   )
   loadExtensions()
 
@@ -32,3 +35,5 @@ test "zwp_idle_inhibitor_v1":
             echo "idle inhibitor is now disabled - your compositor can now go to sleep"
     )
   )
+
+destroy globals

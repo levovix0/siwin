@@ -76,3 +76,5 @@ test "OpenGL":
     onStateBoolChanged: proc(e: StateBoolChangedEvent) =
       echo e.kind, ": ", e.value
   )
+
+destroy globals

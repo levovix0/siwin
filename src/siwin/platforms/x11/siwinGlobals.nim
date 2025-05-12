@@ -10,7 +10,7 @@ type
     kwm
     other
   
-  SiwinGlobalsX11* = ref SiwinGlobalsX11Obj
+  SiwinGlobalsX11* = ptr SiwinGlobalsX11Obj
   SiwinGlobalsX11Obj* = object of SiwinGlobals
     display*: ptr Display
     wmForFramelessKind*: WmForFramelessKind
@@ -24,13 +24,15 @@ type
     ]
 
 
-proc `=destroy`(x: SiwinGlobalsX11Obj) {.siwin_destructor.} =
+proc `=destroy`*(x: SiwinGlobalsX11Obj) {.siwin_destructor.} =
   if x.display != nil:
     discard XCloseDisplay(x.display)
 
 
 proc newX11Globals*: SiwinGlobalsX11 {.raises: [OsError].} =
-  new result
+  result = create(SiwinGlobalsX11Obj)
+  result.platform = Platform.x11
+
   result.display = XOpenDisplay(getEnv("DISPLAY").cstring)
   if result.display == nil: raise OsError.newException("failed to open X11 display, make sure the DISPLAY environment variable is set correctly")
   

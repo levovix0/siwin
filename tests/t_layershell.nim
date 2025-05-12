@@ -3,12 +3,15 @@ when not defined(linux):
 
 import std/[unittest]
 import siwin, opengl, vmath
-import siwin/platforms/wayland/[window, windowOpengl]
+import siwin/platforms/wayland/[window, windowOpengl, siwinGlobals]
+
+let globals = newWaylandGlobals()
 
 test "wlr-layer-shell":
-  let window = newOpenglWindowWayland(
+  let window = globals.newOpenglWindowWayland(
     size = ivec2(1000, 1000),
     kind = WindowWaylandKind.LayerSurface,
+    screen = globals.defaultScreenWayland(),
     layer = Layer.Overlay,
   )
   loadExtensions()
@@ -30,3 +33,5 @@ test "wlr-layer-shell":
         echo e.key
     )
   )
+
+destroy globals

@@ -17,14 +17,7 @@ else:
   {.pragma: siwin_enum.}
 
 
-type
-  Platform* {.siwin_enum.} = enum
-    x11
-    wayland
-    winapi
-    cocoa
-    android
-  
+type  
   SiwinPlatformSupportDefect* = object of Defect
   SiwinPlatformMatchError* = object of CatchableError
     ## raised if tried to force run wayland window on x11 compositor, or if tried to run window without any compositor at all
@@ -84,7 +77,8 @@ proc platformToUse*(available: seq[Platform], prefered: Platform): Platform =
 
 proc newSiwinGlobals*(preferedPlatform: Platform = defaultPreferedPlatform()): SiwinGlobals =
   when defined(android):
-    result = SiwinGlobals()
+    result = create(SiwinGlobalsObj)
+    result.platform = Platform.android
 
   elif defined(linux):
     case availablePlatforms().platformToUse(preferedPlatform)
@@ -97,11 +91,35 @@ proc newSiwinGlobals*(preferedPlatform: Platform = defaultPreferedPlatform()): S
       raise SiwinPlatformSupportDefect.newException("Unsupported platform")
   
   elif defined(windows):
-    result = SiwinGlobals()
+    result = create(SiwinGlobalsObj)
+    result.platform = Platform.winapi
   
   elif defined(macosx):
-    result = SiwinGlobals()
+    result = create(SiwinGlobalsObj)
+    result.platform = Platform.cocoa
   
   else:
     {.error.}
 
+
+proc destroy*(globals: SiwinGlobals) =
+  when defined(android):
+    dealloc globals
+
+  elif defined(linux):
+    case globals.platform
+    of Platform.x11:
+      x11Globals.`=destroy`(globals.SiwinGlobalsX11[])
+    of Platform.wayland:
+      waylandGlobals.`=destroy`(globals.SiwinGlobalsWayland[])
+    else: discard
+    dealloc globals
+  
+  elif defined(windows):
+    dealloc globals
+  
+  elif defined(macosx):
+    dealloc globals
+  
+  else:
+    {.error.}

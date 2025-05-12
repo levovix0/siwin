@@ -639,3 +639,5 @@ test "Vulkan":
         close e.window
   )
   deinit()
+
+  destroy globals

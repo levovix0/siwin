@@ -138,3 +138,5 @@ test "bgrx image":
     ,
   )
 
+destroy globals
+

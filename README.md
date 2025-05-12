@@ -40,6 +40,8 @@ run siwinGlobals.newSoftwareRenderingWindow(), WindowEventsHandler(
     if (not e.pressed) and e.key == Key.escape:
       close e.window
 )
+
+destroy siwinGlobals
 ```
 
 ## OpenGL
@@ -83,6 +85,8 @@ run window, WindowEventsHandler(
     glVertex2f 0, 30
     glEnd()
 )
+
+destroy siwinGlobals
 ```
 note: call redraw(window) every time you want window.render to be called. siwin will automatically call window.render only when window resizes.  
 note: opengl 1.x and 2.x functions (like `glBegin`), is not supported on Wayland, due to Wayland only beeng able to initialize with EGL
@@ -132,6 +136,8 @@ run window, WindowEventsHandler(
 )
 
 # surface already destroyed, continue uninitializing...
+
+destroy siwinGlobals
 ```
 
 ## pixie
@@ -172,6 +178,8 @@ run siwinGlobals.newSoftwareRenderingWindow(title="pixie example"), WindowEvents
     if (not e.pressed) and e.key == Key.escape:
       close e.window
 )
+
+destroy siwinGlobals
 ```
 
 ## clipboard
@@ -194,6 +202,8 @@ let ctx {.used.} = siwinGlobals.newOpenglContext()
 loadExtensions()
 
 # do any opengl computing
+
+destroy siwinGlobals
 ```
 
 ## manual main cycle
@@ -209,9 +219,11 @@ let eventsHandler = WindowEventsHandler(
 )
 
 window.firstStep(eventsHandler, makeVisible=true)
-while window.opened:
-  window.step(eventsHandler)
+while true:
+  if window.step(eventsHandler):
+    break
 
+destroy siwinGlobals
 ```
 
 ## running multiple windows
@@ -278,6 +290,23 @@ privateAccess WindowX11Obj
 # ...
 window.handle
 ```
+
+## Memory management in siwin
+Siwin should work fine with --mm:none, --mm:arc and --mm:refc as it uses raw pointers and (on linux) manually made vtables.  
+
+SiwinGlobals is a ptr object, object data starts with a platform kind.  
+SiwinGlobals must be created once (using newSiwinGlobals()) and deleted mannaly via destroy(siwinGlobals) call.  
+If your programm uses siwin for it's entiery (eg. any gui application or game) you may not care about destroying SiwinGlobals at all. OS will free it automatically.  
+After SiwinGlobals is destroyed it is valid to create a new one.  
+If you are using siwin for an application, which uses plugins (as a .dll or .so), and plugins also depend on siwin, make sure only one instance of SiwinGlobals exist across all loaded shared objects.  
+If you creating only one window using siwin, it is valid to not assign SiwinGlobals to a variable. Window will keep the pointer to SiwinGlobals in itself.  
+SiwinGlobals must not be destroyed if any window is still open.  
+On linux, it is valid to create two separate SiwinGlobals for X11 and Wayland using newSiwinGlobals(preferedPlatform=x11) and newSiwinGlobals(preferedPlatform=wayland). But I don't know a reason to do this.
+
+Window is a ptr object, object data starts with a (pointer to) SiwinGlobals and a pointer to vtable.  
+Window is destroyed automatically when it is closed. Accessing Window after it is closed will (probably) result in a SIGSEGV.  
+Before closing and destroying, window will send onClose event. It is valid to access Window in onClose handler.
+
 
 # Contributions
 If you want to support this project, here is some tasks to do:

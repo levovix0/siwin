@@ -5,7 +5,7 @@ import ./[libwayland, protocol, bitfields]
 type
   WaylandExtensionNotFound* = object of CatchableError
 
-  SiwinGlobalsWayland* = ref SiwinGlobalsWaylandObj
+  SiwinGlobalsWayland* = ptr SiwinGlobalsWaylandObj
   SiwinGlobalsWaylandObj* = object of SiwinGlobals
     seatEventsInitialized*: bool
     dataDeviceManagerEventsInitialized*: bool
@@ -140,7 +140,8 @@ proc newWaylandGlobals*(): SiwinGlobalsWayland =
   ## ! roundtrip must be called after this to finish initialization
   ## registers callbacks for registry globals siwin care about,
   ## additional registryCallbacks can be added before calling roundtripRegistry
-  new result
+  result = create(SiwinGlobalsWaylandObj)
+  result.platform = Platform.wayland
 
   if wl_display_connect == nil:
     raise OSError.newException("Wayland is not available")

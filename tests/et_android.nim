@@ -76,3 +76,5 @@ run window, WindowEventsHandler(
     redraw e.window
 )
 
+destroy globals
+

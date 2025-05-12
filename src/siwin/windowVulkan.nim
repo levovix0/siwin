@@ -42,7 +42,8 @@ proc newVulkanWindow*(
     )
 
   elif defined(linux):
-    if globals of SiwinGlobalsX11:
+    case globals.platform
+    of Platform.x11:
       globals.SiwinGlobalsX11.newVulkanWindowX11(
         vkInstance,
         size, title,
@@ -50,7 +51,7 @@ proc newVulkanWindow*(
         resizable, fullscreen, frameless, transparent,
         (if class == "": title else: class)
       )
-    elif globals of SiwinGlobalsWayland:
+    of Platform.wayland:
       globals.SiwinGlobalsWayland.newVulkanWindowWayland(
         vkInstance,
         size, title,

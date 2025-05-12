@@ -85,8 +85,17 @@ type
   WindowTypeDefect* = object of Defect
     ## raised when trying to get pixel buffer from non-softwareRendering window
   
+  
+  Platform* {.siwin_enum.} = enum
+    x11
+    wayland
+    winapi
+    cocoa
+    android
 
-  SiwinGlobals* = ref object of RootObj
+  SiwinGlobals* = ptr SiwinGlobalsObj
+  SiwinGlobalsObj* = object of RootObj
+    platform*: Platform
   
 
   Screen* = ref object of RootObj
