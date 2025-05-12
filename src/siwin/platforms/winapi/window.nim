@@ -295,12 +295,6 @@ method `title=`*(window: WindowWinapi, title: string) =
 method close*(window: WindowWinapi) =
   if not window.m_closed: window.handle.SendMessage(WmClose, 0, 0)
 
-method redraw*(window: WindowWinapi) =
-  if window.redrawRequested: return
-  window.redrawRequested = true
-
-  var cr = window.handle.clientRect
-  window.handle.InvalidateRect(cr.addr, false.WinBool)
 
 method `pos=`*(window: WindowWinapi, v: IVec2) =
   if window.m_fullscreen: return
@@ -572,6 +566,7 @@ method firstStep*(window: WindowWinapi, makeVisible = true) =
     resizeBufferIfNeeded window.WindowWinapiSoftwareRendering.buffer, window.m_size
 
   window.eventsHandler.pushEvent onResize, ResizeEvent(window: window, size: window.m_size, initial: true)
+  window.redrawRequested = true
 
   window.handle.UpdateWindow()
 
@@ -600,20 +595,23 @@ method step*(window: WindowWinapi) =
   var catched = false
 
   while PeekMessage(msg.addr, 0, 0, 0, PmRemove).bool:
+    # make tick if windows sent us WmPaint, it does it when the event queue is empty
+    if msg.message == WmPaint:
+      let nows = getTime()
+      window.eventsHandler.pushEvent onTick, TickEvent(window: window, deltaTime: nows - window.lastTickTime)
+      window.lastTickTime = nows
+
     TranslateMessage(msg.addr)
     DispatchMessage(msg.addr)
 
-    # force make tick if windows decided to spam events to us
-    if (getTime() - window.lastTickTime) > initDuration(milliseconds=10):
+    if msg.message == WmPaint:
       break
+    else:
+      catched = true
 
     if window.m_closed: return
 
   if not catched: sleep(1)
-
-  let nows = getTime()
-  window.eventsHandler.pushEvent onTick, TickEvent(window: window, deltaTime: nows - window.lastTickTime)
-  window.lastTickTime = nows
 
 
 proc poolEvent(window: WindowWinapi, message: Uint, wParam: WParam, lParam: LParam): LResult =
@@ -636,7 +634,6 @@ proc poolEvent(window: WindowWinapi, message: Uint, wParam: WParam, lParam: LPar
 
   case message
   of WmPaint:
-    window.redrawRequested = false
     let rect = window.handle.clientRect
     if rect.right != window.m_size.x or rect.bottom != window.m_size.y:
       window.m_size = ivec2(rect.right, rect.bottom)
@@ -645,9 +642,13 @@ proc poolEvent(window: WindowWinapi, message: Uint, wParam: WParam, lParam: LPar
         resizeBufferIfNeeded window.WindowWinapiSoftwareRendering.buffer, window.m_size
 
       window.eventsHandler.pushEvent onResize, ResizeEvent(window: window, size: window.m_size, initial: false)
+      window.redrawRequested = true
 
-    if window.m_size.x * window.m_size.y > 0:
-      window.displayImpl()
+    if window.redrawRequested:
+      window.redrawRequested = false
+      if window.m_size.x * window.m_size.y > 0:
+        window.displayImpl()
+
 
   of WmDestroy:
     window.m_closed = true
