@@ -10,9 +10,7 @@ privateAccess SiwinGlobalsObj
 
 {.experimental: "overloadableEnums".}
 
-type
-  ScreenWinapi* = ref object of Screen
-  
+type  
   Buffer = object
     x, y: int
     bitmap: HBitmap
@@ -160,16 +158,6 @@ proc wkeyToKey(key: WParam, flags: LParam): Key =
   else: wkeyToKey(key)
 
 
-# todo: multiscreen support
-proc screenCountWinapi*(): int32 = 1
-
-proc screenWinapi*(number: int32): ScreenWinapi = new result
-proc defaultScreenWinapi*(): ScreenWinapi = screenWinapi(0)
-method number*(screen: ScreenWinapi): int32 = 0
-
-method width*(screen: ScreenWinapi): int32 = GetSystemMetrics(SmCxScreen)
-method height*(screen: ScreenWinapi): int32 = GetSystemMetrics(SmCyScreen)
-
 
 proc `=destroy`(buffer: Buffer) {.siwin_destructor.} =
   if buffer.hdc != 0:
@@ -233,7 +221,7 @@ proc enableTransparency(window: WindowWinapi) =
   DeleteObject(region)
 
 
-proc initWindow(window: WindowWinapi; size: IVec2; screen: ScreenWinapi, fullscreen, frameless, transparent: bool, class = wClassName) =
+proc initWindow(window: WindowWinapi; size: IVec2; screen: Screen, fullscreen, frameless, transparent: bool, class = wClassName) =
   window.handle = CreateWindow(
     class,
     "",
@@ -847,7 +835,7 @@ proc newSoftwareRenderingWindowWinapi*(
   globals: SiwinGlobals,
   size = ivec2(1280, 720),
   title = "",
-  screen = defaultScreenWinapi(),
+  screen = -1.Screen,
   resizable = true,
   fullscreen = false,
   frameless = false,
@@ -859,6 +847,7 @@ proc newSoftwareRenderingWindowWinapi*(
   result = create(WindowWinapiSoftwareRenderingObj)
   result.globals = globals
   result.vtable = globals.softwareRenderingVtable.addr
+  let screen = (if screen.int == -1: globals.defaultScreen else: screen)
   result.initWindow(size, screen, fullscreen, frameless, transparent)
   result.title = title
   if not resizable: result.resizable = false

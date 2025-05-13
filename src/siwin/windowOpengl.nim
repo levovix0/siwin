@@ -16,7 +16,6 @@ elif defined(linux):
   import ./platforms/wayland/windowOpengl as waylandWindowOpengl
 
 elif defined(windows):
-  import ./platforms/winapi/window as winapiWindow
   import ./platforms/winapi/windowOpengl as winapiWindowOpengl
 
 elif defined(macosx):
@@ -27,7 +26,7 @@ proc newOpenglWindow*(
   globals: SiwinGlobals,
   size = ivec2(1280, 720),
   title = "",
-  screen: int32 = -1,
+  screen = -1.Screen,
   resizable = true,
   fullscreen = false,
   frameless = false,
@@ -39,7 +38,7 @@ proc newOpenglWindow*(
   when defined(android):
     newOpenglWindowAndroid(
       size, title,
-      # (if screen == -1: defaultScreenAndroid() else: screenAndroid(screen)),
+      # screen,
       resizable, fullscreen, frameless, transparent, vsync
     )
 
@@ -47,15 +46,13 @@ proc newOpenglWindow*(
     case globals.platform
     of Platform.x11:
       result = globals.SiwinGlobalsX11.newOpenglWindowX11(
-        size, title,
-        (if screen == -1: globals.SiwinGlobalsX11.defaultScreenX11() else: globals.SiwinGlobalsX11.screenX11(screen)),
+        size, title, screen,
         resizable, fullscreen, frameless, transparent, vsync,
         (if class == "": title else: class)
       )
     of Platform.wayland:
       result = globals.SiwinGlobalsWayland.newOpenglWindowWayland(
-        size, title,
-        (if screen == -1: globals.SiwinGlobalsWayland.defaultScreenWayland() else: globals.SiwinGlobalsWayland.screenWayland(screen)),
+        size, title, screen,
         resizable, fullscreen, frameless, transparent, vsync
       )
     else:
@@ -63,14 +60,12 @@ proc newOpenglWindow*(
 
   elif defined(windows):
     globals.newOpenglWindowWinapi(
-      size, title,
-      (if screen == -1: defaultScreenWinapi() else: screenWinapi(screen)),
+      size, title, screen,
       resizable, fullscreen, frameless, transparent, vsync
     )
 
   elif defined(macosx):
     newOpenglWindowCocoa(
-      size, title,
-      (if screen == -1: defaultScreenCocoa() else: screenCocoa(screen)),
+      size, title, screen,
       resizable, fullscreen, frameless, transparent, vsync
     )

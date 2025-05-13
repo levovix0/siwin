@@ -1,7 +1,7 @@
 import vmath
-import ./platforms/any/[window]
+import ./platforms/any/window as anyWindow
 
-export window
+export anyWindow
 
 when defined(android):
   import ./platforms/android/window as androidWindow
@@ -21,57 +21,11 @@ elif defined(macosx):
   import ./platforms/cocoa/window as cocoaWindow
 
 
-proc screenCount*(globals: SiwinGlobals): int32 =
-  when defined(android):
-    1
-
-  elif defined(linux):
-    case globals.platform
-    of Platform.x11:
-      result = cast[SiwinGlobalsX11](globals).screenCountX11()
-    of Platform.wayland:
-      result = cast[SiwinGlobalsWayland](globals).screenCountWayland()
-    else:
-      raise SiwinPlatformSupportDefect.newException("Unsupported platform")
-  
-  elif defined(windows): screenCountWinapi()
-
-proc screen*(globals: SiwinGlobals, number: int32): Screen =
-  when defined(android):
-    Screen()
-
-  elif defined(linux):
-    case globals.platform
-    of Platform.x11:
-      result = cast[SiwinGlobalsX11](globals).screenX11(number)
-    of Platform.wayland:
-      result = cast[SiwinGlobalsWayland](globals).screenWayland(number)
-    else:
-      raise SiwinPlatformSupportDefect.newException("Unsupported platform")
-  
-  elif defined(windows): screenWinapi(number)
-
-proc defaultScreen*(globals: SiwinGlobals): Screen =
-  when defined(android):
-    Screen()
-
-  elif defined(linux):
-    case globals.platform
-    of Platform.x11:
-      result = cast[SiwinGlobalsX11](globals).defaultScreenX11()
-    of Platform.wayland:
-      result = cast[SiwinGlobalsWayland](globals).defaultScreenWayland()
-    else:
-      raise SiwinPlatformSupportDefect.newException("Unsupported platform")
-  
-  elif defined(windows): defaultScreenWinapi()
-
-
 proc newSoftwareRenderingWindow*(
   globals: SiwinGlobals,
   size = ivec2(1280, 720),
   title = "",
-  screen: int32 = -1,
+  screen = -1.Screen,
   fullscreen = false,
   resizable = true,
   frameless = false,
@@ -82,7 +36,7 @@ proc newSoftwareRenderingWindow*(
   when defined(android):
     newSoftwareRenderingWindowAndroid(
       size, title,
-      # (if screen == -1: defaultScreenAndroid() else: screenAndroid(screen)),
+      # screen,
       resizable, fullscreen, frameless, transparent
     )
 
@@ -90,21 +44,13 @@ proc newSoftwareRenderingWindow*(
     case globals.platform
     of Platform.x11:
       result = cast[SiwinGlobalsX11](globals).newSoftwareRenderingWindowX11(
-        size, title,
-        (
-          if screen == -1: cast[SiwinGlobalsX11](globals).defaultScreenX11()
-          else: cast[SiwinGlobalsX11](globals).screenX11(screen)
-        ),
+        size, title, screen,
         resizable, fullscreen, frameless, transparent,
         (if class == "": title else: class)
       )
     of Platform.wayland:
       result = cast[SiwinGlobalsWayland](globals).newSoftwareRenderingWindowWayland(
-        size, title,
-        (
-          if screen == -1: cast[SiwinGlobalsWayland](globals).defaultScreenWayland()
-          else: cast[SiwinGlobalsWayland](globals).screenWayland(screen)
-        ),
+        size, title, screen,
         resizable, fullscreen, frameless, transparent
       )
     else:
@@ -112,15 +58,13 @@ proc newSoftwareRenderingWindow*(
 
   elif defined(windows):
     globals.newSoftwareRenderingWindowWinapi(
-      size, title,
-      (if screen == -1: defaultScreenWinapi() else: screenWinapi(screen)),
+      size, title, screen,
       resizable, fullscreen, frameless, transparent
     )
   
   elif defined(macosx):
     newSoftwareRenderingWindowCocoa(
-      size, title,
-      (if screen == -1: defaultScreenCocoa() else: screenCocoa(screen)),
+      size, title, screen,
       resizable, fullscreen, frameless, transparent
     )
 

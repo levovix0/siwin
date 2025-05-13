@@ -93,16 +93,24 @@ type
     cocoa
     android
 
+
+  Screen* = distinct int
+
+  
+  SiwinGlobalsVtable = object
+    screenCount*: proc(globals: SiwinGlobals): int {.nimcall.}
+    defaultScreen*: proc(globals: SiwinGlobals): Screen {.nimcall.}
+    screenSize*: proc(globals: SiwinGlobals, n: Screen): IVec2 {.nimcall, raises: [ValueError].}
+
+
   SiwinGlobals* = ptr SiwinGlobalsObj
   SiwinGlobalsObj* = object of RootObj
     platform*: Platform
+    vtable: SiwinGlobalsVtable
 
     softwareRenderingVtable: WindowVtable
     openglVtable: WindowVtable
     vulkanVtable: WindowVtable
-  
-
-  Screen* = ref object of RootObj
 
 
   MouseMoveKind* {.siwin_enum.} = enum
@@ -299,19 +307,17 @@ type
     borderWidth: Option[tuple[innerWidth, outerWidrth, diagonalSize: float32]]
 
 
-method number*(screen: Screen): int32 {.base.} = discard
-
-method width*(screen: Screen): int32 {.base.} = discard
-method height*(screen: Screen): int32 {.base.} = discard
-
-proc size*(screen: Screen): IVec2 = ivec2(screen.width, screen.height)
+proc screenCount*(globals: SiwinGlobals): int = globals.vtable.screenCount(globals)
+proc defaultScreen*(globals: SiwinGlobals): Screen = globals.vtable.defaultScreen(globals)
+proc screenSize*(globals: SiwinGlobals, n: Screen): IVec2 {.raises: [ValueError].} = globals.vtable.screenSize(globals, n)
+  ## returns size of screen in pixels
 
 
 proc transparent*(window: Window): bool = window.m_transparent
 proc frameless*(window: Window): bool = window.m_frameless
 proc cursor*(window: Window): Cursor = window.m_cursor
 proc separateTouch*(window: Window): bool = window.m_separateTouch
-  ## enable/disable handling touch events separately from mouse events
+  ## is handling touch events separately from mouse events enabled/disabled
 
 proc size*(window: Window): IVec2 = window.m_size
 proc pos*(window: Window): IVec2 = window.m_pos

@@ -15,7 +15,7 @@ type
     ctx: WglContext
 
 
-proc initWindowWinapiOpengl(window: WindowWinapiOpengl; size: IVec2; screen: ScreenWinapi, fullscreen, frameless, transparent: bool) =
+proc initWindowWinapiOpengl(window: WindowWinapiOpengl; size: IVec2; screen: Screen, fullscreen, frameless, transparent: bool) =
   window.initWindow size, screen, fullscreen, frameless, transparent, woClassName
   
   var pfd = PixelFormatDescriptor(
@@ -73,7 +73,7 @@ proc newOpenglWindowWinapi*(
   globals: SiwinGlobals,
   size = ivec2(1280, 720),
   title = "",
-  screen = defaultScreenWinapi(),
+  screen = -1.Screen,
   resizable = true,
   fullscreen = false,
   frameless = false,
@@ -86,6 +86,7 @@ proc newOpenglWindowWinapi*(
   result = create(WindowWinapiOpenglObj)
   result.globals = globals
   result.vtable = globals.openglVtable.addr
+  let screen = (if screen.int == -1: globals.defaultScreen else: screen)
   result.initWindowWinapiOpengl(size, screen, fullscreen, frameless, transparent)
   result.title = title
   result.`vsync=`(vsync, silent=true)

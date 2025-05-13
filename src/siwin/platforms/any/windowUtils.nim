@@ -169,3 +169,11 @@ template makeWindowVtable*(baseProcName, extendedProcName: untyped): WindowVtabl
     step: cast[proc(window: Window): bool {.nimcall.}](`baseProcName step`),
   )
 
+
+template makeSiwinGlobalsVtable*(baseProcName: untyped): SiwinGlobalsVtable =
+  SiwinGlobalsVtable(
+    screenCount: cast[proc(globals: SiwinGlobals): int {.nimcall.}](`baseProcName screenCount`),
+    defaultScreen: cast[proc(globals: SiwinGlobals): Screen {.nimcall.}](`baseProcName defaultScreen`),
+    screenSize: cast[proc(globals: SiwinGlobals, n: Screen): IVec2 {.nimcall, raises: [ValueError].}](`baseProcName screenSize`),
+  )
+

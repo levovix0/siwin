@@ -36,7 +36,7 @@ proc winapi_vulkan_vulkanSurface(window: WindowWinapiVulkan): pointer =
   window.surface.raw
 
 
-proc initWindowWinapiVulkan(window: WindowWinapiVulkan; vkInstance: pointer, size: IVec2; screen: ScreenWinapi, fullscreen, frameless, transparent: bool) =
+proc initWindowWinapiVulkan(window: WindowWinapiVulkan; vkInstance: pointer, size: IVec2; screen: Screen, fullscreen, frameless, transparent: bool) =
   window.initWindow size, screen, fullscreen, frameless, transparent, woClassName
   
   var pfd = PixelFormatDescriptor(
@@ -87,7 +87,7 @@ proc newVulkanWindowWinapi*(
   vkInstance: pointer,
   size = ivec2(1280, 720),
   title = "",
-  screen = defaultScreenWinapi(),
+  screen = -1.Screen,
   resizable = true,
   fullscreen = false,
   frameless = false,
@@ -99,6 +99,7 @@ proc newVulkanWindowWinapi*(
   result = create(WindowWinapiVulkanObj)
   result.globals = globals
   result.vtable = globals.vulkanVtable.addr
+  let screen = (if screen.int == -1: globals.defaultScreen else: screen)
   result.initWindowWinapiVulkan(vkInstance, size, screen, fullscreen, frameless, transparent)
   result.title = title
   if not resizable: result.resizable = false

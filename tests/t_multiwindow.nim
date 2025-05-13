@@ -1,4 +1,4 @@
-import unittest, strformat
+import unittest
 import opengl, pixie
 import siwin
 

@@ -16,7 +16,6 @@ elif defined(linux):
   import ./platforms/wayland/windowVulkan as waylandWindowVulkan
 
 elif defined(windows):
-  import ./platforms/winapi/window as winapiWindow
   import ./platforms/winapi/windowVulkan as winapiWindowVulkan
 
 
@@ -25,7 +24,7 @@ proc newVulkanWindow*(
   vkInstance: pointer,
   size = ivec2(1280, 720),
   title = "",
-  screen: int32 = -1,
+  screen = -1.Screen,
   resizable = true,
   fullscreen = false,
   frameless = false,
@@ -37,7 +36,7 @@ proc newVulkanWindow*(
     # todo
     newOpenglWindowAndroid(
       size, title,
-      # (if screen == -1: defaultScreenAndroid() else: screenAndroid(screen)),
+      # screen,
       resizable, fullscreen, frameless, transparent, true
     )
 
@@ -46,16 +45,13 @@ proc newVulkanWindow*(
     of Platform.x11:
       globals.SiwinGlobalsX11.newVulkanWindowX11(
         vkInstance,
-        size, title,
-        (if screen == -1: globals.SiwinGlobalsX11.defaultScreenX11() else: globals.SiwinGlobalsX11.screenX11(screen)),
-        resizable, fullscreen, frameless, transparent,
+        size, title, screen,
         (if class == "": title else: class)
       )
     of Platform.wayland:
       globals.SiwinGlobalsWayland.newVulkanWindowWayland(
         vkInstance,
-        size, title,
-        (if screen == -1: globals.SiwinGlobalsWayland.defaultScreenWayland() else: globals.SiwinGlobalsWayland.screenWayland(screen)),
+        size, title, screen,
         resizable, fullscreen, frameless, transparent
       )
     else:
@@ -64,7 +60,6 @@ proc newVulkanWindow*(
   elif defined(windows):
     globals.newVulkanWindowWinapi(
       vkInstance,
-      size, title,
-      (if screen == -1: defaultScreenWinapi() else: screenWinapi(screen)),
+      size, title, screen,
       resizable, fullscreen, frameless, transparent
     )

@@ -307,6 +307,8 @@ Window is a ptr object, object data starts with a (pointer to) SiwinGlobals and 
 Window is destroyed automatically when it is closed. Accessing Window after it is closed will (probably) result in a SIGSEGV.  
 Before closing and destroying, window will send onClose event. It is valid to access Window in onClose handler.
 
+Screen is distinct int of the number of that screen. It does not participate in memory management
+
 
 # Contributions
 If you want to support this project, here is some tasks to do:

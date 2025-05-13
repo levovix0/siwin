@@ -8,12 +8,12 @@ let globals = newSiwinGlobals()
 
 test "screen":
   if globals.screenCount() == 1:
-    let size = globals.defaultScreen().size
-    echo &"screen().size: {size.x}x{size.y}"
+    let size = globals.screenSize(globals.defaultScreen)
+    echo &"screen size: {size.x}x{size.y}"
   else:
     for i in 0..<globals.screenCount():
-      let size = globals.screen(i).size
-      echo &"screen({i}).size: {size.x}x{size.y}"
+      let size = globals.screenSize(i.Screen)
+      echo &"{i} screen size: {size.x}x{size.y}"
 
 
 test "clipboard":

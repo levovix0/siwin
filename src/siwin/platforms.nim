@@ -6,7 +6,7 @@ when defined(linux) and not defined(android):
   import ./platforms/wayland/siwinGlobals as waylandGlobals
   import ./platforms/x11/siwinGlobals as x11Globals
 when defined(windows):
-  ##
+  import ./platforms/winapi/siwinGlobals as winapiGlobals
 when defined(macosx):
   ##
 
@@ -91,15 +91,14 @@ proc newSiwinGlobals*(preferedPlatform: Platform = defaultPreferedPlatform()): S
       raise SiwinPlatformSupportDefect.newException("Unsupported platform")
   
   elif defined(windows):
-    result = create(SiwinGlobalsObj)
-    result.platform = Platform.winapi
+    result = newWinapiSiwinGlobals()
   
   elif defined(macosx):
     result = create(SiwinGlobalsObj)
     result.platform = Platform.cocoa
   
   else:
-    {.error.}
+    {.error: "unsupported platform".}
 
 
 proc destroy*(globals: SiwinGlobals) =
