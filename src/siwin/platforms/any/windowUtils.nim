@@ -1,6 +1,6 @@
 import std/[options, importutils]
 import pkg/[vmath]
-import ./[window {.all.}]
+import ./[window {.all.}, clipboards {.all.}]
 import ../../[siwindefs]
 
 
@@ -122,58 +122,70 @@ proc windowPartAt*(window: Window, mousePos: Vec2): WindowPart =
 
 template makeWindowVtable*(baseProcName, extendedProcName: untyped): WindowVtable =
   WindowVtable(
-    close: cast[proc(window: Window) {.nimcall.}](`baseProcName close`),
-    redraw: cast[proc(window: Window) {.nimcall.}](`baseProcName redraw`),
+    close: cast[proc(window: Window) {.cdecl.}](`baseProcName close`),
+    redraw: cast[proc(window: Window) {.cdecl.}](`baseProcName redraw`),
 
-    destroy: cast[proc(window: Window) {.nimcall.}](`extendedProcName destroy`),
-    displayImpl: cast[proc(window: Window) {.nimcall.}](`extendedProcName displayImpl`),
+    destroy: cast[proc(window: Window) {.cdecl.}](`extendedProcName destroy`),
+    displayImpl: cast[proc(window: Window) {.cdecl.}](`extendedProcName displayImpl`),
 
-    set_frameless: cast[proc(window: Window, v: bool) {.nimcall.}](`baseProcName set_frameless`),
-    set_cursor: cast[proc(window: Window, v: Cursor) {.nimcall.}](`baseProcName set_cursor`),
-    set_separateTouch: cast[proc(window: Window, v: bool) {.nimcall.}](`baseProcName set_separateTouch`),
+    set_frameless: cast[proc(window: Window, v: bool) {.cdecl.}](`baseProcName set_frameless`),
+    set_cursor: cast[proc(window: Window, v: Cursor) {.cdecl.}](`baseProcName set_cursor`),
+    set_separateTouch: cast[proc(window: Window, v: bool) {.cdecl.}](`baseProcName set_separateTouch`),
     
-    set_size: cast[proc(window: Window, v: IVec2) {.nimcall.}](`baseProcName set_size`),
-    set_pos: cast[proc(window: Window, v: IVec2) {.nimcall.}](`baseProcName set_pos`),
-    set_title: cast[proc(window: Window, v: string) {.nimcall.}](`baseProcName set_title`),
+    set_size: cast[proc(window: Window, v: IVec2) {.cdecl.}](`baseProcName set_size`),
+    set_pos: cast[proc(window: Window, v: IVec2) {.cdecl.}](`baseProcName set_pos`),
+    set_title: cast[proc(window: Window, v: string) {.cdecl.}](`baseProcName set_title`),
     
-    set_fullscreen: cast[proc(window: Window, v: bool) {.nimcall.}](`baseProcName set_fullscreen`),
-    set_maximized: cast[proc(window: Window, v: bool) {.nimcall.}](`baseProcName set_maximized`),
-    set_minimized: cast[proc(window: Window, v: bool) {.nimcall.}](`baseProcName set_minimized`),
-    set_visible: cast[proc(window: Window, v: bool) {.nimcall.}](`baseProcName set_visible`),
+    set_fullscreen: cast[proc(window: Window, v: bool) {.cdecl.}](`baseProcName set_fullscreen`),
+    set_maximized: cast[proc(window: Window, v: bool) {.cdecl.}](`baseProcName set_maximized`),
+    set_minimized: cast[proc(window: Window, v: bool) {.cdecl.}](`baseProcName set_minimized`),
+    set_visible: cast[proc(window: Window, v: bool) {.cdecl.}](`baseProcName set_visible`),
     
-    set_resizable: cast[proc(window: Window, v: bool) {.nimcall.}](`baseProcName set_resizable`),
-    set_minSize: cast[proc(window: Window, v: IVec2) {.nimcall.}](`baseProcName set_minSize`),
-    set_maxSize: cast[proc(window: Window, v: IVec2) {.nimcall.}](`baseProcName set_maxSize`),
+    set_resizable: cast[proc(window: Window, v: bool) {.cdecl.}](`baseProcName set_resizable`),
+    set_minSize: cast[proc(window: Window, v: IVec2) {.cdecl.}](`baseProcName set_minSize`),
+    set_maxSize: cast[proc(window: Window, v: IVec2) {.cdecl.}](`baseProcName set_maxSize`),
     
-    set_icon: cast[proc(window: Window, v: PixelBuffer) {.nimcall.}](`baseProcName set_icon`),
-    clear_icon: cast[proc(window: Window) {.nimcall.}](`baseProcName clear_icon`),
+    set_icon: cast[proc(window: Window, v: PixelBuffer) {.cdecl.}](`baseProcName set_icon`),
+    clear_icon: cast[proc(window: Window) {.cdecl.}](`baseProcName clear_icon`),
     
-    startInteractiveMove: cast[proc(window: Window, pos: Option[Vec2] = none Vec2) {.nimcall.}](`baseProcName startInteractiveMove`),
-    startInteractiveResize: cast[proc(window: Window, edge: Edge, pos: Option[Vec2] = none Vec2) {.nimcall.}](`baseProcName startInteractiveResize`),
+    startInteractiveMove: cast[proc(window: Window, pos: Option[Vec2] = none Vec2) {.cdecl.}](`baseProcName startInteractiveMove`),
+    startInteractiveResize: cast[proc(window: Window, edge: Edge, pos: Option[Vec2] = none Vec2) {.cdecl.}](`baseProcName startInteractiveResize`),
     
-    showWindowMenu: cast[proc(window: Window, pos: Option[Vec2] = none Vec2) {.nimcall.}](`baseProcName showWindowMenu`),
-    setInputRegion: cast[proc(window: Window, pos, size: Vec2) {.nimcall.}](`baseProcName setInputRegion`),
-    setTitleRegion: cast[proc(window: Window, pos, size: Vec2) {.nimcall.}](`baseProcName setTitleRegion`),
-    setBorderWidth: cast[proc(window: Window, innerWidth, outerWidth: float32, diagonalSize: float32) {.nimcall.}](`baseProcName setBorderWidth`),
+    showWindowMenu: cast[proc(window: Window, pos: Option[Vec2] = none Vec2) {.cdecl.}](`baseProcName showWindowMenu`),
+    setInputRegion: cast[proc(window: Window, pos, size: Vec2) {.cdecl.}](`baseProcName setInputRegion`),
+    setTitleRegion: cast[proc(window: Window, pos, size: Vec2) {.cdecl.}](`baseProcName setTitleRegion`),
+    setBorderWidth: cast[proc(window: Window, innerWidth, outerWidth: float32, diagonalSize: float32) {.cdecl.}](`baseProcName setBorderWidth`),
     
-    set_dragStatus: cast[proc(window: Window, v: DragStatus) {.nimcall.}](`baseProcName set_dragStatus`),
+    set_dragStatus: cast[proc(window: Window, v: DragStatus) {.cdecl.}](`baseProcName set_dragStatus`),
     
-    pixelBuffer: cast[proc(window: Window): PixelBuffer {.nimcall.}](`extendedProcName pixelBuffer`),
+    pixelBuffer: cast[proc(window: Window): PixelBuffer {.cdecl.}](`extendedProcName pixelBuffer`),
     
-    makeCurrent: cast[proc(window: Window) {.nimcall.}](`extendedProcName makeCurrent`),
-    set_vsync: cast[proc(window: Window, v: bool, silent = false) {.nimcall.}](`extendedProcName set_vsync`),
+    makeCurrent: cast[proc(window: Window) {.cdecl.}](`extendedProcName makeCurrent`),
+    set_vsync: cast[proc(window: Window, v: bool, silent = false) {.cdecl.}](`extendedProcName set_vsync`),
     
-    vulkanSurface: cast[proc(window: Window): pointer {.nimcall.}](`extendedProcName vulkanSurface`),
+    vulkanSurface: cast[proc(window: Window): pointer {.cdecl.}](`extendedProcName vulkanSurface`),
     
-    firstStep: cast[proc(window: Window, makeVisible = true) {.nimcall.}](`baseProcName firstStep`),
-    step: cast[proc(window: Window): bool {.nimcall.}](`baseProcName step`),
+    firstStep: cast[proc(window: Window, makeVisible = true) {.cdecl.}](`baseProcName firstStep`),
+    step: cast[proc(window: Window): bool {.cdecl.}](`baseProcName step`),
   )
 
 
 template makeSiwinGlobalsVtable*(baseProcName: untyped): SiwinGlobalsVtable =
   SiwinGlobalsVtable(
-    screenCount: cast[proc(globals: SiwinGlobals): int {.nimcall.}](`baseProcName screenCount`),
-    defaultScreen: cast[proc(globals: SiwinGlobals): Screen {.nimcall.}](`baseProcName defaultScreen`),
-    screenSize: cast[proc(globals: SiwinGlobals, n: Screen): IVec2 {.nimcall, raises: [ValueError].}](`baseProcName screenSize`),
+    screenCount: cast[proc(globals: SiwinGlobals): int {.cdecl.}](`baseProcName screenCount`),
+    defaultScreen: cast[proc(globals: SiwinGlobals): Screen {.cdecl.}](`baseProcName defaultScreen`),
+    screenSize: cast[proc(globals: SiwinGlobals, n: Screen): IVec2 {.cdecl, raises: [ValueError].}](`baseProcName screenSize`),
+  )
+
+
+template makeClipboardVtable*(baseProcName: untyped): ClipboardVtable =
+  ClipboardVtable(
+    content: cast[proc(
+      clipboard: Clipboard, kind: ClipboardContentKind, mimeType: string = "text/plain"
+    ): ClipboardContent {.cdecl.}](`baseProcName content`),
+    
+    set_content: cast[proc(
+      clipboard: Clipboard, content: ClipboardConvertableContent
+    ) {.cdecl.}](`baseProcName set_content`),
   )
 

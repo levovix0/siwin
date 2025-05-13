@@ -2,24 +2,27 @@ import std/[times, os, options, importutils, sequtils]
 import pkg/[vmath]
 import ./[winapi]
 import ../../[colorutils, siwindefs]
-import ../any/[window {.all.}, clipboards]
+import ../any/[window {.all.}, clipboards {.all.}]
 import ../any/[windowUtils]
 
 privateAccess Window
 privateAccess SiwinGlobalsObj
+privateAccess ClipboardObj
 
 {.experimental: "overloadableEnums".}
 
-type  
+type
   Buffer = object
     x, y: int
     bitmap: HBitmap
     hdc: Hdc
     pixels: pointer
 
-  ClipboardWinapi* = ref object of Clipboard
+  ClipboardWinapi* = ptr ClipboardWinapiObj
+  ClipboardWinapiObj* = object of Clipboard
 
-  ClipboardWinapiDnd* = ref object of Clipboard
+  ClipboardWinapiDnd* = ptr ClipboardWinapiDndObj
+  ClipboardWinapiDndObj* = object of Clipboard
 
   WindowWinapi* = ptr WindowWinapiObj
   WindowWinapiObj* = object of Window
@@ -32,6 +35,9 @@ type
   WindowWinapiSoftwareRendering* = ptr WindowWinapiSoftwareRenderingObj
   WindowWinapiSoftwareRenderingObj = object of WindowWinapi
     buffer: Buffer
+
+
+proc initClipboardVtables(globals: SiwinGlobals)
 
 
 proc wkeyToKey(key: WParam): Key =
@@ -174,6 +180,9 @@ proc `=destroy`(window: WindowWinapiObj) {.siwin_destructor.} =
 
   if window.wcursor != 0:
     DestroyCursor window.wcursor
+  
+  dealloc window.m_clipboard
+  dealloc window.m_dragndropClipboard
 
 
 proc poolEvent(window: WindowWinapi, message: Uint, wParam: WParam, lParam: LParam): LResult
@@ -252,10 +261,22 @@ proc initWindow(window: WindowWinapi; size: IVec2; screen: Screen, fullscreen, f
   if transparent:
     window.m_transparent = true
     window.enableTransparency()
+
+  initClipboardVtables(window.globals)
   
-  window.m_clipboard = ClipboardWinapi(availableKinds: {ClipboardContentKind.text})  # todo: other types
+  window.m_clipboard = create(ClipboardWinapiObj)
+  window.m_clipboard[] = ClipboardWinapiObj(
+    vtable: window.globals.clipboardVtable.addr,
+    availableKinds: {ClipboardContentKind.text},
+  )  # todo: other types
+  
   window.m_selectionClipboard = window.m_clipboard
-  window.m_dragndropClipboard = ClipboardWinapiDnd()  # todo
+  
+  window.m_dragndropClipboard = create(ClipboardWinapiDndObj)
+  window.m_dragndropClipboard[] = ClipboardWinapiDndObj(
+    vtable: window.globals.dndClipboardVtable.addr,
+    availableKinds: {},
+  )  # todo
 
 
 proc releaseAllKeys(window: WindowWinapi) =
@@ -289,15 +310,15 @@ proc resizeBufferIfNeeded(buffer: var Buffer, size: IVec2) =
 
 
 
-proc winapi_close(window: WindowWinapi) =
+proc winapi_close(window: WindowWinapi) {.cdecl.} =
   if not window.m_closed: window.handle.SendMessage(WmClose, 0, 0)
 
-proc winapi_redraw(window: WindowWinapi) =
+proc winapi_redraw(window: WindowWinapi) {.cdecl.} =
   window.redrawRequested = true
 
 
 
-proc winapi_sw_displayImpl(window: WindowWinapiSoftwareRendering) =
+proc winapi_sw_displayImpl(window: WindowWinapiSoftwareRendering) {.cdecl.} =
   var ps: PaintStruct
   window.handle.BeginPaint(ps.addr)
   
@@ -311,18 +332,18 @@ proc winapi_sw_displayImpl(window: WindowWinapiSoftwareRendering) =
   window.handle.EndPaint(ps.addr)
 
 
-proc winapi_sw_destroy(window: WindowWinapi) =
+proc winapi_sw_destroy(window: WindowWinapi) {.cdecl.} =
   `=destroy`(window[])
 
 
 
-proc winapi_set_frameless(window: WindowWinapi, v: bool) =
+proc winapi_set_frameless(window: WindowWinapi, v: bool) {.cdecl.} =
   if window.m_frameless == v: return
   window.m_frameless = v
   SetWindowLongPtr(window.handle, GWL_STYLE, (if v: WsPopup or WsMinimizeBox else: WsOverlappedWindow))
 
 
-proc winapi_set_cursor(window: WindowWinapi, v: Cursor) =
+proc winapi_set_cursor(window: WindowWinapi, v: Cursor) {.cdecl.} =
   if window.m_cursor.kind == builtin and v.kind == builtin and v.builtin == window.m_cursor.builtin: return
   if window.wcursor != 0: DestroyCursor window.wcursor
   window.m_cursor = v
@@ -369,12 +390,12 @@ proc winapi_set_cursor(window: WindowWinapi, v: Cursor) =
     convertPixelsInplace(buffer.data, buffer.size, PixelBufferFormat.bgra_32bit, sourceFormat)
 
 
-proc winapi_set_separateTouch(window: WindowWinapi, v: bool) =
+proc winapi_set_separateTouch(window: WindowWinapi, v: bool) {.cdecl.} =
   ## todo
 
 
 
-proc winapi_set_size(window: WindowWinapi, size: IVec2) =
+proc winapi_set_size(window: WindowWinapi, size: IVec2) {.cdecl.} =
   window.fullscreen = false
   let rcClient = window.handle.clientRect
   var rcWind = window.handle.windowRect
@@ -383,17 +404,17 @@ proc winapi_set_size(window: WindowWinapi, size: IVec2) =
   window.handle.MoveWindow(rcWind.left, rcWind.top, (size.x + borderx).int32, (size.y + bordery).int32, True)
 
 
-proc winapi_set_pos(window: WindowWinapi, v: IVec2) =
+proc winapi_set_pos(window: WindowWinapi, v: IVec2) {.cdecl.} =
   if window.m_fullscreen: return
   window.handle.SetWindowPos(0, v.x, v.y, 0, 0, SwpNoSize)
 
 
-proc winapi_set_title(window: WindowWinapi, title: string) =
+proc winapi_set_title(window: WindowWinapi, title: string) {.cdecl.} =
   window.handle.SetWindowText(title)
 
 
 
-proc winapi_set_fullscreen(window: WindowWinapi, v: bool) =
+proc winapi_set_fullscreen(window: WindowWinapi, v: bool) {.cdecl.} =
   if window.m_fullscreen == v: return
   window.m_fullscreen = v
   if v:
@@ -407,7 +428,7 @@ proc winapi_set_fullscreen(window: WindowWinapi, v: bool) =
     )
 
 
-proc winapi_set_maximized(window: WindowWinapi, v: bool) =
+proc winapi_set_maximized(window: WindowWinapi, v: bool) {.cdecl.} =
   if window.m_maximized == v: return
   if window.m_frameless:
     if v:
@@ -428,19 +449,19 @@ proc winapi_set_maximized(window: WindowWinapi, v: bool) =
   )
 
 
-proc winapi_set_minimized(window: WindowWinapi, v: bool) =
+proc winapi_set_minimized(window: WindowWinapi, v: bool) {.cdecl.} =
   window.releaseAllKeys()
   window.m_minimized = v
   discard ShowWindow(window.handle, if v: SwShowMinNoActive  else: SwNormal)
 
 
-proc winapi_set_visible(window: WindowWinapi, v: bool) =
+proc winapi_set_visible(window: WindowWinapi, v: bool) {.cdecl.} =
   window.m_visible = v
   discard ShowWindow(window.handle, if v: SwShow else: SwHide)
 
 
 
-proc winapi_set_resizable(window: WindowWinapi, v: bool) =
+proc winapi_set_resizable(window: WindowWinapi, v: bool) {.cdecl.} =
   if not window.m_frameless:
     let style = GetWindowLongW(window.handle, GwlStyle)
     discard SetWindowLongW(window.handle, GwlStyle, if v: style or WsThickframe else: style and not WsThickframe)
@@ -448,13 +469,13 @@ proc winapi_set_resizable(window: WindowWinapi, v: bool) =
   window.m_maxSize = ivec2()
 
 
-proc winapi_set_minSize(window: WindowWinapi, v: IVec2) =
+proc winapi_set_minSize(window: WindowWinapi, v: IVec2) {.cdecl.} =
   window.m_minSize = v
   if not window.m_frameless:
     let style = GetWindowLongW(window.handle, GwlStyle)
     discard SetWindowLongW(window.handle, GwlStyle, style or WsThickframe)
 
-proc winapi_set_maxSize(window: WindowWinapi, v: IVec2) =
+proc winapi_set_maxSize(window: WindowWinapi, v: IVec2) {.cdecl.} =
   window.m_maxSize = v
   if not window.m_frameless:
     let style = GetWindowLongW(window.handle, GwlStyle)
@@ -462,7 +483,7 @@ proc winapi_set_maxSize(window: WindowWinapi, v: IVec2) =
 
 
 
-proc winapi_set_icon(window: WindowWinapi, _: nil.typeof) =
+proc winapi_set_icon(window: WindowWinapi, _: nil.typeof) {.cdecl.} =
   ## clear icon
   if window.wicon != 0:
     DestroyIcon window.wicon
@@ -472,7 +493,7 @@ proc winapi_set_icon(window: WindowWinapi, _: nil.typeof) =
   window.handle.SendMessageW(WmSetIcon, IconSmall, 0)
 
 
-proc winapi_clear_icon(window: WindowWinapi, v: PixelBuffer) =
+proc winapi_clear_icon(window: WindowWinapi, v: PixelBuffer) {.cdecl.} =
   ## set icon
   if v.size.x * v.size.y == 0:
     window.icon = nil
@@ -492,7 +513,7 @@ proc winapi_clear_icon(window: WindowWinapi, v: PixelBuffer) =
 
 
 
-proc winapi_startInteractiveMove(window: WindowWinapi, pos: Option[Vec2]) =
+proc winapi_startInteractiveMove(window: WindowWinapi, pos: Option[Vec2]) {.cdecl.} =
   window.releaseAllKeys()
   ReleaseCapture()
 
@@ -500,7 +521,7 @@ proc winapi_startInteractiveMove(window: WindowWinapi, pos: Option[Vec2]) =
   # todo: press all keys and mouse buttons that are pressed after move
 
 
-proc winapi_startInteractiveResize(window: WindowWinapi, edge: Edge, pos: Option[Vec2]) =
+proc winapi_startInteractiveResize(window: WindowWinapi, edge: Edge, pos: Option[Vec2]) {.cdecl.} =
   window.releaseAllKeys()
   ReleaseCapture()
 
@@ -521,41 +542,41 @@ proc winapi_startInteractiveResize(window: WindowWinapi, edge: Edge, pos: Option
 
 
 
-proc winapi_showWindowMenu(window: WindowWinapi, pos: Option[Vec2]) =
+proc winapi_showWindowMenu(window: WindowWinapi, pos: Option[Vec2]) {.cdecl.} =
   discard
 
 
-proc winapi_setInputRegion(window: WindowWinapi, pos, size: Vec2) =
+proc winapi_setInputRegion(window: WindowWinapi, pos, size: Vec2) {.cdecl.} =
   window.inputRegion = some (pos: pos, size: size)
 
 
-proc winapi_setTitleRegion(window: WindowWinapi, pos, size: Vec2) =
+proc winapi_setTitleRegion(window: WindowWinapi, pos, size: Vec2)  {.cdecl.}=
   window.titleRegion = some (pos: pos, size: size)
 
 
-proc winapi_setBorderWidth(window: WindowWinapi, innerWidth, outerWidth: float32, diagonalSize: float32) =
+proc winapi_setBorderWidth(window: WindowWinapi, innerWidth, outerWidth: float32, diagonalSize: float32) {.cdecl.} =
   window.borderWidth = some (innerWidth: innerWidth, outerWidrth: outerWidth, diagonalSize: diagonalSize)
 
   
-proc winapi_set_dragStatus(window: WindowWinapi, v: DragStatus) =
+proc winapi_set_dragStatus(window: WindowWinapi, v: DragStatus) {.cdecl.} =
   ## todo
 
 
 
-proc winapi_sw_pixelBuffer(window: WindowWinapiSoftwareRendering): PixelBuffer =
+proc winapi_sw_pixelBuffer(window: WindowWinapiSoftwareRendering): PixelBuffer {.cdecl.} =
   result = PixelBuffer(
     data: window.buffer.pixels,
     size: ivec2(window.buffer.x.int32, window.buffer.y.int32),
     format: (if window.transparent: PixelBufferFormat.bgrx_32bit else: PixelBufferFormat.bgru_32bit)
   )
 
-proc winapi_sw_makeCurrent(window: WindowWinapiSoftwareRendering) = discard
-proc winapi_sw_set_vsync(window: WindowWinapiSoftwareRendering, v: bool, silent = false) = discard
-proc winapi_sw_vulkanSurface(window: WindowWinapiSoftwareRendering): pointer = discard
+proc winapi_sw_makeCurrent(window: WindowWinapiSoftwareRendering) {.cdecl.} = discard
+proc winapi_sw_set_vsync(window: WindowWinapiSoftwareRendering, v: bool, silent = false) {.cdecl.} = discard
+proc winapi_sw_vulkanSurface(window: WindowWinapiSoftwareRendering): pointer {.cdecl.} = discard
 
 
 
-proc winapi_firstStep(window: WindowWinapi, makeVisible = true) =
+proc winapi_firstStep(window: WindowWinapi, makeVisible = true) {.cdecl.} =
   if makeVisible:
     window.visible = true
   
@@ -568,6 +589,70 @@ proc winapi_firstStep(window: WindowWinapi, makeVisible = true) =
   window.handle.UpdateWindow()
 
   window.lastTickTime = getTime()
+
+
+
+proc winapi_clipboard_content*(
+  clipboard: ClipboardWinapi, kind: ClipboardContentKind, mimeType: string
+): ClipboardContent {.cdecl.} =
+  discard OpenClipboard(0)
+
+  let hcpb = GetClipboardData(CfUnicodeText)
+  if hcpb == 0:
+    CloseClipboard()
+    return
+  
+  result = ClipboardContent(kind: ClipboardContentKind.text, text: $cast[PWChar](GlobalLock hcpb))  # todo: other types
+  GlobalUnlock hcpb
+  discard CloseClipboard()
+
+
+proc winapi_clipboard_set_content(
+  clipboard: ClipboardWinapi, content: ClipboardConvertableContent
+) {.cdecl.} =
+  var conv: ClipboardContentConverter
+  for cv in content.converters:
+    case cv.kind
+    of ClipboardContentKind.text:
+      conv = cv
+    else:
+      ## todo
+
+  if conv.f == nil: return
+
+  let content = conv.f(content.data, conv.kind, conv.mimeType)
+  if content.kind != ClipboardContentKind.text: return
+
+  let s = content.text
+
+  discard OpenClipboard(0)
+  discard EmptyClipboard()
+  
+  let ws = +$s
+  let ts = (ws.len + 1) * WChar.sizeof
+  let hstr = GlobalAlloc(GMemMoveable, ts)
+  if hstr == 0:
+    CloseClipboard()
+    raise OSError.newException("failed to alloc string")
+
+  copyMem(GlobalLock hstr, ws.winstrConverterWStringToLPWstr, ts)
+  GlobalUnlock hstr
+  SetClipboardData(CfUnicodeText, hstr)
+  CloseClipboard()
+
+
+
+proc winapi_clipboard_dnd_content*(
+  clipboard: ClipboardWinapi, kind: ClipboardContentKind, mimeType: string
+): ClipboardContent {.cdecl.} =
+  ## todo
+
+
+proc winapi_clipboard_dnd_set_content(
+  clipboard: ClipboardWinapi, content: ClipboardConvertableContent
+) {.cdecl.} =
+  ## todo
+
 
 
 proc updateWindowState(window: WindowWinapi) =
@@ -782,53 +867,15 @@ proc poolEvent(window: WindowWinapi, message: Uint, wParam: WParam, lParam: LPar
   else: return window.handle.DefWindowProc(message, wParam, lParam)
 
 
-method content*(clipboard: ClipboardWinapi, kind: ClipboardContentKind, mimeType: string): ClipboardContent =
-  discard OpenClipboard(0)
-
-  let hcpb = GetClipboardData(CfUnicodeText)
-  if hcpb == 0:
-    CloseClipboard()
-    return
-  
-  result = ClipboardContent(kind: ClipboardContentKind.text, text: $cast[PWChar](GlobalLock hcpb))  # todo: other types
-  GlobalUnlock hcpb
-  discard CloseClipboard()
-
-
-method `content=`*(clipboard: ClipboardWinapi, content: ClipboardConvertableContent) =
-  var conv: ClipboardContentConverter
-  for cv in content.converters:
-    case cv.kind
-    of ClipboardContentKind.text:
-      conv = cv
-    else:
-      ## todo
-
-  if conv.f == nil: return
-
-  let content = conv.f(content.data, conv.kind, conv.mimeType)
-  if content.kind != ClipboardContentKind.text: return
-
-  let s = content.text
-
-  discard OpenClipboard(0)
-  discard EmptyClipboard()
-  
-  let ws = +$s
-  let ts = (ws.len + 1) * WChar.sizeof
-  let hstr = GlobalAlloc(GMemMoveable, ts)
-  if hstr == 0:
-    CloseClipboard()
-    raise OSError.newException("failed to alloc string")
-
-  copyMem(GlobalLock hstr, ws.winstrConverterWStringToLPWstr, ts)
-  GlobalUnlock hstr
-  SetClipboardData(CfUnicodeText, hstr)
-  CloseClipboard()
-
-
 proc winapiSoftwareRenderingWindowVtalbe: WindowVtable =
   makeWindowVtable(winapi, winapi_sw)
+
+
+proc initClipboardVtables(globals: SiwinGlobals) =
+  globals.clipboardVtable = makeClipboardVtable(winapi_clipboard)
+  globals.selectionClipboardVtable = makeClipboardVtable(winapi_clipboard)
+  globals.dndClipboardVtable = makeClipboardVtable(winapi_clipboard_dnd)
+
 
 
 proc newSoftwareRenderingWindowWinapi*(

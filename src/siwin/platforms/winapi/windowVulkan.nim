@@ -27,16 +27,19 @@ proc `=destroy`*(surface: Surface) {.siwin_destructor.} =
 
 
 
-proc winapi_vulkan_pixelBuffer(window: WindowWinapiVulkan): PixelBuffer = discard
+proc winapi_vulkan_pixelBuffer(window: WindowWinapiVulkan): PixelBuffer {.cdecl.} = discard
 
-proc winapi_vulkan_makeCurrent(window: WindowWinapiVulkan) = discard
-proc winapi_vulkan_set_vsync(window: WindowWinapiVulkan, v: bool, silent = false) = discard
+proc winapi_vulkan_makeCurrent(window: WindowWinapiVulkan) {.cdecl.} = discard
+proc winapi_vulkan_set_vsync(window: WindowWinapiVulkan, v: bool, silent = false) {.cdecl.} = discard
 
-proc winapi_vulkan_vulkanSurface(window: WindowWinapiVulkan): pointer =
+proc winapi_vulkan_vulkanSurface(window: WindowWinapiVulkan): pointer {.cdecl.} =
   window.surface.raw
 
 
-proc initWindowWinapiVulkan(window: WindowWinapiVulkan; vkInstance: pointer, size: IVec2; screen: Screen, fullscreen, frameless, transparent: bool) =
+proc initWindowWinapiVulkan(
+  window: WindowWinapiVulkan; vkInstance: pointer, size: IVec2; screen: Screen,
+  fullscreen, frameless, transparent: bool,
+) =
   window.initWindow size, screen, fullscreen, frameless, transparent, woClassName
   
   var pfd = PixelFormatDescriptor(

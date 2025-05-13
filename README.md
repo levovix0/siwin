@@ -292,7 +292,11 @@ window.handle
 ```
 
 ## Memory management in siwin
-Siwin should work fine with --mm:none, --mm:arc and --mm:refc as it uses raw pointers and (on linux) manually made vtables.  
+Siwin does not use Nim's garbadge collection, so should work fine with --mm:none, --mm:arc, --mm:orc, --mm:refc and so on.  
+Instead, siwin uses regular objects, and, for some cases, mannualy managed raw pointers and self-made vtables.  
+Why? Nim's ref objects (and closures) is not strictly defined and, as a result, adding c-like interface to siwin or linking with siwin dynamically would be pain if siwin was using them.
+
+Why siwin need vtables? On linux there are 2 platforms, which must have diffirent implementation for a Window. Also, windows for software rendering, opengl and vulkan should have slightly diffirent data and implementation. A perfect case for Object-Oriented Programming, but we don't have that in low-and-compatible-with-C-level Nim
 
 SiwinGlobals is a ptr object, object data starts with a platform kind.  
 SiwinGlobals must be created once (using newSiwinGlobals()) and deleted mannaly via destroy(siwinGlobals) call.  
@@ -307,7 +311,10 @@ Window is a ptr object, object data starts with a (pointer to) SiwinGlobals and 
 Window is destroyed automatically when it is closed. Accessing Window after it is closed will (probably) result in a SIGSEGV.  
 Before closing and destroying, window will send onClose event. It is valid to access Window in onClose handler.
 
-Screen is distinct int of the number of that screen. It does not participate in memory management
+Clipboard is a ptr object, object data starts with a pointer to vtable.  
+Clipboard is created when Window is created and destroyed when Window is destroyed.
+
+If you encounter a memory leak caused by siwin, please report it.
 
 
 # Contributions

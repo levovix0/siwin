@@ -51,25 +51,38 @@ type
     availableMimeTypes*: seq[string]
 
 
-  Clipboard* = ref object of RootObj
+  ClipboardVtable = object
+    content*: proc(
+      clipboard: Clipboard, kind: ClipboardContentKind, mimeType: string = "text/plain"
+    ): ClipboardContent {.cdecl.}
+    
+    set_content*: proc(clipboard: Clipboard, content: ClipboardConvertableContent) {.cdecl.}
+
+
+  Clipboard* = ptr ClipboardObj
+  ClipboardObj = object of RootObj
+    vtable: ptr ClipboardVtable
+
     onContentChanged*: proc(e: ClipboardContentChangedEvent)
 
     availableKinds*: set[ClipboardContentKind]
     availableMimeTypes*: seq[string]
 
 
-method content*(
+proc content*(
   clipboard: Clipboard, kind: ClipboardContentKind, mimeType: string = "text/plain"
-): ClipboardContent {.base.} = discard
+): ClipboardContent {.inline.} =
   ## requests source to convert content to specified format, waits for it, and returns it
   ## this method is synchronous (blocks)
   ## note: on some platforms, some window events may happen while waiting for content
   ## returns empty content if content is not available in requested format
+  clipboard.vtable.content(clipboard, kind, mimeType)
 
 
-method `content=`*(clipboard: Clipboard, content: ClipboardConvertableContent) {.base.} = discard
+proc `content=`*(clipboard: Clipboard, content: ClipboardConvertableContent) {.inline.} =
   ## sets content of clipboard
   ## note: setting content on dragndropClipboard is not yet implemented
+  clipboard.vtable.set_content(clipboard, content)
 
 
 proc text*(clipboard: Clipboard): string =

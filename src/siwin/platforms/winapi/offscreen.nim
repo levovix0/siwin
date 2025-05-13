@@ -30,8 +30,8 @@ proc winapi_invisible_makeCurrent(window: InvisibleOpenglWindowWinapi) =
 proc newOpenglContextWinapi*: InvisibleOpenglWindowWinapi =
   result = create(InvisibleOpenglWindowWinapiObj)
   result.vtable = create(WindowVtable)
-  result.vtable.close = cast[proc(window: Window) {.nimcall.}](winapi_invisible_close)
-  result.vtable.makeCurrent = cast[proc(window: Window) {.nimcall.}](winapi_invisible_makeCurrent)
+  result.vtable.close = cast[proc(window: Window) {.cdecl.}](winapi_invisible_close)
+  result.vtable.makeCurrent = cast[proc(window: Window) {.cdecl.}](winapi_invisible_makeCurrent)
 
   proc registerWindowClass(
     class: string,

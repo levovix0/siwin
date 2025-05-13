@@ -15,7 +15,10 @@ type
     ctx: WglContext
 
 
-proc initWindowWinapiOpengl(window: WindowWinapiOpengl; size: IVec2; screen: Screen, fullscreen, frameless, transparent: bool) =
+proc initWindowWinapiOpengl(
+  window: WindowWinapiOpengl; size: IVec2; screen: Screen,
+  fullscreen, frameless, transparent: bool,
+) =
   window.initWindow size, screen, fullscreen, frameless, transparent, woClassName
   
   var pfd = PixelFormatDescriptor(
@@ -35,25 +38,25 @@ proc initWindowWinapiOpengl(window: WindowWinapiOpengl; size: IVec2; screen: Scr
 
 
 
-proc winapi_opengl_displayImpl(window: WindowWinapiOpengl) =
+proc winapi_opengl_displayImpl(window: WindowWinapiOpengl) {.cdecl.} =
   window.eventsHandler.pushEvent onRender, RenderEvent(window: window)
   window.hdc.SwapBuffers
 
 
-proc winapi_opengl_destroy(window: WindowWinapiOpengl) =
+proc winapi_opengl_destroy(window: WindowWinapiOpengl) {.cdecl.} =
   `=destroy`(window.ctx)
   `=destroy`(cast[WindowWinapi](window)[])
 
 
 
-proc winapi_opengl_pixelBuffer(window: WindowWinapiOpengl): PixelBuffer = discard
+proc winapi_opengl_pixelBuffer(window: WindowWinapiOpengl): PixelBuffer {.cdecl.} = discard
 
 
-proc winapi_opengl_makeCurrent(window: WindowWinapiOpengl) =
+proc winapi_opengl_makeCurrent(window: WindowWinapiOpengl) {.cdecl.} =
   discard window.hdc.wglMakeCurrent(window.ctx.raw)
 
 
-proc winapi_opengl_set_vsync(window: WindowWinapiOpengl, v: bool, silent = false) =
+proc winapi_opengl_set_vsync(window: WindowWinapiOpengl, v: bool, silent = false) {.cdecl.} =
   if wglSwapIntervalExt == nil:
     wglSwapIntervalExt = cast[typeof wglSwapIntervalExt](wglGetProcAddress("wglSwapIntervalEXT"))
   if wglSwapIntervalExt == nil or wglSwapIntervalExt(if v: 1 else: 0) == 0:
@@ -61,7 +64,7 @@ proc winapi_opengl_set_vsync(window: WindowWinapiOpengl, v: bool, silent = false
       raise OSError.newException("failed to " & (if v: "enable" else: "disable") & " vsync")
 
 
-proc winapi_opengl_vulkanSurface(window: WindowWinapiOpengl): pointer = discard
+proc winapi_opengl_vulkanSurface(window: WindowWinapiOpengl): pointer {.cdecl.} = discard
 
 
 
