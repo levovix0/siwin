@@ -32,7 +32,7 @@ run siwinGlobals.newSoftwareRenderingWindow(), WindowEventsHandler(
     
     for y in 0..<pixelBuffer.size.y:
       for x in 0..<pixelBuffer.size.x:
-        cast[ptr UncheckedArray[array[4, uint8]]](pixelBuffer.pixels)[y * pixelBuffer.size.x + x] = color
+        cast[ptr UncheckedArray[array[4, uint8]]](pixelBuffer.data)[y * pixelBuffer.size.x + x] = color
 
     convertPixelsInplace(pixelBuffer.data, pixelBuffer.size, PixelBufferFormat.bgrx_32bit, pixelBuffer.format)
   ,
