@@ -12,14 +12,19 @@ type
     instance: pointer
     raw: pointer
 
-  WindowWinapiVulkan* = ref object of WindowWinapi
+  WindowWinapiVulkan* = ptr object of WindowWinapi
     surface: Surface
+
 
 proc `=destroy`*(surface: Surface) {.siwin_destructor.} =
   if surface.instance != nil and surface.raw != nil:
     discard
     # let vkDestroySurfaceKHR = cast[VkDestroySurfaceKHR](surface.instance.vkGetInstanceProcAddr("vkDestroySurfaceKHR"))
     # vkDestroySurfaceKHR(surface.instance, surface.raw, nil)  #? causes crash
+
+
+method destroyImpl*(window: WindowWinapiVulkan) =
+  `=destroy`(window[])
 
 
 method vulkanSurface*(window: WindowWinapiVulkan): pointer =
@@ -71,7 +76,13 @@ proc newVulkanWindowWinapi*(
   frameless = false,
   transparent = false,
 ): WindowWinapiVulkan =
-  new result
+  result = create(typeof(result[]))
+  
+  when not defined(siwin_disable_weird_optimizations):
+    {.emit: [result[], " = ", typeof(result[]).default, ";"].}
+  else:
+    result[] = typeof(result[]).default
+
   result.initWindowWinapiVulkan(vkInstance, size, screen, fullscreen, frameless, transparent)
   result.title = title
   if not resizable: result.resizable = false

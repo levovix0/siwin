@@ -7,8 +7,12 @@ privateAccess Window
 privateAccess WindowWinapi
 
 type
-  WindowWinapiOpengl* = ref object of WindowWinapi
+  WindowWinapiOpengl* = ptr object of WindowWinapi
     ctx: WglContext
+
+
+method destroyImpl*(window: WindowWinapiOpengl) =
+  `=destroy`(window[])
 
 
 proc initWindowWinapiOpengl(window: WindowWinapiOpengl; size: IVec2; screen: ScreenWinapi, fullscreen, frameless, transparent: bool) =
@@ -55,7 +59,13 @@ proc newOpenglWindowWinapi*(
   transparent = false,
   vsync = true,
 ): WindowWinapiOpengl =
-  new result
+  result = create(typeof(result[]))
+  
+  when not defined(siwin_disable_weird_optimizations):
+    {.emit: [result[], " = ", typeof(result[]).default, ";"].}
+  else:
+    result[] = typeof(result[]).default
+
   result.initWindowWinapiOpengl(size, screen, fullscreen, frameless, transparent)
   result.title = title
   result.`vsync=`(vsync, silent=true)

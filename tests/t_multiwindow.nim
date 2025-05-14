@@ -1,4 +1,4 @@
-import unittest, strformat
+import unittest
 import opengl, pixie
 import siwin
 
@@ -8,8 +8,8 @@ let globals = newSiwinGlobals()
 
 
 test "2 windows at once":
-  let win1 = globals.newOpenglWindow(title="1", transparent=true, class="siwin example")
-  let win2 = globals.newOpenglWindow(title="2", size=ivec2(800, 600), class="siwin example")
+  var win1 = globals.newOpenglWindow(title="1", transparent=true, class="siwin example")
+  var win2 = globals.newOpenglWindow(title="2", size=ivec2(800, 600), class="siwin example")
   loadExtensions()
 
   let win1eh = WindowEventsHandler(
@@ -24,7 +24,12 @@ test "2 windows at once":
     ,
     onClick: proc(e: ClickEvent) =
       if e.double:
-        close (if win2.opened: win2 else: e.window)
+        if win2 != nil:
+          close win2
+          win2 = nil
+        else:
+          close win1
+          win1 = nil
     ,
     onKey: proc(e: KeyEvent) =
       if e.pressed and not e.generated:
@@ -43,7 +48,12 @@ test "2 windows at once":
   
   win2eh.onClick = proc(e: ClickEvent) =
     if e.double:
-      close (if win1.opened: win1 else: e.window)
+      if win1 != nil:
+        close win1
+        win1 = nil
+      else:
+        close win2
+        win2 = nil
 
   runMultiple(
     (win1, win1eh, true),

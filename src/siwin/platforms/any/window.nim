@@ -197,7 +197,7 @@ type
     onDrop*:             proc(e: DropEvent)
 
 
-  Window* = ref object of RootObj
+  Window* = ptr object of RootObj
     mouse*: Mouse
     keyboard*: Keyboard
     touchScreen*: TouchScreen
@@ -243,8 +243,6 @@ method height*(screen: Screen): int32 {.base.} = discard
 proc size*(screen: Screen): IVec2 = ivec2(screen.width, screen.height)
 
 
-proc closed*(window: Window): bool = window.m_closed
-proc opened*(window: Window): bool = not window.closed
 
 method close*(window: Window) {.base.} =
   ## request window close
@@ -269,7 +267,7 @@ proc maxSize*(window: Window): IVec2 = window.m_maxSize
 proc focused*(window: Window): bool = window.m_focused
 
 
-# note: locks: "unknown" usualy means that function can cause event outside of event loop
+method destroyImpl*(window: Window) {.base.} = discard
 
 
 method redraw*(window: Window) {.base.} = window.redrawRequested = true
@@ -399,22 +397,26 @@ method firstStep*(window: Window, makeVisible = true) {.base.} = discard
   ## init window main loop
   ## don't call this proc if you will manage window events via run()
 
-method step*(window: Window) {.base.} = discard
+method step*(window: Window): bool {.base.} = discard
   ## make window main loop step
   ## ! don't forget to call firstStep()
+  ## if step returns true, the window was deleted and must not be used
 
 
 proc run*(window: sink Window, makeVisible = true) =
   ## run whole window main loops
   window.firstStep(makeVisible)
-  while window.opened:
-    window.step()
+  while true:
+    if window.step():
+      break
+
 
 proc run*(window: sink Window, eventsHandler: WindowEventsHandler, makeVisible = true) =
   ## set window eventsHandler and run whole window main loops
   if eventsHandler != WindowEventsHandler():
     window.eventsHandler = eventsHandler
   run(window, makeVisible)
+
 
 proc runMultiple*(windows: varargs[tuple[window: Window, makeVisible: bool]]) =
   ## run for multiple windows
@@ -426,11 +428,11 @@ proc runMultiple*(windows: varargs[tuple[window: Window, makeVisible: bool]]) =
     var i = 0
     while i < windows.len:
       let window = windows[i]
-      if window.closed:
+      if window.step():
         windows.del i
-        continue
-      window.step()
-      inc i
+      else:
+        inc i
+
 
 proc runMultiple*(windows: varargs[tuple[window: Window, eventsHandler: WindowEventsHandler, makeVisible: bool]]) =
   ## run for multiple windows
@@ -444,8 +446,7 @@ proc runMultiple*(windows: varargs[tuple[window: Window, eventsHandler: WindowEv
     var i = 0
     while i < windows.len:
       let window = windows[i]
-      if window.closed:
+      if window.step():
         windows.del i
-        continue
-      window.step()
-      inc i
+      else:
+        inc i

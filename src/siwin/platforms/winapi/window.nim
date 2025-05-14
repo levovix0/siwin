@@ -22,7 +22,7 @@ type
 
   ClipboardWinapiDnd* = ref object of Clipboard
 
-  WindowWinapi* = ref WindowWinapiObj
+  WindowWinapi* = ptr WindowWinapiObj
   WindowWinapiObj* = object of Window
     handle: HWnd
     wicon: HIcon
@@ -30,7 +30,7 @@ type
     wcursor: HCursor
     restoreSize, restorePos: IVec2
 
-  WindowWinapiSoftwareRendering* = ref object of WindowWinapi
+  WindowWinapiSoftwareRendering* = ptr object of WindowWinapi
     buffer: Buffer
 
 
@@ -184,6 +184,13 @@ proc `=destroy`(window: WindowWinapiObj) {.siwin_destructor.} =
 
   if window.wcursor != 0:
     DestroyCursor window.wcursor
+
+method destroyImpl*(window: WindowWinapi) =
+  `=destroy`(window[])
+
+
+method destroyImpl*(window: WindowWinapiSoftwareRendering) =
+  `=destroy`(window[])
 
 
 proc poolEvent(window: WindowWinapi, message: Uint, wParam: WParam, lParam: LParam): LResult
@@ -590,7 +597,7 @@ proc updateWindowState(window: WindowWinapi) =
   window.m_pos = ivec2(p.rcNormalPosition.left, p.rcNormalPosition.top)
 
 
-method step*(window: WindowWinapi) =
+method step*(window: WindowWinapi): bool =
   var msg: Msg
   var catched = false
 
@@ -609,7 +616,10 @@ method step*(window: WindowWinapi) =
     else:
       catched = true
 
-    if window.m_closed: return
+    if window.m_closed:
+      window.destroyImpl()
+      dealloc window
+      return true
 
   if not catched: sleep(1)
 
@@ -790,7 +800,13 @@ proc newSoftwareRenderingWindowWinapi*(
   frameless = false,
   transparent = false,
 ): WindowWinapiSoftwareRendering =
-  new result
+  result = create(typeof(result[]))
+  
+  when not defined(siwin_disable_weird_optimizations):
+    {.emit: [result[], " = ", typeof(result[]).default, ";"].}
+  else:
+    result[] = typeof(result[]).default
+  
   result.initWindow(size, screen, fullscreen, frameless, transparent)
   result.title = title
   if not resizable: result.resizable = false

@@ -28,7 +28,8 @@ test "clipboard":
   check window.clipboard.text == "hello"
 
   for i in 0..<100:
-    window.step()
+    if window.step():
+      break
 
   check window.clipboard.text == "hello"
 

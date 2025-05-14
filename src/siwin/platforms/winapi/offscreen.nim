@@ -3,7 +3,7 @@ import ../../[siwindefs]
 import ../any/window
 
 type
-  InvisibleOpenglWindowWinapi* = ref InvisibleOpenglWindowWinapiObj
+  InvisibleOpenglWindowWinapi* = ptr InvisibleOpenglWindowWinapiObj
   InvisibleOpenglWindowWinapiObj = object of Window
     handle: HWnd
     hdc: Hdc
@@ -16,8 +16,18 @@ proc `=destroy`(windows: InvisibleOpenglWindowWinapiObj) {.siwin_destructor.} =
   if windows.handle != 0:
     DestroyWindow(windows.handle)
 
+method destroyImpl*(window: InvisibleOpenglWindowWinapi) =
+  `=destroy`(window[])
+
+
 proc newOpenglContextWinapi*: InvisibleOpenglWindowWinapi =
-  new result
+  result = create(typeof(result[]))
+  
+  when not defined(siwin_disable_weird_optimizations):
+    {.emit: [result[], " = ", typeof(result[]).default, ";"].}
+  else:
+    result[] = typeof(result[]).default
+
   proc registerWindowClass(
     class: string,
     wndProc: proc(handle: HWnd, message: Uint, wParam: WParam, lParam: LParam): LResult {.stdcall.}
