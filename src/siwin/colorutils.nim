@@ -229,3 +229,13 @@ proc convertPixelsInplace*(data: pointer, size: IVec2, sourceFormat, targetForma
     of PixelBufferFormat.rgba_32bit,
        PixelBufferFormat.rgbx_32bit:  convertImpl 0,   1,   2,   255
     of PixelBufferFormat.rgbu_32bit:  discard
+
+
+
+when siwin_build_lib:
+  {.push, exportc, cdecl, dynlib.}
+  proc siwin_convert_pixels_inplace*(pb: ptr PixelBuffer, fromFormat: PixelBufferFormat) =
+    convertPixelsInplace(pb.data, pb.size, fromFormat, pb.format)
+
+  {.pop.}
+

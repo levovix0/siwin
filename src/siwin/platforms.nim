@@ -19,7 +19,7 @@ else:
 
 type
   Platform* {.siwin_enum.} = enum
-    x11
+    x11 = 0
     wayland
     winapi
     cocoa
@@ -105,3 +105,10 @@ proc newSiwinGlobals*(preferedPlatform: Platform = defaultPreferedPlatform()): S
   else:
     {.error.}
 
+
+when siwin_build_lib:
+  {.push, exportc, cdecl, dynlib.}
+  proc siwin_default_platform(): Platform = defaultPreferedPlatform()
+  proc siwin_new_globals(platform: Platform): SiwinGlobals = newSiwinGlobals()
+  proc siwin_destroy_globals(globals: SiwinGlobals) {.nodestroy.} = GC_unref(globals)
+  {.pop.}

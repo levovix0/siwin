@@ -1,12 +1,13 @@
-import platforms/any/window
+import ./[siwindefs]
+import ./platforms/any/window
 
 when defined(android):
-  import platforms/android/window
+  import ./platforms/android/window
 elif defined(linux):
-  import platforms/x11/[offscreen, siwinGlobals]
-  import platforms/wayland/[siwinGlobals]
+  import ./platforms/x11/[offscreen, siwinGlobals]
+  import ./platforms/wayland/[siwinGlobals]
 elif defined(windows):
-  import platforms/winapi/offscreen
+  import ./platforms/winapi/offscreen
 
 proc newOpenglContext*(
   globals: SiwinGlobals
@@ -24,3 +25,11 @@ proc newOpenglContext*(
 
   elif defined(windows):
     newOpenglContextWinapi()
+
+
+when siwin_build_lib:
+  {.push, exportc, cdecl, dynlib.}
+  proc siwin_new_opengl_context*(globals: SiwinGlobals): Window =
+    newOpenglContext(globals)
+
+  {.pop.}

@@ -1,4 +1,5 @@
 import vmath
+import ./[siwindefs]
 import window
 
 when defined(android):
@@ -67,3 +68,21 @@ proc newVulkanWindow*(
       (if screen == -1: defaultScreenWinapi() else: screenWinapi(screen)),
       resizable, fullscreen, frameless, transparent
     )
+
+
+when siwin_build_lib:
+  {.push, exportc, cdecl, dynlib.}
+  proc siwin_new_vulkan_window(
+    globals: SiwinGlobals, vkInstance: pointer,
+    size_x: cint, size_y: cint, title: cstring, screen: cint,
+    fullscreen: cchar, resizable: cchar, frameless: cchar, transparent: cchar,
+    winclass: cstring
+  ): Window =
+    newVulkanWindow(
+      globals, vkInstance,
+      ivec2(size_x.int32, size_y.int32), $title, screen.int32,
+      fullscreen.bool, resizable.bool, frameless.bool, transparent.bool,
+      $winclass
+    )
+
+  {.pop.}

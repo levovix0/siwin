@@ -1,4 +1,5 @@
 import vmath
+import ./[siwindefs]
 import ./platforms/any/[window]
 
 export window
@@ -118,3 +119,122 @@ proc newSoftwareRenderingWindow*(
 when defined(android):
   proc loadExtensions*() =
     discard
+
+
+when siwin_build_lib:
+  import std/options
+  import ./colorutils
+  import ./platforms/any/[clipboards]
+
+  {.push, exportc, cdecl, dynlib.}
+  proc siwin_new_software_rendering_window(
+    globals: SiwinGlobals,
+    size_x: cint, size_y: cint, title: cstring, screen: cint,
+    fullscreen: cchar, resizable: cchar, frameless: cchar, transparent: cchar,
+    winclass: cstring
+  ): Window =
+    newSoftwareRenderingWindow(
+      globals,
+      ivec2(size_x.int32, size_y.int32), $title, screen.int32,
+      fullscreen.bool, resizable.bool, frameless.bool, transparent.bool,
+      $winclass
+    )
+
+  proc siwin_destroy_window(window: Window) = GC_unref(window)
+
+  proc siwin_default_screen(globals: SiwinGlobals): Screen = defaultScreen(globals)
+  proc siwin_get_screen(globals: SiwinGlobals, n: cint): Screen = screen(globals, n.int32)
+  proc siwin_screen_number(screen: Screen): cint = screen.number.cint
+  proc siwin_sreen_width(screen: Screen): cint = screen.width.cint
+  proc siwin_sreen_height(screen: Screen): cint = screen.height.cint
+
+  proc siwin_window_closed(window: Window): cchar = window.closed.cchar
+  proc siwin_window_opened(window: Window): cchar = window.opened.cchar
+  proc siwin_window_close(window: Window) = close(window)
+  proc siwin_window_transparent(window: Window): cchar = window.transparent.cchar
+  proc siwin_window_frameless(window: Window): cchar = window.frameless.cchar
+  proc siwin_window_cursor(window: Window, out_cursor: ptr Cursor) = out_cursor[] = window.cursor
+  proc siwin_window_separateTouch(window: Window): cchar = window.separateTouch.cchar
+  
+  proc siwin_window_size(window: Window, out_size_x, out_size_y: ptr cint) =
+    let size = window.size
+    out_size_x[] = size.x.cint
+    out_size_y[] = size.y.cint
+  
+  proc siwin_window_pos(window: Window, out_pos_x, out_pos_y: ptr cint) =
+    let pos = window.pos
+    out_pos_x[] = pos.x.cint
+    out_pos_y[] = pos.y.cint
+  
+  proc siwin_window_fullscreen(window: Window): cchar = window.fullscreen.cchar
+  proc siwin_window_maximized(window: Window): cchar = window.maximized.cchar
+  proc siwin_window_minimized(window: Window): cchar = window.minimized.cchar
+  proc siwin_window_visible(window: Window): cchar = window.visible.cchar
+  proc siwin_window_resizable(window: Window): cchar = window.resizable.cchar
+  
+  proc siwin_window_minSize(window: Window, out_minSize_x, out_minSize_y: ptr cint) =
+    let minSize = window.minSize
+    out_minSize_x[] = minSize.x.cint
+    out_minSize_y[] = minSize.y.cint
+  
+  proc siwin_window_maxSize(window: Window, out_maxSize_x, out_maxSize_y: ptr cint) =
+    let maxSize = window.maxSize
+    out_maxSize_x[] = maxSize.x.cint
+    out_maxSize_y[] = maxSize.y.cint
+  
+  proc siwin_window_focused(window: Window): cchar = window.focused.cchar
+  proc siwin_window_redraw(window: Window) = window.redraw()
+  proc siwin_window_set_frameless(window: Window, v: cchar) = window.frameless = v.bool
+  proc siwin_window_set_cursor(window: Window, v: ptr Cursor) = window.cursor = v[]
+  proc siwin_window_set_separate_touch(window: Window, v: cchar) = window.separateTouch = v.bool
+  proc siwin_window_set_size(window: Window, size_x, size_y: cint) = window.size = ivec2(size_x.int32, size_y.int32)
+  proc siwin_window_set_pos(window: Window, pos_x, pos_y: cint) = window.pos = ivec2(pos_x.int32, pos_y.int32)
+  proc siwin_window_set_title(window: Window, v: cstring) = window.title = $v
+  proc siwin_window_set_fullscreen(window: Window, v: cchar) = window.fullscreen = v.bool
+  proc siwin_window_set_maximized(window: Window, v: cchar) = window.maximized = v.bool
+  proc siwin_window_set_minimized(window: Window, v: cchar) = window.minimized = v.bool
+  proc siwin_window_set_visible(window: Window, v: cchar) = window.visible = v.bool
+  proc siwin_window_set_resizable(window: Window, v: cchar) = window.resizable = v.bool
+  proc siwin_window_set_min_size(window: Window, v_x, v_y: cint) = window.minSize = ivec2(v_x.int32, v_y.int32)
+  proc siwin_window_set_max_size(window: Window, v_x, v_y: cint) = window.maxSize = ivec2(v_x.int32, v_y.int32)
+  proc siwin_window_clear_icon(window: Window) = window.icon = nil
+  proc siwin_window_set_icon(window: Window, v: ptr PixelBuffer) = window.icon = v[]
+
+  proc siwin_window_start_interactive_move(window: Window, has_pos: cchar, pos_x, pos_y: cfloat) =
+    window.startInteractiveMove(if has_pos.bool: some vec2(pos_x.float32, pos_y.float32) else: none Vec2)
+  
+  proc siwin_window_start_interactive_resize(window: Window, edge: Edge, has_pos: cchar, pos_x, pos_y: cfloat) =
+    window.startInteractiveResize(edge, if has_pos.bool: some vec2(pos_x.float32, pos_y.float32) else: none Vec2)
+  
+  proc siwin_window_show_window_menu(window: Window, has_pos: cchar, pos_x, pos_y: cfloat) =
+    window.showWindowMenu(if has_pos.bool: some vec2(pos_x.float32, pos_y.float32) else: none Vec2)
+
+  proc siwin_window_set_input_region(window: Window, pos_x, pos_y, size_x, size_y: cfloat) =
+    window.setInputRegion(vec2(pos_x.float32, pos_y.float32), vec2(size_x.float32, size_y.float32))
+
+  proc siwin_window_set_title_region(window: Window, pos_x, pos_y, size_x, size_y: cfloat) =
+    window.setTitleRegion(vec2(pos_x.float32, pos_y.float32), vec2(size_x.float32, size_y.float32))
+
+  proc siwin_window_set_border_width(window: Window, innerWidth, outerWidth: cfloat, diagonalSize: cfloat) =
+    window.setBorderWidth(innerWidth.float32, outerWidth.float32, diagonalSize.float32)
+
+  proc siwin_window_pixel_buffer(window: Window, out_buffer: ptr PixelBuffer) = out_buffer[] = window.pixelBuffer
+  proc siwin_window_make_current(window: Window) = window.makeCurrent()
+  
+  proc siwin_window_set_vsync(window: Window, v: cchar): cchar =
+    try: window.`vsync=`(v.bool, false)
+    except: return 1.cchar
+
+  proc siwin_window_vulkan_surface(window: Window): pointer = window.vulkanSurface
+  proc siwin_window_clipboard(window: Window): Clipboard = window.clipboard
+  proc siwin_window_selection_clipboard(window: Window): Clipboard = window.selectionClipboard
+  proc siwin_window_dragndrop_clipboard(window: Window): Clipboard = window.dragndropClipboard
+  proc siwin_window_set_drag_status(window: Window, v: DragStatus) = window.dragStatus = v
+  proc siwin_window_first_step(window: Window, makeVisible: cchar) = window.firstStep(makeVisible.bool)
+  proc siwin_window_step(window: Window) = window.step()
+  proc siwin_window_run(window: Window, makeVisible: cchar) = window.run(makeVisible.bool)
+
+  proc siwin_window_set_event_handler(window: Window, eventHandler: ptr WindowEventsHandler) = window.eventsHandler = eventHandler[]
+
+  {.pop.}
+

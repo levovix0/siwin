@@ -8,8 +8,8 @@ const siwin_dynlib_name* =
   else: "libsiwin.so"
 
 
-const siwin_use_dynlib* = defined(siwin_use_dynlib)
-const siwin_build_dynlib* = defined(siwin_build_dynlib)
+const siwin_build_lib* {.booldefine.} = off
+const siwin_use_lib* {.booldefine.} = off
 
 
 macro siwin_destructor*(body) =

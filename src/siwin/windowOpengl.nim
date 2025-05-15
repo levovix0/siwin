@@ -1,4 +1,5 @@
 import vmath
+import ./[siwindefs]
 import window
 
 when defined(android):
@@ -73,3 +74,22 @@ proc newOpenglWindow*(
       (if screen == -1: defaultScreenCocoa() else: screenCocoa(screen)),
       resizable, fullscreen, frameless, transparent, vsync
     )
+
+
+
+when siwin_build_lib:
+  {.push, exportc, cdecl, dynlib.}
+  proc siwin_new_opengl_window(
+    globals: SiwinGlobals,
+    size_x: cint, size_y: cint, title: cstring, screen: cint,
+    fullscreen: cchar, resizable: cchar, frameless: cchar, transparent: cchar, vsync: cchar,
+    winclass: cstring
+  ): Window =
+    newOpenglWindow(
+      globals,
+      ivec2(size_x.int32, size_y.int32), $title, screen.int32,
+      fullscreen.bool, resizable.bool, frameless.bool, transparent.bool, vsync.bool,
+      $winclass
+    )
+
+  {.pop.}
