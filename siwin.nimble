@@ -66,11 +66,8 @@ task testUseLib, "build and run tests/t_opengl using dynamic linking to siwin":
     elif defined(macosx): "siwin.dynlib"
     else: "libsiwin.so"
 
-  # exec "nim c --experimental:vtables -d:siwin_use_lib:on --passl:bindings/" & dynlibName & " -r tests/t_opengl.nim"
-  # exec "nim c --experimental:vtables -d:siwin_use_lib:on -d:siwin_lib_link_dynamic:on -r tests/t_opengl.nim"
   
-  exec "nim c --experimental:vtables -d:siwin_use_lib:on --passl:bindings/" & dynlibName & " -r tests/t_vulkan.nim"
-  
+  exec "nim c --experimental:vtables -d:siwin_use_lib:on --passl:bindings/" & dynlibName & " -r tests/t_opengl.nim"
 
 
 

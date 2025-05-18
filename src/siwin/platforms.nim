@@ -33,29 +33,34 @@ type
     ## raised if tried to force run wayland window on x11 compositor, or if tried to run window without any compositor at all
 
 
-proc availablePlatforms*: seq[Platform] =
-  when defined(windows):
-    @[Platform.winapi]
+when not siwin_use_lib:
+  proc availablePlatforms*: seq[Platform] =
+    when defined(windows):
+      @[Platform.winapi]
 
-  elif defined(android):
-    @[Platform.android]
-  
-  elif defined(linux):
-    if isWaylandAvailable():
-      @[Platform.wayland, Platform.x11]
-      # x11 is available on wayland compositors through XWayland
+    elif defined(android):
+      @[Platform.android]
+    
+    elif defined(linux):
+      if isWaylandAvailable():
+        @[Platform.wayland, Platform.x11]
+        # x11 is available on wayland compositors through XWayland
+      else:
+        @[Platform.x11]
+    
+    elif defined(macosx):
+      @[Platform.cocoa]
+
     else:
-      @[Platform.x11]
-  
-  elif defined(macosx):
-    @[Platform.cocoa]
-
-  else:
-    @[]
+      @[]
 
 
-proc defaultPreferedPlatform*: Platform =
-  availablePlatforms()[0]
+  proc defaultPreferedPlatform*: Platform =
+    availablePlatforms()[0]
+
+
+proc siwin_default_platform(): Platform {.siwin_import_export.} = defaultPreferedPlatform()
+proc defaultPreferedPlatform*(): Platform {.siwin_export_import.} = siwin_default_platform()
 
 
 proc getRequiredVulkanExtensions*(platform = defaultPreferedPlatform()): seq[string] =
@@ -119,6 +124,5 @@ proc newSiwinGlobals*(preferedPlatform: Platform = defaultPreferedPlatform()): S
 
 when siwin_build_lib:
   {.push, exportc, cdecl, dynlib.}
-  proc siwin_default_platform(): Platform = defaultPreferedPlatform()
   proc siwin_destroy_globals(globals: SiwinGlobals) {.nodestroy.} = GC_unref(globals)
   {.pop.}

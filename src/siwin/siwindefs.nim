@@ -23,6 +23,11 @@ when siwin_build_lib:
     {.error: "-d:siwin_build_lib:on requires --experimental:vtables flag".}
 
 
+when defined(posix) and siwin_use_lib and not siwin_lib_link_dynamic:
+  proc siwin_main() {.cdecl, importc.}
+  siwin_main()
+
+
 macro siwin_destructor*(body) =
   result = body
 
