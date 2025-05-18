@@ -28,7 +28,11 @@ task buildDynlib, "build siwin as a dynamic library":
     elif defined(macosx): "siwin.dynlib"
     else: "libsiwin.so"
 
-  exec "nim c -d:siwin_build_lib:on --app:lib -o:bindings/" & outfile & " src/siwin.nim"
+  when not defined(windows):
+    exec "nim c -d:siwin_build_lib:on --app:lib -o:bindings/" & outfile & " src/siwin.nim"
+  
+  else:
+    exec "nim c --passl:-static -d:siwin_build_lib:on --app:lib -o:bindings/" & outfile & " src/siwin.nim"
 
 
 task buildStaticlib, "build siwin as a dynamic library":
@@ -40,10 +44,27 @@ task buildStaticlib, "build siwin as a dynamic library":
 
 
 task testBindings, "build and run tests/et_bindings with static and dynamic siwin":
-  exec "gcc tests/et_bindings.c bindings/libsiwin.so -o tests/et_bindings_static"
-  exec "gcc tests/et_bindings.c bindings/libsiwin.a -DSIWIN_STATIC -o tests/et_bindings"
-  exec "./tests/et_bindings_static"
-  exec "LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$PWD ./tests/et_bindings"
+  const dynlibName =
+    when defined(windows): "siwin.dll"
+    elif defined(macosx): "siwin.dynlib"
+    else: "libsiwin.so"
+
+  const staticlibName =
+    when defined(windows): "siwin.lib"
+    else: "libsiwin.a"
+
+  exec "gcc tests/et_bindings.c bindings/" & dynlibName & " -o tests/et_bindings"
+  
+  when not defined(windows):
+    exec "gcc tests/et_bindings.c bindings/" & staticlibName & " -DSIWIN_STATIC -o tests/et_bindings_static"
+  
+  when not defined(windows):
+    exec "./tests/et_bindings_static"
+    exec "LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$PWD ./tests/et_bindings"
+  
+  else:
+    cpFile "bindings/siwin.dll", "tests/siwin.dll"
+    exec "./tests/et_bindings.exe"
 
 
 
