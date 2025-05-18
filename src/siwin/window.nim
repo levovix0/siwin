@@ -1,68 +1,158 @@
 import vmath
 import ./[siwindefs]
-import ./platforms/any/[window]
+import ./platforms/any/[window as anyWindow]
 
-export window
+export anyWindow
+
+when not siwin_use_lib:
+  when defined(android):
+    import ./platforms/android/window as androidWindow
+
+  elif defined(linux):
+    import ./platforms
+    
+    import ./platforms/x11/siwinGlobals as x11SiwinGlobals
+    import ./platforms/x11/window as x11Window
+    import ./platforms/wayland/siwinGlobals as waylandSiwinGlobals
+    import ./platforms/wayland/window as waylandWindow
+
+  elif defined(windows):
+    import ./platforms/winapi/window as winapiWindow
+
+  elif defined(macosx):
+    import ./platforms/cocoa/window as cocoaWindow
+
+
+when not siwin_use_lib:
+  proc screenCount*(globals: SiwinGlobals): int32 =
+    when defined(android):
+      1
+
+    elif defined(linux):
+      if globals of SiwinGlobalsX11:
+        result = globals.SiwinGlobalsX11.screenCountX11()
+      elif globals of SiwinGlobalsWayland:
+        result = globals.SiwinGlobalsWayland.screenCountWayland()
+      else:
+        raise SiwinPlatformSupportDefect.newException("Unsupported platform")
+    
+    elif defined(windows): screenCountWinapi()
+
+  proc screen*(globals: SiwinGlobals, number: int32): Screen =
+    when defined(android):
+      Screen()
+
+    elif defined(linux):
+      if globals of SiwinGlobalsX11:
+        result = globals.SiwinGlobalsX11.screenX11(number)
+      elif globals of SiwinGlobalsWayland:
+        result = globals.SiwinGlobalsWayland.screenWayland(number)
+      else:
+        raise SiwinPlatformSupportDefect.newException("Unsupported platform")
+    
+    elif defined(windows): screenWinapi(number)
+
+  proc defaultScreen*(globals: SiwinGlobals): Screen =
+    when defined(android):
+      Screen()
+
+    elif defined(linux):
+      if globals of SiwinGlobalsX11:
+        result = globals.SiwinGlobalsX11.defaultScreenX11()
+      elif globals of SiwinGlobalsWayland:
+        result = globals.SiwinGlobalsWayland.defaultScreenWayland()
+      else:
+        raise SiwinPlatformSupportDefect.newException("Unsupported platform")
+    
+    elif defined(windows): defaultScreenWinapi()
+
+
+  proc newSoftwareRenderingWindow*(
+    globals: SiwinGlobals,
+    size = ivec2(1280, 720),
+    title = "",
+    screen: int32 = -1,
+    fullscreen = false,
+    resizable = true,
+    frameless = false,
+    transparent = false,
+
+    class = "", # window class (used in x11), equals to title if not specified
+  ): Window =
+    when defined(android):
+      newSoftwareRenderingWindowAndroid(
+        size, title,
+        # (if screen == -1: defaultScreenAndroid() else: screenAndroid(screen)),
+        resizable, fullscreen, frameless, transparent
+      )
+
+    elif defined(linux):
+      if globals of SiwinGlobalsX11:
+        result = globals.SiwinGlobalsX11.newSoftwareRenderingWindowX11(
+          size, title,
+          (if screen == -1: globals.SiwinGlobalsX11.defaultScreenX11() else: globals.SiwinGlobalsX11.screenX11(screen)),
+          resizable, fullscreen, frameless, transparent,
+          (if class == "": title else: class)
+        )
+      elif globals of SiwinGlobalsWayland:
+        result = globals.SiwinGlobalsWayland.newSoftwareRenderingWindowWayland(
+          size, title,
+          (if screen == -1: globals.SiwinGlobalsWayland.defaultScreenWayland() else: globals.SiwinGlobalsWayland.screenWayland(screen)),
+          resizable, fullscreen, frameless, transparent
+        )
+      else:
+        raise SiwinPlatformSupportDefect.newException("Unsupported platform")
+
+    elif defined(windows):
+      newSoftwareRenderingWindowWinapi(
+        size, title,
+        (if screen == -1: defaultScreenWinapi() else: screenWinapi(screen)),
+        resizable, fullscreen, frameless, transparent
+      )
+    
+    elif defined(macosx):
+      newSoftwareRenderingWindowCocoa(
+        size, title,
+        (if screen == -1: defaultScreenCocoa() else: screenCocoa(screen)),
+        resizable, fullscreen, frameless, transparent
+      )
+
 
 when defined(android):
-  import ./platforms/android/window as androidWindow
+  proc loadExtensions*() =
+    discard
 
-elif defined(linux):
-  import ./platforms
+
+
+proc siwin_screen_count(globals: SiwinGlobals): cint {.siwin_import_export.} = screenCount(globals)
+proc siwin_get_screen(globals: SiwinGlobals, n: cint): Screen {.siwin_import_export.} = screen(globals, n.int32)
+proc siwin_default_screen(globals: SiwinGlobals): Screen {.siwin_import_export.} = defaultScreen(globals)
+
+
+proc siwin_new_software_rendering_window(
+  globals: SiwinGlobals,
+  size_x: cint, size_y: cint, title: cstring, screen: cint,
+  fullscreen: cchar, resizable: cchar, frameless: cchar, transparent: cchar,
+  winclass: cstring
+): Window {.siwin_import_export.} =
+  newSoftwareRenderingWindow(
+    globals,
+    ivec2(size_x.int32, size_y.int32), $title, screen.int32,
+    fullscreen.bool, resizable.bool, frameless.bool, transparent.bool,
+    $winclass
+  )
+
+
+
+proc screenCount*(globals: SiwinGlobals): int32 {.siwin_export_import.} =
+  siwin_screen_count(globals).int32
   
-  import ./platforms/x11/siwinGlobals as x11SiwinGlobals
-  import ./platforms/x11/window as x11Window
-  import ./platforms/wayland/siwinGlobals as waylandSiwinGlobals
-  import ./platforms/wayland/window as waylandWindow
 
-elif defined(windows):
-  import ./platforms/winapi/window as winapiWindow
+proc screen*(globals: SiwinGlobals, number: int32): Screen {.siwin_export_import.} =
+  siwin_get_screen(globals, n.cint)
 
-elif defined(macosx):
-  import ./platforms/cocoa/window as cocoaWindow
-
-
-proc screenCount*(globals: SiwinGlobals): int32 =
-  when defined(android):
-    1
-
-  elif defined(linux):
-    if globals of SiwinGlobalsX11:
-      result = globals.SiwinGlobalsX11.screenCountX11()
-    elif globals of SiwinGlobalsWayland:
-      result = globals.SiwinGlobalsWayland.screenCountWayland()
-    else:
-      raise SiwinPlatformSupportDefect.newException("Unsupported platform")
-  
-  elif defined(windows): screenCountWinapi()
-
-proc screen*(globals: SiwinGlobals, number: int32): Screen =
-  when defined(android):
-    Screen()
-
-  elif defined(linux):
-    if globals of SiwinGlobalsX11:
-      result = globals.SiwinGlobalsX11.screenX11(number)
-    elif globals of SiwinGlobalsWayland:
-      result = globals.SiwinGlobalsWayland.screenWayland(number)
-    else:
-      raise SiwinPlatformSupportDefect.newException("Unsupported platform")
-  
-  elif defined(windows): screenWinapi(number)
-
-proc defaultScreen*(globals: SiwinGlobals): Screen =
-  when defined(android):
-    Screen()
-
-  elif defined(linux):
-    if globals of SiwinGlobalsX11:
-      result = globals.SiwinGlobalsX11.defaultScreenX11()
-    elif globals of SiwinGlobalsWayland:
-      result = globals.SiwinGlobalsWayland.defaultScreenWayland()
-    else:
-      raise SiwinPlatformSupportDefect.newException("Unsupported platform")
-  
-  elif defined(windows): defaultScreenWinapi()
+proc defaultScreen*(globals: SiwinGlobals): Screen {.siwin_export_import.} =
+  siwin_default_screen(globals)
 
 
 proc newSoftwareRenderingWindow*(
@@ -76,49 +166,14 @@ proc newSoftwareRenderingWindow*(
   transparent = false,
 
   class = "", # window class (used in x11), equals to title if not specified
-): Window =
-  when defined(android):
-    newSoftwareRenderingWindowAndroid(
-      size, title,
-      # (if screen == -1: defaultScreenAndroid() else: screenAndroid(screen)),
-      resizable, fullscreen, frameless, transparent
-    )
-
-  elif defined(linux):
-    if globals of SiwinGlobalsX11:
-      result = globals.SiwinGlobalsX11.newSoftwareRenderingWindowX11(
-        size, title,
-        (if screen == -1: globals.SiwinGlobalsX11.defaultScreenX11() else: globals.SiwinGlobalsX11.screenX11(screen)),
-        resizable, fullscreen, frameless, transparent,
-        (if class == "": title else: class)
-      )
-    elif globals of SiwinGlobalsWayland:
-      result = globals.SiwinGlobalsWayland.newSoftwareRenderingWindowWayland(
-        size, title,
-        (if screen == -1: globals.SiwinGlobalsWayland.defaultScreenWayland() else: globals.SiwinGlobalsWayland.screenWayland(screen)),
-        resizable, fullscreen, frameless, transparent
-      )
-    else:
-      raise SiwinPlatformSupportDefect.newException("Unsupported platform")
-
-  elif defined(windows):
-    newSoftwareRenderingWindowWinapi(
-      size, title,
-      (if screen == -1: defaultScreenWinapi() else: screenWinapi(screen)),
-      resizable, fullscreen, frameless, transparent
-    )
-  
-  elif defined(macosx):
-    newSoftwareRenderingWindowCocoa(
-      size, title,
-      (if screen == -1: defaultScreenCocoa() else: screenCocoa(screen)),
-      resizable, fullscreen, frameless, transparent
-    )
-
-
-when defined(android):
-  proc loadExtensions*() =
-    discard
+): Window {.siwin_export_import.} =
+  result = siwin_new_software_rendering_window(
+    globals,
+    size.x, size.y, title.cstring, screen.cint,
+    fullscreen.cchar, resizable.cchar, frameless.cchar, transparent.cchar,
+    class.cstring,
+  )
+  GC_ref(result)
 
 
 when siwin_build_lib:
@@ -127,23 +182,9 @@ when siwin_build_lib:
   import ./platforms/any/[clipboards]
 
   {.push, exportc, cdecl, dynlib.}
-  proc siwin_new_software_rendering_window(
-    globals: SiwinGlobals,
-    size_x: cint, size_y: cint, title: cstring, screen: cint,
-    fullscreen: cchar, resizable: cchar, frameless: cchar, transparent: cchar,
-    winclass: cstring
-  ): Window =
-    newSoftwareRenderingWindow(
-      globals,
-      ivec2(size_x.int32, size_y.int32), $title, screen.int32,
-      fullscreen.bool, resizable.bool, frameless.bool, transparent.bool,
-      $winclass
-    )
 
   proc siwin_destroy_window(window: Window) = GC_unref(window)
 
-  proc siwin_default_screen(globals: SiwinGlobals): Screen = defaultScreen(globals)
-  proc siwin_get_screen(globals: SiwinGlobals, n: cint): Screen = screen(globals, n.int32)
   proc siwin_screen_number(screen: Screen): cint = screen.number.cint
   proc siwin_sreen_width(screen: Screen): cint = screen.width.cint
   proc siwin_sreen_height(screen: Screen): cint = screen.height.cint

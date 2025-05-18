@@ -1,6 +1,8 @@
-import std/[macros]
 import pkg/[vmath]
 import ./[siwindefs]
+
+when not siwin_use_lib:
+  import std/[macros]
 
 
 when siwin_use_pure_enums:
@@ -59,183 +61,189 @@ type
   Color32bit* = array[4, byte]
 
 
-proc at(x: pointer, i: int): var Color32bit {.inline.} =
-  cast[ptr UncheckedArray[Color32bit]](x)[i]
+when not siwin_use_lib:
+  proc at(x: pointer, i: int): var Color32bit {.inline.} =
+    cast[ptr UncheckedArray[Color32bit]](x)[i]
 
-proc fromPremultiplied(c: byte, a: byte): byte {.inline.} =
-  (c.float / a.float * 255).byte
+  proc fromPremultiplied(c: byte, a: byte): byte {.inline.} =
+    (c.float / a.float * 255).byte
 
-proc toPremultiplied(c: byte, a: byte): byte {.inline.} =
-  (c.float / 255 * a.float).byte
+  proc toPremultiplied(c: byte, a: byte): byte {.inline.} =
+    (c.float / 255 * a.float).byte
 
 
-proc convertPixelsInplace*(data: pointer, size: IVec2, sourceFormat, targetFormat: PixelBufferFormat) =
-  ## convert pixels to proper format
-  let size = size.x * size.y
+  proc convertPixelsInplace*(data: pointer, size: IVec2, sourceFormat, targetFormat: PixelBufferFormat) =
+    ## convert pixels to proper format
+    let size = size.x * size.y
 
-  macro convertImpl(c0, c1, c2, c3) =
-    proc genc(c: NimNode): NimNode =
-      if c.kind == nnkInfix:
-        if c[0].strVal == "/":
-          result = newCall(
-            bindSym("toPremultiplied"),
-            genc(c[1]),
-            genc(c[2]),
-          )
-        elif c[0].strVal == "*":
-          result = newCall(
-            bindSym("fromPremultiplied"),
-            genc(c[1]),
-            genc(c[2]),
-          )
+    macro convertImpl(c0, c1, c2, c3) =
+      proc genc(c: NimNode): NimNode =
+        if c.kind == nnkInfix:
+          if c[0].strVal == "/":
+            result = newCall(
+              bindSym("toPremultiplied"),
+              genc(c[1]),
+              genc(c[2]),
+            )
+          elif c[0].strVal == "*":
+            result = newCall(
+              bindSym("fromPremultiplied"),
+              genc(c[1]),
+              genc(c[2]),
+            )
+          else: error("unexpected syntax", c)
+        
+        elif c.kind == nnkIntLit:
+          if c.intVal in 0..3:
+            result = nnkBracketExpr.newTree(
+              ident("c"),
+              c,
+            )
+          elif c.intVal == 255:
+            result = newLit(255'u8)
+          else: error("unexpected syntax", c)
+        
         else: error("unexpected syntax", c)
-      
-      elif c.kind == nnkIntLit:
-        if c.intVal in 0..3:
-          result = nnkBracketExpr.newTree(
-            ident("c"),
-            c,
-          )
-        elif c.intVal == 255:
-          result = newLit(255'u8)
-        else: error("unexpected syntax", c)
-      
-      else: error("unexpected syntax", c)
-  
-    let newColor = nnkBracket.newTree(genc(c0), genc(c1), genc(c2), genc(c3))
-    result = nnkForStmt.newTree(
-      ident("i"),
-      nnkInfix.newTree(
-        ident("..<"),
-        newLit(0),
-        ident("size")
-      ),
-      nnkStmtList.newTree(
-        nnkLetSection.newTree(
-          nnkIdentDefs.newTree(
-            ident("c"),
-            newEmptyNode(),
+    
+      let newColor = nnkBracket.newTree(genc(c0), genc(c1), genc(c2), genc(c3))
+      result = nnkForStmt.newTree(
+        ident("i"),
+        nnkInfix.newTree(
+          ident("..<"),
+          newLit(0),
+          ident("size")
+        ),
+        nnkStmtList.newTree(
+          nnkLetSection.newTree(
+            nnkIdentDefs.newTree(
+              ident("c"),
+              newEmptyNode(),
+              nnkCall.newTree(
+                nnkDotExpr.newTree(
+                  ident("data"),
+                  ident("at")
+                ),
+                ident("i")
+              )
+            )
+          ),
+          nnkAsgn.newTree(
             nnkCall.newTree(
               nnkDotExpr.newTree(
                 ident("data"),
                 ident("at")
               ),
               ident("i")
-            )
-          )
-        ),
-        nnkAsgn.newTree(
-          nnkCall.newTree(
-            nnkDotExpr.newTree(
-              ident("data"),
-              ident("at")
             ),
-            ident("i")
-          ),
-          newColor
+            newColor
+          )
         )
       )
-    )
 
 
-  case sourceFormat
-  of PixelBufferFormat.bgra_32bit:
-    case targetFormat
-    of PixelBufferFormat.bgra_32bit:  discard
-    of PixelBufferFormat.bgrx_32bit:  convertImpl 0/3, 1/3, 2/3, 3
-    of PixelBufferFormat.bgru_32bit:  convertImpl 0,   1,   2,   255
-    of PixelBufferFormat.xrgb_32bit:  convertImpl 3,   2/3, 1/3, 0/3
-    of PixelBufferFormat.urgb_32bit:  convertImpl 255, 2,   1,   0
-    of PixelBufferFormat.rgba_32bit:  convertImpl 2,   1,   0,   3
-    of PixelBufferFormat.rgbx_32bit:  convertImpl 2/3, 1/3, 0/3, 3
-    of PixelBufferFormat.rgbu_32bit:  convertImpl 2,   1,   0,   255
+    case sourceFormat
+    of PixelBufferFormat.bgra_32bit:
+      case targetFormat
+      of PixelBufferFormat.bgra_32bit:  discard
+      of PixelBufferFormat.bgrx_32bit:  convertImpl 0/3, 1/3, 2/3, 3
+      of PixelBufferFormat.bgru_32bit:  convertImpl 0,   1,   2,   255
+      of PixelBufferFormat.xrgb_32bit:  convertImpl 3,   2/3, 1/3, 0/3
+      of PixelBufferFormat.urgb_32bit:  convertImpl 255, 2,   1,   0
+      of PixelBufferFormat.rgba_32bit:  convertImpl 2,   1,   0,   3
+      of PixelBufferFormat.rgbx_32bit:  convertImpl 2/3, 1/3, 0/3, 3
+      of PixelBufferFormat.rgbu_32bit:  convertImpl 2,   1,   0,   255
 
-  of PixelBufferFormat.bgrx_32bit:
-    case targetFormat
-    of PixelBufferFormat.bgra_32bit:  convertImpl 0*3, 1*3, 2*3, 3
-    of PixelBufferFormat.bgrx_32bit:  discard
-    of PixelBufferFormat.bgru_32bit:  convertImpl 0,   1,   2,   255
-    of PixelBufferFormat.xrgb_32bit:  convertImpl 3,   2,   1,   0
-    of PixelBufferFormat.urgb_32bit:  convertImpl 255, 2,   1,   0
-    of PixelBufferFormat.rgba_32bit:  convertImpl 2*3, 1*3, 0*3, 3
-    of PixelBufferFormat.rgbx_32bit:  convertImpl 2,   1,   0,   3
-    of PixelBufferFormat.rgbu_32bit:  convertImpl 2,   1,   0,   255
+    of PixelBufferFormat.bgrx_32bit:
+      case targetFormat
+      of PixelBufferFormat.bgra_32bit:  convertImpl 0*3, 1*3, 2*3, 3
+      of PixelBufferFormat.bgrx_32bit:  discard
+      of PixelBufferFormat.bgru_32bit:  convertImpl 0,   1,   2,   255
+      of PixelBufferFormat.xrgb_32bit:  convertImpl 3,   2,   1,   0
+      of PixelBufferFormat.urgb_32bit:  convertImpl 255, 2,   1,   0
+      of PixelBufferFormat.rgba_32bit:  convertImpl 2*3, 1*3, 0*3, 3
+      of PixelBufferFormat.rgbx_32bit:  convertImpl 2,   1,   0,   3
+      of PixelBufferFormat.rgbu_32bit:  convertImpl 2,   1,   0,   255
 
-  of PixelBufferFormat.bgru_32bit:
-    case targetFormat
-    of PixelBufferFormat.bgra_32bit,
-       PixelBufferFormat.bgrx_32bit:  convertImpl 0,   1,   2,   255
-    of PixelBufferFormat.bgru_32bit:  discard
-    of PixelBufferFormat.xrgb_32bit,
-       PixelBufferFormat.urgb_32bit:  convertImpl 255, 2,   1,   0
-    of PixelBufferFormat.rgba_32bit,
-       PixelBufferFormat.rgbx_32bit,
-       PixelBufferFormat.rgbu_32bit:  convertImpl 2,   1,   0,   255
-
-
-  of PixelBufferFormat.xrgb_32bit:
-    case targetFormat
-    of PixelBufferFormat.bgra_32bit:  convertImpl 3*0, 2*0, 1*0, 0
-    of PixelBufferFormat.bgrx_32bit:  convertImpl 3,   2,   1,   0
-    of PixelBufferFormat.bgru_32bit:  convertImpl 255, 2,   1,   0
-    of PixelBufferFormat.xrgb_32bit:  discard
-    of PixelBufferFormat.urgb_32bit:  convertImpl 255, 1,   2,   3
-    of PixelBufferFormat.rgba_32bit:  convertImpl 1*0, 2*0, 3*0, 0
-    of PixelBufferFormat.rgbx_32bit:  convertImpl 1,   2,   3,   0
-    of PixelBufferFormat.rgbu_32bit:  convertImpl 1,   2,   3,   255
-  
-  of PixelBufferFormat.urgb_32bit:
-    case targetFormat
-    of PixelBufferFormat.bgra_32bit,
-       PixelBufferFormat.bgrx_32bit,
-       PixelBufferFormat.bgru_32bit:  convertImpl 3,   2,   1,   255
-    of PixelBufferFormat.xrgb_32bit:  convertImpl 255, 1,   2,   3
-    of PixelBufferFormat.urgb_32bit:  discard
-    of PixelBufferFormat.rgba_32bit,
-       PixelBufferFormat.rgbx_32bit,
-       PixelBufferFormat.rgbu_32bit:  convertImpl 1,   2,   3,   255
-  
-
-  of PixelBufferFormat.rgba_32bit:
-    case targetFormat
-    of PixelBufferFormat.bgra_32bit:  convertImpl 2,   1,   0,   3
-    of PixelBufferFormat.bgrx_32bit:  convertImpl 2/3, 1/3, 0/3, 3
-    of PixelBufferFormat.bgru_32bit:  convertImpl 2,   1,   0,   255
-    of PixelBufferFormat.xrgb_32bit:  convertImpl 3,   0/3, 1/3, 2/3
-    of PixelBufferFormat.urgb_32bit:  convertImpl 255, 0,   1,   2
-    of PixelBufferFormat.rgba_32bit:  discard
-    of PixelBufferFormat.rgbx_32bit:  convertImpl 0/3, 1/3, 2/3, 3
-    of PixelBufferFormat.rgbu_32bit:  convertImpl 0,   1,   2,   255
-  
-  of PixelBufferFormat.rgbx_32bit:
-    case targetFormat
-    of PixelBufferFormat.bgra_32bit:  convertImpl 2*3, 1*3, 0*3, 3
-    of PixelBufferFormat.bgrx_32bit:  convertImpl 2,   1,   0,   3
-    of PixelBufferFormat.bgru_32bit:  convertImpl 2,   1,   0,   255
-    of PixelBufferFormat.xrgb_32bit:  convertImpl 3,   0,   1,   2
-    of PixelBufferFormat.urgb_32bit:  convertImpl 255, 0,   1,   2
-    of PixelBufferFormat.rgba_32bit:  convertImpl 0*3, 1*3, 2*3, 3
-    of PixelBufferFormat.rgbx_32bit:  discard
-    of PixelBufferFormat.rgbu_32bit:  convertImpl 0,   1,   2,   255
-  
-
-  of PixelBufferFormat.rgbu_32bit:
-    case targetFormat
-    of PixelBufferFormat.bgra_32bit,
-       PixelBufferFormat.bgrx_32bit,
-       PixelBufferFormat.bgru_32bit:  convertImpl 2,   1,   0,   255
-    of PixelBufferFormat.xrgb_32bit,
-       PixelBufferFormat.urgb_32bit:  convertImpl 255, 0,   1,   2
-    of PixelBufferFormat.rgba_32bit,
-       PixelBufferFormat.rgbx_32bit:  convertImpl 0,   1,   2,   255
-    of PixelBufferFormat.rgbu_32bit:  discard
+    of PixelBufferFormat.bgru_32bit:
+      case targetFormat
+      of PixelBufferFormat.bgra_32bit,
+        PixelBufferFormat.bgrx_32bit:  convertImpl 0,   1,   2,   255
+      of PixelBufferFormat.bgru_32bit:  discard
+      of PixelBufferFormat.xrgb_32bit,
+        PixelBufferFormat.urgb_32bit:  convertImpl 255, 2,   1,   0
+      of PixelBufferFormat.rgba_32bit,
+        PixelBufferFormat.rgbx_32bit,
+        PixelBufferFormat.rgbu_32bit:  convertImpl 2,   1,   0,   255
 
 
+    of PixelBufferFormat.xrgb_32bit:
+      case targetFormat
+      of PixelBufferFormat.bgra_32bit:  convertImpl 3*0, 2*0, 1*0, 0
+      of PixelBufferFormat.bgrx_32bit:  convertImpl 3,   2,   1,   0
+      of PixelBufferFormat.bgru_32bit:  convertImpl 255, 2,   1,   0
+      of PixelBufferFormat.xrgb_32bit:  discard
+      of PixelBufferFormat.urgb_32bit:  convertImpl 255, 1,   2,   3
+      of PixelBufferFormat.rgba_32bit:  convertImpl 1*0, 2*0, 3*0, 0
+      of PixelBufferFormat.rgbx_32bit:  convertImpl 1,   2,   3,   0
+      of PixelBufferFormat.rgbu_32bit:  convertImpl 1,   2,   3,   255
+    
+    of PixelBufferFormat.urgb_32bit:
+      case targetFormat
+      of PixelBufferFormat.bgra_32bit,
+        PixelBufferFormat.bgrx_32bit,
+        PixelBufferFormat.bgru_32bit:  convertImpl 3,   2,   1,   255
+      of PixelBufferFormat.xrgb_32bit:  convertImpl 255, 1,   2,   3
+      of PixelBufferFormat.urgb_32bit:  discard
+      of PixelBufferFormat.rgba_32bit,
+        PixelBufferFormat.rgbx_32bit,
+        PixelBufferFormat.rgbu_32bit:  convertImpl 1,   2,   3,   255
+    
 
-when siwin_build_lib:
-  {.push, exportc, cdecl, dynlib.}
-  proc siwin_convert_pixels_inplace*(pb: ptr PixelBuffer, fromFormat: PixelBufferFormat) =
-    convertPixelsInplace(pb.data, pb.size, fromFormat, pb.format)
+    of PixelBufferFormat.rgba_32bit:
+      case targetFormat
+      of PixelBufferFormat.bgra_32bit:  convertImpl 2,   1,   0,   3
+      of PixelBufferFormat.bgrx_32bit:  convertImpl 2/3, 1/3, 0/3, 3
+      of PixelBufferFormat.bgru_32bit:  convertImpl 2,   1,   0,   255
+      of PixelBufferFormat.xrgb_32bit:  convertImpl 3,   0/3, 1/3, 2/3
+      of PixelBufferFormat.urgb_32bit:  convertImpl 255, 0,   1,   2
+      of PixelBufferFormat.rgba_32bit:  discard
+      of PixelBufferFormat.rgbx_32bit:  convertImpl 0/3, 1/3, 2/3, 3
+      of PixelBufferFormat.rgbu_32bit:  convertImpl 0,   1,   2,   255
+    
+    of PixelBufferFormat.rgbx_32bit:
+      case targetFormat
+      of PixelBufferFormat.bgra_32bit:  convertImpl 2*3, 1*3, 0*3, 3
+      of PixelBufferFormat.bgrx_32bit:  convertImpl 2,   1,   0,   3
+      of PixelBufferFormat.bgru_32bit:  convertImpl 2,   1,   0,   255
+      of PixelBufferFormat.xrgb_32bit:  convertImpl 3,   0,   1,   2
+      of PixelBufferFormat.urgb_32bit:  convertImpl 255, 0,   1,   2
+      of PixelBufferFormat.rgba_32bit:  convertImpl 0*3, 1*3, 2*3, 3
+      of PixelBufferFormat.rgbx_32bit:  discard
+      of PixelBufferFormat.rgbu_32bit:  convertImpl 0,   1,   2,   255
+    
 
-  {.pop.}
+    of PixelBufferFormat.rgbu_32bit:
+      case targetFormat
+      of PixelBufferFormat.bgra_32bit,
+        PixelBufferFormat.bgrx_32bit,
+        PixelBufferFormat.bgru_32bit:  convertImpl 2,   1,   0,   255
+      of PixelBufferFormat.xrgb_32bit,
+        PixelBufferFormat.urgb_32bit:  convertImpl 255, 0,   1,   2
+      of PixelBufferFormat.rgba_32bit,
+        PixelBufferFormat.rgbx_32bit:  convertImpl 0,   1,   2,   255
+      of PixelBufferFormat.rgbu_32bit:  discard
+
+
+
+proc siwin_convert_pixels_inplace(
+  pb: ptr PixelBuffer, fromFormat: PixelBufferFormat
+) {.siwin_import_export.} =
+  convertPixelsInplace(pb.data, pb.size, fromFormat, pb.format)
+
+
+proc convertPixelsInplace*(
+  data: pointer, size: IVec2, sourceFormat, targetFormat: PixelBufferFormat
+) {.siwin_export_import.} =
+  var pb = PixelBuffer(data: data, size: size, format: targetFormat)
+  siwin_convert_pixels_inplace(pb.addr, sourceFormat)
 

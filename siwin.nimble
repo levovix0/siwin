@@ -22,37 +22,30 @@ when defined(android):
 
 
 
-task buildDynlib, "build siwin as a dynamic library":
-  const outfile =
-    when defined(windows): "siwin.dll"
-    elif defined(macosx): "siwin.dynlib"
-    else: "libsiwin.so"
+const dynlibName =
+  when defined(windows): "siwin.dll"
+  elif defined(macosx): "siwin.dynlib"
+  else: "libsiwin.so"
 
+const staticlibName =
+  when defined(windows): "siwin.lib"
+  else: "libsiwin.a"
+
+
+
+task buildDynlib, "build siwin as a dynamic library":
   when not defined(windows):
-    exec "nim c -d:siwin_build_lib:on --app:lib -o:bindings/" & outfile & " src/siwin.nim"
+    exec "nim c --experimental:vtables -d:siwin_build_lib:on --app:lib -o:bindings/" & dynlibName & " src/siwin.nim"
   
   else:
-    exec "nim c --passl:-static -d:siwin_build_lib:on --app:lib -o:bindings/" & outfile & " src/siwin.nim"
+    exec "nim c --passl:-static --experimental:vtables -d:siwin_build_lib:on --app:lib -o:bindings/" & dynlibName & " src/siwin.nim"
 
 
 task buildStaticlib, "build siwin as a dynamic library":
-  const outfile =
-    when defined(windows): "siwin.lib"
-    else: "libsiwin.a"
-
-  exec "nim c --noMain -d:siwin_build_lib:on --app:staticlib -o:bindings/" & outfile & " src/siwin.nim"
+  exec "nim c --noMain -d:siwin_build_lib:on --app:staticlib -o:bindings/" & staticlibName & " src/siwin.nim"
 
 
 task testBindings, "build and run tests/et_bindings with static and dynamic siwin":
-  const dynlibName =
-    when defined(windows): "siwin.dll"
-    elif defined(macosx): "siwin.dynlib"
-    else: "libsiwin.so"
-
-  const staticlibName =
-    when defined(windows): "siwin.lib"
-    else: "libsiwin.a"
-
   exec "gcc tests/et_bindings.c bindings/" & dynlibName & " -o tests/et_bindings"
   
   when not defined(windows):
@@ -65,6 +58,19 @@ task testBindings, "build and run tests/et_bindings with static and dynamic siwi
   else:
     cpFile "bindings/siwin.dll", "tests/siwin.dll"
     exec "./tests/et_bindings.exe"
+
+
+task testUseLib, "build and run tests/t_opengl using dynamic linking to siwin":
+  const dynlibName =
+    when defined(windows): "siwin.dll"
+    elif defined(macosx): "siwin.dynlib"
+    else: "libsiwin.so"
+
+  # exec "nim c --experimental:vtables -d:siwin_use_lib:on --passl:bindings/" & dynlibName & " -r tests/t_opengl.nim"
+  # exec "nim c --experimental:vtables -d:siwin_use_lib:on -d:siwin_lib_link_dynamic:on -r tests/t_opengl.nim"
+  
+  exec "nim c --experimental:vtables -d:siwin_use_lib:on --passl:bindings/" & dynlibName & " -r tests/t_vulkan.nim"
+  
 
 
 

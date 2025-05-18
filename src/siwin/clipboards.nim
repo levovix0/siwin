@@ -3,7 +3,7 @@ import ./platforms/any/clipboards
 export clipboards
 
 
-when siwin_build_lib or true:
+when siwin_build_lib:
   {.push, exportc, cdecl, dynlib.}
   proc siwin_destroy_clipboard*(clipboard: Clipboard): Clipboard = GC_unref(clipboard)
 

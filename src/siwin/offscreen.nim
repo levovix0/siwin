@@ -1,35 +1,36 @@
 import ./[siwindefs]
 import ./platforms/any/window
 
-when defined(android):
-  import ./platforms/android/window
-elif defined(linux):
-  import ./platforms/x11/[offscreen, siwinGlobals]
-  import ./platforms/wayland/[siwinGlobals]
-elif defined(windows):
-  import ./platforms/winapi/offscreen
-
-proc newOpenglContext*(
-  globals: SiwinGlobals
-): Window =
+when not siwin_use_lib:
   when defined(android):
-    newOpenglWindowAndroid()
+    import ./platforms/android/window
   elif defined(linux):
-    if globals of SiwinGlobalsX11:
-      globals.SiwinGlobalsX11.newOpenglContextX11()
-    elif globals of SiwinGlobalsWayland:
-      raise ValueError.newException("Offscreen rendering is not supported for Wayland yet. Please pass preferedPlatform=x11 to newSiwinGlobals")
-    #   newOpenglContextWayland()
-    else:
-      raise ValueError.newException("Unsupported platform")
-
+    import ./platforms/x11/[offscreen, siwinGlobals]
+    import ./platforms/wayland/[siwinGlobals]
   elif defined(windows):
-    newOpenglContextWinapi()
+    import ./platforms/winapi/offscreen
+
+  proc newOpenglContext*(
+    globals: SiwinGlobals
+  ): Window =
+    when defined(android):
+      newOpenglWindowAndroid()
+    elif defined(linux):
+      if globals of SiwinGlobalsX11:
+        globals.SiwinGlobalsX11.newOpenglContextX11()
+      elif globals of SiwinGlobalsWayland:
+        raise ValueError.newException("Offscreen rendering is not supported for Wayland yet. Please pass preferedPlatform=x11 to newSiwinGlobals")
+      #   newOpenglContextWayland()
+      else:
+        raise ValueError.newException("Unsupported platform")
+
+    elif defined(windows):
+      newOpenglContextWinapi()
 
 
-when siwin_build_lib:
-  {.push, exportc, cdecl, dynlib.}
-  proc siwin_new_opengl_context*(globals: SiwinGlobals): Window =
-    newOpenglContext(globals)
+proc siwin_new_opengl_context(globals: SiwinGlobals): Window {.siwin_import_export.} =
+  newOpenglContext(globals)
 
-  {.pop.}
+
+proc newOpenglContext*(globals: SiwinGlobals): Window {.siwin_export_import.} =
+  siwin_new_opengl_context(globals)

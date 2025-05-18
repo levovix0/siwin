@@ -1,14 +1,17 @@
 import ./[siwindefs]
 import ./platforms/any/window
-when defined(android):
-  ##
-when defined(linux) and not defined(android):
-  import ./platforms/wayland/siwinGlobals as waylandGlobals
-  import ./platforms/x11/siwinGlobals as x11Globals
-when defined(windows):
-  ##
-when defined(macosx):
-  ##
+
+
+when not siwin_use_lib:
+  when defined(android):
+    ##
+  when defined(linux) and not defined(android):
+    import ./platforms/wayland/siwinGlobals as waylandGlobals
+    import ./platforms/x11/siwinGlobals as x11Globals
+  when defined(windows):
+    ##
+  when defined(macosx):
+    ##
 
 
 when siwin_use_pure_enums:
@@ -82,33 +85,40 @@ proc platformToUse*(available: seq[Platform], prefered: Platform): Platform =
     raise SiwinPlatformSupportDefect.newException("No platforms available to open a window")
 
 
-proc newSiwinGlobals*(preferedPlatform: Platform = defaultPreferedPlatform()): SiwinGlobals =
-  when defined(android):
-    result = SiwinGlobals()
+when not siwin_use_lib:
+  proc newSiwinGlobals*(preferedPlatform: Platform = defaultPreferedPlatform()): SiwinGlobals =
+    when defined(android):
+      result = SiwinGlobals()
 
-  elif defined(linux):
-    case availablePlatforms().platformToUse(preferedPlatform)
-    of x11:
-      return newX11Globals()
-    of wayland:
-      result = newWaylandGlobals()
-      result.SiwinGlobalsWayland.roundtrip()
+    elif defined(linux):
+      case availablePlatforms().platformToUse(preferedPlatform)
+      of x11:
+        return newX11Globals()
+      of wayland:
+        result = newWaylandGlobals()
+        result.SiwinGlobalsWayland.roundtrip()
+      else:
+        raise SiwinPlatformSupportDefect.newException("Unsupported platform")
+    
+    elif defined(windows):
+      result = SiwinGlobals()
+    
+    elif defined(macosx):
+      result = SiwinGlobals()
+    
     else:
-      raise SiwinPlatformSupportDefect.newException("Unsupported platform")
-  
-  elif defined(windows):
-    result = SiwinGlobals()
-  
-  elif defined(macosx):
-    result = SiwinGlobals()
-  
-  else:
-    {.error.}
+      {.error.}
+
+
+proc siwin_new_globals(platform: Platform): SiwinGlobals {.siwin_import_export.} =
+  newSiwinGlobals()
+
+proc newSiwinGlobals*(preferedPlatform: Platform = defaultPreferedPlatform()): SiwinGlobals {.siwin_export_import.} =
+  siwin_new_globals(preferedPlatform)
 
 
 when siwin_build_lib:
   {.push, exportc, cdecl, dynlib.}
   proc siwin_default_platform(): Platform = defaultPreferedPlatform()
-  proc siwin_new_globals(platform: Platform): SiwinGlobals = newSiwinGlobals()
   proc siwin_destroy_globals(globals: SiwinGlobals) {.nodestroy.} = GC_unref(globals)
   {.pop.}

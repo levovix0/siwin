@@ -11,6 +11,17 @@ const siwin_dynlib_name* =
 const siwin_build_lib* {.booldefine.} = off
 const siwin_use_lib* {.booldefine.} = off
 
+const siwin_lib_link_dynamic* {.booldefine.} = off
+
+
+when siwin_use_lib:
+  when not compileOption("experimental", "vtables"):
+    {.error: "-d:siwin_use_lib:on requires --experimental:vtables flag".}
+    
+when siwin_build_lib:
+  when not compileOption("experimental", "vtables"):
+    {.error: "-d:siwin_build_lib:on requires --experimental:vtables flag".}
+
 
 macro siwin_destructor*(body) =
   result = body
@@ -70,3 +81,45 @@ macro siwin_loadDynlibIfExists*(handle, body) =
         )
       )
     )
+
+
+
+macro siwin_import_export*(procdecl) =
+  result = procdecl
+
+  when siwin_use_lib:
+    when siwin_lib_link_dynamic:
+      result.pragma = nnkPragma.newTree(
+        ident("importc"),
+        ident("cdecl"),
+        nnkExprColonExpr.newTree(ident("dynlib"), newLit(siwin_dynlib_name)),
+      )
+    else:
+      result.pragma = nnkPragma.newTree(
+        ident("importc"),
+        ident("cdecl"),
+      )
+    
+    result.body = newEmptyNode()
+  
+  elif siwin_build_lib:
+    result.pragma = nnkPragma.newTree(
+      ident("exportc"),
+      ident("cdecl"),
+      ident("dynlib"),
+    )
+  
+  else:
+    result = newEmptyNode()
+
+
+
+macro siwin_export_import*(procdecl) =
+  result = procdecl
+
+  when siwin_use_lib and not siwin_build_lib:
+    discard
+  
+  else:
+    result = newEmptyNode()
+

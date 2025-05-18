@@ -346,6 +346,7 @@ typedef struct WindowEventHandler {
 		const char* winclass
 	);
 
+	extern int siwin_screen_count(SiwinGlobals globals);
 	extern Screen siwin_default_screen(SiwinGlobals globals);
 	extern Screen siwin_get_screen(SiwinGlobals globals, int n);
 	extern int siwin_screen_number(Screen screen);
