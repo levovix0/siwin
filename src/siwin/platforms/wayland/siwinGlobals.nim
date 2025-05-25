@@ -139,7 +139,7 @@ proc newWaylandGlobals*(): SiwinGlobalsWayland =
   ## Create globals for wayland platform,
   ## ! roundtrip must be called after this to finish initialization
   ## registers callbacks for registry globals siwin care about,
-  ## additional registryCallbacks can be added before calling roundtripRegistry
+  ## additional registryCallbacks can be added before calling roundtrip
   new result
 
   if wl_display_connect == nil:
