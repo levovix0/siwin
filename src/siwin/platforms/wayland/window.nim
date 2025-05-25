@@ -1220,6 +1220,9 @@ method firstStep*(window: WindowWayland, makeVisible = true) =
 
   # window.m_pos = window.handle.geometry.pos
   # window.mouse.pos = cursor().pos - window.m_pos
+
+  window.surface.commit()
+  discard wl_display_roundtrip window.globals.display
   
   if window.opened: window.eventsHandler.onResize.pushEvent ResizeEvent(window: window, size: window.m_size, initial: true)
   window.lastTickTime = getTime()
