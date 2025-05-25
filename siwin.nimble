@@ -42,7 +42,7 @@ task buildDynlib, "build siwin as a dynamic library":
 
 
 task buildStaticlib, "build siwin as a dynamic library":
-  exec "nim c --noMain -d:siwin_build_lib:on --app:staticlib -o:bindings/" & staticlibName & " src/siwin.nim"
+  exec "nim c --noMain --experimental:vtables -d:siwin_build_lib:on --app:staticlib -o:bindings/" & staticlibName & " src/siwin.nim"
 
 
 task testBindings, "build and run tests/et_bindings with static and dynamic siwin":

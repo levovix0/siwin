@@ -435,10 +435,10 @@ typedef struct WindowEventHandler {
 #define SIWIN_STATIC_OUTMAIN_BOILERPLATE \
 	char** cmdLine; \
 	int cmdCount; \
-	void NimMain();
+	extern void siwin_main();
 
 #define SIWIN_STATIC_INMAIN_BOILERPLATE \
 	cmdCount = argc; \
 	cmdLine = argv; \
-	NimMain();
+	siwin_main();
 
