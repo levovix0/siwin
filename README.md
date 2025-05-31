@@ -19,6 +19,22 @@ Can be used as an alternative to GLFW/GLUT/windy
 # Examples
 
 ## simple window
+
+```nim
+import siwin, opengl
+
+let win = newSiwinGlobals().newOpenglWindow()
+loadExtensions()  # init opengl
+
+run win, WindowEventsHandler(
+  onRender: (proc(e: RenderEvent) =
+    glClearColor(0.1, 0.1, 0.1, 1)
+    glClear(GlColorBufferBit or GlDepthBufferBit)
+  ),
+)
+```
+
+## software-rendering window window
 ```nim
 import siwin, vmath
 
@@ -66,7 +82,7 @@ run window, WindowEventsHandler(
     glMatrixMode(GlModelView)
   ,
   onRender: proc(e: RenderEvent) =
-    glClearColor 0.3, 0.3, 0.3, 0
+    glClearColor 0.3, 0.3, 0.3, 1
     glClear GlColorBufferBit or GlDepthBufferBit
 
     glShadeModel GlSmooth

@@ -164,7 +164,7 @@ proc buildAndroid() =
   android:versionCode="1" android:versionName="1.0"
 >
   <uses-feature android:glEsVersion="0x00020000" android:required="true" />
-  <uses-sdk android:minSdkVersion="1" android:targetSdkVersion="33" />
+  <uses-sdk android:minSdkVersion="1" android:targetSdkVersion="30" />
   <application android:label="Siwin test">
     <activity android:name="Jnim$SiwinActivity">
       <intent-filter>
