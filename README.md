@@ -34,7 +34,7 @@ run win, WindowEventsHandler(
 )
 ```
 
-## software-rendering window window
+## software-rendering window
 ```nim
 import siwin, vmath
 
