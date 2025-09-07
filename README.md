@@ -60,17 +60,19 @@ run siwinGlobals.newSoftwareRenderingWindow(), WindowEventsHandler(
 ```
 
 ## OpenGL
-![](https://ia.wampi.ru/2021/09/07/31.png)
+![](http://levovix.ru:8000/docs/siwin/example-opengl.png)
 ```nim
 import siwin, opengl, vmath
 
-let siwinGlobals = newSiwinGlobals()
+let siwinGlobals = newSiwinGlobals(
+  preferedPlatform = (when defined(linux): x11 else: defaultPreferedPlatform)
+  # note: glBegin and other non- OpenGL ES functions don't work on Wayland,
+  #       so we should set preferedPlatform to x11 on linux when using regular OpenGL.
+  #       see tests/t_opengl_es.nim for more complex, wayland-compatible opengl example
+)
 
 var window = siwinGlobals.newOpenglWindow(
   title="OpenGL example",
-  preferedPlatform = (when defined(linux): x11 else: defaultPreferedPlatform)
-  # note: glBegin and other non- OpenGL ES functions don't work on Wayland
-  # see tests/t_opengl_es.nim for more complex, wayland-compatible opengl example
 )
 loadExtensions()  # init opengl
 
@@ -152,7 +154,7 @@ run window, WindowEventsHandler(
 ```
 
 ## pixie
-![](https://ia.wampi.ru/2021/09/07/32.png)
+![](http://levovix.ru:8000/docs/siwin/example-pixie.png)
 
 note: very slow, but useful if opengl not needed and if window is used to just display one single image
 
