@@ -1,22 +1,23 @@
-# Siwin
+<h2 align="center">Siwin</h2>
 <img alt="siwin" width="100%" src="http://levovix.ru:8000/docs/siwin/banner.png">
 <p align="center">
   Cross-platform window creation and event handling library.
 </p>
 
-Can be used as an alternative to GLFW/GLUT/windy  
+Can be used as an alternative to GLFW/GLUT/windy
 
 ![Language](https://img.shields.io/badge/language-Nim-orange.svg?style=flat-square) ![Code size](https://img.shields.io/github/languages/code-size/levovix0/siwin?style=flat-square) ![Latest version](https://img.shields.io/github/v/tag/levovix0/siwin?label=Latest%20version&color=purple&style=flat-square)
 
 
 
-# Features
+<h2 align="center">Features</h2>
+
 * works with: OpenGL, Vulkan, software rendering
 * works on: Linux(X11 and Wayland), Windows
 * handles events from: mouse, keyboard
 * and also supports: clipboard, offscreen rendering, interactive move/resize, etc.
 
-# Examples
+<h2 align="center">Examples</h2>
 
 ## simple window
 
@@ -190,7 +191,8 @@ run siwinGlobals.newSoftwareRenderingWindow(title="pixie example"), WindowEvents
 )
 ```
 
-## clipboard
+<h2 align="center">clipboard</h2>
+
 ```nim
 let clipboard = window.clipboard
 
@@ -198,7 +200,8 @@ echo clipboard.text
 clipboard.text = "some text"
 ```
 
-## offscreen rendering
+<h2 align="center">offscreen rendering</h2>
+
 note: this will create invisible window. `ctx` mustn't be discarded as its destructor will close the window.  
 If you have multiple contexts, use `makeCurrent` to select.
 ```nim
@@ -212,7 +215,8 @@ loadExtensions()
 # do any opengl computing
 ```
 
-## manual main cycle
+<h2 align="center">manual main cycle</h2>
+
 ```nim
 import siwin
 
@@ -230,7 +234,8 @@ while window.opened:
 
 ```
 
-## running multiple windows
+<h2 align="center">running multiple windows</h2>
+
 ```nim
 import siwin
 
@@ -265,7 +270,8 @@ runMultiple(
 )
 ```
 
-## client-side decorations
+<h2 align="center">client-side decorations</h2>
+
 ```nim
 import siwin
 
@@ -282,11 +288,13 @@ run window, WindowEventsHandler(
 )
 ```
 
-## all methods and events
+<h2 align="center">all methods and events</h2>
+
 see [siwin/platforms/any/window](https://github.com/levovix0/siwin/blob/master/src/siwin/platforms/any/window.nim)
 
 
-## I want to get system handle of window and do some magic, but it is private?
+<h2 align="center">I want to get system handle of window and do some magic, but it is private?</h2>
+
 ```nim
 import std/importutils
 import siwin/platforms/x11/window
@@ -295,7 +303,8 @@ privateAccess WindowX11Obj
 window.handle
 ```
 
-# Contributions
+<h2 align="center">Contributions</h2>
+
 If you want to support this project, here is some tasks to do:
 * See [issues](https://github.com/levovix0/siwin/issues)
 * Any bugfixes is always accepted, just describe somewhere what you fixed
