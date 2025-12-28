@@ -27,12 +27,11 @@ import siwin, opengl
 let win = newSiwinGlobals().newOpenglWindow()
 loadExtensions()  # init opengl
 
-run win, WindowEventsHandler(
-  onRender: (proc(e: RenderEvent) =
-    glClearColor(0.1, 0.1, 0.1, 1)
-    glClear(GlColorBufferBit or GlDepthBufferBit)
-  ),
-)
+win.eventsHandler.onRender = proc(e: RenderEvent) =
+  glClearColor(0.1, 0.1, 0.1, 1)
+  glClear(GlColorBufferBit or GlDepthBufferBit)
+
+run win
 ```
 
 ## software-rendering window
