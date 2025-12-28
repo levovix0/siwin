@@ -176,6 +176,22 @@ proc newSoftwareRenderingWindow*(
   GC_ref(result)
 
 
+proc newSoftwareRenderingWindow*(
+  size = ivec2(1280, 720),
+  title = "",
+  screen: int32 = -1,
+  fullscreen = false,
+  resizable = true,
+  frameless = false,
+  transparent = false,
+
+  class = "", # window class (used in x11), equals to title if not specified
+  
+  preferedPlatform: Platform = defaultPreferedPlatform(),
+): Window =
+  newSoftwareRenderingWindow(newSiwinGlobals(preferedPlatform), size, title, screen, fullscreen, resizable, frameless, transparent, class)
+
+
 when siwin_build_lib:
   import std/options
   import ./colorutils

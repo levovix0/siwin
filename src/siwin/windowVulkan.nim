@@ -95,8 +95,8 @@ proc newVulkanWindow*(
   size = ivec2(1280, 720),
   title = "",
   screen: int32 = -1,
-  resizable = true,
   fullscreen = false,
+  resizable = true,
   frameless = false,
   transparent = false,
 
@@ -109,3 +109,21 @@ proc newVulkanWindow*(
     class.cstring,
   )
   GC_ref(result)
+
+
+proc newVulkanWindow*(
+  vkInstance: pointer,
+  size = ivec2(1280, 720),
+  title = "",
+  screen: int32 = -1,
+  fullscreen = false,
+  resizable = true,
+  frameless = false,
+  transparent = false,
+
+  class = "", # window class (used in x11), equals to title if not specified
+  
+  preferedPlatform: Platform = defaultPreferedPlatform(),
+): Window =
+  newVulkanWindow(newSiwinGlobals(preferedPlatform), vkInstance, size, title, screen, fullscreen, resizable, frameless, transparent, class)
+

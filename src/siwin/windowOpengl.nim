@@ -116,3 +116,21 @@ proc newOpenglWindow*(
   )
   GC_ref(result)
 
+
+proc newOpenglWindow*(
+  size = ivec2(1280, 720),
+  title = "",
+  screen: int32 = -1,
+  fullscreen = false,
+  resizable = true,
+  frameless = false,
+  transparent = false,
+  vsync = true,
+
+  class = "", # window class (used in x11), equals to title if not specified
+  
+  preferedPlatform: Platform = defaultPreferedPlatform(),
+): Window =
+  newOpenglWindow(newSiwinGlobals(preferedPlatform), size, title, screen, fullscreen, resizable, frameless, transparent, vsync, class)
+
+

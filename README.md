@@ -24,8 +24,8 @@ Can be used as an alternative to GLFW/GLUT/windy
 ```nim
 import siwin, opengl
 
-let win = newSiwinGlobals().newOpenglWindow()
-loadExtensions()  # init opengl
+let win = newOpenglWindow()
+opengl.loadExtensions()  # load opengl functions
 
 win.eventsHandler.onRender = proc(e: RenderEvent) =
   glClearColor(0.1, 0.1, 0.1, 1)
@@ -40,9 +40,7 @@ import siwin, vmath
 
 const color = [32'u8, 32, 32, 255]
 
-let siwinGlobals = newSiwinGlobals()
-
-run siwinGlobals.newSoftwareRenderingWindow(), WindowEventsHandler(
+run newSoftwareRenderingWindow(), WindowEventsHandler(
   onRender: proc(e: RenderEvent) =
     let pixelBuffer = e.window.pixelBuffer
     
