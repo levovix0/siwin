@@ -1,5 +1,6 @@
 import vmath
 import ./[siwindefs]
+import ./platforms
 import window
 
 when not siwin_use_lib:
@@ -7,8 +8,6 @@ when not siwin_use_lib:
     import ./platforms/android/window as androidWindow
 
   elif defined(linux):
-    import ./platforms
-    
     import ./platforms/x11/siwinGlobals as x11SiwinGlobals
     import ./platforms/x11/window as x11Window
     import ./platforms/x11/windowVulkan as x11WindowVulkan
@@ -126,4 +125,3 @@ proc newVulkanWindow*(
   preferedPlatform: Platform = defaultPreferedPlatform(),
 ): Window =
   newVulkanWindow(newSiwinGlobals(preferedPlatform), vkInstance, size, title, screen, fullscreen, resizable, frameless, transparent, class)
-

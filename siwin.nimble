@@ -20,6 +20,8 @@ when defined(android):
   requires "jnim >= 0.5.2"
   requires "https://github.com/yglukhov/android"
 
+when defined(macosx):
+  requires "darwin >= 0.2.1"
 
 
 const dynlibName =

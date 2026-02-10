@@ -1,5 +1,6 @@
 import vmath
 import ./[siwindefs]
+import ./platforms
 import ./platforms/any/[window as anyWindow]
 
 export anyWindow
@@ -9,8 +10,6 @@ when not siwin_use_lib:
     import ./platforms/android/window as androidWindow
 
   elif defined(linux):
-    import ./platforms
-    
     import ./platforms/x11/siwinGlobals as x11SiwinGlobals
     import ./platforms/x11/window as x11Window
     import ./platforms/wayland/siwinGlobals as waylandSiwinGlobals
@@ -37,6 +36,7 @@ when not siwin_use_lib:
         raise SiwinPlatformSupportDefect.newException("Unsupported platform")
     
     elif defined(windows): screenCountWinapi()
+    elif defined(macosx): screenCountCocoa()
 
   proc screen*(globals: SiwinGlobals, number: int32): Screen =
     when defined(android):
@@ -51,6 +51,7 @@ when not siwin_use_lib:
         raise SiwinPlatformSupportDefect.newException("Unsupported platform")
     
     elif defined(windows): screenWinapi(number)
+    elif defined(macosx): screenCocoa(number)
 
   proc defaultScreen*(globals: SiwinGlobals): Screen =
     when defined(android):
@@ -65,6 +66,7 @@ when not siwin_use_lib:
         raise SiwinPlatformSupportDefect.newException("Unsupported platform")
     
     elif defined(windows): defaultScreenWinapi()
+    elif defined(macosx): defaultScreenCocoa()
 
 
   proc newSoftwareRenderingWindow*(
@@ -294,4 +296,3 @@ when siwin_build_lib:
   proc siwin_window_set_event_handler(window: Window, eventHandler: ptr WindowEventsHandler) = window.eventsHandler = eventHandler[]
 
   {.pop.}
-
