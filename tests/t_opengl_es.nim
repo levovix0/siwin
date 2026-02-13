@@ -1,25 +1,28 @@
-when not (compiles do: import fusion/astdsl):
-  echo "[SKIPPED] OpenGL ES test requires fusion/astdsl"
-else:
-  import unittest
-  import opengl, vmath
-  import siwin
+import unittest
+import opengl, vmath
+import siwin
+
+const HasAstDsl = compiles do: import fusion/astdsl
+
+let globals = newSiwinGlobals()
+when HasAstDsl:
   import ./gl
-  
-  let globals = newSiwinGlobals()
-  
-  test "OpenGL ES":
+
+test "OpenGL ES":
+  when not HasAstDsl:
+    skip()
+  else:
     var g = 1.0
     
     let window = globals.newOpenglWindow(title="OpenGL ES test", transparent=true, frameless=true)
     loadExtensions()
-  
+
     window.setBorderWidth(10, 10, 10)
-  
+
     window.dragndropClipboard.onContentChanged = proc(e: ClipboardContentChangedEvent) =
       echo "drag available kinds: ", e.availableKinds
       echo "drag available mime types: ", e.availableMimeTypes
-  
+
       if ClipboardContentKind.files in e.availableKinds:
         echo "got files: ", e.clipboard.files
         window.dragStatus = DragStatus.accepted
@@ -37,11 +40,11 @@ else:
       ,
       onRender: proc(e: RenderEvent) =
         let ctx = newDrawContext()
-  
+
         glClearColor(127/255/2, 127/255/2, 127/255/2, 1/2)
         # glClearColor(32/255, 32/255, 32/255, 1)
         glClear(GL_COLOR_BUFFER_BIT or GL_DEPTH_BUFFER_BIT)
-  
+
         block rainbowRect:
           let shader = ctx.makeShader:
             {.version: "320 es".}
@@ -52,7 +55,7 @@ else:
             ) =
               gl_Position = vec4(in_pos.x - 0.5, in_pos.y - 0.5, 0, 1)
               pos = in_pos
-  
+
             proc frag(
               glCol: var Vec4,
               pos: Vec2,
@@ -65,7 +68,7 @@ else:
           use shader.shader
           draw ctx.rect
           # glDisable(GlBlend)
-  
+
         block titleBar:
           let shader = ctx.makeShader:
             {.version: "320 es".}
@@ -77,7 +80,7 @@ else:
             ) =
               gl_Position = vec4(in_pos.x * 2 - 1, -(in_pos.y * h) * 2 + 1, 0, 1)
               pos = in_pos
-  
+
             proc frag(
               glCol: var Vec4,
               pos: Vec2,
@@ -87,7 +90,7 @@ else:
           use shader.shader
           shader.h.uniform = 80 / e.window.size.y
           draw ctx.rect
-  
+
         block border:
           let shader = ctx.makeShader:
             {.version: "320 es".}
@@ -98,7 +101,7 @@ else:
             ) =
               gl_Position = vec4(in_pos.x * 2 - 1, in_pos.y * 2 - 1, 0, 1)
               pos = in_pos
-  
+
             proc frag(
               glCol: var Vec4,
               pos: Vec2,
