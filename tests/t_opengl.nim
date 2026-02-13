@@ -3,11 +3,12 @@ import opengl, vmath
 import siwin
 
 let globals = newSiwinGlobals(
-  preferedPlatform = (when defined(linux): x11 else: defaultPreferedPlatform())
+  preferedPlatform = (when defined(linux) or defined(bsd): x11 else: defaultPreferedPlatform())
 )
 
 test "OpenGL":
   var g = 1.0
+  var ticks = 0
   
   let window = globals.newOpenglWindow(title="OpenGL test", transparent=true)
   loadExtensions()
@@ -75,4 +76,9 @@ test "OpenGL":
     ,
     onStateBoolChanged: proc(e: StateBoolChangedEvent) =
       echo e.kind, ": ", e.value
+    ,
+    onTick: proc(e: TickEvent) =
+      inc ticks
+      if ticks > 180:
+        close e.window
   )

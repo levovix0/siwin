@@ -14,6 +14,14 @@ type
   MouseButton* {.siwin_enum.} = enum
     left right middle forward backward
 
+  ModifierKey* {.siwin_enum.} = enum
+    shift
+    control
+    alt
+    system
+    capsLock
+    numLock
+
   Key* {.siwin_enum.} = enum
     unknown = 0
 
@@ -43,6 +51,7 @@ type
 
   Keyboard* = object
     pressed*: set[Key]
+    modifiers*: set[ModifierKey]
   
   TouchScreen* = object
     pressed*: Table[int, Touch]  # id -> touch
@@ -143,6 +152,7 @@ type
     pressed*: bool
     repeated*: bool  ## means user is holding this key and system is repeating keydown+keyup
     generated*: bool  ## generated, for example, by releaseAllKeys when alt-tab. Means user don't actually do this action
+    modifiers*: set[ModifierKey]
   
   TextInputEvent* = object of AnyWindowEvent
     text*: string

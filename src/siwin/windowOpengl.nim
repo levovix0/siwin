@@ -1,14 +1,13 @@
 import vmath
 import ./[siwindefs]
+import ./platforms
 import window
 
 when not siwin_use_lib:
   when defined(android):
     import ./platforms/android/window as androidWindow
 
-  elif defined(linux):
-    import ./platforms
-    
+  elif defined(linux) or defined(bsd):
     import ./platforms/x11/siwinGlobals as x11SiwinGlobals
     import ./platforms/x11/window as x11Window
     import ./platforms/x11/windowOpengl as x11WindowOpengl
@@ -47,7 +46,7 @@ when not siwin_use_lib:
         resizable, fullscreen, frameless, transparent, vsync
       )
 
-    elif defined(linux):
+    elif defined(linux) or defined(bsd):
       if globals of SiwinGlobalsX11:
         result = globals.SiwinGlobalsX11.newOpenglWindowX11(
           size, title,
@@ -132,5 +131,4 @@ proc newOpenglWindow*(
   preferedPlatform: Platform = defaultPreferedPlatform(),
 ): Window =
   newOpenglWindow(newSiwinGlobals(preferedPlatform), size, title, screen, fullscreen, resizable, frameless, transparent, vsync, class)
-
 

@@ -33,8 +33,8 @@ type
     sType*: VkStructureType
     pNext*: pointer
     flags*: uint32
-    display*: Wl_display
-    surface*: Wl_surface
+    display*: pointer
+    surface*: pointer
 
 
 {.push, cdecl, stdcall, dynlib: vkDLL, importc.}

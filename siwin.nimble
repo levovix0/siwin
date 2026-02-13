@@ -10,8 +10,10 @@ requires "vmath >= 1.1.4"
 
 # note: require platform dependencies only if it is the platform on which userprogrammer works.
 #       ask a userprogrammer to install specific platform dependencies if cross compiling.
-when defined(linux):
+when defined(linux) or defined(bsd):
   requires "x11 >= 1.1"
+  requires "https://github.com/planetis-m/vulkan#b223dc9"
+  #requires "https://github.com/DanielBelmes/vulkan"
 
 when defined(windows):
   requires "winim >= 3.6"
@@ -20,7 +22,13 @@ when defined(android):
   requires "jnim >= 0.5.2"
   requires "https://github.com/yglukhov/android"
 
+when defined(macosx):
+  requires "darwin >= 0.2.1"
 
+feature "dev":
+  requires "opengl"
+  requires "nimgl"
+  requires "pixie"
 
 const dynlibName =
   when defined(windows): "siwin.dll"
@@ -98,7 +106,6 @@ task installTestDeps, "install test dependencies":
   exec "nimble install opengl"
   exec "nimble install nimgl"
   exec "nimble install pixie"
-  createZigccIfNeeded()
 
 task installAndroidDeps, "install android dependencies":
   exec "nimble install https://github.com/levovix0/dali"
@@ -113,8 +120,7 @@ const testTargets = ["t_opengl_es", "t_opengl", "t_swrendering", "t_multiwindow"
 proc runTests(args: string) =
   withDir "tests":
     for target in testTargets:
-      try:    exec "nim c " & args & " --hints:off -r " & target
-      except: discard
+      exec "nim c " & args & " --hints:off -r " & target
 
 
 task test, "test":

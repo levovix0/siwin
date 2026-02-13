@@ -11,6 +11,7 @@ test "2 windows at once":
   let win1 = globals.newOpenglWindow(title="1", transparent=true, class="siwin example")
   let win2 = globals.newOpenglWindow(title="2", size=ivec2(800, 600), class="siwin example")
   loadExtensions()
+  var ticks = 0
 
   let win1eh = WindowEventsHandler(
     onResize: proc(e: ResizeEvent) =
@@ -33,6 +34,12 @@ test "2 windows at once":
           close win1
           close win2
         else: discard
+    ,
+    onTick: proc(e: TickEvent) =
+      inc ticks
+      if ticks > 180:
+        close win1
+        close win2
   )
   var win2eh = win1eh
   
@@ -49,4 +56,3 @@ test "2 windows at once":
     (win1, win1eh, true),
     (win2, win2eh, true),
   )
-
