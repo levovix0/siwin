@@ -107,7 +107,7 @@ jobs:
         VK_ICD_FILENAMES: "/usr/share/vulkan/icd.d/lvp_icd.x86_64.json"
         VK_DRIVER_FILES: "/usr/share/vulkan/icd.d/lvp_icd.x86_64.json"
       run: |
-        xvfb-run -a -s "-screen 0 1280x1024x24" nim test
+        xvfb-run -a -s "-screen 0 1280x1024x24" nimble test
 
     - name: Build Tests (Vulkan Compile Check)
       if: runner.os == 'Linux'
