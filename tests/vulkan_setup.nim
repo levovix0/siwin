@@ -134,7 +134,7 @@ proc isDeviceSuitable(pDevice: VkPhysicalDevice, surface: VkSurfaceKHR): bool =
   let indices: QueueFamilyIndices = findQueueFamilies(pDevice, surface)
   return indices.isComplete and extsSupported and swapChainAdequate
 
-proc createInstance(extensions: cstringArray, extensionCount: uint32): VkInstance =
+proc createInstance*(extensions: cstringArray, extensionCount: uint32): VkInstance =
   var appInfo = newVkApplicationInfo(
     pApplicationName = "siwin Vulkan example",
     applicationVersion = vkMakeVersion(1, 0, 0),
