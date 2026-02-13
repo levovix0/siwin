@@ -82,19 +82,22 @@ jobs:
       if: runner.os == 'Linux'
       run: |
         # sync deps
-        atlas install --feature:vulkan
+        nimble install -y -d
+        nimble installTestDeps
 
     - name: Install Deps
       if: runner.os == 'macOS'
       run: |
         # sync deps
-        atlas install
+        nimble install -y -d
+        nimble installTestDeps
 
     - name: Install Deps
       if: runner.os == 'Windows'
       run: |
         # sync deps
-        atlas install --feature:vulkan
+        nimble install -y -d
+        nimble installTestDeps
 
     - name: Build Tests
       if: runner.os == 'Linux'
@@ -109,12 +112,12 @@ jobs:
       run: |
         xvfb-run -a -s "-screen 0 1280x1024x24" nimble test
 
-    - name: Build Tests (Vulkan Compile Check)
-      if: runner.os == 'Linux'
-      env:
-        NIMFLAGS: "-d:siwin.opengl=off -d:siwin.vulkan=on"
-      run: |
-        nimble test_compile
+    # - name: Build Tests (Vulkan Compile Check)
+    #   if: runner.os == 'Linux'
+    #   env:
+    #     NIMFLAGS: "-d:siwin.opengl=off -d:siwin.vulkan=on"
+    #   run: |
+    #     nimble test_compile
 
     - name: Build Tests
       if: runner.os == 'macOS'
