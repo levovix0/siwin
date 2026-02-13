@@ -12,6 +12,7 @@ requires "vmath >= 1.1.4"
 #       ask a userprogrammer to install specific platform dependencies if cross compiling.
 when defined(linux):
   requires "x11 >= 1.1"
+  requries "https://github.com/planetis-m/vulkan"
 
 when defined(windows):
   requires "winim >= 3.6"
@@ -100,8 +101,6 @@ task installTestDeps, "install test dependencies":
   exec "nimble install opengl"
   exec "nimble install nimgl"
   exec "nimble install pixie"
-  when defined(linux):
-    exec "nimble install https://github.com/planetis-m/vulkan"
   #createZigccIfNeeded()
 
 task installAndroidDeps, "install android dependencies":
