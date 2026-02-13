@@ -88,7 +88,7 @@ jobs:
       if: runner.os == 'macOS'
       run: |
         # sync deps
-        atlas instal
+        atlas install
 
     - name: Install Deps
       if: runner.os == 'Windows'
