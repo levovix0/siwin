@@ -25,6 +25,10 @@ when defined(android):
 when defined(macosx):
   requires "darwin >= 0.2.1"
 
+feature "dev":
+  requires "opengl"
+  requires "nimgl"
+  requires "pixie"
 
 const dynlibName =
   when defined(windows): "siwin.dll"
