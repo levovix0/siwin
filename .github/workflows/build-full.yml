@@ -1,0 +1,151 @@
+on:
+  push:
+    branches:
+    - "main"
+  pull_request:
+    branches:
+    - "*"
+
+jobs:
+  tests:
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    strategy:
+      matrix:
+        nimversion:
+          - '2.2.6'
+        os:
+          - ubuntu-24.04
+          - macos-14
+          - windows-2022
+    steps:
+    - uses: actions/checkout@v1
+
+    - name: Setup software OpenGL/Vulkan (Mesa) + Xvfb
+      if: runner.os == 'Linux'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends \
+          xvfb \
+          xauth \
+          mesa-utils \
+          vulkan-tools \
+          mesa-vulkan-drivers \
+          libvulkan1 \
+          libgl1-mesa-dri \
+          libglx-mesa0 \
+          libegl-mesa0 \
+          libgles2
+
+    - name: Vulkan diagnostics
+      if: runner.os == 'Linux'
+      run: |
+        ls -la /usr/share/vulkan/icd.d || true
+        vulkaninfo --summary || true
+
+    - name: Install GrabNim
+      if: runner.os != 'Windows'
+      run: |
+        curl -fsSL https://codeberg.org/janAkali/grabnim/raw/branch/master/misc/install.sh | sh
+        echo "$HOME/.local/share/grabnim/current/bin" >> $GITHUB_PATH
+        echo "$HOME/.nimble/bin" >> $GITHUB_PATH
+
+    - name: Install Nim
+      if: runner.os != 'Windows'
+      run: |
+        grabnim ${{ matrix.nimversion }}
+        nim -v
+
+    - name: Install Nim (Windows)
+      if: runner.os == 'Windows'
+      uses: jiro4989/setup-nim-action@v2
+      with:
+        nim-version: ${{ matrix.nimversion }}
+
+    - name: Install Atlas
+      run: |
+        nimble install 'https://github.com/nim-lang/atlas@#head'
+        echo "Nim:: "
+        nim -v
+        echo "Nimble:: "
+        atlas -v
+
+    - name: Cache packages
+      uses: actions/cache@v3
+      with:
+        path: deps/
+        key: ${{ runner.os }}-${{ hashFiles('siwin.nimble') }}
+
+    - name: Install Deps
+      if: runner.os == 'Linux'
+      run: |
+        # sync deps
+        atlas install --feature:vulkan
+
+    - name: Install Deps
+      if: runner.os == 'macOS'
+      run: |
+        # sync deps
+        atlas instal
+
+    - name: Install Deps
+      if: runner.os == 'Windows'
+      run: |
+        # sync deps
+        atlas install --feature:vulkan
+
+    - name: Build Tests
+      if: runner.os == 'Linux'
+      env:
+        SDL_VIDEODRIVER: "x11"
+        GALLIUM_DRIVER: "llvmpipe"
+        LIBGL_ALWAYS_SOFTWARE: "1"
+        MESA_GL_VERSION_OVERRIDE: "3.3"
+        MESA_GLSL_VERSION_OVERRIDE: "330"
+        VK_ICD_FILENAMES: "/usr/share/vulkan/icd.d/lvp_icd.x86_64.json"
+        VK_DRIVER_FILES: "/usr/share/vulkan/icd.d/lvp_icd.x86_64.json"
+      run: |
+        xvfb-run -a -s "-screen 0 1280x1024x24" nim test
+
+    - name: Build Tests (Vulkan Compile Check)
+      if: runner.os == 'Linux'
+      env:
+        NIMFLAGS: "-d:siwin.opengl=off -d:siwin.vulkan=on"
+      run: |
+        nimble test_compile
+
+    - name: Build Tests
+      if: runner.os == 'macOS'
+      run: |
+        nimble test
+
+    - name: Build Tests
+      if: runner.os == 'Windows'
+      env:
+        NIMFLAGS: "-d:siwin.vulkan=off"
+      run: |
+        nimble test
+
+    - name: Build Tests (Vulkan Compile Check)
+      if: runner.os == 'Windows'
+      env:
+        NIMFLAGS: "-d:siwin.opengl=off -d:siwin.vulkan=on"
+      run: |
+        nimble test_compile
+
+    - name: Build Tests (Vulkan Run Check)
+      if: runner.os == 'Windows'
+      env:
+        NIMFLAGS: "-d:siwin.vulkan=on"
+      run: |
+        nimble test
+
+    - name: Upload Test Output (on failure)
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: tests-output-${{ runner.os }}-nim${{ matrix.nimversion }}
+        path: tests/output/
+        if-no-files-found: ignore
