@@ -115,8 +115,7 @@ const testTargets = ["t_opengl_es", "t_opengl", "t_swrendering", "t_multiwindow"
 proc runTests(args: string) =
   withDir "tests":
     for target in testTargets:
-      try:    exec "nim c " & args & " --hints:off -r " & target
-      except: discard
+      exec "nim c " & args & " --hints:off -r " & target
 
 
 task test, "test":

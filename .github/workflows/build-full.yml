@@ -131,13 +131,6 @@ jobs:
       run: |
         nimble test
 
-    - name: Build Tests (Vulkan Compile Check)
-      if: runner.os == 'Windows'
-      env:
-        NIMFLAGS: "-d:siwin.opengl=off -d:siwin.vulkan=on"
-      run: |
-        nimble test_compile
-
     - name: Build Tests (Vulkan Run Check)
       if: runner.os == 'Windows'
       env:
