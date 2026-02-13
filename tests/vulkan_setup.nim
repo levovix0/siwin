@@ -1,5 +1,3 @@
-import sets, strutils, sequtils, bitops, unittest
-import vmath
 
 import vulkan
 
@@ -68,7 +66,8 @@ proc createLogicalDevice(physicalDevice: VkPhysicalDevice, surface: VkSurfaceKHR
     let deviceQueueCreateInfo = newVkDeviceQueueCreateInfo(
       sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
       queueFamilyIndex = queueFamily,
-      queuePriorities = queuePriority,
+      queueCount = 1,
+      pQueuePriorities = queuePriority.addr
     )
     queueCreateInfos.add(deviceQueueCreateInfo)
 
