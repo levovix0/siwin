@@ -537,20 +537,20 @@ proc createSemaphores(device: VkDevice): Semaphores =
     quit("failed to create semaphores")
 
 var
-  instance: VkInstance
-  physicalDevice: VkPhysicalDevice
-  device: VkDevice
-  surface: VkSurfaceKHR
-  graphicsQueue: VkQueue
-  presentQueue: VkQueue
-  swapChain: SwapChain
-  swapChainImageViews: seq[VkImageView]
-  renderPass: VkRenderPass
-  graphicsPipeline: GraphicsPipeline
-  swapChainFrameBuffers: seq[VkFramebuffer]
-  commandPool: VkCommandPool
-  commandBuffers: seq[VkCommandBuffer]
-  semaphores: Semaphores
+  instance*: VkInstance
+  physicalDevice*: VkPhysicalDevice
+  device*: VkDevice
+  surface*: VkSurfaceKHR
+  graphicsQueue*: VkQueue
+  presentQueue*: VkQueue
+  swapChain*: SwapChain
+  swapChainImageViews*: seq[VkImageView]
+  renderPass*: VkRenderPass
+  graphicsPipeline*: GraphicsPipeline
+  swapChainFrameBuffers*: seq[VkFramebuffer]
+  commandPool*: VkCommandPool
+  commandBuffers*: seq[VkCommandBuffer]
+  semaphores*: Semaphores
 
 proc init*() =
   physicalDevice = pickPhysicalDevice(instance, surface)
