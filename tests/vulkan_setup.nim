@@ -1,8 +1,9 @@
 
 when not (compiles do: import vulkan):
   {.error: "please run `nimble install https://github.com/planetis-m/vulkan`".}
-import vulkan
-import vulkan/headers
+
+include vulkan
+include vulkan/headers
 
 type
   QueueFamilyIndices = object
