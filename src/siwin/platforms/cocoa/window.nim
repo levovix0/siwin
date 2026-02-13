@@ -1,6 +1,5 @@
 import std/[importutils, tables, times, os, unicode, uri, sequtils, strutils]
 import pkg/[vmath]
-import pkg/darwin/[app_kit, foundation]
 from pkg/darwin/quartz_core/calayer import CALayer
 from pkg/darwin/quartz_core/cametal_layer import CAMetalLayer
 from pkg/darwin/objc/runtime import ObjcClass, ID, SEL, alloc, new, addClass, selector, callSuper
