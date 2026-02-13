@@ -100,6 +100,8 @@ task installTestDeps, "install test dependencies":
   exec "nimble install opengl"
   exec "nimble install nimgl"
   exec "nimble install pixie"
+  when defined(linux):
+    exec "nimble https://github.com/planetis-m/vulkan"
   #createZigccIfNeeded()
 
 task installAndroidDeps, "install android dependencies":
