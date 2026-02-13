@@ -37,6 +37,7 @@ jobs:
           libgl1-mesa-dri \
           libglx-mesa0 \
           libegl-mesa0 \
+          libxrender-dev \
           libgles2
 
     - name: Vulkan diagnostics
