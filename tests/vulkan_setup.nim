@@ -1,8 +1,6 @@
 
 import vulkan
 
-include vulkan/headers
-
 type
   QueueFamilyIndices = object
     graphicsFamily: uint32
