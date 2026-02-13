@@ -86,7 +86,7 @@ const
 
 
 const dllname =
-  when defined(linux): "libGL.so.1"
+  when defined(linux) or defined(bsd): "libGL.so.1"
   elif defined(windows): "GL.dll"
   elif defined(macosx): "/usr/X11R6/lib/libGL.dylib"
   else: "libGL.so"

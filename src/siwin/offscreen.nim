@@ -4,7 +4,7 @@ import ./platforms/any/window
 when not siwin_use_lib:
   when defined(android):
     import ./platforms/android/window
-  elif defined(linux):
+  elif defined(linux) or defined(bsd):
     import ./platforms/x11/[offscreen, siwinGlobals]
     import ./platforms/wayland/[siwinGlobals]
   elif defined(windows):
@@ -15,7 +15,7 @@ when not siwin_use_lib:
   ): Window =
     when defined(android):
       newOpenglWindowAndroid()
-    elif defined(linux):
+    elif defined(linux) or defined(bsd):
       if globals of SiwinGlobalsX11:
         globals.SiwinGlobalsX11.newOpenglContextX11()
       elif globals of SiwinGlobalsWayland:

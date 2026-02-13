@@ -11,17 +11,20 @@ test "Vulkan":
   when not UseVulkan:
     skip()
   else:
-    let exts = getRequiredVulkanExtensions()
-    var cexts = exts.mapit(it[0].unsafeaddr)
+    if not isVulkanAvailable():
+      skip()
 
-    instance = createInstance(cast[cstringArray](cexts[0].addr), exts.len.uint32)
+    var ticks = 0
+    let exts = getRequiredVulkanExtensions()
+    let cexts = exts.mapit(cstring(it))
+    instance = createInstance(cexts)
 
     let globals = newSiwinGlobals()
 
     let window = globals.newVulkanWindow(
       cast[pointer](instance), title="Vulkan test", size = ivec2(WIDTH.int32, HEIGHT.int32), resizable=false
     )
-    surface = cast[VkSurfaceKHR](window.vulkanSurface)
+    surface = cast[typeof(surface)](window.vulkanSurface)
     
     init()
     run window, WindowEventsHandler(
@@ -30,6 +33,11 @@ test "Vulkan":
       ,
       onKey: proc(e: KeyEvent) =
         if e.pressed and e.key == Key.escape:
+          close e.window
+      ,
+      onTick: proc(e: TickEvent) =
+        inc ticks
+        if ticks > 180:
           close e.window
     )
     deinit()

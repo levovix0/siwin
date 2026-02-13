@@ -10,10 +10,10 @@ requires "vmath >= 1.1.4"
 
 # note: require platform dependencies only if it is the platform on which userprogrammer works.
 #       ask a userprogrammer to install specific platform dependencies if cross compiling.
-when defined(linux):
+when defined(linux) or defined(bsd):
   requires "x11 >= 1.1"
-  #requires "https://github.com/planetis-m/vulkan#b223dc9"
-  requires "https://github.com/DanielBelmes/vulkan"
+  requires "https://github.com/planetis-m/vulkan#b223dc9"
+  #requires "https://github.com/DanielBelmes/vulkan"
 
 when defined(windows):
   requires "winim >= 3.6"

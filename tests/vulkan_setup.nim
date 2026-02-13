@@ -31,6 +31,13 @@ const
   WIDTH* = 800.uint32
   HEIGHT* = 600.uint32
 
+proc isVulkanAvailable*(): bool =
+  try:
+    vkPreload()
+    not vkCreateInstance.isNil
+  except CatchableError:
+    false
+
 proc isComplete(indices: QueueFamilyIndices): bool =
   indices.graphicsFamilyFound and indices.presentFamilyFound
 
@@ -68,28 +75,22 @@ proc createLogicalDevice(physicalDevice: VkPhysicalDevice, surface: VkSurfaceKHR
     let deviceQueueCreateInfo = newVkDeviceQueueCreateInfo(
       sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
       queueFamilyIndex = queueFamily,
-      queueCount = 1,
-      pQueuePriorities = queuePriority.addr
+      queuePriorities = [queuePriority]
     )
     queueCreateInfos.add(deviceQueueCreateInfo)
 
   var
     deviceFeatures = newSeq[VkPhysicalDeviceFeatures](1)
-    deviceExts = allocCStringArray(deviceExtensions)
+    deviceExts = deviceExtensions.mapIt(cstring(it))
     deviceCreateInfo = newVkDeviceCreateInfo(
-      pQueueCreateInfos = queueCreateInfos[0].addr,
-      queueCreateInfoCount = queueCreateInfos.len.uint32,
-      pEnabledFeatures = deviceFeatures[0].addr,
-      enabledExtensionCount = deviceExtensions.len.uint32,
-      enabledLayerCount = 0,
-      ppEnabledLayerNames = nil,
-      ppEnabledExtensionNames = deviceExts
+      queueCreateInfos = queueCreateInfos,
+      pEnabledLayerNames = [],
+      pEnabledExtensionNames = deviceExts,
+      enabledFeatures = deviceFeatures
     )
 
   if vkCreateDevice(physicalDevice, deviceCreateInfo.addr, nil, result.addr) != VKSuccess:
     echo "failed to create logical device"
-
-  deallocCStringArray(deviceExts)
 
   vkGetDeviceQueue(result, indices.graphicsFamily, 0, graphicsQueue.addr)
   vkGetDeviceQueue(result, indices.presentFamily, 0, presentQueue.addr)
@@ -134,25 +135,30 @@ proc isDeviceSuitable(pDevice: VkPhysicalDevice, surface: VkSurfaceKHR): bool =
   let indices: QueueFamilyIndices = findQueueFamilies(pDevice, surface)
   return indices.isComplete and extsSupported and swapChainAdequate
 
-proc createInstance*(extensions: cstringArray, extensionCount: uint32): VkInstance =
+proc createInstance*(extensions: openArray[cstring]): VkInstance =
+  vkPreload()
+
   var appInfo = newVkApplicationInfo(
     pApplicationName = "siwin Vulkan example",
-    applicationVersion = vkMakeVersion(1, 0, 0),
+    applicationVersion = vkMakeVersion(0, 1, 0, 0),
     pEngineName = "No Engine",
-    engineVersion = vkMakeVersion(1, 0, 0),
-    apiVersion = VkApiVersion1_1
+    engineVersion = vkMakeVersion(0, 1, 0, 0),
+    apiVersion = vkApiVersion1_1
   )
 
-  var instanceCreateInfo = newVkInstanceCreateInfo(
-    pApplicationInfo = appInfo.addr,
-    enabledExtensionCount = extensionCount,
-    ppEnabledExtensionNames = extensions,
-    enabledLayerCount = 0,
-    ppEnabledLayerNames = nil,
+  var instanceCreateInfo = VkInstanceCreateInfo(
+    sType: VkStructureType.InstanceCreateInfo,
+    pApplicationInfo: appInfo.addr,
+    enabledLayerCount: 0,
+    ppEnabledLayerNames: nil,
+    enabledExtensionCount: extensions.len.uint32,
+    ppEnabledExtensionNames: if extensions.len == 0: nil else: cast[cstringArray](unsafeAddr extensions[0]),
   )
 
   if vkCreateInstance(instanceCreateInfo.addr, nil, result.addr) != VKSuccess:
     quit("failed to create instance")
+
+  vkInit(result)
 
   var extensionCount: uint32 = 0
   discard vkEnumerateInstanceExtensionProperties(nil, extensionCount.addr, nil)
@@ -553,6 +559,9 @@ var
   semaphores*: Semaphores
 
 proc init*() =
+  loadVK_KHR_surface()
+  loadVK_KHR_swapchain()
+
   physicalDevice = pickPhysicalDevice(instance, surface)
   device = createLogicalDevice(physicalDevice, surface, graphicsQueue, presentQueue)
   swapChain = createSwapChain(device, physicalDevice, surface)

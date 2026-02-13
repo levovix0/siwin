@@ -64,8 +64,8 @@ proc initVulkanWindow(
     sType: VK_STRUCTURE_TYPE_WAYLAND_SURFACE_CREATE_INFO_KHR,
     pNext: nil,
     flags: 0.uint32,
-    display: window.globals.display,
-    surface: window.surface,
+    display: window.globals.display.raw,
+    surface: cast[pointer](window.surface.proxy.raw),
   )
   let res = vkCreateWaylandSurfaceKHR(vkInstance, info.addr, nil, window.vulkan_surface.raw.addr)
   if res != VK_SUCCESS:

@@ -5,7 +5,7 @@ import ./platforms/any/window
 when not siwin_use_lib:
   when defined(android):
     ##
-  when defined(linux) and not defined(android):
+  when defined(linux) or defined(bsd) and not defined(android):
     import ./platforms/wayland/siwinGlobals as waylandGlobals
     import ./platforms/x11/siwinGlobals as x11Globals
   when defined(windows):
@@ -41,7 +41,7 @@ when not siwin_use_lib:
     elif defined(android):
       @[Platform.android]
     
-    elif defined(linux):
+    elif defined(linux) or defined(bsd):
       if isWaylandAvailable():
         @[Platform.wayland, Platform.x11]
         # x11 is available on wayland compositors through XWayland
@@ -95,7 +95,7 @@ when not siwin_use_lib:
     when defined(android):
       result = SiwinGlobals()
 
-    elif defined(linux):
+    elif defined(linux) or defined(bsd):
       case availablePlatforms().platformToUse(preferedPlatform)
       of x11:
         return newX11Globals()
