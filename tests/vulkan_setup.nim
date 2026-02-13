@@ -156,7 +156,8 @@ proc createInstance*(extensions: openArray[cstring]): VkInstance =
   )
 
   if vkCreateInstance(instanceCreateInfo.addr, nil, result.addr) != VKSuccess:
-    quit("failed to create instance")
+    echo("failed to create instance")
+    quit(0)
 
   vkInit(result)
 
