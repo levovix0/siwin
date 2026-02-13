@@ -116,7 +116,7 @@ when not siwin_use_lib:
 
 
 proc siwin_new_globals(platform: Platform): SiwinGlobals {.siwin_import_export.} =
-  newSiwinGlobals()
+  newSiwinGlobals(platform)
 
 proc newSiwinGlobals*(preferedPlatform: Platform = defaultPreferedPlatform()): SiwinGlobals {.siwin_export_import.} =
   siwin_new_globals(preferedPlatform)

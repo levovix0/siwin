@@ -3,7 +3,7 @@ import opengl, vmath
 import siwin
 
 let globals = newSiwinGlobals(
-  preferedPlatform = (when defined(linux): x11 else: defaultPreferedPlatform())
+  preferedPlatform = (when defined(linux) or defined(bsd): x11 else: defaultPreferedPlatform())
 )
 
 test "OpenGL":

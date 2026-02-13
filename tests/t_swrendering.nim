@@ -4,7 +4,9 @@ import siwin/[platforms, window, colorutils, clipboards]
 
 {.experimental: "overloadableEnums".}
 
-let globals = newSiwinGlobals()
+let globals = newSiwinGlobals(
+  preferedPlatform = (when defined(linux) or defined(bsd): x11 else: defaultPreferedPlatform())
+)
 
 test "screen":
   if globals.screenCount() == 1:
