@@ -44,7 +44,7 @@ proc findQueueFamilies(pDevice: VkPhysicalDevice, surface: VkSurfaceKHR): QueueF
 
   var index: uint32 = 0
   for queueFamily in queueFamilies:
-    if (queueFamily.queueFlags.uint32 and VkQueueGraphicsBit.uint32) > 0'u32:
+    if (queueFamily.queueFlags.uint32 and VK_QUEUE_GRAPHICS_BIT.uint32) > 0'u32:
       result.graphicsFamily = index
       result.graphicsFamilyFound = true
     var presentSupport: VkBool32
@@ -613,4 +613,3 @@ proc deinit*() =
   vkDestroySwapchainKHR(device, swapChain.swapChain, nil)
   vkDestroyDevice(device, nil)
   vkDestroyInstance(instance, nil)
-
