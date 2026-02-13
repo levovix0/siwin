@@ -1,7 +1,4 @@
 
-when not (compiles do: import vulkan):
-  {.error: "please run `nimble install https://github.com/planetis-m/vulkan`".}
-
 include vulkan
 include vulkan/headers
 

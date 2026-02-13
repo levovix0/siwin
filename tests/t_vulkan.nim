@@ -5,7 +5,7 @@ import siwin
 const UseVulkan = defined(linux) or defined(bsd) or defined(feature.siwin.vulkan)
 
 when UseVulkan:
-  include ./vulkan_setup
+  import ./vulkan_setup
 
 test "Vulkan":
   when not UseVulkan:
