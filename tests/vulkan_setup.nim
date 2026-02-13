@@ -1,5 +1,6 @@
 
-include vulkan
+import vulkan
+
 include vulkan/headers
 
 type
