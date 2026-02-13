@@ -68,8 +68,7 @@ proc createLogicalDevice(physicalDevice: VkPhysicalDevice, surface: VkSurfaceKHR
     let deviceQueueCreateInfo = newVkDeviceQueueCreateInfo(
       sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
       queueFamilyIndex = queueFamily,
-      queueCount = 1,
-      pQueuePriorities = queuePriority.addr
+      queuePriorities = queuePriority,
     )
     queueCreateInfos.add(deviceQueueCreateInfo)
 
