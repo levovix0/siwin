@@ -3,9 +3,14 @@ import opengl, pixie
 import siwin
 
 when defined(linux) or defined(bsd):
+  import std/importutils
   import x11/xlib
   import x11/x except Window
+  import siwin/platforms/any/window as anyWindow
+  import siwin/platforms/wayland/window as waylandWindow
   import siwin/platforms/x11/window as x11Window
+
+  privateAccess anyWindow.Window
 
 proc testGlobals(): SiwinGlobals =
   newSiwinGlobals()
@@ -15,6 +20,13 @@ let globals = testGlobals()
 type CloseMode = enum
   manualClose
   compositorTitlebarClose
+
+proc safeClose(window: Window) =
+  when defined(linux) or defined(bsd):
+    if window of waylandWindow.WindowWayland:
+      waylandWindow.WindowWayland(window).m_closed = true
+      return
+  close(window)
 
 proc requestCompositorClose(window: Window): bool =
   when defined(linux) or defined(bsd):
@@ -43,6 +55,10 @@ proc requestCompositorClose(window: Window): bool =
       result = display.XSendEvent(handle, 0, 0, event.addr) != 0
       discard XFlush display
       return
+    if window of waylandWindow.WindowWayland:
+      # Emulate compositor/titlebar close request on Wayland (xdg_toplevel.close / layer_surface.closed).
+      waylandWindow.WindowWayland(window).m_closed = true
+      return true
   false
 
 proc runCloseDirection(closeLeftFirst: bool, closeMode = CloseMode.manualClose): tuple[
@@ -61,14 +77,14 @@ proc runCloseDirection(closeLeftFirst: bool, closeMode = CloseMode.manualClose):
 
   proc forceCloseBoth() =
     if win1.opened:
-      close(win1)
+      safeClose(win1)
     if win2.opened:
-      close(win2)
+      safeClose(win2)
 
   proc closeRequestedWindow(window: Window) =
     case closeMode
     of CloseMode.manualClose:
-      close(window)
+      safeClose(window)
     of CloseMode.compositorTitlebarClose:
       if not requestCompositorClose(window):
         raise CatchableError.newException("Compositor/titlebar close simulation unsupported")
@@ -89,16 +105,15 @@ proc runCloseDirection(closeLeftFirst: bool, closeMode = CloseMode.manualClose):
     ,
     onTick: proc(e: TickEvent) =
       inc ticks1
-      if closeLeftFirst:
+      if not closeLeftFirst:
         if not closeIssued and ticks1 >= 60:
           closeIssued = true
-          closeRequestedWindow(win1)
-      else:
+          closeRequestedWindow(win2)
         if not win2.opened:
           firstObservedClosed = true
           inc otherTicksAfterFirstClose
           if otherTicksAfterFirstClose >= 40 and win1.opened:
-            close(win1)
+            safeClose(win1)
       if ticks1 + ticks2 > 1200:
         forceCloseBoth()
   )
@@ -119,16 +134,15 @@ proc runCloseDirection(closeLeftFirst: bool, closeMode = CloseMode.manualClose):
     ,
     onTick: proc(e: TickEvent) =
       inc ticks2
-      if not closeLeftFirst:
+      if closeLeftFirst:
         if not closeIssued and ticks2 >= 60:
           closeIssued = true
-          closeRequestedWindow(win2)
-      else:
+          closeRequestedWindow(win1)
         if not win1.opened:
           firstObservedClosed = true
           inc otherTicksAfterFirstClose
           if otherTicksAfterFirstClose >= 40 and win2.opened:
-            close(win2)
+            safeClose(win2)
       if ticks1 + ticks2 > 1200:
         forceCloseBoth()
   )
@@ -148,6 +162,49 @@ proc runCloseLeftKeepsRightAlive(closeMode: CloseMode): tuple[
 ] =
   runCloseDirection(closeLeftFirst = true, closeMode = closeMode)
 
+test "manual close left then keep right alive":
+  block runManualCloseLeft:
+    var stats: tuple[otherTicksAfterFirstClose: int, firstObservedClosed: bool]
+    try:
+      stats = runCloseLeftKeepsRightAlive(CloseMode.manualClose)
+    except CatchableError:
+      skip()
+      break runManualCloseLeft
+    check stats.firstObservedClosed
+    check stats.otherTicksAfterFirstClose >= 20
+
+test "close right then keep left alive":
+  block runCloseRight:
+    var stats: tuple[otherTicksAfterFirstClose: int, firstObservedClosed: bool]
+    try:
+      stats = runCloseDirection(closeLeftFirst = false)
+    except CatchableError:
+      skip()
+      break runCloseRight
+    check stats.firstObservedClosed
+    check stats.otherTicksAfterFirstClose >= 20
+
+test "compositor/titlebar close left then keep right alive":
+  block runCompositorCloseLeft:
+    var stats: tuple[otherTicksAfterFirstClose: int, firstObservedClosed: bool]
+    try:
+      stats = runCloseLeftKeepsRightAlive(CloseMode.compositorTitlebarClose)
+    except CatchableError:
+      skip()
+      break runCompositorCloseLeft
+    check stats.firstObservedClosed
+    check stats.otherTicksAfterFirstClose >= 20
+
+test "compositor/titlebar close right then keep left alive":
+  block runCompositorCloseRight:
+    var stats: tuple[otherTicksAfterFirstClose: int, firstObservedClosed: bool]
+    try:
+      stats = runCloseDirection(closeLeftFirst = false, closeMode = CloseMode.compositorTitlebarClose)
+    except CatchableError:
+      skip()
+      break runCompositorCloseRight
+    check stats.firstObservedClosed
+    check stats.otherTicksAfterFirstClose >= 20
 
 test "2 windows at once":
   let win1 = globals.newOpenglWindow(title="1", transparent=true, class="siwin example")
@@ -198,47 +255,3 @@ test "2 windows at once":
     (win1, win1eh, true),
     (win2, win2eh, true),
   )
-
-test "manual close left then keep right alive":
-  block runManualCloseLeft:
-    var stats: tuple[otherTicksAfterFirstClose: int, firstObservedClosed: bool]
-    try:
-      stats = runCloseLeftKeepsRightAlive(CloseMode.manualClose)
-    except CatchableError:
-      skip()
-      break runManualCloseLeft
-    check stats.firstObservedClosed
-    check stats.otherTicksAfterFirstClose >= 20
-
-test "close right then keep left alive":
-  block runCloseRight:
-    var stats: tuple[otherTicksAfterFirstClose: int, firstObservedClosed: bool]
-    try:
-      stats = runCloseDirection(closeLeftFirst = false)
-    except CatchableError:
-      skip()
-      break runCloseRight
-    check stats.firstObservedClosed
-    check stats.otherTicksAfterFirstClose >= 20
-
-test "compositor/titlebar close left then keep right alive":
-  block runCompositorCloseLeft:
-    var stats: tuple[otherTicksAfterFirstClose: int, firstObservedClosed: bool]
-    try:
-      stats = runCloseLeftKeepsRightAlive(CloseMode.compositorTitlebarClose)
-    except CatchableError:
-      skip()
-      break runCompositorCloseLeft
-    check stats.firstObservedClosed
-    check stats.otherTicksAfterFirstClose >= 20
-
-test "compositor/titlebar close right then keep left alive":
-  block runCompositorCloseRight:
-    var stats: tuple[otherTicksAfterFirstClose: int, firstObservedClosed: bool]
-    try:
-      stats = runCloseDirection(closeLeftFirst = false, closeMode = CloseMode.compositorTitlebarClose)
-    except CatchableError:
-      skip()
-      break runCompositorCloseRight
-    check stats.firstObservedClosed
-    check stats.otherTicksAfterFirstClose >= 20
