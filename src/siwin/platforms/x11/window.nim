@@ -84,6 +84,13 @@ type
   WindowX11SoftwareRenderingObj* = object of WindowX11
     gc: GraphicsContext
     pixels: pointer
+    softwarePresentEnabled*: bool
+
+proc nativeDisplayHandle*(window: WindowX11): pointer =
+  cast[pointer](window.globals.display)
+
+proc nativeWindowHandle*(window: WindowX11): uint64 =
+  cast[uint64](window.handle)
 
 
 const libXExt* =
@@ -661,6 +668,8 @@ method pixelBuffer*(window: WindowX11SoftwareRendering): PixelBuffer =
 
 
 method endSwapBuffers(window: WindowX11SoftwareRendering) =
+  if not window.softwarePresentEnabled:
+    return
   if window.pixels == nil: return
   var ximg = window.globals.asXImage(window.pixels, window.m_size, window.transparent)
   
@@ -1425,9 +1434,13 @@ proc newSoftwareRenderingWindowX11*(
   class = "", # window class (used in x11), equals to title if not specified
 ): WindowX11SoftwareRendering =
   new result
+  result.softwarePresentEnabled = true
   result.globals = globals
   result.initSoftwareRenderingWindow(
     size, screen, fullscreen, frameless, transparent, (if class == "": title else: class)
   )
   result.title = title
   if not resizable: result.resizable = false
+
+proc setSoftwarePresentEnabled*(window: WindowX11SoftwareRendering, enabled: bool) =
+  window.softwarePresentEnabled = enabled

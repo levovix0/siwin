@@ -125,11 +125,15 @@ proc isWaylandAvailable*: bool =
 
   if wl_display_connect == nil: return false
   
+  let isWayland = getEnv("XDG_SESSION_TYPE") == "wayland"
+  if not isWayland: return false
+
+  let runtimeDir = getEnv("XDG_RUNTIME_DIR")
+  if runtimeDir == "": return false
+
   var serverName = getEnv("WAYLAND_DISPLAY")
   if serverName == "": serverName = "wayland-0"
   
-  var runtimeDir = getEnv("XDG_RUNTIME_DIR")
-  if runtimeDir == "": return false
   let waylandServer = runtimeDir / serverName
 
   result = isSocket(waylandServer)

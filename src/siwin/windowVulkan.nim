@@ -82,7 +82,7 @@ proc siwin_new_vulkan_window(
   newVulkanWindow(
     globals, vkInstance,
     ivec2(size_x.int32, size_y.int32), $title, screen.int32,
-    fullscreen.bool, resizable.bool, frameless.bool, transparent.bool,
+    resizable.bool, fullscreen.bool, frameless.bool, transparent.bool,
     $winclass
   )
 
@@ -124,4 +124,4 @@ proc newVulkanWindow*(
   
   preferedPlatform: Platform = defaultPreferedPlatform(),
 ): Window =
-  newVulkanWindow(newSiwinGlobals(preferedPlatform), vkInstance, size, title, screen, fullscreen, resizable, frameless, transparent, class)
+  newVulkanWindow(newSiwinGlobals(preferedPlatform), vkInstance, size, title, screen, resizable, fullscreen, frameless, transparent, class)

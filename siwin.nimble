@@ -79,7 +79,7 @@ task testUseLib, "build and run tests/t_opengl using dynamic linking to siwin":
 
 
 
-import strformat, os
+import strformat, os, strutils
 
 proc createZigccIfNeeded =
   let code = "import std/[os, osproc]; quit startProcess(\"/usr/bin/zig\", args = @[\"cc\"] & commandLineParams(), options = {poParentStreams}).waitForExit"
@@ -117,14 +117,39 @@ task installAndroidDeps, "install android dependencies":
 
 const testTargets = ["t_opengl_es", "t_opengl", "t_swrendering", "t_multiwindow", "t_vulkan", "t_offscreen"]
 
-proc runTests(args: string) =
+proc runTests(args: string, envPrefix = "") =
   withDir "tests":
     for target in testTargets:
-      exec "nim c " & args & " --hints:off -r " & target
+      exec (if envPrefix.len != 0: envPrefix & " " else: "") & "nim c " & args & " --hints:off -r " & target
+
+proc runTestsForSession(args: string) =
+  when defined(linux) or defined(bsd):
+    let
+      sessionType = getEnv("XDG_SESSION_TYPE").toLowerAscii()
+      hasWaylandDisplay = getEnv("WAYLAND_DISPLAY").len != 0
+      hasX11Display = getEnv("DISPLAY").len != 0
+
+    var ranAtLeastOne = false
+
+    if hasWaylandDisplay or sessionType == "wayland":
+      echo "Running tests with Wayland session env (XDG_SESSION_TYPE=wayland, DISPLAY=)"
+      runTests(args, "XDG_SESSION_TYPE=wayland ")
+      ranAtLeastOne = true
+
+    if hasX11Display or sessionType == "x11":
+      echo "Running tests with X11 session env (XDG_SESSION_TYPE=x11, WAYLAND_DISPLAY=)"
+      runTests(args, "XDG_SESSION_TYPE=x11 ")
+      ranAtLeastOne = true
+
+    if not ranAtLeastOne:
+      echo "No DISPLAY/WAYLAND_DISPLAY detected; running tests once with current environment"
+      runTests(args)
+  else:
+    runTests(args)
 
 
 task test, "test":
-  runTests ""
+  runTestsForSession("")
 
 task testRefc, "test with --mm:refc":
   runTests "--mm:refc"
