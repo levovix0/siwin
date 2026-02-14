@@ -133,12 +133,12 @@ proc runTestsForSession(args: string) =
 
     if hasWaylandDisplay or sessionType == "wayland":
       echo "Running tests with Wayland session env (XDG_SESSION_TYPE=wayland, DISPLAY=)"
-      runTests(args, "XDG_SESSION_TYPE=wayland DISPLAY=")
+      runTests(args, "XDG_SESSION_TYPE=wayland ")
       ranAtLeastOne = true
 
     if hasX11Display or sessionType == "x11":
       echo "Running tests with X11 session env (XDG_SESSION_TYPE=x11, WAYLAND_DISPLAY=)"
-      runTests(args, "XDG_SESSION_TYPE=x11 WAYLAND_DISPLAY=")
+      runTests(args, "XDG_SESSION_TYPE=x11 ")
       ranAtLeastOne = true
 
     if not ranAtLeastOne:

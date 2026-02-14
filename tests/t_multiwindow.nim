@@ -7,8 +7,6 @@ when defined(linux) or defined(bsd):
   import x11/x except Window
   import siwin/platforms/x11/window as x11Window
 
-{.experimental: "overloadableEnums".}
-
 proc testGlobals(): SiwinGlobals =
   when defined(linux) or defined(bsd):
     try:
