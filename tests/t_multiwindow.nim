@@ -8,13 +8,7 @@ when defined(linux) or defined(bsd):
   import siwin/platforms/x11/window as x11Window
 
 proc testGlobals(): SiwinGlobals =
-  when defined(linux) or defined(bsd):
-    try:
-      newSiwinGlobals(Platform.x11)
-    except CatchableError:
-      newSiwinGlobals()
-  else:
-    newSiwinGlobals()
+  newSiwinGlobals()
 
 let globals = testGlobals()
 
