@@ -85,6 +85,12 @@ type
     gc: GraphicsContext
     pixels: pointer
 
+proc nativeDisplayHandle*(window: WindowX11): pointer =
+  cast[pointer](window.globals.display)
+
+proc nativeWindowHandle*(window: WindowX11): uint64 =
+  cast[uint64](window.handle)
+
 
 const libXExt* =
   when defined(macosx):
