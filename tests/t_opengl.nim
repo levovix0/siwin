@@ -5,37 +5,90 @@ import siwin
 let globals = newSiwinGlobals()
 
 test "OpenGL":
-  var g = 1.0
+  var g = 1.0'f32
   var ticks = 0
+
+  let vertSrc = """
+#ifdef GL_ES
+precision mediump float;
+#endif
+attribute vec2 aPos;
+varying vec2 vPos;
+void main() {
+  vPos = aPos;
+  gl_Position = vec4(aPos, 0.0, 1.0);
+}
+"""
+
+  let fragSrc = """
+#ifdef GL_ES
+precision mediump float;
+#endif
+varying vec2 vPos;
+uniform float uG;
+void main() {
+  vec3 col = vec3((vPos.x + 1.0) * 0.5 * uG, (vPos.y + 1.0) * 0.5, 1.0 - uG * 0.5);
+  gl_FragColor = vec4(col, 1.0);
+}
+"""
+
+  proc compileShader(kind: GlEnum, src: string): GlUint =
+    result = glCreateShader(kind)
+    var csrc = src.cstring
+    glShaderSource(result, 1, cast[cstringArray](csrc.addr), nil)
+    glCompileShader(result)
+    var ok: GlInt
+    glGetShaderiv(result, GlCompileStatus, ok.addr)
+    if ok != GlTrue.GlInt:
+      var buffer: array[512, char]
+      glGetShaderInfoLog(result, buffer.len.Glsizei, nil, cast[cstring](buffer.addr))
+      raise CatchableError.newException("shader compile failed: " & $cast[cstring](buffer.addr))
+
+  proc linkProgram(vs, fs: GlUint): GlUint =
+    result = glCreateProgram()
+    glAttachShader(result, vs)
+    glAttachShader(result, fs)
+    glLinkProgram(result)
+    var ok: GlInt
+    glGetProgramiv(result, GlLinkStatus, ok.addr)
+    if ok != GlTrue.GlInt:
+      var buffer: array[512, char]
+      glGetProgramInfoLog(result, buffer.len.Glsizei, nil, cast[cstring](buffer.addr))
+      raise CatchableError.newException("shader link failed: " & $cast[cstring](buffer.addr))
   
   let window = globals.newOpenglWindow(title="OpenGL test", transparent=true)
   loadExtensions()
+
+  let
+    vs = compileShader(GlVertexShader, vertSrc)
+    fs = compileShader(GlFragmentShader, fragSrc)
+    program = linkProgram(vs, fs)
+  glDeleteShader(vs)
+  glDeleteShader(fs)
+
+  let
+    aPos = glGetAttribLocation(program, "aPos")
+    uG = glGetUniformLocation(program, "uG")
+
+  let triangle: array[6, GlFloat] = [
+    -0.8, -0.8,
+     0.8, -0.8,
+     0.0,  0.8,
+  ]
   
   run window, WindowEventsHandler(
     onResize: proc(e: ResizeEvent) =
       glViewport 0, 0, e.size.x.GLsizei, e.size.y.GLsizei
-      glMatrixMode GlProjection
-      glLoadIdentity()
-      glOrtho -30, 30, -30, 30, -30, 30
-      glMatrixMode GlModelView
     ,
     onRender: proc(e: RenderEvent) =
-      glClearColor 0.1, 0.1, 0.1, 0.3
+      glClearColor 0.1, 0.1, 0.1, 1.0
       glClear GlColorBufferBit or GlDepthBufferBit
-    
-      glShadeModel GlSmooth
-    
-      glLoadIdentity()
-      glTranslatef -15, -15, 0
-    
-      glBegin GlTriangles
-      glColor3f 1 * g, g - 1, g - 1
-      glVertex2f 0, 0
-      glColor3f g - 1, 1 * g, g - 1
-      glVertex2f 30, 0
-      glColor3f g - 1, g - 1, 1 * g
-      glVertex2f 0, 30
-      glEnd()
+      glUseProgram(program)
+      glUniform1f(uG, g)
+      glEnableVertexAttribArray(aPos.GlUint)
+      glVertexAttribPointer(aPos.GlUint, 2, cGlFloat, GlFalse, 0, triangle[0].unsafeAddr)
+      glDrawArrays(GlTriangles, 0, 3)
+      glDisableVertexAttribArray(aPos.GlUint)
     ,
     onKey: proc(e: KeyEvent) =
       if e.pressed:
