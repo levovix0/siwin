@@ -2,9 +2,7 @@ import unittest
 import opengl, vmath
 import siwin
 
-let globals = newSiwinGlobals(
-  preferedPlatform = (when defined(linux) or defined(bsd): x11 else: defaultPreferedPlatform())
-)
+let globals = newSiwinGlobals()
 
 test "OpenGL":
   var g = 1.0
