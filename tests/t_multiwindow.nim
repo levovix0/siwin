@@ -143,6 +143,11 @@ proc runCloseDirection(closeLeftFirst: bool, closeMode = CloseMode.manualClose):
     firstObservedClosed: firstObservedClosed,
   )
 
+proc runCloseLeftKeepsRightAlive(closeMode: CloseMode): tuple[
+    otherTicksAfterFirstClose: int, firstObservedClosed: bool
+] =
+  runCloseDirection(closeLeftFirst = true, closeMode = closeMode)
+
 
 test "2 windows at once":
   let win1 = globals.newOpenglWindow(title="1", transparent=true, class="siwin example")
@@ -194,14 +199,14 @@ test "2 windows at once":
     (win2, win2eh, true),
   )
 
-test "close left then keep right alive":
-  block runCloseLeft:
+test "manual close left then keep right alive":
+  block runManualCloseLeft:
     var stats: tuple[otherTicksAfterFirstClose: int, firstObservedClosed: bool]
     try:
-      stats = runCloseDirection(closeLeftFirst = true)
+      stats = runCloseLeftKeepsRightAlive(CloseMode.manualClose)
     except CatchableError:
       skip()
-      break runCloseLeft
+      break runManualCloseLeft
     check stats.firstObservedClosed
     check stats.otherTicksAfterFirstClose >= 20
 
@@ -220,7 +225,7 @@ test "compositor/titlebar close left then keep right alive":
   block runCompositorCloseLeft:
     var stats: tuple[otherTicksAfterFirstClose: int, firstObservedClosed: bool]
     try:
-      stats = runCloseDirection(closeLeftFirst = true, closeMode = CloseMode.compositorTitlebarClose)
+      stats = runCloseLeftKeepsRightAlive(CloseMode.compositorTitlebarClose)
     except CatchableError:
       skip()
       break runCompositorCloseLeft
