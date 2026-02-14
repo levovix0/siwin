@@ -105,11 +105,9 @@ when not siwin_use_lib:
         echo "X11"
         return newX11Globals()
       of wayland:
-        echo "Wayland"
         result = newWaylandGlobals()
         result.SiwinGlobalsWayland.roundtrip()
       else:
-        echo "other"
         raise SiwinPlatformSupportDefect.newException("Unsupported platform")
     
     elif defined(windows):
