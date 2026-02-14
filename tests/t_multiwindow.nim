@@ -2,6 +2,11 @@ import unittest
 import opengl, pixie
 import siwin
 
+when defined(linux) or defined(bsd):
+  import x11/xlib
+  import x11/x except Window
+  import siwin/platforms/x11/window as x11Window
+
 {.experimental: "overloadableEnums".}
 
 proc testGlobals(): SiwinGlobals =
@@ -15,7 +20,40 @@ proc testGlobals(): SiwinGlobals =
 
 let globals = testGlobals()
 
-proc runCloseDirection(closeLeftFirst: bool): tuple[
+type CloseMode = enum
+  manualClose
+  compositorTitlebarClose
+
+proc requestCompositorClose(window: Window): bool =
+  when defined(linux) or defined(bsd):
+    if window of x11Window.WindowX11:
+      let
+        x11win = x11Window.WindowX11(window)
+        display = cast[ptr Display](x11Window.nativeDisplayHandle(x11win))
+      if display == nil:
+        return false
+
+      let
+        handle = x11Window.nativeWindowHandle(x11win).culong
+        wmProtocols = display.XInternAtom("WM_PROTOCOLS", 0)
+        wmDeleteWindow = display.XInternAtom("WM_DELETE_WINDOW", 0)
+      if wmDeleteWindow == 0:
+        return false
+
+      var event: XEvent
+      event.theType = ClientMessage
+      event.xclient.messageType = wmProtocols
+      event.xclient.window = handle
+      event.xclient.display = display
+      event.xclient.format = 32
+      event.xclient.data.l[0] = wmDeleteWindow.clong
+
+      result = display.XSendEvent(handle, 0, 0, event.addr) != 0
+      discard XFlush display
+      return
+  false
+
+proc runCloseDirection(closeLeftFirst: bool, closeMode = CloseMode.manualClose): tuple[
     otherTicksAfterFirstClose: int, firstObservedClosed: bool
 ] =
   let win1 = globals.newOpenglWindow(title="1", transparent=true, class="siwin example")
@@ -34,6 +72,14 @@ proc runCloseDirection(closeLeftFirst: bool): tuple[
       close(win1)
     if win2.opened:
       close(win2)
+
+  proc closeRequestedWindow(window: Window) =
+    case closeMode
+    of CloseMode.manualClose:
+      close(window)
+    of CloseMode.compositorTitlebarClose:
+      if not requestCompositorClose(window):
+        raise CatchableError.newException("Compositor/titlebar close simulation unsupported")
 
   let win1eh = WindowEventsHandler(
     onResize: proc(e: ResizeEvent) =
@@ -54,7 +100,7 @@ proc runCloseDirection(closeLeftFirst: bool): tuple[
       if closeLeftFirst:
         if not closeIssued and ticks1 >= 60:
           closeIssued = true
-          close(win1)
+          closeRequestedWindow(win1)
       else:
         if not win2.opened:
           firstObservedClosed = true
@@ -84,7 +130,7 @@ proc runCloseDirection(closeLeftFirst: bool): tuple[
       if not closeLeftFirst:
         if not closeIssued and ticks2 >= 60:
           closeIssued = true
-          close(win2)
+          closeRequestedWindow(win2)
       else:
         if not win1.opened:
           firstObservedClosed = true
@@ -175,5 +221,27 @@ test "close right then keep left alive":
     except CatchableError:
       skip()
       break runCloseRight
+    check stats.firstObservedClosed
+    check stats.otherTicksAfterFirstClose >= 20
+
+test "compositor/titlebar close left then keep right alive":
+  block runCompositorCloseLeft:
+    var stats: tuple[otherTicksAfterFirstClose: int, firstObservedClosed: bool]
+    try:
+      stats = runCloseDirection(closeLeftFirst = true, closeMode = CloseMode.compositorTitlebarClose)
+    except CatchableError:
+      skip()
+      break runCompositorCloseLeft
+    check stats.firstObservedClosed
+    check stats.otherTicksAfterFirstClose >= 20
+
+test "compositor/titlebar close right then keep left alive":
+  block runCompositorCloseRight:
+    var stats: tuple[otherTicksAfterFirstClose: int, firstObservedClosed: bool]
+    try:
+      stats = runCloseDirection(closeLeftFirst = false, closeMode = CloseMode.compositorTitlebarClose)
+    except CatchableError:
+      skip()
+      break runCompositorCloseRight
     check stats.firstObservedClosed
     check stats.otherTicksAfterFirstClose >= 20
