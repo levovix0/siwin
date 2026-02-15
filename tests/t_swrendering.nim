@@ -70,6 +70,10 @@ when not defined(windows):
         image = newImage(e.size.x, e.size.y)
       ,
       onRender: proc(e: RenderEvent) =
+        let pixelBuffer = e.window.pixelBuffer
+        if image.isNil or image.width != pixelBuffer.size.x or image.height != pixelBuffer.size.y:
+          image = newImage(pixelBuffer.size.x, pixelBuffer.size.y)
+
         image.fill(rgba(255, 255, 255, 0))
 
         let ctx = image.newContext
@@ -83,8 +87,7 @@ when not defined(windows):
 
         ctx.fillStyle = rgba(50, 50, 255, 255)
         ctx.fillRoundedRect(rect(pos, wh), 25.0)
-        
-        let pixelBuffer = e.window.pixelBuffer
+
         copyMem(pixelBuffer.data, image.data[0].addr, pixelBuffer.size.x * pixelBuffer.size.y * Color32bit.sizeof)
         convertPixelsInplace(pixelBuffer.data, pixelBuffer.size, PixelBufferFormat.rgbx_32bit, pixelBuffer.format)
       ,

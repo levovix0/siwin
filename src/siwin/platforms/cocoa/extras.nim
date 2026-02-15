@@ -3,6 +3,9 @@ import pkg/darwin/objc/runtime
 
 export app_kit, foundation, runtime
 
+when not declared(activateIgnoringOtherApps):
+  proc activateIgnoringOtherApps*(self: NSApplication, x: bool) {.objc: "activateIgnoringOtherApps:".}
+
 when not compiles(screens(NSScreen)):
   proc screens*(n: typedesc[NSScreen]): NSArray[NSScreen] {.objc: "screens".}
   proc registerForDraggedTypes*(self: NSView, types: NSArray[NSString]): NSArray[NSString] {.objc: "registerForDraggedTypes:".}

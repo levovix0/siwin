@@ -23,12 +23,13 @@ when defined(android):
   requires "https://github.com/yglukhov/android"
 
 when defined(macosx):
-  requires "darwin >= 0.2.1"
+  requires "darwin >= 0.2.2"
 
 feature "dev":
   requires "opengl"
   requires "nimgl"
   requires "pixie"
+  requires "sdl2"
 
 const dynlibName =
   when defined(windows): "siwin.dll"

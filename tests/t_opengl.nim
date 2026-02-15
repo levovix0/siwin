@@ -4,6 +4,21 @@ import siwin
 
 let globals = newSiwinGlobals()
 
+proc hasGlProc(name: string): bool =
+  when defined(windows):
+    proc isInvalidWglProc(p: pointer): bool {.inline.} =
+      p == nil or cast[int](p) in [1, 2, 3, -1]
+  else:
+    proc isInvalidWglProc(p: pointer): bool {.inline.} =
+      p == nil
+
+  var symbol: pointer
+  try:
+    symbol = glGetProc(name.cstring)
+  except CatchableError:
+    return false
+  not isInvalidWglProc(symbol)
+
 proc hasRequiredShaderApi(): bool =
   const required = [
     "glCreateShader",
@@ -16,22 +31,13 @@ proc hasRequiredShaderApi(): bool =
     "glLinkProgram",
     "glGetProgramiv",
     "glGetProgramInfoLog",
+    "glGenBuffers",
+    "glBindBuffer",
+    "glBufferData",
   ]
 
-  when defined(windows):
-    proc isInvalidWglProc(p: pointer): bool {.inline.} =
-      p == nil or cast[int](p) in [1, 2, 3, -1]
-  else:
-    proc isInvalidWglProc(p: pointer): bool {.inline.} =
-      p == nil
-
   for name in required:
-    var symbol: pointer
-    try:
-      symbol = glGetProc(name.cstring)
-    except CatchableError:
-      return false
-    if isInvalidWglProc(symbol):
+    if not hasGlProc(name):
       return false
   true
 
@@ -145,12 +151,43 @@ void main() {
     let
       aPos = glGetAttribLocation(program, "aPos")
       uG = glGetUniformLocation(program, "uG")
+    if aPos < 0:
+      raise CatchableError.newException("shader attribute aPos not found")
 
     let triangle: array[6, GlFloat] = [
       -0.8, -0.8,
        0.8, -0.8,
        0.0,  0.8,
     ]
+    let hasVaoApi = hasGlProc("glGenVertexArrays") and hasGlProc("glBindVertexArray")
+    var
+      vbo: GlUint
+      vao: GlUint
+
+    glGenBuffers(1, vbo.addr)
+    if vbo == 0:
+      raise CatchableError.newException("failed to create vertex buffer")
+    glBindBuffer(GlArrayBuffer, vbo)
+    glBufferData(GlArrayBuffer, triangle.len * GlFloat.sizeof, triangle[0].unsafeAddr, GlStaticDraw)
+
+    if hasVaoApi:
+      glGenVertexArrays(1, vao.addr)
+      if vao == 0:
+        raise CatchableError.newException("failed to create vertex array")
+      glBindVertexArray(vao)
+      glEnableVertexAttribArray(aPos.GlUint)
+      glVertexAttribPointer(aPos.GlUint, 2, cGlFloat, GlFalse, 0, cast[pointer](0))
+      glBindVertexArray(0)
+    else:
+      glBindBuffer(GlArrayBuffer, 0)
+
+    defer:
+      if hasVaoApi and vao != 0:
+        glDeleteVertexArrays(1, vao.addr)
+      if vbo != 0:
+        glDeleteBuffers(1, vbo.addr)
+      if program != 0:
+        glDeleteProgram(program)
     
     run window, WindowEventsHandler(
       onResize: proc(e: ResizeEvent) =
@@ -161,10 +198,18 @@ void main() {
         glClear GlColorBufferBit or GlDepthBufferBit
         glUseProgram(program)
         glUniform1f(uG, g)
-        glEnableVertexAttribArray(aPos.GlUint)
-        glVertexAttribPointer(aPos.GlUint, 2, cGlFloat, GlFalse, 0, triangle[0].unsafeAddr)
+        if hasVaoApi:
+          glBindVertexArray(vao)
+        else:
+          glBindBuffer(GlArrayBuffer, vbo)
+          glEnableVertexAttribArray(aPos.GlUint)
+          glVertexAttribPointer(aPos.GlUint, 2, cGlFloat, GlFalse, 0, cast[pointer](0))
         glDrawArrays(GlTriangles, 0, 3)
-        glDisableVertexAttribArray(aPos.GlUint)
+        if hasVaoApi:
+          glBindVertexArray(0)
+        else:
+          glDisableVertexAttribArray(aPos.GlUint)
+          glBindBuffer(GlArrayBuffer, 0)
       ,
       onKey: proc(e: KeyEvent) =
         if e.pressed:

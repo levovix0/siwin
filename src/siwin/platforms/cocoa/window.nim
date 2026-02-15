@@ -31,8 +31,13 @@ type
     markedText: NSString
     lastClickTime: array[MouseButton, Time]
     lastDragStatus: DragStatus
+    m_canBecomeKeyWindow: bool
+    m_canBecomeMainWindow: bool
   
   WindowCocoaSoftwareRendering* = ref object of WindowCocoa
+    softwareView: NSImageView
+    softwareImage: NSImage
+    softwareRep: NSBitmapImageRep
 
   WindowCocoaOpengl* = ref object of WindowCocoa
     openglView: NSOpenGLView
@@ -48,7 +53,7 @@ type
 
 var
   initialized: bool
-  appDelegateClass, windowClass, openglViewClass, metalViewClass: ObjcClass
+  appDelegateClass, windowClass, softwareViewClass, openglViewClass, metalViewClass: ObjcClass
   windows: seq[WindowCocoa]
 proc init
 
@@ -80,8 +85,30 @@ proc `=destroy`(window: WindowCocoaObj) {.siwin_destructor.} =
 
 proc findWindow(windows: seq[WindowCocoa], window: Id): WindowCocoa =
   for w in windows:
-    if w != nil and w.handle != nil and cast[ID](w.handle) == window:
+    if w == nil or w.handle == nil:
+      continue
+
+    if cast[ID](w.handle) == window:
       return w
+
+    let contentView = w.handle.contentView
+    if contentView != nil and cast[ID](contentView) == window:
+      return w
+
+    if w of WindowCocoaSoftwareRendering:
+      let softwareView = w.WindowCocoaSoftwareRendering.softwareView
+      if softwareView != nil and cast[ID](softwareView) == window:
+        return w
+
+    if w of WindowCocoaOpengl:
+      let openglView = w.WindowCocoaOpengl.openglView
+      if openglView != nil and cast[ID](openglView) == window:
+        return w
+
+    if w of WindowCocoaMetal:
+      let metalView = w.WindowCocoaMetal.metalView
+      if metalView != nil and cast[ID](metalView) == window:
+        return w
 
 
 proc keycodeToKey(code: uint16): Key =
@@ -202,8 +229,6 @@ proc modifierSet(flags: NSEventModifierFlags): set[ModifierKey] =
     result.incl ModifierKey.system
   if (bitset and cast[uint64](NSEventModifierFlagCapsLock)) != 0:
     result.incl ModifierKey.capsLock
-  if (bitset and cast[uint64](NSEventModifierFlagNumericPad)) != 0:
-    result.incl ModifierKey.numLock
 
 proc updateModifiers(window: WindowCocoa, event: NSEvent): set[ModifierKey] =
   let eventModifiers = modifierSet(event.modifierFlags)
@@ -211,8 +236,6 @@ proc updateModifiers(window: WindowCocoa, event: NSEvent): set[ModifierKey] =
     # CGEvent flags are more reliable for modifier keys while key chords are active.
     if ModifierKey.capsLock in eventModifiers:
       result.incl ModifierKey.capsLock
-    if ModifierKey.numLock in eventModifiers:
-      result.incl ModifierKey.numLock
   else:
     result = eventModifiers
   window.keyboard.modifiers = result
@@ -224,8 +247,6 @@ proc refreshModifiers(window: WindowCocoa) =
   if tryCurrentModifierState(modifiers):
     if ModifierKey.capsLock in window.keyboard.modifiers:
       modifiers.incl ModifierKey.capsLock
-    if ModifierKey.numLock in window.keyboard.modifiers:
-      modifiers.incl ModifierKey.numLock
     window.keyboard.modifiers = modifiers
 
 proc releaseAllInput(window: WindowCocoa) =
@@ -524,6 +545,9 @@ proc initWindowCocoa(
 
   window.m_size = size
   window.m_frameless = frameless
+  window.m_transparent = transparent
+  window.m_canBecomeKeyWindow = true
+  window.m_canBecomeMainWindow = true
 
   var x = 0.0
   var y = 0.0
@@ -549,6 +573,63 @@ proc initWindowCocoa(
   )
   window.m_selectionClipboard = window.m_clipboard
   window.m_dragndropClipboard = ClipboardCocoaDnd(availableKinds: {}, availableMimeTypes: @[])
+
+proc resizeSoftwarePixelBuffer(window: WindowCocoaSoftwareRendering, size: IVec2) =
+  let w = max(1, size.x)
+  let h = max(1, size.y)
+
+  if window.softwareView != nil and window.softwareImage != nil:
+    window.softwareView.setImage(nil)
+  if window.softwareImage != nil:
+    window.softwareImage.release()
+    window.softwareImage = nil
+  if window.softwareRep != nil:
+    window.softwareRep.release()
+    window.softwareRep = nil
+
+  window.softwareRep = NSBitmapImageRep.alloc().initWithBitmapDataPlanes(
+    nil,
+    w,
+    h,
+    8,
+    4,
+    true,
+    false,
+    @"NSCalibratedRGBColorSpace",
+    0,
+    w * 4,
+    32
+  )
+
+  if window.softwareRep != nil:
+    window.softwareImage = NSImage.alloc().initWithSize(NSMakeSize(w.float64, h.float64))
+    window.softwareImage.addRepresentation(cast[NSImageRep](window.softwareRep))
+    window.softwareView.setImage(window.softwareImage)
+    window.softwareView.setNeedsDisplay(true)
+
+proc presentSoftwarePixelBuffer(window: WindowCocoaSoftwareRendering) =
+  if window.softwareView != nil:
+    window.softwareView.setNeedsDisplay(true)
+
+proc initWindowCocoaSoftwareRendering*(
+  window: WindowCocoaSoftwareRendering,
+  size: IVec2, screen: ScreenCocoa,
+  fullscreen, frameless, transparent: bool,
+) =
+  initWindowCocoa(window, size, screen, fullscreen, frameless, transparent)
+  window.softwareView = cast[NSImageView](
+    cast[NSView](softwareViewClass.alloc()).initWithFrame(window.handle.contentView.frame)
+  )
+  window.softwareView.setImageScaling(NSImageScaleAxesIndependently)
+
+  window.handle.setDelegate(cast[NSObject](window.handle))
+  window.handle.setContentView(cast[NSView](window.softwareView))
+  discard window.handle.makeFirstResponder(cast[NSView](window.softwareView))
+  discard cast[NSView](window.softwareView).registerForDraggedTypes(
+    arrayWithObjects[NSString](NSPasteboardTypeString, @"text/uri-list", @"public.file-url")
+  )
+  window.handle.setRestorable(false)
+  window.resizeSoftwarePixelBuffer(window.m_size)
 
 
 proc initWindowCocoaOpengl*(
@@ -656,9 +737,38 @@ method `visible=`*(window: WindowCocoa, v: bool) =
   window.m_visible = v
   autoreleasepool:
     if v:
-      window.handle.orderFront(cast[ID](nil))
+      if window.canBecomeKeyWindow:
+        window.handle.makeKeyAndOrderFront(cast[ID](nil))
+      else:
+        window.handle.orderFront(cast[ID](nil))
     else:
       window.handle.orderOut(cast[ID](nil))
+
+method canBecomeKeyWindow*(window: WindowCocoa): bool =
+  window.m_canBecomeKeyWindow
+
+method canBecomeMainWindow*(window: WindowCocoa): bool =
+  window.m_canBecomeMainWindow
+
+method uiScale*(window: WindowCocoa): float32 =
+  if window == nil or window.handle == nil:
+    return 1'f32
+
+  let contentView = window.handle.contentView
+  if contentView != nil:
+    let bounds = contentView.bounds
+    if bounds.size.width > 0 and bounds.size.height > 0:
+      let backing = contentView.convertRectToBacking(bounds)
+      if backing.size.width > 0 and backing.size.height > 0:
+        return (backing.size.width / bounds.size.width).float32
+
+  window.handle.scaleFactor.float32
+
+method `canBecomeKeyWindow=`*(window: WindowCocoa, v: bool) =
+  window.m_canBecomeKeyWindow = v
+
+method `canBecomeMainWindow=`*(window: WindowCocoa, v: bool) =
+  window.m_canBecomeMainWindow = v
 
 method close*(window: WindowCocoa) =
   if window.m_closed:
@@ -775,11 +885,19 @@ method `maxSize=`*(window: WindowCocoa, v: IVec2) =
     window.handle.setMaxSize(NSMakeSize(v.x.float64, v.y.float64))
 
 method `icon=`*(window: WindowCocoa, _: nil.typeof) =
-  NSApplication.setApplicationIconImage(nil)
+  if NSApp == nil:
+    discard NSApplication.sharedApplication()
+  if NSApp == nil:
+    return
+  NSApplication.setApplicationIconImage(cast[NSImage](nil))
 
 method `icon=`*(window: WindowCocoa, v: PixelBuffer) =
   if v.size.x * v.size.y == 0:
     window.icon = nil
+    return
+  if NSApp == nil:
+    discard NSApplication.sharedApplication()
+  if NSApp == nil:
     return
 
   let sourceFormat = v.format
@@ -908,7 +1026,7 @@ method `dragStatus=`*(window: WindowCocoa, v: DragStatus) =
 method makeCurrent*(window: WindowCocoaOpengl) =
   window.openglView.openGLContext.makeCurrentContext()
 
-method swapBuffers*(window: WindowCocoaOpengl) =
+proc swapBuffers*(window: WindowCocoaOpengl) =
   window.openglView.openGLContext.flushBuffer()
 
 method `vsync=`*(window: WindowCocoaOpengl, v: bool, silent = false) =
@@ -946,15 +1064,32 @@ proc init =
       size = ivec2(backing.size.width.int32, backing.size.height.int32)
     if window.m_size != size:
       window.m_size = size
+      if window of WindowCocoaSoftwareRendering:
+        window.WindowCocoaSoftwareRendering.resizeSoftwarePixelBuffer(size)
       window.eventsHandler.pushEvent onResize, ResizeEvent(window: window, size: window.m_size)
       window.redrawRequested = true
   
+  proc scaledMousePos(window: WindowCocoa, location: NsPoint): Vec2 =
+    let contentView = window.handle.contentView
+    if contentView == nil:
+      return vec2(location.x.float32, location.y.float32)
+
+    let
+      bounds = contentView.bounds
+      backingBounds = contentView.convertRectToBacking(bounds)
+      backingPointRect = contentView.convertRectToBacking(NSMakeRect(location.x, location.y, 0, 0))
+
+    vec2(
+      backingPointRect.origin.x.float32,
+      (backingBounds.size.height - backingPointRect.origin.y).float32
+    )
 
   proc updateMousePos(window: WindowCocoa, location: NsPoint, kind: MouseMoveKind) =
-    window.mouse.pos = vec2(location.x.float32, (window.handle.contentView.bounds.size.height - location.y).float32)
+    window.mouse.pos = scaledMousePos(window, location)
     window.eventsHandler.pushEvent onMouseMove, MouseMoveEvent(window: window, pos: window.mouse.pos, kind: kind)
 
-  proc handleMouseButton(window: WindowCocoa, button: MouseButton, pressed: bool) =
+  proc handleMouseButton(window: WindowCocoa, button: MouseButton, pressed: bool, location: NsPoint) =
+    window.mouse.pos = scaledMousePos(window, location)
     if pressed:
       window.mouse.pressed.incl button
       window.clicking.incl button
@@ -999,7 +1134,7 @@ proc init =
       addMethod "applicationDidFinishLaunching:", proc(self: Id, cmd: Sel, notification: NsNotification): Id {.cdecl.} =
         NSApp.setPresentationOptions(NSApplicationPresentationDefault)
         NSApp.setActivationPolicy(NSApplicationActivationPolicyRegular)
-        NSApp.activate()
+        NSApp.activateIgnoringOtherApps(true)
 
 
     addClass "SiwinWindow", "NSWindow", windowClass:
@@ -1019,11 +1154,19 @@ proc init =
           ).ivec2
         window.eventsHandler.pushEvent onWindowMove, WindowMoveEvent(window: window, pos: window.m_pos)
 
-      addMethod "canBecomeKeyWindow:", proc(self: Id, cmd: Sel, notification: NsNotification): bool {.cdecl.} =
-        true
+      addMethod "canBecomeKeyWindow", proc(self: Id, cmd: Sel): bool {.cdecl.} =
+        getWindow(self)
+        window.canBecomeKeyWindow
+
+      addMethod "canBecomeMainWindow", proc(self: Id, cmd: Sel): bool {.cdecl.} =
+        getWindow(self)
+        window.canBecomeMainWindow
 
       addMethod "windowDidBecomeKey:", proc(self: Id, cmd: Sel, notification: NsNotification): Id {.cdecl.} =
         getWindow(self)
+        let contentView = window.handle.contentView
+        if contentView != nil:
+          discard window.handle.makeFirstResponder(contentView)
         window.m_focused = true
         window.refreshModifiers()
         window.eventsHandler.pushEvent onStateBoolChanged, StateBoolChangedEvent(
@@ -1159,34 +1302,34 @@ proc init =
   
         addMethod "mouseDown:", proc(self: Id, cmd: Sel, event: NsEvent): Id {.cdecl.} =
           getWindow(self)
-          window.handleMouseButton(MouseButton.left, true)
+          window.handleMouseButton(MouseButton.left, true, event.locationInWindow)
   
         addMethod "mouseUp:", proc(self: Id, cmd: Sel, event: NsEvent): Id {.cdecl.} =
           getWindow(self)
-          window.handleMouseButton(MouseButton.left, false)
+          window.handleMouseButton(MouseButton.left, false, event.locationInWindow)
   
         addMethod "rightMouseDown:", proc(self: Id, cmd: Sel, event: NsEvent): Id {.cdecl.} =
           getWindow(self)
-          window.handleMouseButton(MouseButton.right, true)
+          window.handleMouseButton(MouseButton.right, true, event.locationInWindow)
   
         addMethod "rightMouseUp:", proc(self: Id, cmd: Sel, event: NsEvent): Id {.cdecl.} =
           getWindow(self)
-          window.handleMouseButton(MouseButton.right, false)
+          window.handleMouseButton(MouseButton.right, false, event.locationInWindow)
   
         addMethod "otherMouseDown:", proc(self: Id, cmd: Sel, event: NsEvent): Id {.cdecl.} =
           getWindow(self)
           case event.buttonNumber
-          of 2: window.handleMouseButton(MouseButton.middle, true)
-          of 3: window.handleMouseButton(MouseButton.forward, true)
-          of 4: window.handleMouseButton(MouseButton.backward, true)
+          of 2: window.handleMouseButton(MouseButton.middle, true, event.locationInWindow)
+          of 3: window.handleMouseButton(MouseButton.forward, true, event.locationInWindow)
+          of 4: window.handleMouseButton(MouseButton.backward, true, event.locationInWindow)
           else: discard
           
         addMethod "otherMouseUp:", proc(self: Id, cmd: Sel, event: NsEvent): Id {.cdecl.} =
           getWindow(self)
           case event.buttonNumber
-          of 2: window.handleMouseButton(MouseButton.middle, false)
-          of 3: window.handleMouseButton(MouseButton.forward, false)
-          of 4: window.handleMouseButton(MouseButton.backward, false)
+          of 2: window.handleMouseButton(MouseButton.middle, false, event.locationInWindow)
+          of 3: window.handleMouseButton(MouseButton.forward, false, event.locationInWindow)
+          of 4: window.handleMouseButton(MouseButton.backward, false, event.locationInWindow)
           else: discard
   
         addMethod "keyDown:", proc(self: Id, cmd: Sel, event: NsEvent): Id {.cdecl.} =
@@ -1202,8 +1345,26 @@ proc init =
               repeated: event.isARepeat.bool,
               modifiers: modifiers,
             )
-            if window.eventsHandler.onTextInput != nil:
-              discard cast[NSView](self).inputContext.handleEvent(event)
+
+          # Let key events handle deletion keys directly; routing them through
+          # NSTextInputClient commands can suppress subsequent key presses.
+          let shouldRouteToInputContext = key notin [Key.backspace, Key.del]
+          if window.eventsHandler.onTextInput != nil and shouldRouteToInputContext:
+            var handledByInputContext = false
+            let inputContext = cast[NSView](self).inputContext
+            if inputContext != nil:
+              handledByInputContext = inputContext.handleEvent(event).bool
+
+            # Fallback for view classes where AppKit does not route insertText
+            # through NSTextInputClient even though keyDown is delivered.
+            if not handledByInputContext and (modifiers * {ModifierKey.control, ModifierKey.alt, ModifierKey.system}).len == 0:
+              for r in ($event.characters).runes:
+                if r.int >= 32 and r.int notin 0xf700..0xf7ff:
+                  window.eventsHandler.pushEvent onTextInput, TextInputEvent(
+                    window: window,
+                    text: $r,
+                    repeated: event.isARepeat.bool,
+                  )
   
         addMethod "keyUp:", proc(self: Id, cmd: Sel, event: NsEvent): Id {.cdecl.} =
           getWindow(self)
@@ -1338,6 +1499,7 @@ proc init =
               #   cursor = NSCursor.alloc().initWithImage(image, hotspot)
               # self.NSView.addCursorRect(self.NSView.bounds, cursor)
 
+    addSiwinViewClass("SiwinViewSoftware", "NSImageView", softwareViewClass)
     addSiwinViewClass("SiwinViewOpenGL", "NSOpenGLView", openglViewClass)
     addSiwinViewClass("SiwinViewMetal", "NSView", metalViewClass)
 
@@ -1348,6 +1510,27 @@ proc init =
 method firstStep*(window: WindowCocoa, makeVisible = true) =
   if makeVisible:
     window.visible = true
+    # Flush immediate pending events so each newly-shown window is realized
+    # before the next one is created/shown.
+    autoreleasepool:
+      while true:
+        let event = NSApp.nextEventMatchingMask(
+          NSEventMaskAny,
+          NSDate.distantPast,
+          NSDefaultRunLoopMode,
+          true
+        )
+        if event == nil:
+          break
+        NSApp.sendEvent(event)
+    # Ensure all visible windows are present in the initial z-order. Without
+    # this, some macOS setups only show the most recently shown window until
+    # the user cycles windows manually.
+    for w in windows:
+      if w != nil and w.handle != nil and w.m_visible:
+        w.handle.orderFront(cast[ID](nil))
+    if window.canBecomeKeyWindow:
+      window.handle.makeKeyAndOrderFront(cast[ID](nil))
 
 
 method step*(window: WindowCocoa) =
@@ -1385,10 +1568,23 @@ method step*(window: WindowCocoa) =
   
   if window.redrawRequested:
     window.redrawRequested = false
+    if window of WindowCocoaSoftwareRendering:
+      window.WindowCocoaSoftwareRendering.resizeSoftwarePixelBuffer(window.m_size)
     window.eventsHandler.pushEvent onRender, RenderEvent(window: window)
     
-    if window of WindowCocoaOpengl:
+    if window of WindowCocoaSoftwareRendering:
+      window.WindowCocoaSoftwareRendering.presentSoftwarePixelBuffer()
+    elif window of WindowCocoaOpengl:
       window.WindowCocoaOpengl.swapBuffers()
+
+method pixelBuffer*(window: WindowCocoaSoftwareRendering): PixelBuffer =
+  if window.softwareRep == nil:
+    window.resizeSoftwarePixelBuffer(window.m_size)
+  result = PixelBuffer(
+    data: (if window.softwareRep == nil: nil else: window.softwareRep.bitmapData),
+    size: window.m_size,
+    format: PixelBufferFormat.rgbx_32bit,
+  )
 
 
 proc newSoftwareRenderingWindowCocoa*(
@@ -1401,7 +1597,7 @@ proc newSoftwareRenderingWindowCocoa*(
   transparent = false,
 ): WindowCocoaSoftwareRendering =
   new result
-  result.initWindowCocoa(size, screen, fullscreen, frameless, transparent)
+  result.initWindowCocoaSoftwareRendering(size, screen, fullscreen, frameless, transparent)
   result.title = title
   if not resizable: result.resizable = false
 
