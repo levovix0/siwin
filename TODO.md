@@ -1,5 +1,11 @@
 # TODO
 
+## DPI / Coordinate Consistency
+- [x] Cocoa: convert mouse move/click coordinates from points to backing pixels and expose `window.uiScale`.
+- [ ] Winapi: apply per-window DPI scaling to mouse move/click coordinates so `MouseMoveEvent`/`ClickEvent` stay in physical pixel space (`window.size`/pixel buffer space).
+- [ ] Wayland: apply surface/output scale (including fractional scale support when available) to mouse move/click coordinates so input coordinates match physical pixel size.
+- [ ] X11: define and implement DPI-scaling policy for mouse move/click coordinates (for example using `Xft.dpi`) so coordinates are consistent with the physical-pixel model.
+
 ## Wayland
 - [ ] Use current xkb state for key mapping so `KeyEvent` respects active layout/group, not only unmodified symbols.
 - [ ] Improve scroll handling by consuming `axis_source`, `axis_discrete`, and `axis_value120` events instead of relying on a fixed divisor.

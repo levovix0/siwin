@@ -278,6 +278,9 @@ proc maxSize*(window: Window): IVec2 = window.m_maxSize
 
 proc focused*(window: Window): bool = window.m_focused
 
+method uiScale*(window: Window): float32 {.base.} = 1'f32
+  ## UI scale factor (device pixels per logical point).
+
 
 # note: locks: "unknown" usualy means that function can cause event outside of event loop
 
@@ -330,6 +333,17 @@ method `minSize=`*(window: Window, v: IVec2) {.base.} = discard
 method `maxSize=`*(window: Window, v: IVec2) {.base.} = discard
   ## set maximum size
   ## `window.resizable=` will disable this
+
+method canBecomeKeyWindow*(window: Window): bool {.base.} = true
+  ## whether this window is allowed to become key window.
+  ## only macOS backend uses this property.
+
+method canBecomeMainWindow*(window: Window): bool {.base.} = true
+  ## whether this window is allowed to become main window.
+  ## only macOS backend uses this property.
+
+method `canBecomeKeyWindow=`*(window: Window, v: bool) {.base.} = discard
+method `canBecomeMainWindow=`*(window: Window, v: bool) {.base.} = discard
 
 method `icon=`*(window: Window, v: nil.typeof) {.base.} = discard
   ## clear window icon
