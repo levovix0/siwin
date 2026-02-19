@@ -184,6 +184,32 @@ proc waylandKeyToString(keycode: uint32): string =
   result.setLen 1
   result.setLen global_xkb_state.xkb_state_key_get_utf8(keycode + 8, cast[cstring](result[0].addr), 7)
 
+proc modifiersFromPressedKeys(keys: set[Key]): set[ModifierKey] =
+  if (keys * {Key.lshift, Key.rshift}).len != 0:
+    result.incl ModifierKey.shift
+  if (keys * {Key.lcontrol, Key.rcontrol}).len != 0:
+    result.incl ModifierKey.control
+  if (keys * {Key.lalt, Key.ralt, Key.level3_shift, Key.level5_shift}).len != 0:
+    result.incl ModifierKey.alt
+  if (keys * {Key.lsystem, Key.rsystem}).len != 0:
+    result.incl ModifierKey.system
+  if Key.capsLock in keys:
+    result.incl ModifierKey.capsLock
+  if Key.numLock in keys:
+    result.incl ModifierKey.numLock
+
+proc refreshKeyboardModifiers(window: WindowWayland) =
+  var modifiers = modifiersFromPressedKeys(window.keyboard.pressed)
+  if global_xkb_state != nil:
+    if global_xkb_state.xkb_state_mod_name_is_active("Lock".cstring, XKB_STATE_MODS_EFFECTIVE) != 0:
+      modifiers.incl ModifierKey.capsLock
+    if (
+      global_xkb_state.xkb_state_mod_name_is_active("NumLock".cstring, XKB_STATE_MODS_EFFECTIVE) != 0 or
+      global_xkb_state.xkb_state_mod_name_is_active("Mod2".cstring, XKB_STATE_MODS_EFFECTIVE) != 0
+    ):
+      modifiers.incl ModifierKey.numLock
+  window.keyboard.modifiers = modifiers
+
 
 method swapBuffers(window: WindowWayland) {.base.} = discard
 
@@ -515,7 +541,10 @@ proc releaseAllKeys(window: WindowWayland) =
   ## needed when window loses focus
   for k in window.keyboard.pressed.items.toSeq:
     window.keyboard.pressed.excl k
-    if window.opened: window.eventsHandler.onKey.pushEvent KeyEvent(window: window, key: k, pressed: false, repeated: false, generated: true)
+    window.refreshKeyboardModifiers()
+    if window.opened: window.eventsHandler.onKey.pushEvent KeyEvent(
+      window: window, key: k, pressed: false, repeated: false, generated: true, modifiers: window.keyboard.modifiers
+    )
 
 
 method `minimized=`*(window: WindowWayland, v: bool) =
@@ -758,8 +787,9 @@ proc initSeatEvents*(globals: SiwinGlobalsWayland) =
         if siwinKey == Key.unknown: continue
 
         window.keyboard.pressed.incl siwinKey
+        window.refreshKeyboardModifiers()
         if window.opened: window.eventsHandler.onKey.pushEvent KeyEvent(
-          window: window, key: siwinKey, pressed: true, generated: true
+          window: window, key: siwinKey, pressed: true, generated: true, modifiers: window.keyboard.modifiers
         )
         window.lastPressedKey = siwinKey
         window.lastTextEntered = ""
@@ -793,8 +823,9 @@ proc initSeatEvents*(globals: SiwinGlobalsWayland) =
         else:
           window.keyboard.pressed.excl siwinKey
 
+        window.refreshKeyboardModifiers()
         if window.opened: window.eventsHandler.onKey.pushEvent KeyEvent(
-          window: window, key: siwinKey, pressed: pressed
+          window: window, key: siwinKey, pressed: pressed, modifiers: window.keyboard.modifiers
         )
 
         if pressed:
@@ -820,6 +851,8 @@ proc initSeatEvents*(globals: SiwinGlobalsWayland) =
     globals.seat_keyboard.onModifiers:
       globals.lastSeatEventSerial = serial
       discard global_xkb_state.xkb_state_update_mask(mods_depressed, mods_latched, mods_locked, 0, 0, group)
+      if globals.seat_keyboard_currentWindow != nil:
+        globals.seat_keyboard_currentWindow.WindowWayland.refreshKeyboardModifiers()
     
 
     globals.seat_keyboard.onRepeat_info:
@@ -1280,12 +1313,14 @@ method step*(window: WindowWayland) =
         
         if window.lastPressedKey != Key.unknown and window.keyboard.pressed.contains(window.lastPressedKey):
           window.keyboard.pressed.excl window.lastPressedKey
+          window.refreshKeyboardModifiers()
           if window.opened: window.eventsHandler.onKey.pushEvent KeyEvent(
-            window: window, key: window.lastPressedKey, pressed: false, repeated: true
+            window: window, key: window.lastPressedKey, pressed: false, repeated: true, modifiers: window.keyboard.modifiers
           )
           window.keyboard.pressed.incl window.lastPressedKey
+          window.refreshKeyboardModifiers()
           if window.opened: window.eventsHandler.onKey.pushEvent KeyEvent(
-            window: window, key: window.lastPressedKey, pressed: true, repeated: true
+            window: window, key: window.lastPressedKey, pressed: true, repeated: true, modifiers: window.keyboard.modifiers
           )
 
         if window.lastTextEntered != "":
