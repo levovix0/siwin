@@ -193,14 +193,24 @@ proc modifiersFromPressedKeys(keys: set[Key]): set[ModifierKey] =
     result.incl ModifierKey.alt
   if (keys * {Key.lsystem, Key.rsystem}).len != 0:
     result.incl ModifierKey.system
-  if Key.capsLock in keys:
-    result.incl ModifierKey.capsLock
-  if Key.numLock in keys:
-    result.incl ModifierKey.numLock
 
 proc refreshKeyboardModifiers(window: WindowWayland) =
   var modifiers = modifiersFromPressedKeys(window.keyboard.pressed)
   if global_xkb_state != nil:
+    if global_xkb_state.xkb_state_mod_name_is_active("Shift".cstring, XKB_STATE_MODS_EFFECTIVE) != 0:
+      modifiers.incl ModifierKey.shift
+    if global_xkb_state.xkb_state_mod_name_is_active("Control".cstring, XKB_STATE_MODS_EFFECTIVE) != 0:
+      modifiers.incl ModifierKey.control
+    if (
+      global_xkb_state.xkb_state_mod_name_is_active("Mod1".cstring, XKB_STATE_MODS_EFFECTIVE) != 0 or
+      global_xkb_state.xkb_state_mod_name_is_active("Alt".cstring, XKB_STATE_MODS_EFFECTIVE) != 0
+    ):
+      modifiers.incl ModifierKey.alt
+    if (
+      global_xkb_state.xkb_state_mod_name_is_active("Mod4".cstring, XKB_STATE_MODS_EFFECTIVE) != 0 or
+      global_xkb_state.xkb_state_mod_name_is_active("Super".cstring, XKB_STATE_MODS_EFFECTIVE) != 0
+    ):
+      modifiers.incl ModifierKey.system
     if global_xkb_state.xkb_state_mod_name_is_active("Lock".cstring, XKB_STATE_MODS_EFFECTIVE) != 0:
       modifiers.incl ModifierKey.capsLock
     if (
@@ -837,7 +847,7 @@ proc initSeatEvents*(globals: SiwinGlobalsWayland) =
         window.lastPressedKey = Key.unknown
 
       var text = waylandKeyToString(key)
-      if Key.lcontrol in window.keyboard.pressed or Key.rcontrol in window.keyboard.pressed: text = ""
+      if ModifierKey.control in window.keyboard.modifiers: text = ""
       if text.len == 1 and text[0] < 32.char: text = ""
 
       if pressed and text != "":

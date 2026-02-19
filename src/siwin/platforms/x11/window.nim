@@ -242,13 +242,36 @@ proc modifiersFromPressedKeys(keys: set[Key]): set[ModifierKey] =
     result.incl ModifierKey.alt
   if (keys * {Key.lsystem, Key.rsystem}).len != 0:
     result.incl ModifierKey.system
-  if Key.capsLock in keys:
+
+proc modifiersFromStateMask(stateMask: cuint): set[ModifierKey] =
+  if (stateMask and ShiftMask.cuint) != 0:
+    result.incl ModifierKey.shift
+  if (stateMask and ControlMask.cuint) != 0:
+    result.incl ModifierKey.control
+  if (stateMask and Mod1Mask.cuint) != 0:
+    result.incl ModifierKey.alt
+  if (stateMask and Mod4Mask.cuint) != 0:
+    result.incl ModifierKey.system
+  if (stateMask and LockMask.cuint) != 0:
     result.incl ModifierKey.capsLock
-  if Key.numLock in keys:
+  if (stateMask and Mod2Mask.cuint) != 0:
     result.incl ModifierKey.numLock
 
 proc refreshKeyboardModifiers(window: WindowX11) =
-  window.keyboard.modifiers = modifiersFromPressedKeys(window.keyboard.pressed)
+  var rootWindow = window.globals.display.DefaultRootWindow
+  var childWindow: x.Window
+  var rootX, rootY: cint
+  var windowX, windowY: cint
+  var stateMask: cuint
+  let pointerKnown = window.globals.display.XQueryPointer(
+    rootWindow, rootWindow.addr, childWindow.addr,
+    rootX.addr, rootY.addr, windowX.addr, windowY.addr, stateMask.addr
+  ) != 0
+
+  var modifiers = modifiersFromPressedKeys(window.keyboard.pressed)
+  if pointerKnown:
+    modifiers = modifiers + modifiersFromStateMask(stateMask)
+  window.keyboard.modifiers = modifiers
 
 
 proc newClientMessage[T](globals: SiwinGlobalsX11, window: x.Window, messageKind: Atom, data: openarray[T], serial: int = 0, sendEvent: bool = false): XEvent =
@@ -1245,7 +1268,7 @@ method step*(window: WindowX11) =
           window: window, key: key, pressed: true, repeated: repeated, modifiers: window.keyboard.modifiers
         )
 
-      if window.eventsHandler.onTextInput != nil and window.xinContext != nil and (window.keyboard.pressed * {lcontrol, rcontrol, lalt, ralt}).len == 0:
+      if window.eventsHandler.onTextInput != nil and window.xinContext != nil and (window.keyboard.modifiers * {ModifierKey.control, ModifierKey.alt, ModifierKey.system}).len == 0:
         var status: Status
         var buffer: array[16, char]
         let length = window.xinContext.Xutf8LookupString(ev.xkey.addr, cast[cstring](buffer.addr), buffer.sizeof.cint, nil, status.addr)
