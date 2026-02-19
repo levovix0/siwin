@@ -118,9 +118,18 @@ task installAndroidDeps, "install android dependencies":
 
 const testTargets = ["t_opengl_es", "t_opengl", "t_swrendering", "t_multiwindow", "t_vulkan", "t_offscreen"]
 
+proc shouldSkipTarget(target, args: string): bool =
+  let targetingMacos =
+    (when defined(macosx): true else: false) or
+    args.contains("--os:macosx")
+  targetingMacos and target in ["t_opengl", "t_opengl_es"]
+
 proc runTests(args: string, envPrefix = "") =
   withDir "tests":
     for target in testTargets:
+      if shouldSkipTarget(target, args):
+        echo "Skipping ", target, " on macOS"
+        continue
       exec (if envPrefix.len != 0: envPrefix & " " else: "") & "nim c " & args & " --hints:off -r " & target
 
 proc runTestsForSession(args: string) =
@@ -166,10 +175,14 @@ task testMacos, "test macos":
   createZigccIfNeeded()
   let pwd = getCurrentDir()
   let target = "x86_64-macos-none"
+  let args = &"--os:macosx --cc:clang --clang.exe:{pwd}/build/zigcc --clang.linkerexe:{pwd}/build/zigcc --passc:--target={target} --passl:--target={target} --hints:off"
   withDir "tests":
     for file in testTargets:
+      if shouldSkipTarget(file, args):
+        echo "Skipping ", file, " on macOS"
+        continue
       try:
-        exec &"nim c --os:macosx --cc:clang --clang.exe:{pwd}/build/zigcc --clang.linkerexe:{pwd}/build/zigcc --passc:--target={target} --passl:--target={target} --hints:off -o:{file}-macos {file}"
+        exec &"nim c {args} -o:{file}-macos {file}"
         exec &"echo ./{file}-macos | darling shell"
       except: discard
 
