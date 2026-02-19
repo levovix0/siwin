@@ -152,7 +152,7 @@ proc create*(globals: SiwinGlobalsWayland, shm: WlShm, size: IVec2, format: `WlS
         continue
 
       let fd = posix.open(
-        filename,
+        filename.cstring,
         posix.O_RDWR or posix.O_CREAT or posix.O_TRUNC or posix.O_CLOEXEC,
         posix.S_IRUSR or posix.S_IWUSR
       )
