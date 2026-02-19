@@ -325,7 +325,7 @@ method doResize(window: WindowWayland, size: IVec2) {.base.} =
 method doResize(window: WindowWaylandSoftwareRendering, size: IVec2) =
   procCall window.WindowWayland.doResize(size)
 
-  if window.buffer.locked:
+  if window.buffer != nil and window.buffer.locked:
     swap window.buffer, window.oldBuffer
 
   if window.buffer == nil:
@@ -454,14 +454,24 @@ method `icon=`*(window: WindowWayland, v: PixelBuffer) =
 
 
 method pixelBuffer*(window: WindowWaylandSoftwareRendering): PixelBuffer =
+  if window.buffer == nil:
+    window.doResize(window.m_size)
+
   PixelBuffer(
-    data: window.buffer.dataAddr,
+    data: (if window.buffer == nil: nil else: window.buffer.dataAddr),
     size: window.m_size,
     format: (if window.transparent: PixelBufferFormat.xrgb_32bit else: PixelBufferFormat.urgb_32bit)
   )
 
 
 method swapBuffers(window: WindowWaylandSoftwareRendering) =
+  if window.buffer == nil:
+    if window.m_size.x <= 0 or window.m_size.y <= 0:
+      return
+    window.doResize(window.m_size)
+  if window.buffer == nil:
+    return
+
   window.surface.attach(window.buffer.buffer, 0, 0)
   window.surface.damage_buffer(0, 0, window.m_size.x, window.m_size.y)
   commit window.surface
