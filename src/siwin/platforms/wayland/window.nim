@@ -465,6 +465,9 @@ method pixelBuffer*(window: WindowWaylandSoftwareRendering): PixelBuffer =
 
 
 method swapBuffers(window: WindowWaylandSoftwareRendering) =
+  if window.m_closed:
+    return
+
   if window.buffer == nil:
     if window.m_size.x <= 0 or window.m_size.y <= 0:
       return

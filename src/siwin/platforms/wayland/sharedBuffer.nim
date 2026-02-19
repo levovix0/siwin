@@ -41,6 +41,7 @@ proc locked*(buffer: SharedBuffer): bool =
 
 proc release*(buffer: SharedBuffer) {.raises: [Exception].} =
   for v in buffer.buffers.mitems:
+    v.locked = false
     if v.buffer.proxy.raw != nil:
       destroy v.buffer
     v.buffer.proxy.raw = nil
@@ -72,29 +73,42 @@ proc swapBuffers*(
   ## if timeout reached, raises OsError.
   ## ! please make sure you attached current buffer to a surface before calling this proc
 
+  # Keep a strong ref because this proc can re-enter event dispatch.
+  # The window may close and set its buffer slot to nil while we're still here.
+  let stable = buffer
+  if stable == nil: return
+  if stable.buffers.len == 0: return
+  if stable.currentBuffer notin 0..stable.buffers.high: return
+  if stable.buffers.allIt(it.buffer.proxy.raw == nil): return
+
   # first, lock, attach and commit current buffer
-  buffer.buffers[buffer.currentBuffer].locked = true
+  stable.buffers[stable.currentBuffer].locked = true
 
   # then, swap to not-locked buffer
-  for i, v in buffer.buffers:
+  for i, v in stable.buffers:
     if not v.locked:
-      buffer.currentBuffer = i
+      stable.currentBuffer = i
       break
 
   # if unlocked buffer was not found, wait up to timeout while trying again
-  if buffer.buffers[buffer.currentBuffer].locked:
+  if stable.buffers[stable.currentBuffer].locked:
     let deadline = now() + timeout
     
     block waiting_for_unlocked_buffer:
       while now() < deadline:
-        for i in 0..buffer.buffers.high:
-          if not buffer.buffers[i].locked:
-            buffer.currentBuffer = i
+        if stable.buffers.len == 0 or stable.buffers.allIt(it.buffer.proxy.raw == nil):
+          return
+
+        for i in 0..stable.buffers.high:
+          if not stable.buffers[i].locked:
+            stable.currentBuffer = i
             break waiting_for_unlocked_buffer
         
-        discard wl_display_roundtrip buffer.globals.display  # let libwayland process events
+        discard wl_display_roundtrip stable.globals.display  # let libwayland process events
   
-  if buffer.buffers[buffer.currentBuffer].locked:
+  if stable.currentBuffer notin 0..stable.buffers.high:
+    return
+  if stable.buffers[stable.currentBuffer].locked:
     raise OsError.newException("timed out waiting for all buffers to be unlocked by server. (needed to commit shared buffer)")
 
   # current buffer are now unlocked and free to use.
