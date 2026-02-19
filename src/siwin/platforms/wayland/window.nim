@@ -781,6 +781,9 @@ proc initSeatEvents*(globals: SiwinGlobalsWayland) =
 
   if `WlSeat / Capability`.keyboard in globals.seatCapabilities:
     globals.seat_keyboard = globals.seat.get_keyboard
+    globals.seat_keyboard_repeatInfoReceived = false
+    # Default repeat values; compositor-provided repeat_info overrides these.
+    globals.seat_keyboard_repeatSettings = (rate: 25, delay: 600)
 
     globals.seat_keyboard.onKeymap:
       updateKeymap(fd, size)
@@ -793,6 +796,9 @@ proc initSeatEvents*(globals: SiwinGlobalsWayland) =
       globals.lastSeatEventSerial = serial
       
       for key in keys.toSeq(uint32):
+        if global_xkb_state != nil:
+          discard global_xkb_state.xkb_state_update_key(key + 8, XKB_KEY_DIRECTION_DOWN)
+
         let siwinKey = waylandKeyToKey(key)
         if siwinKey == Key.unknown: continue
 
@@ -824,6 +830,11 @@ proc initSeatEvents*(globals: SiwinGlobalsWayland) =
       if pressed:
         window.lastPressedKeyTime = getTime()
       globals.lastSeatEventSerial = serial
+
+      if global_xkb_state != nil:
+        discard global_xkb_state.xkb_state_update_key(
+          key + 8, (if pressed: XKB_KEY_DIRECTION_DOWN else: XKB_KEY_DIRECTION_UP)
+        )
       
       let siwinKey = waylandKeyToKey(key)
 
@@ -833,11 +844,6 @@ proc initSeatEvents*(globals: SiwinGlobalsWayland) =
         else:
           window.keyboard.pressed.excl siwinKey
 
-        window.refreshKeyboardModifiers()
-        if window.opened: window.eventsHandler.onKey.pushEvent KeyEvent(
-          window: window, key: siwinKey, pressed: pressed, modifiers: window.keyboard.modifiers
-        )
-
         if pressed:
           if siwinKey notin Key.lcontrol..Key.rsystem:
             window.lastPressedKey = siwinKey
@@ -845,6 +851,12 @@ proc initSeatEvents*(globals: SiwinGlobalsWayland) =
             window.lastPressedKey = Key.unknown
       else:
         window.lastPressedKey = Key.unknown
+      
+      window.refreshKeyboardModifiers()
+      if siwinKey != Key.unknown and window.opened:
+        window.eventsHandler.onKey.pushEvent KeyEvent(
+          window: window, key: siwinKey, pressed: pressed, modifiers: window.keyboard.modifiers
+        )
 
       var text = waylandKeyToString(key)
       if ModifierKey.control in window.keyboard.modifiers: text = ""
@@ -866,6 +878,7 @@ proc initSeatEvents*(globals: SiwinGlobalsWayland) =
     
 
     globals.seat_keyboard.onRepeat_info:
+      globals.seat_keyboard_repeatInfoReceived = true
       globals.seat_keyboard_repeatSettings = (rate: rate, delay: delay)
 
 
