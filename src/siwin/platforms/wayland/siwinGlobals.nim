@@ -50,7 +50,6 @@ type
     # seat_touch_currentWindow*: Window
 
     seat_keyboard_repeatSettings*: tuple[rate, delay: int32]
-    seat_keyboard_repeatInfoReceived*: bool
 
     primaryClipboard*: Clipboard
     selectionClipboard*: Clipboard

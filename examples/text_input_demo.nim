@@ -285,18 +285,9 @@ proc present(state: var TextInputDemoState, window: Window) =
   copyMem(pixelBuffer.data, state.image.data[0].addr, bytes)
   convertPixelsInplace(pixelBuffer.data, pixelBuffer.size, PixelBufferFormat.rgbx_32bit, pixelBuffer.format)
 
-proc demoPreferredPlatform(): Platform =
-  let forced = getEnv("SIWIN_PLATFORM").strip().toLowerAscii()
-  case forced
-  of "wayland": Platform.wayland
-  of "x11": Platform.x11
-  else: defaultPreferedPlatform()
-
 proc main() =
-  let platform = demoPreferredPlatform()
-  echo "text_input_demo platform=", platform
   let globals = newSiwinGlobals(
-    preferedPlatform = platform
+    preferedPlatform = (when defined(linux): x11 else: defaultPreferedPlatform())
   )
   let window = globals.newSoftwareRenderingWindow(
     size = ivec2(960, 540),

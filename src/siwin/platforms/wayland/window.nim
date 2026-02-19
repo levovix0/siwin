@@ -52,7 +52,6 @@ type
     lastTextEntered: string
     lastPressedKeyTime: Time
     lastKeyRepeatedTime: Time
-    lastRepeatTraceAt: Time
   
   ClipboardWayland* = ref object of Clipboard
     globals: SiwinGlobalsWayland
@@ -186,13 +185,6 @@ proc waylandKeyToString(keycode: uint32): string =
   result = newStringOfCap(8)
   result.setLen 1
   result.setLen global_xkb_state.xkb_state_key_get_utf8(keycode + 8, cast[cstring](result[0].addr), 7)
-
-proc repeatTraceEnabled(): bool =
-  getEnv("SIWIN_WAYLAND_REPEAT_TRACE").len != 0
-
-proc repeatTrace(msg: string) =
-  if repeatTraceEnabled():
-    stderr.writeLine("[siwin-wayland-repeat] " & msg)
 
 proc modifiersFromPressedKeys(keys: set[Key]): set[ModifierKey] =
   if (keys * {Key.lshift, Key.rshift}).len != 0:
@@ -794,7 +786,6 @@ proc initSeatEvents*(globals: SiwinGlobalsWayland) =
 
   if `WlSeat / Capability`.keyboard in globals.seatCapabilities:
     globals.seat_keyboard = globals.seat.get_keyboard
-    globals.seat_keyboard_repeatInfoReceived = false
     # Default repeat values; compositor-provided repeat_info overrides these.
     globals.seat_keyboard_repeatSettings = (rate: 25, delay: 600)
 
@@ -871,7 +862,6 @@ proc initSeatEvents*(globals: SiwinGlobalsWayland) =
         window.lastPressedKey = Key.unknown
       
       window.refreshKeyboardModifiers()
-      repeatTrace(&"key state={(if pressed: \"down\" else: \"up\")} stateRaw={cast[uint32](state)} raw={key} mapped={siwinKey} rawDown={window.lastPressedRawKeyDown} rate={window.globals.seat_keyboard_repeatSettings.rate} delay={window.globals.seat_keyboard_repeatSettings.delay} mods={window.keyboard.modifiers}")
       if siwinKey != Key.unknown and window.opened:
         window.eventsHandler.onKey.pushEvent KeyEvent(
           window: window, key: siwinKey, pressed: pressed, modifiers: window.keyboard.modifiers
@@ -897,10 +887,8 @@ proc initSeatEvents*(globals: SiwinGlobalsWayland) =
     
 
     globals.seat_keyboard.onRepeat_info:
-      globals.seat_keyboard_repeatInfoReceived = true
       if rate > 0 and delay >= 0:
         globals.seat_keyboard_repeatSettings = (rate: rate, delay: delay)
-      repeatTrace(&"repeat_info rate={rate} delay={delay} appliedRate={globals.seat_keyboard_repeatSettings.rate} appliedDelay={globals.seat_keyboard_repeatSettings.delay}")
 
 
 proc setIdleInhibit*(window: WindowWayland, state: bool) =
@@ -1347,9 +1335,6 @@ method step*(window: WindowWayland) =
     let repeatStartTime = window.lastPressedKeyTime + initDuration(milliseconds = window.globals.seat_keyboard_repeatSettings.delay)
     let nows = getTime()
     let interval = initDuration(milliseconds = max(1'i64, (1000 div window.globals.seat_keyboard_repeatSettings.rate).int64))
-    if repeatTraceEnabled() and (window.lastRepeatTraceAt + initDuration(milliseconds = 300) <= nows):
-      window.lastRepeatTraceAt = nows
-      repeatTrace(&"tick rawDown=true raw={window.lastPressedRawKeycode} rate={window.globals.seat_keyboard_repeatSettings.rate} delay={window.globals.seat_keyboard_repeatSettings.delay} sincePressMs={(nows - window.lastPressedKeyTime).inMilliseconds} startReady={(repeatStartTime <= nows)}")
 
     if repeatStartTime <= nows and window.lastKeyRepeatedTime < repeatStartTime - interval:
       window.lastKeyRepeatedTime = repeatStartTime - interval
@@ -1381,7 +1366,6 @@ method step*(window: WindowWayland) =
         if window.opened: window.eventsHandler.onTextInput.pushEvent TextInputEvent(
           window: window, text: repeatedText, repeated: true
         )
-      repeatTrace(&"emit raw={window.lastPressedRawKeycode} mapped={repeatedKey} textLen={repeatedText.len} repeatedAtMs={(window.lastKeyRepeatedTime - window.lastPressedKeyTime).inMilliseconds}")
 
   let nows = getTime()
   if window.opened: window.eventsHandler.onTick.pushEvent TickEvent(window: window, deltaTime: nows - window.lastTickTime)
