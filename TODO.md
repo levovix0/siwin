@@ -7,6 +7,8 @@
 - [ ] X11: define and implement DPI-scaling policy for mouse move/click coordinates (for example using `Xft.dpi`) so coordinates are consistent with the physical-pixel model.
 
 ## Wayland
+- [x] Make `KeyEvent.modifiers` reflect effective xkb modifier state (including remaps like Caps-as-Ctrl), not only raw pressed key symbols.
+- [x] Fix keyboard repeat handling in `text_input_demo`/Wayland path (robust hold/repeat behavior with sane fallback repeat settings).
 - [ ] Use current xkb state for key mapping so `KeyEvent` respects active layout/group, not only unmodified symbols.
 - [ ] Improve scroll handling by consuming `axis_source`, `axis_discrete`, and `axis_value120` events instead of relying on a fixed divisor.
 - [ ] Revisit scroll normalization to avoid hardcoded `kde_default_mousewheel_scroll_length = 15`.
@@ -14,9 +16,13 @@
 - [ ] Expose IME preedit/composition updates (composition string, cursor/candidate position) to app callbacks.
 
 ## X11
+- [x] Make `KeyEvent.modifiers` include live X11 modifier-mask state so remapped modifiers (for example Caps-as-Ctrl) are reflected correctly.
 - [ ] Improve wheel handling beyond fixed button 4/5/6/7 `-1/+1` deltas.
 - [ ] Investigate support for user scroll preferences (direction/speed) where available.
 - [ ] Improve XIM text-input path to handle multi-stage IME composition updates more explicitly.
+
+## Testing
+- [x] Skip `tests/t_opengl.nim` and `tests/t_opengl_es.nim` when targeting macOS in Nimble test runners.
 
 ## Cocoa (macOS)
 - [x] Implement missing core window methods on Cocoa: `close`, `size=`, `pos=`, `fullscreen=`, `maximized=`, `minimized=`, `resizable=`, `minSize=`, `maxSize=`, `vsync=`, `icon=`.
