@@ -47,6 +47,8 @@ type
     kind: WindowWaylandKind ## Is this a normal window or is it a layer shell surface?
 
     lastPressedKey: Key
+    lastPressedRawKeycode: uint32
+    lastPressedRawKeyDown: bool
     lastTextEntered: string
     lastPressedKeyTime: Time
     lastKeyRepeatedTime: Time
@@ -183,6 +185,42 @@ proc waylandKeyToString(keycode: uint32): string =
   result = newStringOfCap(8)
   result.setLen 1
   result.setLen global_xkb_state.xkb_state_key_get_utf8(keycode + 8, cast[cstring](result[0].addr), 7)
+
+proc modifiersFromPressedKeys(keys: set[Key]): set[ModifierKey] =
+  if (keys * {Key.lshift, Key.rshift}).len != 0:
+    result.incl ModifierKey.shift
+  if (keys * {Key.lcontrol, Key.rcontrol}).len != 0:
+    result.incl ModifierKey.control
+  if (keys * {Key.lalt, Key.ralt, Key.level3_shift, Key.level5_shift}).len != 0:
+    result.incl ModifierKey.alt
+  if (keys * {Key.lsystem, Key.rsystem}).len != 0:
+    result.incl ModifierKey.system
+
+proc refreshKeyboardModifiers(window: WindowWayland) =
+  var modifiers = modifiersFromPressedKeys(window.keyboard.pressed)
+  if global_xkb_state != nil:
+    if global_xkb_state.xkb_state_mod_name_is_active("Shift".cstring, XKB_STATE_MODS_EFFECTIVE) != 0:
+      modifiers.incl ModifierKey.shift
+    if global_xkb_state.xkb_state_mod_name_is_active("Control".cstring, XKB_STATE_MODS_EFFECTIVE) != 0:
+      modifiers.incl ModifierKey.control
+    if (
+      global_xkb_state.xkb_state_mod_name_is_active("Mod1".cstring, XKB_STATE_MODS_EFFECTIVE) != 0 or
+      global_xkb_state.xkb_state_mod_name_is_active("Alt".cstring, XKB_STATE_MODS_EFFECTIVE) != 0
+    ):
+      modifiers.incl ModifierKey.alt
+    if (
+      global_xkb_state.xkb_state_mod_name_is_active("Mod4".cstring, XKB_STATE_MODS_EFFECTIVE) != 0 or
+      global_xkb_state.xkb_state_mod_name_is_active("Super".cstring, XKB_STATE_MODS_EFFECTIVE) != 0
+    ):
+      modifiers.incl ModifierKey.system
+    if global_xkb_state.xkb_state_mod_name_is_active("Lock".cstring, XKB_STATE_MODS_EFFECTIVE) != 0:
+      modifiers.incl ModifierKey.capsLock
+    if (
+      global_xkb_state.xkb_state_mod_name_is_active("NumLock".cstring, XKB_STATE_MODS_EFFECTIVE) != 0 or
+      global_xkb_state.xkb_state_mod_name_is_active("Mod2".cstring, XKB_STATE_MODS_EFFECTIVE) != 0
+    ):
+      modifiers.incl ModifierKey.numLock
+  window.keyboard.modifiers = modifiers
 
 
 method swapBuffers(window: WindowWayland) {.base.} = discard
@@ -325,7 +363,7 @@ method doResize(window: WindowWayland, size: IVec2) {.base.} =
 method doResize(window: WindowWaylandSoftwareRendering, size: IVec2) =
   procCall window.WindowWayland.doResize(size)
 
-  if window.buffer.locked:
+  if window.buffer != nil and window.buffer.locked:
     swap window.buffer, window.oldBuffer
 
   if window.buffer == nil:
@@ -454,14 +492,27 @@ method `icon=`*(window: WindowWayland, v: PixelBuffer) =
 
 
 method pixelBuffer*(window: WindowWaylandSoftwareRendering): PixelBuffer =
+  if window.buffer == nil:
+    window.doResize(window.m_size)
+
   PixelBuffer(
-    data: window.buffer.dataAddr,
+    data: (if window.buffer == nil: nil else: window.buffer.dataAddr),
     size: window.m_size,
     format: (if window.transparent: PixelBufferFormat.xrgb_32bit else: PixelBufferFormat.urgb_32bit)
   )
 
 
 method swapBuffers(window: WindowWaylandSoftwareRendering) =
+  if window.m_closed:
+    return
+
+  if window.buffer == nil:
+    if window.m_size.x <= 0 or window.m_size.y <= 0:
+      return
+    window.doResize(window.m_size)
+  if window.buffer == nil:
+    return
+
   window.surface.attach(window.buffer.buffer, 0, 0)
   window.surface.damage_buffer(0, 0, window.m_size.x, window.m_size.y)
   commit window.surface
@@ -502,7 +553,13 @@ proc releaseAllKeys(window: WindowWayland) =
   ## needed when window loses focus
   for k in window.keyboard.pressed.items.toSeq:
     window.keyboard.pressed.excl k
-    if window.opened: window.eventsHandler.onKey.pushEvent KeyEvent(window: window, key: k, pressed: false, repeated: false, generated: true)
+    window.refreshKeyboardModifiers()
+    if window.opened: window.eventsHandler.onKey.pushEvent KeyEvent(
+      window: window, key: k, pressed: false, repeated: false, generated: true, modifiers: window.keyboard.modifiers
+    )
+  window.lastPressedKey = Key.unknown
+  window.lastPressedRawKeyDown = false
+  window.lastTextEntered = ""
 
 
 method `minimized=`*(window: WindowWayland, v: bool) =
@@ -729,6 +786,8 @@ proc initSeatEvents*(globals: SiwinGlobalsWayland) =
 
   if `WlSeat / Capability`.keyboard in globals.seatCapabilities:
     globals.seat_keyboard = globals.seat.get_keyboard
+    # Default repeat values; compositor-provided repeat_info overrides these.
+    globals.seat_keyboard_repeatSettings = (rate: 25, delay: 600)
 
     globals.seat_keyboard.onKeymap:
       updateKeymap(fd, size)
@@ -741,12 +800,16 @@ proc initSeatEvents*(globals: SiwinGlobalsWayland) =
       globals.lastSeatEventSerial = serial
       
       for key in keys.toSeq(uint32):
+        if global_xkb_state != nil:
+          discard global_xkb_state.xkb_state_update_key(key + 8, XKB_KEY_DIRECTION_DOWN)
+
         let siwinKey = waylandKeyToKey(key)
         if siwinKey == Key.unknown: continue
 
         window.keyboard.pressed.incl siwinKey
+        window.refreshKeyboardModifiers()
         if window.opened: window.eventsHandler.onKey.pushEvent KeyEvent(
-          window: window, key: siwinKey, pressed: true, generated: true
+          window: window, key: siwinKey, pressed: true, generated: true, modifiers: window.keyboard.modifiers
         )
         window.lastPressedKey = siwinKey
         window.lastTextEntered = ""
@@ -766,11 +829,21 @@ proc initSeatEvents*(globals: SiwinGlobalsWayland) =
       if globals.seat_keyboard_currentWindow == nil: return
       let window = globals.seat_keyboard_currentWindow.WindowWayland
 
-      let pressed = state == `WlKeyboard / Key_state`.pressed
+      let pressed = state != `WlKeyboard / Key_state`.released
 
       if pressed:
+        window.lastPressedRawKeycode = key
+        window.lastPressedRawKeyDown = true
         window.lastPressedKeyTime = getTime()
+        window.lastTextEntered = ""
+      elif key == window.lastPressedRawKeycode:
+        window.lastPressedRawKeyDown = false
       globals.lastSeatEventSerial = serial
+
+      if global_xkb_state != nil:
+        discard global_xkb_state.xkb_state_update_key(
+          key + 8, (if pressed: XKB_KEY_DIRECTION_DOWN else: XKB_KEY_DIRECTION_UP)
+        )
       
       let siwinKey = waylandKeyToKey(key)
 
@@ -780,10 +853,6 @@ proc initSeatEvents*(globals: SiwinGlobalsWayland) =
         else:
           window.keyboard.pressed.excl siwinKey
 
-        if window.opened: window.eventsHandler.onKey.pushEvent KeyEvent(
-          window: window, key: siwinKey, pressed: pressed
-        )
-
         if pressed:
           if siwinKey notin Key.lcontrol..Key.rsystem:
             window.lastPressedKey = siwinKey
@@ -791,9 +860,15 @@ proc initSeatEvents*(globals: SiwinGlobalsWayland) =
             window.lastPressedKey = Key.unknown
       else:
         window.lastPressedKey = Key.unknown
+      
+      window.refreshKeyboardModifiers()
+      if siwinKey != Key.unknown and window.opened:
+        window.eventsHandler.onKey.pushEvent KeyEvent(
+          window: window, key: siwinKey, pressed: pressed, modifiers: window.keyboard.modifiers
+        )
 
       var text = waylandKeyToString(key)
-      if Key.lcontrol in window.keyboard.pressed or Key.rcontrol in window.keyboard.pressed: text = ""
+      if ModifierKey.control in window.keyboard.modifiers: text = ""
       if text.len == 1 and text[0] < 32.char: text = ""
 
       if pressed and text != "":
@@ -807,10 +882,13 @@ proc initSeatEvents*(globals: SiwinGlobalsWayland) =
     globals.seat_keyboard.onModifiers:
       globals.lastSeatEventSerial = serial
       discard global_xkb_state.xkb_state_update_mask(mods_depressed, mods_latched, mods_locked, 0, 0, group)
+      if globals.seat_keyboard_currentWindow != nil:
+        globals.seat_keyboard_currentWindow.WindowWayland.refreshKeyboardModifiers()
     
 
     globals.seat_keyboard.onRepeat_info:
-      globals.seat_keyboard_repeatSettings = (rate: rate, delay: delay)
+      if rate > 0 and delay >= 0:
+        globals.seat_keyboard_repeatSettings = (rate: rate, delay: delay)
 
 
 proc setIdleInhibit*(window: WindowWayland, state: bool) =
@@ -1249,36 +1327,45 @@ method step*(window: WindowWayland) =
   if eventCount <= 2:  # seems like idle event count is 2
     sleep(1)
 
-  if window.globals.seat_keyboard_currentWindow == window:
-    # repeat keys if needed
-    if (
-      (window.globals.seat_keyboard_repeatSettings.rate > 0 and window.globals.seat_keyboard_repeatSettings.rate < 1000) and
-      (window.keyboard.pressed - {Key.lcontrol, Key.lshift, Key.lalt, Key.rcontrol, Key.rshift, Key.ralt}).len != 0
-    ):
-      let repeatStartTime = window.lastPressedKeyTime + initDuration(milliseconds = window.globals.seat_keyboard_repeatSettings.delay)
-      let nows = getTime()
-      let interval = initDuration(milliseconds = 1000 div window.globals.seat_keyboard_repeatSettings.rate)
+  # repeat keys if needed
+  if (
+    window.globals.seat_keyboard_repeatSettings.rate > 0 and
+    window.lastPressedRawKeyDown
+  ):
+    let repeatStartTime = window.lastPressedKeyTime + initDuration(milliseconds = window.globals.seat_keyboard_repeatSettings.delay)
+    let nows = getTime()
+    let interval = initDuration(milliseconds = max(1'i64, (1000 div window.globals.seat_keyboard_repeatSettings.rate).int64))
 
-      if repeatStartTime <= nows and window.lastKeyRepeatedTime < repeatStartTime - interval:
-        window.lastKeyRepeatedTime = repeatStartTime - interval
-      
-      while repeatStartTime <= nows and window.lastKeyRepeatedTime + interval <= nows:
-        window.lastKeyRepeatedTime += interval
-        
-        if window.lastPressedKey != Key.unknown and window.keyboard.pressed.contains(window.lastPressedKey):
-          window.keyboard.pressed.excl window.lastPressedKey
-          if window.opened: window.eventsHandler.onKey.pushEvent KeyEvent(
-            window: window, key: window.lastPressedKey, pressed: false, repeated: true
-          )
-          window.keyboard.pressed.incl window.lastPressedKey
-          if window.opened: window.eventsHandler.onKey.pushEvent KeyEvent(
-            window: window, key: window.lastPressedKey, pressed: true, repeated: true
-          )
+    if repeatStartTime <= nows and window.lastKeyRepeatedTime < repeatStartTime - interval:
+      window.lastKeyRepeatedTime = repeatStartTime - interval
+    
+    while repeatStartTime <= nows and window.lastKeyRepeatedTime + interval <= nows:
+      window.lastKeyRepeatedTime += interval
 
-        if window.lastTextEntered != "":
-          if window.opened: window.eventsHandler.onTextInput.pushEvent TextInputEvent(
-            window: window, text: window.lastTextEntered, repeated: true
-          )
+      let repeatedKey = waylandKeyToKey(window.lastPressedRawKeycode)
+      var repeatedText = waylandKeyToString(window.lastPressedRawKeycode)
+      if ModifierKey.control in window.keyboard.modifiers:
+        repeatedText = ""
+      if repeatedText.len == 1 and repeatedText[0] < 32.char:
+        repeatedText = ""
+
+      if repeatedKey != Key.unknown and window.keyboard.pressed.contains(repeatedKey):
+        window.keyboard.pressed.excl repeatedKey
+        window.refreshKeyboardModifiers()
+        if window.opened: window.eventsHandler.onKey.pushEvent KeyEvent(
+          window: window, key: repeatedKey, pressed: false, repeated: true, modifiers: window.keyboard.modifiers
+        )
+        window.keyboard.pressed.incl repeatedKey
+        window.refreshKeyboardModifiers()
+        if window.opened: window.eventsHandler.onKey.pushEvent KeyEvent(
+          window: window, key: repeatedKey, pressed: true, repeated: true, modifiers: window.keyboard.modifiers
+        )
+
+      if repeatedText != "":
+        window.lastTextEntered = repeatedText
+        if window.opened: window.eventsHandler.onTextInput.pushEvent TextInputEvent(
+          window: window, text: repeatedText, repeated: true
+        )
 
   let nows = getTime()
   if window.opened: window.eventsHandler.onTick.pushEvent TickEvent(window: window, deltaTime: nows - window.lastTickTime)

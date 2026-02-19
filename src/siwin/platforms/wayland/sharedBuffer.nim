@@ -1,4 +1,5 @@
-import std/[memfiles, os, times, sequtils]
+import std/[memfiles, os, oserrors, times, sequtils]
+import std/posix
 import pkg/[vmath]
 import ../../[siwindefs]
 import ./[protocol, libwayland, siwinGlobals]
@@ -20,6 +21,10 @@ type
 
 
 proc dataAddr*(buffer: SharedBuffer): pointer =
+  if buffer == nil:
+    return nil
+  if buffer.file.mem == nil:
+    return nil
   cast[pointer](cast[int](buffer.file.mem) + buffer.size.x * buffer.size.y * buffer.bytesPerPixel * buffer.currentBuffer.int32)
 
 proc fileDescriptor*(buffer: SharedBuffer): FileHandle =
@@ -36,6 +41,7 @@ proc locked*(buffer: SharedBuffer): bool =
 
 proc release*(buffer: SharedBuffer) {.raises: [Exception].} =
   for v in buffer.buffers.mitems:
+    v.locked = false
     if v.buffer.proxy.raw != nil:
       destroy v.buffer
     v.buffer.proxy.raw = nil
@@ -67,29 +73,42 @@ proc swapBuffers*(
   ## if timeout reached, raises OsError.
   ## ! please make sure you attached current buffer to a surface before calling this proc
 
+  # Keep a strong ref because this proc can re-enter event dispatch.
+  # The window may close and set its buffer slot to nil while we're still here.
+  let stable = buffer
+  if stable == nil: return
+  if stable.buffers.len == 0: return
+  if stable.currentBuffer notin 0..stable.buffers.high: return
+  if stable.buffers.allIt(it.buffer.proxy.raw == nil): return
+
   # first, lock, attach and commit current buffer
-  buffer.buffers[buffer.currentBuffer].locked = true
+  stable.buffers[stable.currentBuffer].locked = true
 
   # then, swap to not-locked buffer
-  for i, v in buffer.buffers:
+  for i, v in stable.buffers:
     if not v.locked:
-      buffer.currentBuffer = i
+      stable.currentBuffer = i
       break
 
   # if unlocked buffer was not found, wait up to timeout while trying again
-  if buffer.buffers[buffer.currentBuffer].locked:
+  if stable.buffers[stable.currentBuffer].locked:
     let deadline = now() + timeout
     
     block waiting_for_unlocked_buffer:
       while now() < deadline:
-        for i in 0..buffer.buffers.high:
-          if not buffer.buffers[i].locked:
-            buffer.currentBuffer = i
+        if stable.buffers.len == 0 or stable.buffers.allIt(it.buffer.proxy.raw == nil):
+          return
+
+        for i in 0..stable.buffers.high:
+          if not stable.buffers[i].locked:
+            stable.currentBuffer = i
             break waiting_for_unlocked_buffer
         
-        discard wl_display_roundtrip buffer.globals.display  # let libwayland process events
+        discard wl_display_roundtrip stable.globals.display  # let libwayland process events
   
-  if buffer.buffers[buffer.currentBuffer].locked:
+  if stable.currentBuffer notin 0..stable.buffers.high:
+    return
+  if stable.buffers[stable.currentBuffer].locked:
     raise OsError.newException("timed out waiting for all buffers to be unlocked by server. (needed to commit shared buffer)")
 
   # current buffer are now unlocked and free to use.
@@ -122,17 +141,69 @@ proc create*(globals: SiwinGlobalsWayland, shm: WlShm, size: IVec2, format: `WlS
   assert bufferCount >= 1, "at least one buffer is required"
   result.buffers.setLen bufferCount
 
-  let filebase = getEnv("XDG_RUNTIME_DIR") / "siwin-"
-  for i in 0..int.high:
-    if not fileExists(filebase & $i):
-      result.filename = filebase & $i
-      result.file = memfiles.open(
-        result.filename, mode = fmReadWrite, allowRemap = true,
-        newFileSize = size.x * size.y * bytesPerPixel * bufferCount.int32
+  let sizeInBytes64 = int64(size.x) * int64(size.y) * int64(bytesPerPixel) * int64(bufferCount)
+  if sizeInBytes64 <= 0 or sizeInBytes64 > high(int32).int64:
+    raise ValueError.newException("invalid shared buffer size")
+  let sizeInBytes = sizeInBytes64.int32
+
+  var candidateDirs: seq[string] = @[]
+  let runtimeDir = getEnv("XDG_RUNTIME_DIR")
+  if runtimeDir.len != 0 and dirExists(runtimeDir):
+    candidateDirs.add runtimeDir
+
+  let tempDir = getTempDir()
+  if tempDir.len != 0 and tempDir notin candidateDirs:
+    candidateDirs.add tempDir
+
+  var opened = false
+  var openError = ""
+  let pid = getCurrentProcessId()
+  for baseDir in candidateDirs:
+    let filebase = baseDir / ("siwin-" & $pid & "-")
+    for i in 0..8192:
+      let filename = filebase & $i
+      if fileExists(filename):
+        continue
+
+      let fd = posix.open(
+        filename.cstring,
+        posix.O_RDWR or posix.O_CREAT or posix.O_TRUNC or posix.O_CLOEXEC,
+        posix.S_IRUSR or posix.S_IWUSR
       )
+      if fd == -1:
+        openError = osErrorMsg(osLastError())
+        continue
+      if posix.ftruncate(fd, sizeInBytes) != 0:
+        openError = osErrorMsg(osLastError())
+        discard posix.close(fd)
+        try:
+          removeFile(filename)
+        except OsError:
+          discard
+        continue
+      discard posix.close(fd)
+
+      try:
+        result.file = memfiles.open(filename, mode = fmReadWrite, allowRemap = true)
+        result.filename = filename
+        opened = true
+        break
+      except CatchableError as e:
+        openError = e.msg
+        try:
+          if fileExists(filename):
+            removeFile(filename)
+        except OsError:
+          discard
+    if opened:
       break
 
-  result.pool = shm.create_pool(result.fileDescriptor, size.x * size.y * bytesPerPixel * bufferCount.int32)
+  if not opened:
+    if openError.len != 0:
+      raise OSError.newException("failed to create shared buffer file: " & openError)
+    raise OSError.newException("failed to create shared buffer file")
+
+  result.pool = shm.create_pool(result.fileDescriptor, sizeInBytes)
   result.create_wl_buffers()
 
 

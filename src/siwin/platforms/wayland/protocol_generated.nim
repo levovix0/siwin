@@ -4693,8 +4693,9 @@ proc get_keyboard*(this: Wl_seat): Wl_keyboard =
   ## never had the keyboard capability. The missing_capability error will
   ## be sent in this case.
   let interfaces = cast[ptr ptr WaylandInterfaces](this.proxy.raw.impl)
+  let version = min(9'u32, this.proxy.wl_proxy_get_version())
   result = wl_proxy_marshal_flags(this.proxy.raw, 1,
-                                  addr(interfaces[].`iface Wl_keyboard`), 1, 0,
+                                  addr(interfaces[].`iface Wl_keyboard`), version, 0,
                                   nil).construct(interfaces[], Wl_keyboard,
       `Wl_keyboard / dispatch`, `Wl_keyboard / Callbacks`)
 

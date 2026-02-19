@@ -233,6 +233,46 @@ proc xkeyToKey(sym: KeySym): Key =
   of Xk_9:            Key.n9
   else:               Key.unknown
 
+proc modifiersFromPressedKeys(keys: set[Key]): set[ModifierKey] =
+  if (keys * {Key.lshift, Key.rshift}).len != 0:
+    result.incl ModifierKey.shift
+  if (keys * {Key.lcontrol, Key.rcontrol}).len != 0:
+    result.incl ModifierKey.control
+  if (keys * {Key.lalt, Key.ralt, Key.level3_shift, Key.level5_shift}).len != 0:
+    result.incl ModifierKey.alt
+  if (keys * {Key.lsystem, Key.rsystem}).len != 0:
+    result.incl ModifierKey.system
+
+proc modifiersFromStateMask(stateMask: cuint): set[ModifierKey] =
+  if (stateMask and ShiftMask.cuint) != 0:
+    result.incl ModifierKey.shift
+  if (stateMask and ControlMask.cuint) != 0:
+    result.incl ModifierKey.control
+  if (stateMask and Mod1Mask.cuint) != 0:
+    result.incl ModifierKey.alt
+  if (stateMask and Mod4Mask.cuint) != 0:
+    result.incl ModifierKey.system
+  if (stateMask and LockMask.cuint) != 0:
+    result.incl ModifierKey.capsLock
+  if (stateMask and Mod2Mask.cuint) != 0:
+    result.incl ModifierKey.numLock
+
+proc refreshKeyboardModifiers(window: WindowX11) =
+  var rootWindow = window.globals.display.DefaultRootWindow
+  var childWindow: x.Window
+  var rootX, rootY: cint
+  var windowX, windowY: cint
+  var stateMask: cuint
+  let pointerKnown = window.globals.display.XQueryPointer(
+    rootWindow, rootWindow.addr, childWindow.addr,
+    rootX.addr, rootY.addr, windowX.addr, windowY.addr, stateMask.addr
+  ) != 0
+
+  var modifiers = modifiersFromPressedKeys(window.keyboard.pressed)
+  if pointerKnown:
+    modifiers = modifiers + modifiersFromStateMask(stateMask)
+  window.keyboard.modifiers = modifiers
+
 
 proc newClientMessage[T](globals: SiwinGlobalsX11, window: x.Window, messageKind: Atom, data: openarray[T], serial: int = 0, sendEvent: bool = false): XEvent =
   result.theType = ClientMessage
@@ -703,7 +743,10 @@ proc releaseAllKeys(window: WindowX11) =
   ## needed when window loses focus
   for k in window.keyboard.pressed.items:
     window.keyboard.pressed.excl k
-    window.eventsHandler.onKey.pushEvent KeyEvent(window: window, key: k, pressed: false, repeated: false, generated: true)
+    window.refreshKeyboardModifiers()
+    window.eventsHandler.onKey.pushEvent KeyEvent(
+      window: window, key: k, pressed: false, repeated: false, generated: true, modifiers: window.keyboard.modifiers
+    )
 
   for b in window.mouse.pressed:
     window.mouse.pressed.excl b
@@ -1004,7 +1047,10 @@ method step*(window: WindowX11) =
     for k in keys: # press pressed in system keys
       if k == Key.unknown: continue
       window.keyboard.pressed.incl k
-      window.eventsHandler.onKey.pushEvent KeyEvent(window: window, pressed: false, repeated: false)
+      window.refreshKeyboardModifiers()
+      window.eventsHandler.onKey.pushEvent KeyEvent(
+        window: window, key: k, pressed: false, repeated: false, modifiers: window.keyboard.modifiers
+      )
     
     # todo: press pressed in system mouse buttons
 
@@ -1217,9 +1263,12 @@ method step*(window: WindowX11) =
       var key = ev.xkey.extractKey
       if key != Key.unknown:
         window.keyboard.pressed.incl key
-        window.eventsHandler.onKey.pushEvent KeyEvent(window: window, key: key, pressed: true, repeated: repeated)
+        window.refreshKeyboardModifiers()
+        window.eventsHandler.onKey.pushEvent KeyEvent(
+          window: window, key: key, pressed: true, repeated: repeated, modifiers: window.keyboard.modifiers
+        )
 
-      if window.eventsHandler.onTextInput != nil and window.xinContext != nil and (window.keyboard.pressed * {lcontrol, rcontrol, lalt, ralt}).len == 0:
+      if window.eventsHandler.onTextInput != nil and window.xinContext != nil and (window.keyboard.modifiers * {ModifierKey.control, ModifierKey.alt, ModifierKey.system}).len == 0:
         var status: Status
         var buffer: array[16, char]
         let length = window.xinContext.Xutf8LookupString(ev.xkey.addr, cast[cstring](buffer.addr), buffer.sizeof.cint, nil, status.addr)
@@ -1241,7 +1290,10 @@ method step*(window: WindowX11) =
         if repeated: prevEventIsKeyUpRepeated = true
 
         window.keyboard.pressed.excl key
-        window.eventsHandler.onKey.pushEvent KeyEvent(window: window, key: key, pressed: false, repeated: repeated)
+        window.refreshKeyboardModifiers()
+        window.eventsHandler.onKey.pushEvent KeyEvent(
+          window: window, key: key, pressed: false, repeated: repeated, modifiers: window.keyboard.modifiers
+        )
     
     of SelectionNotify:
       let clipboard =

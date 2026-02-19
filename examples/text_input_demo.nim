@@ -205,6 +205,7 @@ proc pickFontPath(): string =
         "/usr/share/fonts/dejavu/DejaVuSans.ttf",
         "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
         "/usr/share/fonts/opentype/noto/NotoSans-Regular.ttf",
+        "/usr/local/share/fonts/dejavu/DejaVuSans.ttf"
       ]
 
   for path in candidates:
