@@ -4,7 +4,7 @@ import pkg/[vmath]
 import ../../[colorutils, siwindefs]
 import ../any/[window {.all.}, clipboards]
 import ../any/[windowUtils]
-import ./[libwayland, protocol, siwinGlobals, sharedBuffer, bitfields, xkb]
+import ./[libwayland, protocol, siwinGlobals, sharedBuffer, bitfields, xkb, libdecor]
 
 {.experimental: "overloadableEnums".}
 
@@ -35,6 +35,12 @@ type
       # will be nil if compositor doesn't support this protocol (eg. GNOME)
     
     idleInhibitor: Zwp_idle_inhibitor_v1
+
+    libdecorFrame: LibdecorFrame
+    libdecorFrameIface: LibdecorFrameInterface
+    useLibdecor: bool
+      # not replaceable with `libdecorFrame != nil` because libdecorFrame
+      # is set to nil in release(), after which the window state is undefined
 
     layer: Layer
     namespace: string
@@ -289,8 +295,14 @@ method release(window: WindowWayland) {.base, raises: [].} =
     destroy window.layerShellSurface, destroy
     destroy window.plasmaSurface, destroy
     destroy window.serverDecoration, destroy
-    destroy window.xdgToplevel, destroy
-    destroy window.xdgSurface, destroy
+    if window.useLibdecor:
+      if window.libdecorFrame != nil:
+        libdecor_frame_unref(window.libdecorFrame)
+        window.libdecorFrame = nil
+        GC_unref(window)
+    else:
+      destroy window.xdgToplevel, destroy
+      destroy window.xdgSurface, destroy
     destroy window.surface, destroy
   except:
     discard
@@ -374,6 +386,130 @@ method doResize(window: WindowWaylandSoftwareRendering, size: IVec2) =
   # no need to attach buffer yet
 
 
+proc setFrameless(window: WindowWayland, v: bool)
+
+# libdecor/xdg abstraction, prefixed with toplevel
+
+proc toplevelSetTitle(window: WindowWayland, title: string) =
+  if window.useLibdecor:
+    libdecor_frame_set_title(window.libdecorFrame, title.cstring)
+  else:
+    window.xdgToplevel.set_title(title)
+
+proc toplevelSetAppId(window: WindowWayland, appId: string) =
+  if window.useLibdecor:
+    libdecor_frame_set_app_id(window.libdecorFrame, appId.cstring)
+  else:
+    window.xdgToplevel.set_app_id(appId)
+
+proc toplevelSetMinSize(window: WindowWayland, x, y: int32) =
+  if window.useLibdecor:
+    libdecor_frame_set_min_content_size(window.libdecorFrame, x.cint, y.cint)
+  else:
+    window.xdgToplevel.set_min_size(x, y)
+
+proc toplevelSetMaxSize(window: WindowWayland, x, y: int32) =
+  if window.useLibdecor:
+    libdecor_frame_set_max_content_size(window.libdecorFrame, x.cint, y.cint)
+  else:
+    window.xdgToplevel.set_max_size(x, y)
+
+proc toplevelSetFullscreen(window: WindowWayland, v: bool) =
+  if window.useLibdecor:
+    if v: libdecor_frame_set_fullscreen(window.libdecorFrame, nil)
+    else: libdecor_frame_unset_fullscreen(window.libdecorFrame)
+  else:
+    if v:
+      if window.m_frameless: window.setFrameless(true)
+      window.xdgToplevel.set_fullscreen(Wl_output(proxy: Wl_proxy(raw: nil)))
+    else:
+      window.xdgToplevel.unset_fullscreen()
+      if not window.m_frameless: window.setFrameless(false)
+
+proc toplevelSetMaximized(window: WindowWayland, v: bool) =
+  if window.useLibdecor:
+    if v: libdecor_frame_set_maximized(window.libdecorFrame)
+    else: libdecor_frame_unset_maximized(window.libdecorFrame)
+  else:
+    if v: window.xdgToplevel.set_maximized()
+    else: window.xdgToplevel.unsetMaximized()
+
+proc toplevelSetMinimized(window: WindowWayland) =
+  if window.useLibdecor:
+    libdecor_frame_set_minimized(window.libdecorFrame)
+  else:
+    window.xdgToplevel.set_minimized()
+
+proc toplevelMove(window: WindowWayland, serial: uint32) =
+  if window.useLibdecor:
+    libdecor_frame_move(window.libdecorFrame, window.globals.seat.proxy.raw, serial)
+  else:
+    window.xdgToplevel.move(window.globals.seat, serial)
+
+proc toplevelResize(window: WindowWayland, serial: uint32, edge: `Xdg_toplevel/Resize_edge`) =
+  if window.useLibdecor:
+    libdecor_frame_resize(window.libdecorFrame, window.globals.seat.proxy.raw, serial, edge.uint32)
+  else:
+    window.xdgToplevel.resize(window.globals.seat, serial, edge)
+
+proc toplevelShowWindowMenu(window: WindowWayland, serial: uint32, x, y: int32) =
+  if window.useLibdecor:
+    libdecor_frame_show_window_menu(window.libdecorFrame, window.globals.seat.proxy.raw, serial, x.cint, y.cint)
+  else:
+    window.xdgToplevel.show_window_menu(window.globals.seat, serial, x, y)
+
+proc resize(window: WindowWayland, size: IVec2)
+
+proc createLibdecorFrameIface(): LibdecorFrameInterface =
+  LibdecorFrameInterface(
+    configure: proc(frame: LibdecorFrame, cfg: LibdecorConfiguration, userData: pointer) {.cdecl.} =
+      let win = cast[WindowWayland](userData)
+      var w, h: cint
+      if libdecor_configuration_get_content_size(cfg, frame, w.addr, h.addr):
+        if w > 0 and h > 0:
+          win.resize(ivec2(w.int32, h.int32))
+      else:
+        w = win.m_size.x.cint
+        h = win.m_size.y.cint
+
+      var winState: uint32
+      if libdecor_configuration_get_window_state(cfg, winState.addr):
+        template handleState(k, flag, m: untyped) =
+          let newVal = (winState and LibdecorWindowState.flag.uint32) != 0
+          if win.m != newVal:
+            win.m = newVal
+            if win.opened: win.eventsHandler.onStateBoolChanged.pushEvent StateBoolChangedEvent(
+              window: win, kind: StateBoolChangedEventKind.k, value: win.m, isExternal: true
+            )
+
+        handleState maximized, maximized, m_maximized
+        handleState fullscreen, fullscreen, m_fullscreen
+        handleState focus, active, m_focused
+
+      let state = libdecor_state_new(w, h)
+      libdecor_frame_commit(frame, state, cfg)
+      libdecor_state_free(state)
+      redraw win
+    ,
+    close: proc(frame: LibdecorFrame, userData: pointer) {.cdecl.} =
+      let win = cast[WindowWayland](userData)
+      win.m_closed = true
+    ,
+    commit: proc(frame: LibdecorFrame, userData: pointer) {.cdecl.} =
+      let win = cast[WindowWayland](userData)
+      commit win.surface
+    ,
+    dismissPopup: nil)
+
+proc setupOpaqueRegion(window: WindowWayland, size: IVec2, transparent: bool) =
+  window.m_transparent = transparent
+  if not transparent:
+    let opaqueRegion = window.globals.compositor.create_region
+    opaqueRegion.add(0, 0, size.x, size.y)
+    window.surface.set_opaque_region(opaqueRegion)
+    destroy opaqueRegion
+
+
 proc resize(window: WindowWayland, size: IVec2) =
   if size.x <= 0 or size.y <= 0:
     ## todo: means we should decide the size by ourselves
@@ -384,8 +520,8 @@ proc resize(window: WindowWayland, size: IVec2) =
   case window.kind
   of WindowWaylandKind.XdgSurface:
     if not window.m_resizable:
-      window.xdgToplevel.set_min_size(window.m_size.x, window.m_size.y)
-      window.xdgToplevel.set_max_size(window.m_size.x, window.m_size.y)
+      window.toplevelSetMinSize(window.m_size.x, window.m_size.y)
+      window.toplevelSetMaxSize(window.m_size.x, window.m_size.y)
 
     window.eventsHandler.onResize.pushEvent ResizeEvent(window: window, size: window.m_size)
 
@@ -398,11 +534,16 @@ proc resize(window: WindowWayland, size: IVec2) =
 method `title=`*(window: WindowWayland, v: string) =
   case window.kind
   of WindowWaylandKind.XdgSurface:
-    window.xdgToplevel.set_title(v)
+    window.toplevelSetTitle(v)
   else: discard
 
 
 proc setFrameless(window: WindowWayland, v: bool) =
+  if window.useLibdecor:
+    if window.libdecorFrame != nil: # prevent something crazy after realease
+      libdecor_frame_set_visibility(window.libdecorFrame, not v)
+    return
+
   if window.globals.serverDecorationManager != nil:
     if window.serverDecoration == nil:
       window.serverDecoration = window.globals.serverDecorationManager.get_toplevel_decoration(window.xdg_toplevel)
@@ -430,14 +571,7 @@ proc setFrameless(window: WindowWayland, v: bool) =
 method `fullscreen=`*(window: WindowWayland, v: bool) =
   if window.m_fullscreen == v: return
   window.m_fullscreen = v
-
-  if v:
-    if window.m_frameless: window.setFrameless(true)
-    window.xdgToplevel.set_fullscreen(Wl_output(proxy: Wl_proxy(raw: nil)))
-  
-  else:
-    window.xdgToplevel.unset_fullscreen()
-    if not window.m_frameless: window.setFrameless(false)
+  window.toplevelSetFullscreen(v)
 
 
 method `frameless=`*(window: WindowWayland, v: bool) =
@@ -525,10 +659,7 @@ method `maximized=`*(window: WindowWayland, v: bool) =
     window.fullscreen = false
   window.m_maximized = v
 
-  if v:
-    window.xdgToplevel.set_maximized()
-  else:
-    window.xdgToplevel.unsetMaximized()
+  window.toplevelSetMaximized(v)
 
   if window.opened: window.eventsHandler.onStateBoolChanged.pushEvent StateBoolChangedEvent(
     window: window, kind: StateBoolChangedEventKind.maximized, value: window.m_maximized
@@ -568,7 +699,7 @@ method `minimized=`*(window: WindowWayland, v: bool) =
     ## todo
   else:
     if window.kind == WindowWaylandKind.XdgSurface:
-      window.xdgToplevel.set_minimized()
+      window.toplevelSetMinimized()
 
 
 method `resizable=`*(window: WindowWayland, v: bool) =
@@ -577,37 +708,36 @@ method `resizable=`*(window: WindowWayland, v: bool) =
   let size = window.size
 
   if v:
-    window.xdgToplevel.set_min_size(window.m_minSize.x, window.m_minSize.y)
-    window.xdgToplevel.set_max_size(window.m_maxSize.x, window.m_maxSize.y)
+    window.toplevelSetMinSize(window.m_minSize.x, window.m_minSize.y)
+    window.toplevelSetMaxSize(window.m_maxSize.x, window.m_maxSize.y)
   else:
-    window.xdgToplevel.set_min_size(size.x, size.y)
-    window.xdgToplevel.set_max_size(size.x, size.y)
+    window.toplevelSetMinSize(size.x, size.y)
+    window.toplevelSetMaxSize(size.x, size.y)
 
 
 method `minSize=`*(window: WindowWayland, v: IVec2) =
   window.m_minSize = v
   if not window.m_resizable: return
-  if window.kind == WindowWaylandKind.XdgSurface: window.xdgToplevel.set_min_size(v.x, v.y)
+  if window.kind == WindowWaylandKind.XdgSurface:
+    window.toplevelSetMinSize(v.x, v.y)
 
 
 method `maxSize=`*(window: WindowWayland, v: IVec2) =
   window.m_maxSize = v
   if not window.m_resizable: return
-
-  if window.kind == WindowWaylandKind.XdgSurface: window.xdgToplevel.set_max_size(v.x, v.y)
+  if window.kind == WindowWaylandKind.XdgSurface:
+    window.toplevelSetMaxSize(v.x, v.y)
 
 method startInteractiveMove*(window: WindowWayland, pos: Option[Vec2]) =
   expectExtension window.globals.seat
   if window.kind == WindowWaylandKind.XdgSurface:
-    window.xdgToplevel.move(window.globals.seat, window.lastMouseButtonEventSerial)
+    window.toplevelMove(window.lastMouseButtonEventSerial)
 
 method startInteractiveResize*(window: WindowWayland, edge: Edge, pos: Option[Vec2]) =
   expectExtension window.globals.seat
 
   if window.kind == WindowWaylandKind.XdgSurface:
-    window.xdgToplevel.resize(
-      window.globals.seat, window.lastMouseButtonEventSerial,
-      case edge
+    let edgeVal = case edge
       of Edge.topLeft:     `Xdg_toplevel/Resize_edge`.top_left
       of Edge.top:         `Xdg_toplevel/Resize_edge`.top
       of Edge.topRight:    `Xdg_toplevel/Resize_edge`.top_right
@@ -616,11 +746,12 @@ method startInteractiveResize*(window: WindowWayland, edge: Edge, pos: Option[Ve
       of Edge.bottom:      `Xdg_toplevel/Resize_edge`.bottom
       of Edge.bottomLeft:  `Xdg_toplevel/Resize_edge`.bottom_left
       of Edge.left:        `Xdg_toplevel/Resize_edge`.left
-    )
+
+    window.toplevelResize(window.lastMouseButtonEventSerial, edgeVal)
 
 method showWindowMenu*(window: WindowWayland, pos: Option[Vec2]) =
   let pos = pos.get(window.mouse.pos).ivec2
-  window.xdgToplevel.show_window_menu(window.globals.seat, window.lastMouseButtonEventSerial, pos.x, pos.y)
+  window.toplevelShowWindowMenu(window.lastMouseButtonEventSerial, pos.x, pos.y)
 
 
 method setInputRegion*(window: WindowWayland, pos, size: Vec2) =
@@ -985,49 +1116,91 @@ proc setupWindow(window: WindowWayland, fullscreen, frameless, transparent: bool
 
   case window.kind
   of WindowWaylandKind.XdgSurface:
-    window.xdgSurface = window.globals.xdgWmBase.get_xdg_surface(window.surface)
-    window.xdgToplevel = window.xdgSurface.get_toplevel
+    let wantLibdecor = not frameless and
+                       window.globals.serverDecorationManager == nil and
+                       libdecorAvailable()
 
-    window.xdgSurface.onConfigure:
-      window.xdgSurface.ack_configure(serial)
-      redraw window
+    if wantLibdecor:
+      when defined(siwin_debug_echoLibdecor): echo "siwin: using libdecor for window decorations (server-side decorations unavailable)"
+      window.useLibdecor = true
+      window.globals.initLibdecor()
 
-    window.fullscreen = fullscreen
-    window.frameless = frameless
+      if window.globals.libdecorCtx == nil:
+        when defined(siwin_debug_echoLibdecor): echo "siwin: libdecor context creation failed, falling back to frameless"
+        window.useLibdecor = false
 
-    window.m_transparent = transparent
-    if not transparent:
-      let opaqueRegion = window.globals.compositor.create_region
-      opaqueRegion.add(0, 0, size.x, size.y)
-      window.surface.set_opaque_region(opaqueRegion)
-      destroy opaqueRegion
-  
-    if class != "":
-      window.xdgToplevel.set_app_id(class)
+    if window.useLibdecor:
+      window.libdecorFrameIface = createLibdecorFrameIface()
+      GC_ref(window)
 
-    window.xdgToplevel.onClose:
-      window.m_closed = true
+      window.libdecorFrame = libdecor_decorate(
+        window.globals.libdecorCtx,
+        window.surface.proxy.raw,
+        window.libdecorFrameIface.addr,
+        cast[pointer](window)
+      )
 
-    window.xdgToplevel.onConfigure:
-      window.resize(ivec2(width, height))
+      if window.libdecorFrame == nil:
+        when defined(siwin_debug_echoLibdecor): echo "siwin: libdecor_decorate failed, falling back to frameless"
+        GC_unref(window)
+        window.useLibdecor = false
 
-      let states = states.toSeq(`XdgToplevel / State`)
-    
-      template checkState(state: `XdgToplevel / State`): bool = state in states
-      template handleState(k, n, m: untyped) =
-        if window.m != checkState(`XdgToplevel / State`.n):
-          window.m = checkState(`XdgToplevel / State`.n)
-          if window.opened: window.eventsHandler.onStateBoolChanged.pushEvent StateBoolChangedEvent(
-            window: window, kind: StateBoolChangedEventKind.k, value: window.m, isExternal: true
-          )
-    
-      handleState maximized, maximized, m_maximized
-      handleState fullscreen, fullscreen, m_fullscreen
-      handleState focus, activated, m_focused
-  
-    if window.globals.plasmaShell != nil:
-      window.plasmaSurface = window.globals.plasmaShell.get_surface(window.surface)
-  
+    if window.useLibdecor:
+      if class != "":
+        window.toplevelSetAppId(class)
+
+      window.setupOpaqueRegion(size, transparent)
+      window.m_frameless = false
+
+      if fullscreen:
+        libdecor_frame_set_fullscreen(window.libdecorFrame, nil)
+        window.m_fullscreen = true
+
+      libdecor_frame_map(window.libdecorFrame)
+
+      # dispatch libdecor to process initial configure
+      discard libdecor_dispatch(window.globals.libdecorCtx, 0)
+
+    else:
+      # Standard xdg path (no libdecor)
+      window.xdgSurface = window.globals.xdgWmBase.get_xdg_surface(window.surface)
+      window.xdgToplevel = window.xdgSurface.get_toplevel
+
+      window.xdgSurface.onConfigure:
+        window.xdgSurface.ack_configure(serial)
+        redraw window
+
+      window.fullscreen = fullscreen
+      window.frameless = frameless
+
+      window.setupOpaqueRegion(size, transparent)
+
+      if class != "":
+        window.toplevelSetAppId(class)
+
+      window.xdgToplevel.onClose:
+        window.m_closed = true
+
+      window.xdgToplevel.onConfigure:
+        window.resize(ivec2(width, height))
+
+        let states = states.toSeq(`XdgToplevel / State`)
+
+        template checkState(state: `XdgToplevel / State`): bool = state in states
+        template handleState(k, n, m: untyped) =
+          if window.m != checkState(`XdgToplevel / State`.n):
+            window.m = checkState(`XdgToplevel / State`.n)
+            if window.opened: window.eventsHandler.onStateBoolChanged.pushEvent StateBoolChangedEvent(
+              window: window, kind: StateBoolChangedEventKind.k, value: window.m, isExternal: true
+            )
+
+        handleState maximized, maximized, m_maximized
+        handleState fullscreen, fullscreen, m_fullscreen
+        handleState focus, activated, m_focused
+
+      if window.globals.plasmaShell != nil:
+        window.plasmaSurface = window.globals.plasmaShell.get_surface(window.surface)
+
   of LayerSurface:
     window.layerShellSurface = window.globals.layerShell.get_layer_surface(
       window.surface,
@@ -1300,8 +1473,10 @@ method firstStep*(window: WindowWayland, makeVisible = true) =
   # window.mouse.pos = cursor().pos - window.m_pos
 
   window.surface.commit()
+  if window.globals.libdecorCtx != nil:
+    discard libdecor_dispatch(window.globals.libdecorCtx, 0)
   discard wl_display_roundtrip window.globals.display
-  
+
   if window.opened: window.eventsHandler.onResize.pushEvent ResizeEvent(window: window, size: window.m_size, initial: true)
   window.lastTickTime = getTime()
   redraw window
@@ -1318,7 +1493,10 @@ method step*(window: WindowWayland) =
       return
 
   closeIfNeeded()
-  
+
+  if window.globals.libdecorCtx != nil:
+    discard libdecor_dispatch(window.globals.libdecorCtx, 0)
+
   let eventCount = wl_display_roundtrip(window.globals.display)
   if eventCount < 0:
     raise newException(RoundtripFailed, "wl_display_roundtrip() returned " & $eventCount)

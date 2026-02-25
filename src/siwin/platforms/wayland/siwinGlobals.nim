@@ -1,6 +1,6 @@
 import std/[tables, os, posix]
 import ../any/[window, clipboards]
-import ./[libwayland, protocol, bitfields]
+import ./[libwayland, protocol, bitfields, libdecor]
 
 type
   WaylandExtensionNotFound* = object of CatchableError
@@ -57,9 +57,14 @@ type
 
     lastSeatEventSerial*: uint32
 
+    libdecorCtx*: LibdecorContext
+    libdecorIface*: LibdecorInterface
+
 
 proc `=destroy`*(globals: SiwinGlobalsWaylandObj) =
   try:
+    if globals.libdecorCtx != nil and libdecor_unref != nil:
+      libdecor_unref(globals.libdecorCtx)
     wl_display_disconnect globals.display
   except: discard
 
@@ -173,6 +178,23 @@ proc newWaylandGlobals*(): SiwinGlobalsWayland =
 
 proc roundtrip*(globals: SiwinGlobalsWayland) =
   discard wl_display_roundtrip globals.display
+
+
+proc initLibdecor*(globals: SiwinGlobalsWayland) =
+  if globals.libdecorCtx != nil: return
+  if not libdecorAvailable(): return
+
+  globals.libdecorIface = LibdecorInterface(
+    # raise is unsafe in cdecl callbacks:
+    # with --exceptions:goto, the exception is silently lost
+    # and C code continues executing as if nothing happened.
+    # with --exceptions:setjmp, longjmp skips C cleanup code (free, etc).
+    # see also https://github.com/nim-lang/c2nim/issues/243
+    # so it uses writing to stderr as workaround
+    error: proc(context: LibdecorContext, error: LibdecorError, message: cstring) {.cdecl.} =
+      stderr.writeLine "siwin: libdecor error: ", message)
+
+  globals.libdecorCtx = libdecor_new(globals.display.raw, globals.libdecorIface.addr)
 
 
 proc expectExtension*[T](x: T) =
