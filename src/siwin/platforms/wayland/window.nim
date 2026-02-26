@@ -365,14 +365,28 @@ proc bufferSize(window: WindowWayland, logicalSize: IVec2): IVec2 {.inline.} =
   let scale = window.effectiveUiScale()
   ivec2(scaledBufferLength(logicalSize.x, scale), scaledBufferLength(logicalSize.y, scale))
 
+proc toLogicalLength(window: WindowWayland; backing: float32): float32 {.inline.} =
+  let scale = window.effectiveUiScale()
+  if scale <= 1'f32:
+    backing
+  else:
+    backing / scale
+
+proc toLogicalLength(window: WindowWayland; backing: int32): int32 {.inline.} =
+  max(1'i32, (window.toLogicalLength(backing.float32) + 0.5'f32).int32)
+
 proc reportedPointerPos(window: WindowWayland, surfaceX, surfaceY: float32): Vec2 {.inline.} =
-  vec2(surfaceX, surfaceY)
+  let scale = window.effectiveUiScale()
+  if scale <= 1'f32:
+    vec2(surfaceX, surfaceY)
+  else:
+    vec2(surfaceX * scale, surfaceY * scale)
 
 method uiScale*(window: WindowWayland): float32 =
   window.effectiveUiScale()
 
 method reportedSize*(window: WindowWayland): IVec2 =
-  window.m_size
+  window.bufferSize(window.m_size)
 
 
 method close*(window: WindowWayland) =
@@ -799,14 +813,26 @@ method startInteractiveResize*(window: WindowWayland, edge: Edge, pos: Option[Ve
 
 method showWindowMenu*(window: WindowWayland, pos: Option[Vec2]) =
   let pos = pos.get(window.mouse.pos).ivec2
-  window.toplevelShowWindowMenu(window.lastMouseButtonEventSerial, pos.x, pos.y)
+  let logicalPos = ivec2(window.toLogicalLength(pos.x), window.toLogicalLength(pos.y))
+  window.toplevelShowWindowMenu(window.lastMouseButtonEventSerial, logicalPos.x, logicalPos.y)
 
 
 method setInputRegion*(window: WindowWayland, pos, size: Vec2) =
   procCall window.Window.setInputRegion(pos, size)
   
+  let logicalPos = vec2(window.toLogicalLength(pos.x), window.toLogicalLength(pos.y))
+  let logicalSize = vec2(
+    max(1'f32, window.toLogicalLength(size.x)),
+    max(1'f32, window.toLogicalLength(size.y)),
+  )
+
   let region = window.globals.compositor.create_region
-  region.add(pos.x.int32, pos.y.int32, size.x.int32, size.y.int32)
+  region.add(
+    logicalPos.x.int32,
+    logicalPos.y.int32,
+    logicalSize.x.int32,
+    logicalSize.y.int32,
+  )
   
   window.surface.set_input_region(region)
   # window.xdgSurface.set_window_geometry(pos.x.int32, pos.y.int32, size.x.int32, size.y.int32)
