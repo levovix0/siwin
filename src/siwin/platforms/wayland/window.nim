@@ -347,28 +347,14 @@ proc bufferSize(window: WindowWayland, logicalSize: IVec2): IVec2 {.inline.} =
   let scale = window.bufferScale()
   ivec2(max(1'i32, logicalSize.x * scale), max(1'i32, logicalSize.y * scale))
 
-proc logicalSizeFromReported(window: WindowWayland, reportedSize: IVec2): IVec2 {.inline.} =
-  let scale = window.effectiveUiScale()
-  if scale <= 1'f32:
-    reportedSize
-  else:
-    ivec2(
-      max(1'i32, ((reportedSize.x.float32 / scale) + 0.5'f32).int32),
-      max(1'i32, ((reportedSize.y.float32 / scale) + 0.5'f32).int32)
-    )
-
 proc reportedPointerPos(window: WindowWayland, surfaceX, surfaceY: float32): Vec2 {.inline.} =
-  let scale = window.effectiveUiScale()
-  if scale <= 1'f32:
-    vec2(surfaceX, surfaceY)
-  else:
-    vec2(surfaceX * scale, surfaceY * scale)
+  vec2(surfaceX, surfaceY)
 
 method uiScale*(window: WindowWayland): float32 =
   window.effectiveUiScale()
 
 method reportedSize*(window: WindowWayland): IVec2 =
-  window.bufferSize(window.m_size)
+  window.m_size
 
 
 method close*(window: WindowWayland) =
@@ -627,7 +613,7 @@ method `size=`*(window: WindowWayland, v: IVec2) =
   if v.x <= 0 or v.y <= 0:
     raise RangeDefect.newException("size must be > 0")
 
-  window.resize(window.logicalSizeFromReported(v))
+  window.resize(v)
   redraw window
 
 
