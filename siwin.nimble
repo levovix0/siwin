@@ -1,6 +1,6 @@
-version       = "0.9.3"
+version       = "1.0.0"
 author        = "levovix0"
-description   = "Simple Window Maker"
+description   = "Cross-platform window creation and event handling library"
 license       = "MIT"
 srcDir        = "src"
 

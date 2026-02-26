@@ -12,8 +12,8 @@ Can be used as an alternative to GLFW/GLUT/windy
 
 <h2 align="center">Features</h2>
 
-* works with: OpenGL, Vulkan, software rendering
-* works on: Linux(X11 and Wayland), Windows
+* works with: OpenGL, Vulkan, Metal (on MacOS), software rendering
+* works on: Linux(X11 and Wayland), Windows, MacOS
 * handles events from: mouse, keyboard
 * and also supports: clipboard, offscreen rendering, interactive move/resize, etc.
 
