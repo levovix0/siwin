@@ -347,8 +347,28 @@ proc bufferSize(window: WindowWayland, logicalSize: IVec2): IVec2 {.inline.} =
   let scale = window.bufferScale()
   ivec2(max(1'i32, logicalSize.x * scale), max(1'i32, logicalSize.y * scale))
 
+proc logicalSizeFromReported(window: WindowWayland, reportedSize: IVec2): IVec2 {.inline.} =
+  let scale = window.effectiveUiScale()
+  if scale <= 1'f32:
+    reportedSize
+  else:
+    ivec2(
+      max(1'i32, ((reportedSize.x.float32 / scale) + 0.5'f32).int32),
+      max(1'i32, ((reportedSize.y.float32 / scale) + 0.5'f32).int32)
+    )
+
+proc reportedPointerPos(window: WindowWayland, surfaceX, surfaceY: float32): Vec2 {.inline.} =
+  let scale = window.effectiveUiScale()
+  if scale <= 1'f32:
+    vec2(surfaceX, surfaceY)
+  else:
+    vec2(surfaceX * scale, surfaceY * scale)
+
 method uiScale*(window: WindowWayland): float32 =
   window.effectiveUiScale()
+
+method reportedSize*(window: WindowWayland): IVec2 =
+  window.bufferSize(window.m_size)
 
 
 method close*(window: WindowWayland) =
@@ -542,11 +562,11 @@ proc resize(window: WindowWayland, size: IVec2) =
       window.toplevelSetMinSize(window.m_size.x, window.m_size.y)
       window.toplevelSetMaxSize(window.m_size.x, window.m_size.y)
 
-    window.eventsHandler.onResize.pushEvent ResizeEvent(window: window, size: window.m_size)
+    window.eventsHandler.onResize.pushEvent ResizeEvent(window: window, size: window.size)
 
   of WindowWaylandKind.LayerSurface:
     window.layerShellSurface.set_size(window.m_size.x.uint32, window.m_size.y.uint32)
-    window.eventsHandler.onResize.pushEvent ResizeEvent(window: window, size: window.m_size)
+    window.eventsHandler.onResize.pushEvent ResizeEvent(window: window, size: window.size)
     window.redraw()
 
 
@@ -607,7 +627,7 @@ method `size=`*(window: WindowWayland, v: IVec2) =
   if v.x <= 0 or v.y <= 0:
     raise RangeDefect.newException("size must be > 0")
 
-  window.resize(v)
+  window.resize(window.logicalSizeFromReported(v))
   redraw window
 
 
@@ -725,7 +745,7 @@ method `minimized=`*(window: WindowWayland, v: bool) =
 method `resizable=`*(window: WindowWayland, v: bool) =
   if window.kind != WindowWaylandKind.XdgSurface: return
   window.m_resizable = v
-  let size = window.size
+  let size = window.m_size
 
   if v:
     window.toplevelSetMinSize(window.m_minSize.x, window.m_minSize.y)
@@ -826,7 +846,7 @@ proc initSeatEvents*(globals: SiwinGlobalsWayland) =
       window.clicking = {}
       window.enterSerial = serial
       globals.lastSeatEventSerial = serial
-      window.mouse.pos = vec2(surface_x, surface_y)
+      window.mouse.pos = window.reportedPointerPos(surface_x, surface_y)
 
       replicateWindowTitleAndBorderBehaviour(window, window.mouse.pos)
 
@@ -863,7 +883,7 @@ proc initSeatEvents*(globals: SiwinGlobalsWayland) =
         replicateWindowTitleAndBorderBehaviour(window, window.mouse.pos)
 
         window.clicking = {}
-        window.mouse.pos = vec2(surface_x, surface_y)
+        window.mouse.pos = window.reportedPointerPos(surface_x, surface_y)
         if window.opened: window.eventsHandler.onMouseMove.pushEvent MouseMoveEvent(window: window, pos: window.mouse.pos, kind: MouseMoveKind.move)
     
 
@@ -1143,7 +1163,7 @@ proc setupWindow(window: WindowWayland, fullscreen, frameless, transparent: bool
     if window.m_size.x > 0 and window.m_size.y > 0:
       window.doResize(window.m_size)
       if window.opened:
-        window.eventsHandler.onResize.pushEvent ResizeEvent(window: window, size: window.m_size)
+        window.eventsHandler.onResize.pushEvent ResizeEvent(window: window, size: window.size)
       window.redraw()
 
   case window.kind
@@ -1240,7 +1260,7 @@ proc setupWindow(window: WindowWayland, fullscreen, frameless, transparent: bool
       `Zwlr_layer_shell_v1/Layer`(window.layer.int),
       window.namespace.cstring
     )
-    window.layerShellSurface.set_size(window.size.x.uint32, window.size.y.uint32)
+    window.layerShellSurface.set_size(window.m_size.x.uint32, window.m_size.y.uint32)
     window.redraw()
 
     window.layerShellSurface.onConfigure:
@@ -1509,7 +1529,7 @@ method firstStep*(window: WindowWayland, makeVisible = true) =
     discard libdecor_dispatch(window.globals.libdecorCtx, 0)
   discard wl_display_roundtrip window.globals.display
 
-  if window.opened: window.eventsHandler.onResize.pushEvent ResizeEvent(window: window, size: window.m_size, initial: true)
+  if window.opened: window.eventsHandler.onResize.pushEvent ResizeEvent(window: window, size: window.size, initial: true)
   window.lastTickTime = getTime()
   redraw window
 
