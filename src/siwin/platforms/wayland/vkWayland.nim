@@ -1,4 +1,3 @@
-import ./[libwayland, protocol]
 
 const vkDLL =
   when defined(windows): "vulkan-1.dll"

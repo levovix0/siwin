@@ -1,3 +1,4 @@
+import std/times
 import opengl, vmath
 import siwin
 
@@ -109,9 +110,7 @@ void main() {
 
   state.initialized = true
 
-let globals = newSiwinGlobals(
-  preferedPlatform = (when defined(linux): x11 else: defaultPreferedPlatform())
-)
+let globals = newSiwinGlobals()
 
 let window = globals.newOpenglWindow(
   size = ivec2(960, 540),
@@ -144,7 +143,7 @@ run window, WindowEventsHandler(
     glBindVertexArray(0)
   ,
   onTick: proc(e: TickEvent) =
-    demo.angle += 0.01
+    demo.angle += e.deltaTime.inMicroseconds / 1_000_000
     redraw e.window
   ,
   onKey: proc(e: KeyEvent) =

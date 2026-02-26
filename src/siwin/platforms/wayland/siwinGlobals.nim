@@ -1,4 +1,5 @@
 import std/[tables, os, posix]
+import ../../[siwindefs]
 import ../any/[window, clipboards]
 import ./[libwayland, protocol, bitfields, libdecor]
 
@@ -61,7 +62,7 @@ type
     libdecorIface*: LibdecorInterface
 
 
-proc `=destroy`*(globals: SiwinGlobalsWaylandObj) =
+proc `=destroy`*(globals: SiwinGlobalsWaylandObj) {.siwin_destructor.} =
   try:
     if globals.libdecorCtx != nil and libdecor_unref != nil:
       libdecor_unref(globals.libdecorCtx)
