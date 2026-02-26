@@ -1,4 +1,4 @@
-import std/[times, importutils, strformat, options, tables, os, uri, sequtils, strutils]
+import std/[times, importutils, strformat, options, tables, os, uri, sequtils, strutils, math]
 from std/posix import pipe, close, write, read
 import pkg/[vmath]
 import ../../[colorutils, siwindefs]
@@ -58,7 +58,10 @@ type
     lastTextEntered: string
     lastPressedKeyTime: Time
     lastKeyRepeatedTime: Time
-    uiScaleFactor: float32
+    bufferScaleFactor: int32
+    fractionalScaleFactor: float32
+    viewport: Wp_viewport
+    fractionalScaleObj: Wp_fractional_scale_v1
   
   ClipboardWayland* = ref object of Clipboard
     globals: SiwinGlobalsWayland
@@ -294,6 +297,8 @@ method release(window: WindowWayland) {.base, raises: [].} =
   try:
     destroy window.idleInhibitor, destroy
     destroy window.layerShellSurface, destroy
+    destroy window.fractionalScaleObj, destroy
+    destroy window.viewport, destroy
     destroy window.plasmaSurface, destroy
     destroy window.serverDecoration, destroy
     if window.useLibdecor:
@@ -334,18 +339,31 @@ method release(window: WindowWaylandSoftwareRendering) =
 proc pushEvent[T](event: proc(e: T), args: T) =
   if event != nil: event(args)
 
+proc hasFractionalScaling(window: WindowWayland): bool {.inline.} =
+  window.fractionalScaleFactor > 0'f32 and window.viewport != typeof(window.viewport).default
+
 proc effectiveUiScale(window: WindowWayland): float32 {.inline.} =
-  if window.uiScaleFactor > 0:
-    window.uiScaleFactor
+  if window.hasFractionalScaling():
+    window.fractionalScaleFactor
+  elif window.bufferScaleFactor > 0:
+    window.bufferScaleFactor.float32
   else:
     1'f32
 
 proc bufferScale(window: WindowWayland): int32 {.inline.} =
-  max(1'i32, window.effectiveUiScale().int32)
+  if window.hasFractionalScaling():
+    1'i32
+  elif window.bufferScaleFactor > 0:
+    window.bufferScaleFactor
+  else:
+    max(1'i32, ceil(window.effectiveUiScale()).int32)
+
+proc scaledBufferLength(logical: int32; uiScale: float32): int32 {.inline.} =
+  max(1'i32, ((logical.float32 * uiScale) + 0.5'f32).int32)
 
 proc bufferSize(window: WindowWayland, logicalSize: IVec2): IVec2 {.inline.} =
-  let scale = window.bufferScale()
-  ivec2(max(1'i32, logicalSize.x * scale), max(1'i32, logicalSize.y * scale))
+  let scale = window.effectiveUiScale()
+  ivec2(scaledBufferLength(logicalSize.x, scale), scaledBufferLength(logicalSize.y, scale))
 
 proc reportedPointerPos(window: WindowWayland, surfaceX, surfaceY: float32): Vec2 {.inline.} =
   vec2(surfaceX, surfaceY)
@@ -377,7 +395,8 @@ proc basicInitWindow(window: WindowWayland; size: IVec2; screen: ScreenWayland) 
   window.m_focused = false
   window.m_resizable = true
   window.m_frameless = true
-  window.uiScaleFactor = 1'f32
+  window.bufferScaleFactor = 1'i32
+  window.fractionalScaleFactor = 0'f32
 
   window.globals.initClipboardsIfNeeded()
 
@@ -388,6 +407,9 @@ proc basicInitWindow(window: WindowWayland; size: IVec2; screen: ScreenWayland) 
 
 method doResize(window: WindowWayland, size: IVec2) {.base.} =
   window.m_size = size
+
+  if window.viewport != typeof(window.viewport).default:
+    window.viewport.set_destination(size.x, size.y)
 
   if not window.m_transparent:
     let opaqueRegion = window.globals.compositor.create_region
@@ -1132,6 +1154,18 @@ proc initDataDeviceManagerEvents*(globals: SiwinGlobalsWayland) =
 
 
 proc setupWindow(window: WindowWayland, fullscreen, frameless, transparent: bool, size: IVec2, class: string) =
+  const FractionalScaleDenominator = 120'f32
+
+  proc applySurfaceScale(window: WindowWayland) =
+    if window.surface == nil:
+      return
+    window.surface.set_buffer_scale(window.bufferScale())
+    if window.m_size.x > 0 and window.m_size.y > 0:
+      window.doResize(window.m_size)
+      if window.opened:
+        window.eventsHandler.onResize.pushEvent ResizeEvent(window: window, size: window.size)
+      window.redraw()
+
   expectExtension window.globals.compositor
   expectExtension window.globals.xdgWmBase
   
@@ -1139,18 +1173,24 @@ proc setupWindow(window: WindowWayland, fullscreen, frameless, transparent: bool
   
   window.surface = window.globals.compositor.create_surface
   window.globals.associatedWindows[window.surface.proxy.raw.id] = window
+  if window.globals.viewporter.proxy != nil:
+    window.viewport = window.globals.viewporter.get_viewport(window.surface)
+    window.viewport.set_destination(size.x, size.y)
+  if window.globals.fractionalScaleManager.proxy != nil:
+    window.fractionalScaleObj = window.globals.fractionalScaleManager.get_fractional_scale(window.surface)
+    window.fractionalScaleObj.onPreferred_scale:
+      let newScale = max(1'f32, scale.float32 / FractionalScaleDenominator)
+      if abs(window.fractionalScaleFactor - newScale) < 0.0001'f32:
+        return
+      window.fractionalScaleFactor = newScale
+      window.applySurfaceScale()
   window.surface.set_buffer_scale(window.bufferScale())
   window.surface.onPreferred_buffer_scale:
     let newScale = max(1'i32, factor)
-    if window.uiScaleFactor == newScale.float32:
+    if window.bufferScaleFactor == newScale:
       return
-    window.uiScaleFactor = newScale.float32
-    window.surface.set_buffer_scale(newScale)
-    if window.m_size.x > 0 and window.m_size.y > 0:
-      window.doResize(window.m_size)
-      if window.opened:
-        window.eventsHandler.onResize.pushEvent ResizeEvent(window: window, size: window.size)
-      window.redraw()
+    window.bufferScaleFactor = newScale
+    window.applySurfaceScale()
 
   case window.kind
   of WindowWaylandKind.XdgSurface:
