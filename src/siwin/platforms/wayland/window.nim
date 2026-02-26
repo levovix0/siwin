@@ -442,7 +442,17 @@ method doResize(window: WindowWaylandSoftwareRendering, size: IVec2) =
   if window.buffer == nil:
     window.buffer = window.globals.create(window.globals.shm, scaledSize, (if window.m_transparent: argb8888 else: xrgb8888), bufferCount = 2)
   else:
-    window.buffer.resize(scaledSize)
+    try:
+      window.buffer.resize(scaledSize)
+    except OSError:
+      # Some environments fail memfile remap during early fractional-scale negotiation.
+      # Recreate the shared buffer so we can continue without aborting the process.
+      window.buffer = window.globals.create(
+        window.globals.shm,
+        scaledSize,
+        (if window.m_transparent: argb8888 else: xrgb8888),
+        bufferCount = 2,
+      )
 
   # no need to attach buffer yet
 
