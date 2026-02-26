@@ -49,7 +49,8 @@ proc initOpenglWindow(
   
   window.setupWindow fullscreen, frameless, transparent, size, class
 
-  window.eglContext = newOpenglContext(window.surface.proxy.raw, size.x, size.y)
+  let scaledSize = window.bufferSize(size)
+  window.eglContext = newOpenglContext(window.surface.proxy.raw, scaledSize.x, scaledSize.y)
   makeCurrent window.eglContext
 
   # commit window.surface
@@ -66,7 +67,8 @@ method swapBuffers(window: WindowWaylandOpengl) =
 
 method doResize(window: WindowWaylandOpengl, size: IVec2) =
   procCall window.WindowWayland.doResize(size)
-  wl_egl_window_resize(window.eglContext.win, size.x, size.y, 0, 0)
+  let scaledSize = window.bufferSize(size)
+  wl_egl_window_resize(window.eglContext.win, scaledSize.x, scaledSize.y, 0, 0)
 
 
 proc newOpenglWindowWayland*(

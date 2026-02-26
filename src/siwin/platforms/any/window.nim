@@ -266,7 +266,10 @@ proc cursor*(window: Window): Cursor = window.m_cursor
 proc separateTouch*(window: Window): bool = window.m_separateTouch
   ## enable/disable handling touch events separately from mouse events
 
-proc size*(window: Window): IVec2 = window.m_size
+method reportedSize*(window: Window): IVec2 {.base.} = window.m_size
+  ## Size reported to API users/events (backing pixels on HiDPI platforms).
+
+proc size*(window: Window): IVec2 = window.reportedSize()
 proc pos*(window: Window): IVec2 = window.m_pos
 proc fullscreen*(window: Window): bool = window.m_fullscreen
 proc maximized*(window: Window): bool = window.m_maximized

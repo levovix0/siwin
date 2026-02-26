@@ -34,7 +34,7 @@ proc windowPartAt*(window: Window, mousePos: Vec2): WindowPart =
   
   let tr = window.titleRegion.get((vec2(), vec2(-1, -1)))
   let (w, ow, dw) = window.borderWidth.get((0'f32, 0'f32, 0'f32))
-  let ir = window.inputRegion.get((vec2(), window.m_size.vec2))
+  let ir = window.inputRegion.get((vec2(), window.size.vec2))
 
   if (
     (
@@ -118,4 +118,3 @@ proc windowPartAt*(window: Window, mousePos: Vec2): WindowPart =
   
   else:
     return WindowPart.none
-

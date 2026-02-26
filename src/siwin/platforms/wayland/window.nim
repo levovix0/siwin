@@ -1,4 +1,4 @@
-import std/[times, importutils, strformat, options, tables, os, uri, sequtils, strutils]
+import std/[times, importutils, strformat, options, tables, os, uri, sequtils, strutils, math]
 from std/posix import pipe, close, write, read
 import pkg/[vmath]
 import ../../[colorutils, siwindefs]
@@ -58,6 +58,10 @@ type
     lastTextEntered: string
     lastPressedKeyTime: Time
     lastKeyRepeatedTime: Time
+    bufferScaleFactor: int32
+    fractionalScaleFactor: float32
+    viewport: Wp_viewport
+    fractionalScaleObj: Wp_fractional_scale_v1
   
   ClipboardWayland* = ref object of Clipboard
     globals: SiwinGlobalsWayland
@@ -293,6 +297,8 @@ method release(window: WindowWayland) {.base, raises: [].} =
   try:
     destroy window.idleInhibitor, destroy
     destroy window.layerShellSurface, destroy
+    destroy window.fractionalScaleObj, destroy
+    destroy window.viewport, destroy
     destroy window.plasmaSurface, destroy
     destroy window.serverDecoration, destroy
     if window.useLibdecor:
@@ -333,6 +339,55 @@ method release(window: WindowWaylandSoftwareRendering) =
 proc pushEvent[T](event: proc(e: T), args: T) =
   if event != nil: event(args)
 
+proc hasFractionalScaling(window: WindowWayland): bool {.inline.} =
+  window.fractionalScaleFactor > 0'f32 and window.viewport != typeof(window.viewport).default
+
+proc effectiveUiScale(window: WindowWayland): float32 {.inline.} =
+  if window.hasFractionalScaling():
+    window.fractionalScaleFactor
+  elif window.bufferScaleFactor > 0:
+    window.bufferScaleFactor.float32
+  else:
+    1'f32
+
+proc bufferScale(window: WindowWayland): int32 {.inline.} =
+  if window.hasFractionalScaling():
+    1'i32
+  elif window.bufferScaleFactor > 0:
+    window.bufferScaleFactor
+  else:
+    max(1'i32, ceil(window.effectiveUiScale()).int32)
+
+proc scaledBufferLength(logical: int32; uiScale: float32): int32 {.inline.} =
+  max(1'i32, ((logical.float32 * uiScale) + 0.5'f32).int32)
+
+proc bufferSize(window: WindowWayland, logicalSize: IVec2): IVec2 {.inline.} =
+  let scale = window.effectiveUiScale()
+  ivec2(scaledBufferLength(logicalSize.x, scale), scaledBufferLength(logicalSize.y, scale))
+
+proc toLogicalLength(window: WindowWayland; backing: float32): float32 {.inline.} =
+  let scale = window.effectiveUiScale()
+  if scale <= 1'f32:
+    backing
+  else:
+    backing / scale
+
+proc toLogicalLength(window: WindowWayland; backing: int32): int32 {.inline.} =
+  max(1'i32, (window.toLogicalLength(backing.float32) + 0.5'f32).int32)
+
+proc reportedPointerPos(window: WindowWayland, surfaceX, surfaceY: float32): Vec2 {.inline.} =
+  let scale = window.effectiveUiScale()
+  if scale <= 1'f32:
+    vec2(surfaceX, surfaceY)
+  else:
+    vec2(surfaceX * scale, surfaceY * scale)
+
+method uiScale*(window: WindowWayland): float32 =
+  window.effectiveUiScale()
+
+method reportedSize*(window: WindowWayland): IVec2 =
+  window.bufferSize(window.m_size)
+
 
 method close*(window: WindowWayland) =
   window.m_closed = true
@@ -354,6 +409,8 @@ proc basicInitWindow(window: WindowWayland; size: IVec2; screen: ScreenWayland) 
   window.m_focused = false
   window.m_resizable = true
   window.m_frameless = true
+  window.bufferScaleFactor = 1'i32
+  window.fractionalScaleFactor = 0'f32
 
   window.globals.initClipboardsIfNeeded()
 
@@ -365,6 +422,9 @@ proc basicInitWindow(window: WindowWayland; size: IVec2; screen: ScreenWayland) 
 method doResize(window: WindowWayland, size: IVec2) {.base.} =
   window.m_size = size
 
+  if window.viewport != typeof(window.viewport).default:
+    window.viewport.set_destination(size.x, size.y)
+
   if not window.m_transparent:
     let opaqueRegion = window.globals.compositor.create_region
     opaqueRegion.add(0, 0, window.m_size.x, window.m_size.y)
@@ -374,14 +434,25 @@ method doResize(window: WindowWayland, size: IVec2) {.base.} =
 
 method doResize(window: WindowWaylandSoftwareRendering, size: IVec2) =
   procCall window.WindowWayland.doResize(size)
+  let scaledSize = window.bufferSize(size)
 
   if window.buffer != nil and window.buffer.locked:
     swap window.buffer, window.oldBuffer
 
   if window.buffer == nil:
-    window.buffer = window.globals.create(window.globals.shm, size, (if window.m_transparent: argb8888 else: xrgb8888), bufferCount = 2)
+    window.buffer = window.globals.create(window.globals.shm, scaledSize, (if window.m_transparent: argb8888 else: xrgb8888), bufferCount = 2)
   else:
-    window.buffer.resize(size)
+    try:
+      window.buffer.resize(scaledSize)
+    except OSError:
+      # Some environments fail memfile remap during early fractional-scale negotiation.
+      # Recreate the shared buffer so we can continue without aborting the process.
+      window.buffer = window.globals.create(
+        window.globals.shm,
+        scaledSize,
+        (if window.m_transparent: argb8888 else: xrgb8888),
+        bufferCount = 2,
+      )
 
   # no need to attach buffer yet
 
@@ -523,11 +594,11 @@ proc resize(window: WindowWayland, size: IVec2) =
       window.toplevelSetMinSize(window.m_size.x, window.m_size.y)
       window.toplevelSetMaxSize(window.m_size.x, window.m_size.y)
 
-    window.eventsHandler.onResize.pushEvent ResizeEvent(window: window, size: window.m_size)
+    window.eventsHandler.onResize.pushEvent ResizeEvent(window: window, size: window.size)
 
   of WindowWaylandKind.LayerSurface:
     window.layerShellSurface.set_size(window.m_size.x.uint32, window.m_size.y.uint32)
-    window.eventsHandler.onResize.pushEvent ResizeEvent(window: window, size: window.m_size)
+    window.eventsHandler.onResize.pushEvent ResizeEvent(window: window, size: window.size)
     window.redraw()
 
 
@@ -631,7 +702,7 @@ method pixelBuffer*(window: WindowWaylandSoftwareRendering): PixelBuffer =
 
   PixelBuffer(
     data: (if window.buffer == nil: nil else: window.buffer.dataAddr),
-    size: window.m_size,
+    size: window.bufferSize(window.m_size),
     format: (if window.transparent: PixelBufferFormat.xrgb_32bit else: PixelBufferFormat.urgb_32bit)
   )
 
@@ -647,8 +718,9 @@ method swapBuffers(window: WindowWaylandSoftwareRendering) =
   if window.buffer == nil:
     return
 
+  let scaledSize = window.bufferSize(window.m_size)
   window.surface.attach(window.buffer.buffer, 0, 0)
-  window.surface.damage_buffer(0, 0, window.m_size.x, window.m_size.y)
+  window.surface.damage_buffer(0, 0, scaledSize.x, scaledSize.y)
   commit window.surface
   window.buffer.swapBuffers()
 
@@ -705,7 +777,7 @@ method `minimized=`*(window: WindowWayland, v: bool) =
 method `resizable=`*(window: WindowWayland, v: bool) =
   if window.kind != WindowWaylandKind.XdgSurface: return
   window.m_resizable = v
-  let size = window.size
+  let size = window.m_size
 
   if v:
     window.toplevelSetMinSize(window.m_minSize.x, window.m_minSize.y)
@@ -751,14 +823,26 @@ method startInteractiveResize*(window: WindowWayland, edge: Edge, pos: Option[Ve
 
 method showWindowMenu*(window: WindowWayland, pos: Option[Vec2]) =
   let pos = pos.get(window.mouse.pos).ivec2
-  window.toplevelShowWindowMenu(window.lastMouseButtonEventSerial, pos.x, pos.y)
+  let logicalPos = ivec2(window.toLogicalLength(pos.x), window.toLogicalLength(pos.y))
+  window.toplevelShowWindowMenu(window.lastMouseButtonEventSerial, logicalPos.x, logicalPos.y)
 
 
 method setInputRegion*(window: WindowWayland, pos, size: Vec2) =
   procCall window.Window.setInputRegion(pos, size)
   
+  let logicalPos = vec2(window.toLogicalLength(pos.x), window.toLogicalLength(pos.y))
+  let logicalSize = vec2(
+    max(1'f32, window.toLogicalLength(size.x)),
+    max(1'f32, window.toLogicalLength(size.y)),
+  )
+
   let region = window.globals.compositor.create_region
-  region.add(pos.x.int32, pos.y.int32, size.x.int32, size.y.int32)
+  region.add(
+    logicalPos.x.int32,
+    logicalPos.y.int32,
+    logicalSize.x.int32,
+    logicalSize.y.int32,
+  )
   
   window.surface.set_input_region(region)
   # window.xdgSurface.set_window_geometry(pos.x.int32, pos.y.int32, size.x.int32, size.y.int32)
@@ -806,7 +890,7 @@ proc initSeatEvents*(globals: SiwinGlobalsWayland) =
       window.clicking = {}
       window.enterSerial = serial
       globals.lastSeatEventSerial = serial
-      window.mouse.pos = vec2(surface_x, surface_y)
+      window.mouse.pos = window.reportedPointerPos(surface_x, surface_y)
 
       replicateWindowTitleAndBorderBehaviour(window, window.mouse.pos)
 
@@ -843,7 +927,7 @@ proc initSeatEvents*(globals: SiwinGlobalsWayland) =
         replicateWindowTitleAndBorderBehaviour(window, window.mouse.pos)
 
         window.clicking = {}
-        window.mouse.pos = vec2(surface_x, surface_y)
+        window.mouse.pos = window.reportedPointerPos(surface_x, surface_y)
         if window.opened: window.eventsHandler.onMouseMove.pushEvent MouseMoveEvent(window: window, pos: window.mouse.pos, kind: MouseMoveKind.move)
     
 
@@ -1106,6 +1190,18 @@ proc initDataDeviceManagerEvents*(globals: SiwinGlobalsWayland) =
 
 
 proc setupWindow(window: WindowWayland, fullscreen, frameless, transparent: bool, size: IVec2, class: string) =
+  const FractionalScaleDenominator = 120'f32
+
+  proc applySurfaceScale(window: WindowWayland) =
+    if window.surface == nil:
+      return
+    window.surface.set_buffer_scale(window.bufferScale())
+    if window.m_size.x > 0 and window.m_size.y > 0:
+      window.doResize(window.m_size)
+      if window.opened:
+        window.eventsHandler.onResize.pushEvent ResizeEvent(window: window, size: window.size)
+      window.redraw()
+
   expectExtension window.globals.compositor
   expectExtension window.globals.xdgWmBase
   
@@ -1113,6 +1209,24 @@ proc setupWindow(window: WindowWayland, fullscreen, frameless, transparent: bool
   
   window.surface = window.globals.compositor.create_surface
   window.globals.associatedWindows[window.surface.proxy.raw.id] = window
+  if window.globals.viewporter.proxy != nil:
+    window.viewport = window.globals.viewporter.get_viewport(window.surface)
+    window.viewport.set_destination(size.x, size.y)
+  if window.globals.fractionalScaleManager.proxy != nil:
+    window.fractionalScaleObj = window.globals.fractionalScaleManager.get_fractional_scale(window.surface)
+    window.fractionalScaleObj.onPreferred_scale:
+      let newScale = max(1'f32, scale.float32 / FractionalScaleDenominator)
+      if abs(window.fractionalScaleFactor - newScale) < 0.0001'f32:
+        return
+      window.fractionalScaleFactor = newScale
+      window.applySurfaceScale()
+  window.surface.set_buffer_scale(window.bufferScale())
+  window.surface.onPreferred_buffer_scale:
+    let newScale = max(1'i32, factor)
+    if window.bufferScaleFactor == newScale:
+      return
+    window.bufferScaleFactor = newScale
+    window.applySurfaceScale()
 
   case window.kind
   of WindowWaylandKind.XdgSurface:
@@ -1208,7 +1322,7 @@ proc setupWindow(window: WindowWayland, fullscreen, frameless, transparent: bool
       `Zwlr_layer_shell_v1/Layer`(window.layer.int),
       window.namespace.cstring
     )
-    window.layerShellSurface.set_size(window.size.x.uint32, window.size.y.uint32)
+    window.layerShellSurface.set_size(window.m_size.x.uint32, window.m_size.y.uint32)
     window.redraw()
 
     window.layerShellSurface.onConfigure:
@@ -1231,7 +1345,7 @@ proc initSoftwareRenderingWindow(
   
   window.setupWindow fullscreen, frameless, transparent, size, class
 
-  window.buffer = window.globals.create(window.globals.shm, size, (if transparent: argb8888 else: xrgb8888), bufferCount = 2)
+  window.buffer = window.globals.create(window.globals.shm, window.bufferSize(size), (if transparent: argb8888 else: xrgb8888), bufferCount = 2)
 
 
 proc setAnchor*(window: WindowWayland, edge: LayerEdge | seq[LayerEdge]) =
@@ -1477,7 +1591,7 @@ method firstStep*(window: WindowWayland, makeVisible = true) =
     discard libdecor_dispatch(window.globals.libdecorCtx, 0)
   discard wl_display_roundtrip window.globals.display
 
-  if window.opened: window.eventsHandler.onResize.pushEvent ResizeEvent(window: window, size: window.m_size, initial: true)
+  if window.opened: window.eventsHandler.onResize.pushEvent ResizeEvent(window: window, size: window.size, initial: true)
   window.lastTickTime = getTime()
   redraw window
 
