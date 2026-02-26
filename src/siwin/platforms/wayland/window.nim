@@ -58,6 +58,7 @@ type
     lastTextEntered: string
     lastPressedKeyTime: Time
     lastKeyRepeatedTime: Time
+    uiScaleFactor: float32
   
   ClipboardWayland* = ref object of Clipboard
     globals: SiwinGlobalsWayland
@@ -333,6 +334,22 @@ method release(window: WindowWaylandSoftwareRendering) =
 proc pushEvent[T](event: proc(e: T), args: T) =
   if event != nil: event(args)
 
+proc effectiveUiScale(window: WindowWayland): float32 {.inline.} =
+  if window.uiScaleFactor > 0:
+    window.uiScaleFactor
+  else:
+    1'f32
+
+proc bufferScale(window: WindowWayland): int32 {.inline.} =
+  max(1'i32, window.effectiveUiScale().int32)
+
+proc bufferSize(window: WindowWayland, logicalSize: IVec2): IVec2 {.inline.} =
+  let scale = window.bufferScale()
+  ivec2(max(1'i32, logicalSize.x * scale), max(1'i32, logicalSize.y * scale))
+
+method uiScale*(window: WindowWayland): float32 =
+  window.effectiveUiScale()
+
 
 method close*(window: WindowWayland) =
   window.m_closed = true
@@ -354,6 +371,7 @@ proc basicInitWindow(window: WindowWayland; size: IVec2; screen: ScreenWayland) 
   window.m_focused = false
   window.m_resizable = true
   window.m_frameless = true
+  window.uiScaleFactor = 1'f32
 
   window.globals.initClipboardsIfNeeded()
 
@@ -374,14 +392,15 @@ method doResize(window: WindowWayland, size: IVec2) {.base.} =
 
 method doResize(window: WindowWaylandSoftwareRendering, size: IVec2) =
   procCall window.WindowWayland.doResize(size)
+  let scaledSize = window.bufferSize(size)
 
   if window.buffer != nil and window.buffer.locked:
     swap window.buffer, window.oldBuffer
 
   if window.buffer == nil:
-    window.buffer = window.globals.create(window.globals.shm, size, (if window.m_transparent: argb8888 else: xrgb8888), bufferCount = 2)
+    window.buffer = window.globals.create(window.globals.shm, scaledSize, (if window.m_transparent: argb8888 else: xrgb8888), bufferCount = 2)
   else:
-    window.buffer.resize(size)
+    window.buffer.resize(scaledSize)
 
   # no need to attach buffer yet
 
@@ -631,7 +650,7 @@ method pixelBuffer*(window: WindowWaylandSoftwareRendering): PixelBuffer =
 
   PixelBuffer(
     data: (if window.buffer == nil: nil else: window.buffer.dataAddr),
-    size: window.m_size,
+    size: window.bufferSize(window.m_size),
     format: (if window.transparent: PixelBufferFormat.xrgb_32bit else: PixelBufferFormat.urgb_32bit)
   )
 
@@ -647,8 +666,9 @@ method swapBuffers(window: WindowWaylandSoftwareRendering) =
   if window.buffer == nil:
     return
 
+  let scaledSize = window.bufferSize(window.m_size)
   window.surface.attach(window.buffer.buffer, 0, 0)
-  window.surface.damage_buffer(0, 0, window.m_size.x, window.m_size.y)
+  window.surface.damage_buffer(0, 0, scaledSize.x, scaledSize.y)
   commit window.surface
   window.buffer.swapBuffers()
 
@@ -1113,6 +1133,18 @@ proc setupWindow(window: WindowWayland, fullscreen, frameless, transparent: bool
   
   window.surface = window.globals.compositor.create_surface
   window.globals.associatedWindows[window.surface.proxy.raw.id] = window
+  window.surface.set_buffer_scale(window.bufferScale())
+  window.surface.onPreferred_buffer_scale:
+    let newScale = max(1'i32, factor)
+    if window.uiScaleFactor == newScale.float32:
+      return
+    window.uiScaleFactor = newScale.float32
+    window.surface.set_buffer_scale(newScale)
+    if window.m_size.x > 0 and window.m_size.y > 0:
+      window.doResize(window.m_size)
+      if window.opened:
+        window.eventsHandler.onResize.pushEvent ResizeEvent(window: window, size: window.m_size)
+      window.redraw()
 
   case window.kind
   of WindowWaylandKind.XdgSurface:
@@ -1231,7 +1263,7 @@ proc initSoftwareRenderingWindow(
   
   window.setupWindow fullscreen, frameless, transparent, size, class
 
-  window.buffer = window.globals.create(window.globals.shm, size, (if transparent: argb8888 else: xrgb8888), bufferCount = 2)
+  window.buffer = window.globals.create(window.globals.shm, window.bufferSize(size), (if transparent: argb8888 else: xrgb8888), bufferCount = 2)
 
 
 proc setAnchor*(window: WindowWayland, edge: LayerEdge | seq[LayerEdge]) =
