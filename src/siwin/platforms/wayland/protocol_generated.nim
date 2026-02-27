@@ -290,6 +290,30 @@ type
     interfaces*: ptr ptr WaylandInterfaces
     destroy*: proc (cb: pointer) {.cdecl, raises: [].}
     preferred_scale*: proc (scale: uint32)
+  Xdg_toplevel_icon_manager_v1* = object
+    ## This interface allows clients to create toplevel window icons and set
+    ## them on toplevel windows to be displayed to the user.
+    proxy*: Wl_proxy
+  `Xdg_toplevel_icon_manager_v1 / Callbacks`* = object
+    interfaces*: ptr ptr WaylandInterfaces
+    destroy*: proc (cb: pointer) {.cdecl, raises: [].}
+    icon_size*: proc (size: int32)
+    done*: proc ()
+  Xdg_toplevel_icon_v1* = object
+    ## This interface defines a toplevel icon.
+    ## An icon can have a name, and multiple buffers.
+    ## In order to be applied, the icon must have either a name, or at least
+    ## one buffer assigned. Applying an empty icon (with no buffer or name) to
+    ## a toplevel should reset its icon to the default icon.
+    ## 
+    ## It is up to compositor policy whether to prefer using a buffer or loading
+    ## an icon via its name. See 'set_name' and 'add_buffer' for details.
+    proxy*: Wl_proxy
+  `Xdg_toplevel_icon_v1 / Error`* {.size: 4.} = enum
+    invalid_buffer = 1, immutable = 2, no_buffer = 3
+  `Xdg_toplevel_icon_v1 / Callbacks`* = object
+    interfaces*: ptr ptr WaylandInterfaces
+    destroy*: proc (cb: pointer) {.cdecl, raises: [].}
   Zwp_idle_inhibit_manager_v1* = object
     ## This interface permits inhibiting the idle behavior such as screen
     ## blanking, locking, and screensaving.  The client binds the idle manager
@@ -1296,6 +1320,8 @@ type
     `iface Xdg_popup`*: WlInterface
     `iface Wp_fractional_scale_manager_v1`*: WlInterface
     `iface Wp_fractional_scale_v1`*: WlInterface
+    `iface Xdg_toplevel_icon_manager_v1`*: WlInterface
+    `iface Xdg_toplevel_icon_v1`*: WlInterface
     `iface Zwp_idle_inhibit_manager_v1`*: WlInterface
     `iface Zwp_idle_inhibitor_v1`*: WlInterface
     `iface Zwp_tablet_manager_v2`*: WlInterface
@@ -1451,6 +1477,22 @@ proc initInterfaces*(interfaces: var WaylandInterfaces) =
       "wp_fractional_scale_v1", 1,
       [newWlMessage("wp_fractional_scale_v1.destroy", "1", [])], [newWlMessage(
       "wp_fractional_scale_v1.preferred_scale", "1u", [(ptr WlInterface) nil])])
+  interfaces.`iface Xdg_toplevel_icon_manager_v1` = newWlInterface(
+      "xdg_toplevel_icon_manager_v1", 1, [
+      newWlMessage("xdg_toplevel_icon_manager_v1.destroy", "1", []), newWlMessage(
+      "xdg_toplevel_icon_manager_v1.create_icon", "1n",
+      [addr(interfaces.`iface Xdg_toplevel_icon_v1`)]), newWlMessage(
+      "xdg_toplevel_icon_manager_v1.set_icon", "1o?o", [
+      addr(interfaces.`iface Xdg_toplevel`),
+      addr(interfaces.`iface Xdg_toplevel_icon_v1`)])], [newWlMessage(
+      "xdg_toplevel_icon_manager_v1.icon_size", "1i", [(ptr WlInterface) nil]),
+      newWlMessage("xdg_toplevel_icon_manager_v1.done", "1", [])])
+  interfaces.`iface Xdg_toplevel_icon_v1` = newWlInterface(
+      "xdg_toplevel_icon_v1", 1, [newWlMessage("xdg_toplevel_icon_v1.destroy",
+      "1", []), newWlMessage("xdg_toplevel_icon_v1.set_name", "1s",
+                             [(ptr WlInterface) nil]), newWlMessage(
+      "xdg_toplevel_icon_v1.add_buffer", "1oi",
+      [addr(interfaces.`iface Wl_buffer`), (ptr WlInterface) nil])], [])
   interfaces.`iface Zwp_idle_inhibit_manager_v1` = newWlInterface(
       "zwp_idle_inhibit_manager_v1", 1, [
       newWlMessage("zwp_idle_inhibit_manager_v1.destroy", "1", []), newWlMessage(
@@ -1859,6 +1901,12 @@ template ifaceName*(t: typedesc[Wp_fractional_scale_manager_v1]): string =
 template ifaceName*(t: typedesc[Wp_fractional_scale_v1]): string =
   "wp_fractional_scale_v1"
 
+template ifaceName*(t: typedesc[Xdg_toplevel_icon_manager_v1]): string =
+  "xdg_toplevel_icon_manager_v1"
+
+template ifaceName*(t: typedesc[Xdg_toplevel_icon_v1]): string =
+  "xdg_toplevel_icon_v1"
+
 template ifaceName*(t: typedesc[Zwp_idle_inhibit_manager_v1]): string =
   "zwp_idle_inhibit_manager_v1"
 
@@ -2098,6 +2146,27 @@ proc `Wp_fractional_scale_v1 / dispatch`*(impl: pointer; obj: pointer;
     let argsArray = cast[ptr array[1, Wl_argument]](args)
     if callbacks.preferred_scale != nil:
       callbacks.preferred_scale(cast[uint32](argsArray[][0]))
+  else:
+    discard
+
+proc `Xdg_toplevel_icon_manager_v1 / dispatch`*(impl: pointer; obj: pointer;
+    opcode: uint32; msg: ptr WlMessage; args: pointer): int32 {.cdecl.} =
+  let callbacks = cast[ptr `Xdg_toplevel_icon_manager_v1 / Callbacks`](impl)
+  case opcode
+  of 0:
+    let argsArray = cast[ptr array[1, Wl_argument]](args)
+    if callbacks.icon_size != nil:
+      callbacks.icon_size(cast[int32](argsArray[][0]))
+  of 1:
+    if callbacks.done != nil:
+      callbacks.done()
+  else:
+    discard
+
+proc `Xdg_toplevel_icon_v1 / dispatch`*(impl: pointer; obj: pointer;
+                                        opcode: uint32; msg: ptr WlMessage;
+                                        args: pointer): int32 {.cdecl.} =
+  case opcode
   else:
     discard
 
@@ -3766,6 +3835,97 @@ proc destroy*(this: Wp_fractional_scale_v1) =
   destroyCallbacks(this.proxy)
   discard wl_proxy_marshal_flags(this.proxy.raw, 0, nil, 1, 1)
 
+proc destroy*(this: Xdg_toplevel_icon_manager_v1) =
+  ## Destroy the toplevel icon manager.
+  ## This does not destroy objects created with the manager.
+  destroyCallbacks(this.proxy)
+  discard wl_proxy_marshal_flags(this.proxy.raw, 0, nil, 1, 1)
+
+proc create_icon*(this: Xdg_toplevel_icon_manager_v1): Xdg_toplevel_icon_v1 =
+  ## Creates a new icon object. This icon can then be attached to a
+  ## xdg_toplevel via the 'set_icon' request.
+  let interfaces = cast[ptr ptr WaylandInterfaces](this.proxy.raw.impl)
+  result = wl_proxy_marshal_flags(this.proxy.raw, 1, addr(
+      interfaces[].`iface Xdg_toplevel_icon_v1`), 1, 0, nil).construct(
+      interfaces[], Xdg_toplevel_icon_v1, `Xdg_toplevel_icon_v1 / dispatch`,
+      `Xdg_toplevel_icon_v1 / Callbacks`)
+
+proc set_icon*(this: Xdg_toplevel_icon_manager_v1; toplevel: Xdg_toplevel;
+               icon: Xdg_toplevel_icon_v1) =
+  ## This request assigns the icon 'icon' to 'toplevel', or clears the
+  ## toplevel icon if 'icon' was null.
+  ## This state is double-buffered and is applied on the next
+  ## wl_surface.commit of the toplevel.
+  ## 
+  ## After making this call, the xdg_toplevel_icon_v1 provided as 'icon'
+  ## can be destroyed by the client without 'toplevel' losing its icon.
+  ## The xdg_toplevel_icon_v1 is immutable from this point, and any
+  ## future attempts to change it must raise the
+  ## 'xdg_toplevel_icon_v1.immutable' protocol error.
+  ## 
+  ## The compositor must set the toplevel icon from either the pixel data
+  ## the icon provides, or by loading a stock icon using the icon name.
+  ## See the description of 'xdg_toplevel_icon_v1' for details.
+  ## 
+  ## If 'icon' is set to null, the icon of the respective toplevel is reset
+  ## to its default icon (usually the icon of the application, derived from
+  ## its desktop-entry file, or a placeholder icon).
+  ## If this request is passed an icon with no pixel buffers or icon name
+  ## assigned, the icon must be reset just like if 'icon' was null.
+  discard wl_proxy_marshal_flags(this.proxy.raw, 2, nil, 1, 0, toplevel, icon)
+
+proc destroy*(this: Xdg_toplevel_icon_v1) =
+  ## Destroys the 'xdg_toplevel_icon_v1' object.
+  ## The icon must still remain set on every toplevel it was assigned to,
+  ## until the toplevel icon is reset explicitly.
+  destroyCallbacks(this.proxy)
+  discard wl_proxy_marshal_flags(this.proxy.raw, 0, nil, 1, 1)
+
+proc set_name*(this: Xdg_toplevel_icon_v1; icon_name: cstring) =
+  ## This request assigns an icon name to this icon.
+  ## Any previously set name is overridden.
+  ## 
+  ## The compositor must resolve 'icon_name' according to the lookup rules
+  ## described in the XDG icon theme specification[1] using the
+  ## environment's current icon theme.
+  ## 
+  ## If the compositor does not support icon names or cannot resolve
+  ## 'icon_name' according to the XDG icon theme specification it must
+  ## fall back to using pixel buffer data instead.
+  ## 
+  ## If this request is made after the icon has been assigned to a toplevel
+  ## via 'set_icon', a 'immutable' error must be raised.
+  ## 
+  ## [1]: https://specifications.freedesktop.org/icon-theme-spec/icon-theme-spec-latest.html
+  discard wl_proxy_marshal_flags(this.proxy.raw, 1, nil, 1, 0, icon_name)
+
+proc add_buffer*(this: Xdg_toplevel_icon_v1; buffer: Wl_buffer; scale: int32) =
+  ## This request adds pixel data supplied as wl_buffer to the icon.
+  ## 
+  ## The client should add pixel data for all icon sizes and scales that
+  ## it can provide, or which are explicitly requested by the compositor
+  ## via 'icon_size' events on xdg_toplevel_icon_manager_v1.
+  ## 
+  ## The wl_buffer supplying pixel data as 'buffer' must be backed by wl_shm
+  ## and must be a square (width and height being equal).
+  ## If any of these buffer requirements are not fulfilled, a 'invalid_buffer'
+  ## error must be raised.
+  ## 
+  ## If this icon instance already has a buffer of the same size and scale
+  ## from a previous 'add_buffer' request, data from the last request
+  ## overrides the preexisting pixel data.
+  ## 
+  ## The wl_buffer must be kept alive for as long as the xdg_toplevel_icon
+  ## it is associated with is not destroyed, otherwise a 'no_buffer' error
+  ## is raised. The buffer contents must not be modified after it was
+  ## assigned to the icon. As a result, the region of the wl_shm_pool's
+  ## backing storage used for the wl_buffer must not be modified after this
+  ## request is sent. The wl_buffer.release event is unused.
+  ## 
+  ## If this request is made after the icon has been assigned to a toplevel
+  ## via 'set_icon', a 'immutable' error must be raised.
+  discard wl_proxy_marshal_flags(this.proxy.raw, 2, nil, 1, 0, buffer, scale)
+
 proc destroy*(this: Zwp_idle_inhibit_manager_v1) =
   ## Destroy the inhibit manager.
   destroyCallbacks(this.proxy)
@@ -5405,6 +5565,28 @@ template onPreferred_scale*(this: Wp_fractional_scale_v1; body) =
   ## The sent scale is the numerator of a fraction with a denominator of 120.
   cast[ptr `Wp_fractional_scale_v1 / Callbacks`](this.proxy.raw.impl).preferred_scale = proc (
       scale {.inject.}: uint32) =
+    body
+
+template onIcon_size*(this: Xdg_toplevel_icon_manager_v1; body) =
+  ## This event indicates an icon size the compositor prefers to be
+  ## available if the client has scalable icons and can render to any size.
+  ## 
+  ## When the 'xdg_toplevel_icon_manager_v1' object is created, the
+  ## compositor may send one or more 'icon_size' events to describe the list
+  ## of preferred icon sizes. If the compositor has no size preference, it
+  ## may not send any 'icon_size' event, and it is up to the client to
+  ## decide a suitable icon size.
+  ## 
+  ## A sequence of 'icon_size' events must be finished with a 'done' event.
+  ## If the compositor has no size preferences, it must still send the
+  ## 'done' event, without any preceding 'icon_size' events.
+  cast[ptr `Xdg_toplevel_icon_manager_v1 / Callbacks`](this.proxy.raw.impl).icon_size = proc (
+      size {.inject.}: int32) =
+    body
+
+template onDone*(this: Xdg_toplevel_icon_manager_v1; body) =
+  ## This event is sent after all 'icon_size' events have been sent.
+  cast[ptr `Xdg_toplevel_icon_manager_v1 / Callbacks`](this.proxy.raw.impl).done = proc () =
     body
 
 template onTablet_added*(this: Zwp_tablet_seat_v2; body) =
@@ -7137,6 +7319,12 @@ template dispatch*(t: typedesc[Wp_fractional_scale_manager_v1]): untyped =
 template dispatch*(t: typedesc[Wp_fractional_scale_v1]): untyped =
   `Wp_fractional_scale_v1 / dispatch`
 
+template dispatch*(t: typedesc[Xdg_toplevel_icon_manager_v1]): untyped =
+  `Xdg_toplevel_icon_manager_v1 / dispatch`
+
+template dispatch*(t: typedesc[Xdg_toplevel_icon_v1]): untyped =
+  `Xdg_toplevel_icon_v1 / dispatch`
+
 template dispatch*(t: typedesc[Zwp_idle_inhibit_manager_v1]): untyped =
   `Zwp_idle_inhibit_manager_v1 / dispatch`
 
@@ -7283,6 +7471,12 @@ template Callbacks*(t: typedesc[Wp_fractional_scale_manager_v1]): untyped =
 
 template Callbacks*(t: typedesc[Wp_fractional_scale_v1]): untyped =
   `Wp_fractional_scale_v1 / Callbacks`
+
+template Callbacks*(t: typedesc[Xdg_toplevel_icon_manager_v1]): untyped =
+  `Xdg_toplevel_icon_manager_v1 / Callbacks`
+
+template Callbacks*(t: typedesc[Xdg_toplevel_icon_v1]): untyped =
+  `Xdg_toplevel_icon_v1 / Callbacks`
 
 template Callbacks*(t: typedesc[Zwp_idle_inhibit_manager_v1]): untyped =
   `Zwp_idle_inhibit_manager_v1 / Callbacks`

@@ -25,6 +25,7 @@ type
     dataDeviceManager*: WlDataDeviceManager
     viewporter*: Wp_viewporter
     fractionalScaleManager*: Wp_fractional_scale_manager_v1
+    xdgToplevelIconManager*: Xdg_toplevel_icon_manager_v1
 
     serverDecorationManager*: Zxdg_decoration_manager_v1
     plasmaShell*: Org_kde_plasma_shell
@@ -130,6 +131,9 @@ proc initRegistryCallbacks(globals: SiwinGlobalsWayland) =
 
   addRegistry Wp_fractional_scale_manager_v1:
     globals.fractionalScaleManager = binded
+
+  addRegistry Xdg_toplevel_icon_manager_v1:
+    globals.xdgToplevelIconManager = binded
 
 
 proc isWaylandAvailable*: bool =
