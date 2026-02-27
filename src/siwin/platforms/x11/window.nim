@@ -50,6 +50,7 @@ type
     attachedToWindow {.cursor.}: WindowX11
     selectionAtom: Atom
     m_data: Option[string]
+    m_dataIsValid: bool
     m_userContent: ClipboardConvertableContent
 
 
@@ -875,46 +876,74 @@ method content*(clipboard: ClipboardX11, kind: ClipboardContentKind, mimeType: s
     else:
       result = ClipboardContent(kind: kind)
 
-  if kind notin clipboard.availableKinds:
-    return emptyContent(kind, mimeType)
-
-  var mimeType =
-    case kind
-    of ClipboardContentKind.text:
-      if "UTF8_STRING" in clipboard.availableMimeTypes: "UTF8_STRING"
-      elif "STRING" in clipboard.availableMimeTypes: "STRING"
-      elif "TEXT" in clipboard.availableMimeTypes: "TEXT"
-      else: "text/plain"
-    
-    of ClipboardContentKind.files:
-      "text/uri-list"
-    
-    of ClipboardContentKind.other:
-      mimeType
-
-  if kind == ClipboardContentKind.other and mimeType notin clipboard.availableMimeTypes:
-    return emptyContent(kind, mimeType)
-
-  clipboard.m_data = options.none string
-
   let globals = clipboard.attachedToWindow.globals
   if globals.display.XGetSelectionOwner(clipboard.selectionAtom) == None:
     return emptyContent(kind, mimeType)
 
-  discard globals.display.XConvertSelection(
-    clipboard.selectionAtom, globals.display.XInternAtom(cstring mimeType, 0),
-    globals.atoms.siwin_clipboardTargetProperty, clipboard.attachedToWindow.handle, CurrentTime
-  )
+  proc requestSelection(mime: string): tuple[ok: bool, data: string] =
+    clipboard.m_data = options.none string
+    clipboard.m_dataIsValid = false
 
-  while clipboard.m_data.isNone:
-    clipboard.attachedToWindow.step()
+    discard globals.display.XConvertSelection(
+      clipboard.selectionAtom, globals.display.XInternAtom(cstring mime, 0),
+      globals.atoms.siwin_clipboardTargetProperty, clipboard.attachedToWindow.handle, CurrentTime
+    )
+
+    while clipboard.m_data.isNone:
+      clipboard.attachedToWindow.step()
+
+    result.ok = clipboard.m_dataIsValid
+    if clipboard.m_data.isSome:
+      result.data = clipboard.m_data.get
+
+  var data = ""
+  var requestSucceeded = false
+  var requestedMimeType = mimeType
 
   case kind
   of ClipboardContentKind.text:
-    result = ClipboardContent(kind: kind, text: clipboard.m_data.get)
+    var mimeCandidates: seq[string]
+
+    proc addMimeCandidate(mime: string) =
+      if mime.len > 0 and mime notin mimeCandidates:
+        mimeCandidates.add mime
+
+    addMimeCandidate "text/plain;charset=utf-8"
+    addMimeCandidate "UTF8_STRING"
+    addMimeCandidate "STRING"
+    addMimeCandidate "TEXT"
+    addMimeCandidate "text/plain"
+    addMimeCandidate mimeType
+
+    for candidate in mimeCandidates:
+      let res = requestSelection(candidate)
+      if res.ok:
+        requestSucceeded = true
+        requestedMimeType = candidate
+        data = res.data
+        break
+
+  of ClipboardContentKind.files:
+    requestedMimeType = "text/uri-list"
+    let res = requestSelection(requestedMimeType)
+    requestSucceeded = res.ok
+    data = res.data
+
+  of ClipboardContentKind.other:
+    let res = requestSelection(requestedMimeType)
+    requestSucceeded = res.ok
+    data = res.data
+
+  if not requestSucceeded:
+    clipboard.m_data = options.none string
+    return emptyContent(kind, requestedMimeType)
+
+  case kind
+  of ClipboardContentKind.text:
+    result = ClipboardContent(kind: kind, text: data)
   
   of ClipboardContentKind.files:
-    let uris = clipboard.m_data.get.splitLines
+    let uris = data.splitLines
     var files: seq[string]
     for uri in uris:
       let uri = parseUri(uri)
@@ -924,7 +953,7 @@ method content*(clipboard: ClipboardX11, kind: ClipboardContentKind, mimeType: s
     result = ClipboardContent(kind: kind, files: files)
   
   of ClipboardContentKind.other:
-    result = ClipboardContent(kind: kind, mimeType: mimeType, data: clipboard.m_data.get)
+    result = ClipboardContent(kind: kind, mimeType: requestedMimeType, data: data)
   
   clipboard.m_data = options.none string
 
@@ -1307,11 +1336,13 @@ method step*(window: WindowX11) =
           return
 
       if ev.xselection.property != None:
+        clipboard.ClipboardX11.m_dataIsValid = true
         clipboard.ClipboardX11.m_data = options.some window.globals.property(
           window.handle, ev.xselection.property, string
         ).data
-        discard window.globals.display.XDeleteProperty(window.handle, ev.xselection.target)
+        discard window.globals.display.XDeleteProperty(window.handle, ev.xselection.property)
       else:
+        clipboard.ClipboardX11.m_dataIsValid = false
         clipboard.ClipboardX11.m_data = some ""
     
     of SelectionRequest:

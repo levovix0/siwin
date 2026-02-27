@@ -1609,6 +1609,10 @@ method content*(
 
   if clipboard == clipboard.globals.primaryClipboard.ClipboardWayland:
     if clipboard.globals.current_selection_data_offer == nil:
+      # Compositors are not required to always send us a fresh selection offer
+      # for our own clipboard content. Fall back to local converters when possible.
+      if clipboard.userContent.converters.len > 0:
+        return constructClipboardContent(clipboard.userContent.toString(mimeType), kind, mimeType)
       return constructClipboardContent("", kind, mimeType)
 
     var fds: array[2, FileHandle]  # [0] - read, [1] - write
@@ -1623,9 +1627,12 @@ method content*(
     var data: string
     var cbuffer: array[1024, char]
 
-    while (let c = read(fds[0], cbuffer[0].addr, 1024); c != 0):
-      data.add $cast[cstring](cbuffer[0].addr)
-      if c != 1024: break
+    while true:
+      let c = read(fds[0], cbuffer[0].addr, cbuffer.len)
+      if c <= 0:
+        break
+      for i in 0..<c.int:
+        data.add cbuffer[i]
 
     discard close fds[0]
 
