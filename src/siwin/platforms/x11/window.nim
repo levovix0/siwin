@@ -1019,14 +1019,14 @@ method step*(window: WindowX11) =
 
   template scrollDeltaY: float =
     case ev.xbutton.button
-    of 4: -1
-    of 5: 1
+    of 4: 1
+    of 5: -1
     else: 0
 
   template scrollDeltaX: float =
     case ev.xbutton.button
-    of 6: -1
-    of 7: 1
+    of 6: 1
+    of 7: -1
     else: 0
   
   proc extractKey(xkey: XKeyEvent): Key =

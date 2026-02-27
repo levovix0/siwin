@@ -70,6 +70,7 @@ siwin_loadDynlibIfExists libdecorHandle:
   proc libdecor_frame_set_title*(frame: LibdecorFrame, title: cstring)
   proc libdecor_frame_set_app_id*(frame: LibdecorFrame, appId: cstring)
   proc libdecor_frame_set_visibility*(frame: LibdecorFrame, visible: bool)
+  proc libdecor_frame_get_xdg_toplevel*(frame: LibdecorFrame): pointer
 
   proc libdecor_frame_commit*(frame: LibdecorFrame, state: LibdecorState,
                               configuration: LibdecorConfiguration)

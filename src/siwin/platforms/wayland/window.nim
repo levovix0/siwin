@@ -62,6 +62,8 @@ type
     fractionalScaleFactor: float32
     viewport: Wp_viewport
     fractionalScaleObj: Wp_fractional_scale_v1
+    toplevelIcon: Xdg_toplevel_icon_v1
+    toplevelIconBuffers: seq[SharedBuffer]
   
   ClipboardWayland* = ref object of Clipboard
     globals: SiwinGlobalsWayland
@@ -255,6 +257,24 @@ method height*(screen: ScreenWayland): int32 = 1080  # todo
 
 method release(window: WindowWayland) {.base, raises: [].}
 
+proc clearToplevelIconResources(window: WindowWayland) =
+  if window.toplevelIcon != nil:
+    try:
+      destroy window.toplevelIcon
+    except:
+      discard
+    window.toplevelIcon = typeof(window.toplevelIcon).default
+
+  for buffer in window.toplevelIconBuffers.mitems:
+    if buffer == nil:
+      continue
+    try:
+      release buffer
+    except:
+      discard
+    buffer = nil
+  window.toplevelIconBuffers = @[]
+
 
 proc `=destroy`(window: WindowWaylandObj) {.siwin_destructor.} =
   release cast[WindowWayland](window.addr)
@@ -295,6 +315,7 @@ method release(window: WindowWayland) {.base, raises: [].} =
       window.globals.associatedWindows.del window.surface.proxy.raw.id
 
   try:
+    clearToplevelIconResources(window)
     destroy window.idleInhibitor, destroy
     destroy window.layerShellSurface, destroy
     destroy window.fractionalScaleObj, destroy
@@ -460,6 +481,26 @@ method doResize(window: WindowWaylandSoftwareRendering, size: IVec2) =
 proc setFrameless(window: WindowWayland, v: bool)
 
 # libdecor/xdg abstraction, prefixed with toplevel
+
+proc toplevelForIcon(window: WindowWayland): Xdg_toplevel =
+  if window.kind != WindowWaylandKind.XdgSurface:
+    return typeof(result).default
+
+  if not window.useLibdecor:
+    return window.xdgToplevel
+
+  if window.xdgToplevel != nil:
+    return window.xdgToplevel
+
+  if libdecor_frame_get_xdg_toplevel == nil or window.libdecorFrame == nil:
+    return typeof(result).default
+
+  let rawToplevel = libdecor_frame_get_xdg_toplevel(window.libdecorFrame)
+  if rawToplevel == nil:
+    return typeof(result).default
+
+  window.xdgToplevel = Xdg_toplevel(proxy: Wl_proxy(raw: cast[ptr Wl_object](rawToplevel)))
+  window.xdgToplevel
 
 proc toplevelSetTitle(window: WindowWayland, title: string) =
   if window.useLibdecor:
@@ -687,13 +728,73 @@ method `cursor=`*(window: WindowWayland, v: Cursor) =
   if v.kind == builtin and window.m_cursor.kind == builtin and v.builtin == window.m_cursor.builtin: return
   ## todo
 
+proc applyToplevelIcon(window: WindowWayland, icon: Xdg_toplevel_icon_v1) =
+  let manager = window.globals.xdgToplevelIconManager
+  if manager == nil or window.surface == nil:
+    return
+
+  let toplevel = window.toplevelForIcon()
+  if toplevel == nil:
+    return
+
+  manager.set_icon(toplevel, icon)
+  commit window.surface
+
 
 method `icon=`*(window: WindowWayland, v: nil.typeof) =
-  ## todo
+  clearToplevelIconResources(window)
+  window.applyToplevelIcon(typeof(window.toplevelIcon).default)
 
 method `icon=`*(window: WindowWayland, v: PixelBuffer) =
-  if v.size.x * v.size.y == 0: window.icon = nil
-  ## todo
+  if v.size.x * v.size.y == 0 or v.data == nil:
+    window.icon = nil
+    return
+
+  if window.globals.xdgToplevelIconManager == nil or window.globals.shm == nil:
+    return
+
+  let toplevel = window.toplevelForIcon()
+  if toplevel == nil:
+    return
+
+  clearToplevelIconResources(window)
+
+  let iconSize = max(v.size.x, v.size.y)
+  if iconSize <= 0:
+    window.icon = nil
+    return
+
+  let sourcePixelCount = (v.size.x * v.size.y).int
+  var sourcePixels = newSeq[Color32bit](sourcePixelCount)
+  copyMem(sourcePixels[0].addr, v.data, sourcePixelCount * sizeof(Color32bit))
+
+  var converted = PixelBuffer(data: sourcePixels[0].addr, size: v.size, format: v.format)
+  convertPixelsInplace(converted.data, converted.size, v.format, PixelBufferFormat.bgra_32bit)
+
+  var squarePixels = newSeq[Color32bit](iconSize.int * iconSize.int)
+  let rowBytes = v.size.x.int * sizeof(Color32bit)
+  let offsetX = ((iconSize - v.size.x) div 2).int
+  let offsetY = ((iconSize - v.size.y) div 2).int
+  for y in 0..<v.size.y.int:
+    let srcOffset = y * v.size.x.int
+    let dstOffset = (y + offsetY) * iconSize.int + offsetX
+    copyMem(squarePixels[dstOffset].addr, sourcePixels[srcOffset].addr, rowBytes)
+
+  let iconBuffer = window.globals.create(
+    window.globals.shm,
+    ivec2(iconSize, iconSize),
+    `WlShm / Format`.argb8888,
+    bufferCount = 1,
+  )
+  copyMem(iconBuffer.dataAddr, squarePixels[0].addr, squarePixels.len * sizeof(Color32bit))
+
+  let icon = window.globals.xdgToplevelIconManager.create_icon()
+  icon.add_buffer(iconBuffer.buffer, 1)
+  window.globals.xdgToplevelIconManager.set_icon(toplevel, icon)
+  commit window.surface
+
+  window.toplevelIcon = icon
+  window.toplevelIconBuffers = @[iconBuffer]
 
 
 method pixelBuffer*(window: WindowWaylandSoftwareRendering): PixelBuffer =
@@ -989,11 +1090,11 @@ proc initSeatEvents*(globals: SiwinGlobalsWayland) =
 
       if axis == `WlPointer / Axis`.vertical_scroll:
         if window.opened: window.eventsHandler.onScroll.pushEvent ScrollEvent(
-          window: window, delta: value / kde_default_mousewheel_scroll_length, deltaX: 0
+          window: window, delta: -value / kde_default_mousewheel_scroll_length, deltaX: 0
         )
       elif axis == `WlPointer / Axis`.horizontal_scroll:
         if window.opened: window.eventsHandler.onScroll.pushEvent ScrollEvent(
-          window: window, delta: 0, deltaX: value / kde_default_mousewheel_scroll_length
+          window: window, delta: 0, deltaX: -value / kde_default_mousewheel_scroll_length
         )
       else:
         return
