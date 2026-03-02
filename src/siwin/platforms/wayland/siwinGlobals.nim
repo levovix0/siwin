@@ -55,11 +55,15 @@ type
 
     seat_keyboard_repeatSettings*: tuple[rate, delay: int32]
 
+    tabletManager*: Zwp_tablet_manager_v2
+    seat_tablet*: Zwp_tablet_seat_v2
+
     primaryClipboard*: Clipboard
     selectionClipboard*: Clipboard
     dragndropClipboard*: Clipboard
 
     lastSeatEventSerial*: uint32
+    lastTouchId*: int
 
     libdecorCtx*: LibdecorContext
     libdecorIface*: LibdecorInterface
@@ -134,6 +138,9 @@ proc initRegistryCallbacks(globals: SiwinGlobalsWayland) =
 
   addRegistry Xdg_toplevel_icon_manager_v1:
     globals.xdgToplevelIconManager = binded
+
+  addRegistry Zwp_tablet_manager_v2:
+    globals.tabletManager = binded
 
 
 proc isWaylandAvailable*: bool =

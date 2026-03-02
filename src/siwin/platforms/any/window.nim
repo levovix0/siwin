@@ -39,10 +39,20 @@ type
     capsLock numLock scrollLock printScreen pause
 
     level3_shift level5_shift
+
+
+  TouchDeviceKind* {.siwin_enum.} = enum
+    touchScreen
+    touchPad
+    graphicsTablet
   
-  Touch* = object
-    id*: int
+  Touch* = ref object
+    id*: int  # begins at 1, increments for each new touch
     pos*: Vec2
+    pressed*: bool
+    pressure*: float  # 0..1
+    button*: Option[MouseButton]
+    device*: TouchDeviceKind
 
 
   Mouse* = object
@@ -54,7 +64,7 @@ type
     modifiers*: set[ModifierKey]
   
   TouchScreen* = object
-    pressed*: Table[int, Touch]  # id -> touch
+    touches*: Table[int, Touch]  # id -> touch
   
 
   Edge* {.siwin_enum.} = enum
@@ -159,13 +169,17 @@ type
     repeated*: bool
   
   TouchEvent* = object of AnyWindowEvent
-    touchId*: int
+    touch*: Touch
     pressed*: bool
-    pos*: Vec2
   
   TouchMoveEvent* = object of AnyWindowEvent
-    touchId*: int
+    touch*: Touch
+    kind*: MouseMoveKind
     pos*: Vec2
+  
+  TouchPressureChangedEvent* = object of AnyWindowEvent
+    touch*: Touch
+    pressure*: float  # 0..1
   
   StateBoolChangedEventKind* {.siwin_enum.} = enum
     focus
@@ -183,28 +197,29 @@ type
 
 
   WindowEventsHandler* = object
-    onClose*:       proc(e: CloseEvent)
-    onRender*:      proc(e: RenderEvent)
-    onTick*:        proc(e: TickEvent)
-    onResize*:      proc(e: ResizeEvent)
-    onWindowMove*:  proc(e: WindowMoveEvent)
+    onClose*:        proc(e: CloseEvent)  ## this window was closed (by pressing window close button, alt+f4, or by code)
+    onRender*:       proc(e: RenderEvent)  ## this window is beeng redrawn, a full frame should be drawn on window until this callback finishes
+    onTick*:         proc(e: TickEvent)  ## some time has passed and all pending events was handled
+    onResize*:       proc(e: ResizeEvent)  ## this window changed it's width or height
+    onWindowMove*:   proc(e: WindowMoveEvent)  ## this window changed it's position on screen
 
-    onMouseMove*:    proc(e: MouseMoveEvent)
-    onMouseButton*:  proc(e: MouseButtonEvent)
-    onScroll*:       proc(e: ScrollEvent)
-    onClick*:        proc(e: ClickEvent)
+    onMouseMove*:    proc(e: MouseMoveEvent)  ## the mouse cursor changed it's position
+    onMouseButton*:  proc(e: MouseButtonEvent)  ## a mouse button become pressed or released
+    onScroll*:       proc(e: ScrollEvent)  ## a mouse wheel rotated (or scrolled by touchpad)
+    onClick*:        proc(e: ClickEvent)  ## a mouse released a button without moving from position is was pressed this button
 
-    onKey*:          proc(e: KeyEvent)
-    onTextInput*:    proc(e: TextInputEvent)
+    onKey*:          proc(e: KeyEvent)  ## a key on a keyboard become pressed or released
+    onTextInput*:    proc(e: TextInputEvent)  ## a (input method managed) unicode characters was inputed
 
-    onTouch*:        proc(e: TouchEvent)
-    onTouchMove*:    proc(e: TouchMoveEvent)
+    onTouch*:        proc(e: TouchEvent)  ## a touch either become pressed or released
+    onTouchMove*:    proc(e: TouchMoveEvent)  ## a touch changed it's position (can be either pressed or released)
+    onTouchPressureChanged*: proc(e: TouchPressureChangedEvent)  ## a touch changed it's pressure (can be either pressed or released)
 
     onStateBoolChanged*: proc(e: StateBoolChangedEvent)
       ## binary state of focus/fullscreen/maximized/frameless changed
       ## fullscreen and maximized changes are sent before ResizeEvent
 
-    onDrop*:             proc(e: DropEvent)
+    onDrop*:         proc(e: DropEvent)  ## drag&drop clipboard content is beeng pasted to this window
 
 
   Window* = ref object of RootObj

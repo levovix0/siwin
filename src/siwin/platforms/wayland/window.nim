@@ -1205,6 +1205,83 @@ proc initSeatEvents*(globals: SiwinGlobalsWayland) =
     globals.seat_keyboard.onRepeat_info:
       if rate > 0 and delay >= 0:
         globals.seat_keyboard_repeatSettings = (rate: rate, delay: delay)
+  
+
+  if globals.tabletManager != nil:
+    globals.seat_tablet = globals.tabletManager.get_tablet_seat(globals.seat)
+    
+    globals.seat_tablet.onTool_added:
+      # note: here nim closures ability to capture variables inside function scope is used
+      # todo: change wayland callbacks to {.nimcall.} instead of {.closure.} and explicitly handle captures
+      inc globals.lastTouchId
+      let touchId = globals.lastTouchId
+      let tool = construct(
+        id.proxy.raw, globals.interfaces.addr,
+        Zwp_tablet_tool_v2, `Zwp_tablet_tool_v2 / dispatch`, `Zwp_tablet_tool_v2 / Callbacks`
+      )
+      var currentWindow: WindowWayland = nil
+      var touch = Touch(id: touchId, device: TouchDeviceKind.graphicsTablet)
+
+      tool.onRemoved:
+        destroy tool
+
+      tool.onProximity_in:
+        if surface == nil: return
+        let window = globals.associatedWindows.getOrDefault(surface.proxy.raw.id, nil).WindowWayland
+        if window == nil: return
+        currentWindow = window
+        
+        window.touchScreen.touches[touchId] = touch
+        window.enterSerial = serial
+        globals.lastSeatEventSerial = serial
+
+        replicateWindowTitleAndBorderBehaviour(window, window.mouse.pos)
+
+        if window.opened: window.eventsHandler.onTouchMove.pushEvent TouchMoveEvent(
+          window: window, touch: touch, pos: touch.pos, kind: MouseMoveKind.enter
+        )
+      
+      tool.onProximity_out:
+        if currentWindow != nil:
+          if currentWindow.opened: currentWindow.eventsHandler.onTouchMove.pushEvent TouchMoveEvent(
+            window: currentWindow, touch: touch, pos: touch.pos, kind: MouseMoveKind.leave
+          )
+        currentWindow = nil
+      
+      tool.onMotion:
+        touch.pos = vec2(x, y)
+
+        if currentWindow != nil:
+          if currentWindow.opened: currentWindow.eventsHandler.onTouchMove.pushEvent TouchMoveEvent(
+            window: currentWindow, touch: touch, pos: touch.pos, kind: MouseMoveKind.move
+          )
+      
+      tool.onDown:
+        touch.pressed = true
+        globals.lastSeatEventSerial = serial
+
+        if currentWindow != nil:
+          if currentWindow.opened: currentWindow.eventsHandler.onTouch.pushEvent TouchEvent(
+            window: currentWindow, touch: touch, pressed: touch.pressed
+          )
+      
+      tool.onUp:
+        touch.pressed = false
+
+        if currentWindow != nil:
+          if currentWindow.opened: currentWindow.eventsHandler.onTouch.pushEvent TouchEvent(
+            window: currentWindow, touch: touch, pressed: touch.pressed
+          )
+      
+      tool.onPressure:
+        touch.pressure = pressure.int / 65535
+
+        if currentWindow != nil:
+          if currentWindow.opened: currentWindow.eventsHandler.onTouchPressureChanged.pushEvent TouchPressureChangedEvent(
+            window: currentWindow, touch: touch, pressure: touch.pressure
+          )
+
+
 
 
 proc setIdleInhibit*(window: WindowWayland, state: bool) =
