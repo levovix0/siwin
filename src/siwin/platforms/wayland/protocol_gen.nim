@@ -381,33 +381,39 @@ macro generateProtocolWrapperFromXmlStringImpl(outNimFile: static[string], insta
             else:
               error("unexpected type: " & t)
           
-          if x.name == "bind" and ifaceName == "wl_registry":
-            # in wayland protocol it's declared as taking 2 args, BUT in actual code... it takes 4.
-            # idk why, but while it works like so...
-            shortSignature = "1usun"
-          
           var types = nnkBracket.newTree()
-          for (_, _, iface, _, _) in x.args:
-            if iface == "":
+          if x.name == "bind" and ifaceName == "wl_registry":
+            # wl_registry.bind has an untyped new_id, which on the wire
+            # is encoded as (interface_name: string, version: uint, new_id),
+            # so the actual signature is "usun" (4 args) not just "un" (2 args).
+            shortSignature = "1usun"
+            for _ in 0..<4:
               types.add nnkCommand.newTree(
-                nnkPar.newTree(
-                  nnkPtrTy.newTree(
-                    ident("WlInterface")
-                  )
-                ),
+                nnkPar.newTree(nnkPtrTy.newTree(ident("WlInterface"))),
                 newNilLit()
               )
-            else:
-              types.add nnkCall.newTree(
-                ident("addr"),
-                nnkDotExpr.newTree(
-                  ident("interfaces"),
-                  nnkAccQuoted.newTree(
-                    ident("iface"),
-                    ident(iface.capitalize),
-                  )
-                ),
-              )
+          else:
+            for (_, _, iface, _, _) in x.args:
+              if iface == "":
+                types.add nnkCommand.newTree(
+                  nnkPar.newTree(
+                    nnkPtrTy.newTree(
+                      ident("WlInterface")
+                    )
+                  ),
+                  newNilLit()
+                )
+              else:
+                types.add nnkCall.newTree(
+                  ident("addr"),
+                  nnkDotExpr.newTree(
+                    ident("interfaces"),
+                    nnkAccQuoted.newTree(
+                      ident("iface"),
+                      ident(iface.capitalize),
+                    )
+                  ),
+                )
 
           nnkCall.newTree(
             ident("newWlMessage"),
@@ -907,7 +913,9 @@ macro generateProtocolWrapperFromXmlStringImpl(outNimFile: static[string], insta
       )
 
 
-  for (kind, path) in walkDir(instantiatedFrom.splitPath.head / "protocols"):
+  var protocols = walkDir(instantiatedFrom.splitPath.head / "protocols").toSeq()
+  protocols.sort()
+  for (kind, path) in protocols:
     parse staticRead path
 
   typesection.add nnkTypeDef.newTree(
