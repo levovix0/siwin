@@ -6,60 +6,56 @@ import
   libwayland
 
 type
-  Zwlr_layer_shell_v1* = object
-    ## Clients can use this interface to assign the surface_layer role to
-    ## wl_surfaces. Such surfaces are assigned to a "layer" of the output and
-    ## rendered with a defined z-depth respective to each other. They may also be
-    ## anchored to the edges and corners of a screen and specify input handling
-    ## semantics. This interface should be suitable for the implementation of
-    ## many desktop shell components, and a broad number of other applications
-    ## that interact with the desktop.
+  Wp_cursor_shape_manager_v1* = object
+    ## This global offers an alternative, optional way to set cursor images. This
+    ## new way uses enumerated cursors instead of a wl_surface like
+    ## wl_pointer.set_cursor does.
+    ## 
+    ## Warning! The protocol described in this file is currently in the testing
+    ## phase. Backward compatible changes may be added together with the
+    ## corresponding interface version bump. Backward incompatible changes can
+    ## only be done by creating a new major version of the extension.
     proxy*: Wl_proxy
-  `Zwlr_layer_shell_v1 / Error`* {.size: 4.} = enum
-    role = 0, invalid_layer = 1, already_constructed = 2
-  `Zwlr_layer_shell_v1 / Layer`* {.size: 4.} = enum ## These values indicate which layers a surface can be rendered in. They
-                                                     ## are ordered by z depth, bottom-most first. Traditional shell surfaces
-                                                     ## will typically be rendered between the bottom and top layers.
-                                                     ## Fullscreen shell surfaces are typically rendered at the top layer.
-                                                     ## Multiple surfaces can share a single layer, and ordering within a
-                                                     ## single layer is undefined.
-    background = 0, bottom = 1, top = 2, overlay = 3
-  `Zwlr_layer_shell_v1 / Callbacks`* = object
+  `Wp_cursor_shape_manager_v1 / Callbacks`* = object
     interfaces*: ptr ptr WaylandInterfaces
     destroy*: proc (cb: pointer) {.cdecl, raises: [].}
-  Zwlr_layer_surface_v1* = object
-    ## An interface that may be implemented by a wl_surface, for surfaces that
-    ## are designed to be rendered as a layer of a stacked desktop-like
-    ## environment.
-    ## 
-    ## Layer surface state (layer, size, anchor, exclusive zone,
-    ## margin, interactivity) is double-buffered, and will be applied at the
-    ## time wl_surface.commit of the corresponding wl_surface is called.
-    ## 
-    ## Attaching a null buffer to a layer surface unmaps it.
-    ## 
-    ## Unmapping a layer_surface means that the surface cannot be shown by the
-    ## compositor until it is explicitly mapped again. The layer_surface
-    ## returns to the state it had right after layer_shell.get_layer_surface.
-    ## The client can re-map the surface by performing a commit without any
-    ## buffer attached, waiting for a configure event and handling it as usual.
+  Wp_cursor_shape_device_v1* = object
+    ## This interface advertises the list of supported cursor shapes for a
+    ## device, and allows clients to set the cursor shape.
     proxy*: Wl_proxy
-  `Zwlr_layer_surface_v1 / Keyboard_interactivity`* {.size: 4.} = enum ## Types of keyboard interaction possible for layer shell surfaces. The
-                                                                        ## rationale for this is twofold: (1) some applications are not interested
-                                                                        ## in keyboard events and not allowing them to be focused can improve the
-                                                                        ## desktop experience; (2) some applications will want to take exclusive
-                                                                        ## keyboard focus.
-    none = 0, exclusive = 1, on_demand = 2
-  `Zwlr_layer_surface_v1 / Error`* {.size: 4.} = enum
-    invalid_surface_state = 0, invalid_size = 1, invalid_anchor = 2,
-    invalid_keyboard_interactivity = 3
-  `Zwlr_layer_surface_v1 / Anchor`* {.size: 4.} = enum
-    top = 1, bottom = 2, left = 4, right = 8
-  `Zwlr_layer_surface_v1 / Callbacks`* = object
+  `Wp_cursor_shape_device_v1 / Shape`* {.size: 4.} = enum ## This enum describes cursor shapes.
+                                                           ## 
+                                                           ## The names are taken from the CSS W3C specification:
+                                                           ## https://w3c.github.io/csswg-drafts/css-ui/#cursor
+    default = 1, context_menu = 2, help = 3, pointer = 4, progress = 5,
+    wait = 6, cell = 7, crosshair = 8, text = 9, vertical_text = 10, alias = 11,
+    copy = 12, move = 13, no_drop = 14, not_allowed = 15, grab = 16,
+    grabbing = 17, e_resize = 18, n_resize = 19, ne_resize = 20, nw_resize = 21,
+    s_resize = 22, se_resize = 23, sw_resize = 24, w_resize = 25,
+    ew_resize = 26, ns_resize = 27, nesw_resize = 28, nwse_resize = 29,
+    col_resize = 30, row_resize = 31, all_scroll = 32, zoom_in = 33,
+    zoom_out = 34
+  `Wp_cursor_shape_device_v1 / Error`* {.size: 4.} = enum
+    invalid_shape = 1
+  `Wp_cursor_shape_device_v1 / Callbacks`* = object
     interfaces*: ptr ptr WaylandInterfaces
     destroy*: proc (cb: pointer) {.cdecl, raises: [].}
-    configure*: proc (serial: uint32; width: uint32; height: uint32)
-    closed*: proc ()
+  Wp_fractional_scale_manager_v1* = object
+    ## A global interface for requesting surfaces to use fractional scales.
+    proxy*: Wl_proxy
+  `Wp_fractional_scale_manager_v1 / Error`* {.size: 4.} = enum
+    fractional_scale_exists = 0
+  `Wp_fractional_scale_manager_v1 / Callbacks`* = object
+    interfaces*: ptr ptr WaylandInterfaces
+    destroy*: proc (cb: pointer) {.cdecl, raises: [].}
+  Wp_fractional_scale_v1* = object
+    ## An additional interface to a wl_surface object which allows the compositor
+    ## to inform the client of the preferred scale.
+    proxy*: Wl_proxy
+  `Wp_fractional_scale_v1 / Callbacks`* = object
+    interfaces*: ptr ptr WaylandInterfaces
+    destroy*: proc (cb: pointer) {.cdecl, raises: [].}
+    preferred_scale*: proc (scale: uint32)
   Zwp_idle_inhibit_manager_v1* = object
     ## This interface permits inhibiting the idle behavior such as screen
     ## blanking, locking, and screensaving.  The client binds the idle manager
@@ -94,6 +90,38 @@ type
   `Zwp_idle_inhibitor_v1 / Callbacks`* = object
     interfaces*: ptr ptr WaylandInterfaces
     destroy*: proc (cb: pointer) {.cdecl, raises: [].}
+  Org_kde_plasma_shell* = object
+    ## This interface is used by KF5 powered Wayland shells to communicate with
+    ## the compositor and can only be bound one time.
+    proxy*: Wl_proxy
+  `Org_kde_plasma_shell / Callbacks`* = object
+    interfaces*: ptr ptr WaylandInterfaces
+    destroy*: proc (cb: pointer) {.cdecl, raises: [].}
+  Org_kde_plasma_surface* = object
+    ## An interface that may be implemented by a wl_surface, for
+    ## implementations that provide the shell user interface.
+    ## 
+    ## It provides requests to set surface roles, assign an output
+    ## or set the position in output coordinates.
+    ## 
+    ## On the server side the object is automatically destroyed when
+    ## the related wl_surface is destroyed.  On client side,
+    ## org_kde_plasma_surface.destroy() must be called before
+    ## destroying the wl_surface object.
+    proxy*: Wl_proxy
+  `Org_kde_plasma_surface / Role`* {.size: 4.} = enum
+    normal = 0, desktop = 1, panel = 2, onscreendisplay = 3, notification = 4,
+    tooltip = 5, criticalnotification = 6, appletpopup = 7
+  `Org_kde_plasma_surface / Panel_behavior`* {.size: 4.} = enum ## Behavior for panel surface
+    always_visible = 1, auto_hide = 2, windows_can_cover = 3,
+    windows_go_below = 4
+  `Org_kde_plasma_surface / Error`* {.size: 4.} = enum
+    panel_not_auto_hide = 0
+  `Org_kde_plasma_surface / Callbacks`* = object
+    interfaces*: ptr ptr WaylandInterfaces
+    destroy*: proc (cb: pointer) {.cdecl, raises: [].}
+    auto_hidden_panel_hidden*: proc ()
+    auto_hidden_panel_shown*: proc ()
   Zwp_tablet_manager_v2* = object
     ## An object that provides access to the graphics tablets available on this
     ## system. All tablets are associated with a seat, to get access to the
@@ -322,54 +350,6 @@ type
     destroy*: proc (cb: pointer) {.cdecl, raises: [].}
     delta*: proc (value120: int32)
     frame*: proc (time: uint32)
-  Wp_fractional_scale_manager_v1* = object
-    ## A global interface for requesting surfaces to use fractional scales.
-    proxy*: Wl_proxy
-  `Wp_fractional_scale_manager_v1 / Error`* {.size: 4.} = enum
-    fractional_scale_exists = 0
-  `Wp_fractional_scale_manager_v1 / Callbacks`* = object
-    interfaces*: ptr ptr WaylandInterfaces
-    destroy*: proc (cb: pointer) {.cdecl, raises: [].}
-  Wp_fractional_scale_v1* = object
-    ## An additional interface to a wl_surface object which allows the compositor
-    ## to inform the client of the preferred scale.
-    proxy*: Wl_proxy
-  `Wp_fractional_scale_v1 / Callbacks`* = object
-    interfaces*: ptr ptr WaylandInterfaces
-    destroy*: proc (cb: pointer) {.cdecl, raises: [].}
-    preferred_scale*: proc (scale: uint32)
-  Org_kde_plasma_shell* = object
-    ## This interface is used by KF5 powered Wayland shells to communicate with
-    ## the compositor and can only be bound one time.
-    proxy*: Wl_proxy
-  `Org_kde_plasma_shell / Callbacks`* = object
-    interfaces*: ptr ptr WaylandInterfaces
-    destroy*: proc (cb: pointer) {.cdecl, raises: [].}
-  Org_kde_plasma_surface* = object
-    ## An interface that may be implemented by a wl_surface, for
-    ## implementations that provide the shell user interface.
-    ## 
-    ## It provides requests to set surface roles, assign an output
-    ## or set the position in output coordinates.
-    ## 
-    ## On the server side the object is automatically destroyed when
-    ## the related wl_surface is destroyed.  On client side,
-    ## org_kde_plasma_surface.destroy() must be called before
-    ## destroying the wl_surface object.
-    proxy*: Wl_proxy
-  `Org_kde_plasma_surface / Role`* {.size: 4.} = enum
-    normal = 0, desktop = 1, panel = 2, onscreendisplay = 3, notification = 4,
-    tooltip = 5, criticalnotification = 6, appletpopup = 7
-  `Org_kde_plasma_surface / Panel_behavior`* {.size: 4.} = enum ## Behavior for panel surface
-    always_visible = 1, auto_hide = 2, windows_can_cover = 3,
-    windows_go_below = 4
-  `Org_kde_plasma_surface / Error`* {.size: 4.} = enum
-    panel_not_auto_hide = 0
-  `Org_kde_plasma_surface / Callbacks`* = object
-    interfaces*: ptr ptr WaylandInterfaces
-    destroy*: proc (cb: pointer) {.cdecl, raises: [].}
-    auto_hidden_panel_hidden*: proc ()
-    auto_hidden_panel_shown*: proc ()
   Wp_viewporter* = object
     ## The global interface exposing surface cropping and scaling
     ## capabilities is used to instantiate an interface extension for a
@@ -444,233 +424,6 @@ type
   `Wp_viewport / Callbacks`* = object
     interfaces*: ptr ptr WaylandInterfaces
     destroy*: proc (cb: pointer) {.cdecl, raises: [].}
-  Wp_cursor_shape_manager_v1* = object
-    ## This global offers an alternative, optional way to set cursor images. This
-    ## new way uses enumerated cursors instead of a wl_surface like
-    ## wl_pointer.set_cursor does.
-    ## 
-    ## Warning! The protocol described in this file is currently in the testing
-    ## phase. Backward compatible changes may be added together with the
-    ## corresponding interface version bump. Backward incompatible changes can
-    ## only be done by creating a new major version of the extension.
-    proxy*: Wl_proxy
-  `Wp_cursor_shape_manager_v1 / Callbacks`* = object
-    interfaces*: ptr ptr WaylandInterfaces
-    destroy*: proc (cb: pointer) {.cdecl, raises: [].}
-  Wp_cursor_shape_device_v1* = object
-    ## This interface advertises the list of supported cursor shapes for a
-    ## device, and allows clients to set the cursor shape.
-    proxy*: Wl_proxy
-  `Wp_cursor_shape_device_v1 / Shape`* {.size: 4.} = enum ## This enum describes cursor shapes.
-                                                           ## 
-                                                           ## The names are taken from the CSS W3C specification:
-                                                           ## https://w3c.github.io/csswg-drafts/css-ui/#cursor
-    default = 1, context_menu = 2, help = 3, pointer = 4, progress = 5,
-    wait = 6, cell = 7, crosshair = 8, text = 9, vertical_text = 10, alias = 11,
-    copy = 12, move = 13, no_drop = 14, not_allowed = 15, grab = 16,
-    grabbing = 17, e_resize = 18, n_resize = 19, ne_resize = 20, nw_resize = 21,
-    s_resize = 22, se_resize = 23, sw_resize = 24, w_resize = 25,
-    ew_resize = 26, ns_resize = 27, nesw_resize = 28, nwse_resize = 29,
-    col_resize = 30, row_resize = 31, all_scroll = 32, zoom_in = 33,
-    zoom_out = 34
-  `Wp_cursor_shape_device_v1 / Error`* {.size: 4.} = enum
-    invalid_shape = 1
-  `Wp_cursor_shape_device_v1 / Callbacks`* = object
-    interfaces*: ptr ptr WaylandInterfaces
-    destroy*: proc (cb: pointer) {.cdecl, raises: [].}
-  Xdg_wm_base* = object
-    ## The xdg_wm_base interface is exposed as a global object enabling clients
-    ## to turn their wl_surfaces into windows in a desktop environment. It
-    ## defines the basic functionality needed for clients and the compositor to
-    ## create windows that can be dragged, resized, maximized, etc, as well as
-    ## creating transient windows such as popup menus.
-    proxy*: Wl_proxy
-  `Xdg_wm_base / Error`* {.size: 4.} = enum
-    role = 0, defunct_surfaces = 1, not_the_topmost_popup = 2,
-    invalid_popup_parent = 3, invalid_surface_state = 4, invalid_positioner = 5,
-    unresponsive = 6
-  `Xdg_wm_base / Callbacks`* = object
-    interfaces*: ptr ptr WaylandInterfaces
-    destroy*: proc (cb: pointer) {.cdecl, raises: [].}
-    ping*: proc (serial: uint32)
-  Xdg_positioner* = object
-    ## The xdg_positioner provides a collection of rules for the placement of a
-    ## child surface relative to a parent surface. Rules can be defined to ensure
-    ## the child surface remains within the visible area's borders, and to
-    ## specify how the child surface changes its position, such as sliding along
-    ## an axis, or flipping around a rectangle. These positioner-created rules are
-    ## constrained by the requirement that a child surface must intersect with or
-    ## be at least partially adjacent to its parent surface.
-    ## 
-    ## See the various requests for details about possible rules.
-    ## 
-    ## At the time of the request, the compositor makes a copy of the rules
-    ## specified by the xdg_positioner. Thus, after the request is complete the
-    ## xdg_positioner object can be destroyed or reused; further changes to the
-    ## object will have no effect on previous usages.
-    ## 
-    ## For an xdg_positioner object to be considered complete, it must have a
-    ## non-zero size set by set_size, and a non-zero anchor rectangle set by
-    ## set_anchor_rect. Passing an incomplete xdg_positioner object when
-    ## positioning a surface raises an invalid_positioner error.
-    proxy*: Wl_proxy
-  `Xdg_positioner / Error`* {.size: 4.} = enum
-    invalid_input = 0
-  `Xdg_positioner / Anchor`* {.size: 4.} = enum
-    none = 0, top = 1, bottom = 2, left = 3, right = 4, top_left = 5,
-    bottom_left = 6, top_right = 7, bottom_right = 8
-  `Xdg_positioner / Gravity`* {.size: 4.} = enum
-    none = 0, top = 1, bottom = 2, left = 3, right = 4, top_left = 5,
-    bottom_left = 6, top_right = 7, bottom_right = 8
-  `Xdg_positioner / Constraint_adjustment`* {.size: 4.} = enum ## The constraint adjustment value define ways the compositor will adjust
-                                                                ## the position of the surface, if the unadjusted position would result
-                                                                ## in the surface being partly constrained.
-                                                                ## 
-                                                                ## Whether a surface is considered 'constrained' is left to the compositor
-                                                                ## to determine. For example, the surface may be partly outside the
-                                                                ## compositor's defined 'work area', thus necessitating the child surface's
-                                                                ## position be adjusted until it is entirely inside the work area.
-                                                                ## 
-                                                                ## The adjustments can be combined, according to a defined precedence: 1)
-                                                                ## Flip, 2) Slide, 3) Resize.
-    none = 0, slide_x = 1, slide_y = 2, flip_x = 4, flip_y = 8, resize_x = 16,
-    resize_y = 32
-  `Xdg_positioner / Callbacks`* = object
-    interfaces*: ptr ptr WaylandInterfaces
-    destroy*: proc (cb: pointer) {.cdecl, raises: [].}
-  Xdg_surface* = object
-    ## An interface that may be implemented by a wl_surface, for
-    ## implementations that provide a desktop-style user interface.
-    ## 
-    ## It provides a base set of functionality required to construct user
-    ## interface elements requiring management by the compositor, such as
-    ## toplevel windows, menus, etc. The types of functionality are split into
-    ## xdg_surface roles.
-    ## 
-    ## Creating an xdg_surface does not set the role for a wl_surface. In order
-    ## to map an xdg_surface, the client must create a role-specific object
-    ## using, e.g., get_toplevel, get_popup. The wl_surface for any given
-    ## xdg_surface can have at most one role, and may not be assigned any role
-    ## not based on xdg_surface.
-    ## 
-    ## A role must be assigned before any other requests are made to the
-    ## xdg_surface object.
-    ## 
-    ## The client must call wl_surface.commit on the corresponding wl_surface
-    ## for the xdg_surface state to take effect.
-    ## 
-    ## Creating an xdg_surface from a wl_surface which has a buffer attached or
-    ## committed is a client error, and any attempts by a client to attach or
-    ## manipulate a buffer prior to the first xdg_surface.configure call must
-    ## also be treated as errors.
-    ## 
-    ## After creating a role-specific object and setting it up, the client must
-    ## perform an initial commit without any buffer attached. The compositor
-    ## will reply with initial wl_surface state such as
-    ## wl_surface.preferred_buffer_scale followed by an xdg_surface.configure
-    ## event. The client must acknowledge it and is then allowed to attach a
-    ## buffer to map the surface.
-    ## 
-    ## Mapping an xdg_surface-based role surface is defined as making it
-    ## possible for the surface to be shown by the compositor. Note that
-    ## a mapped surface is not guaranteed to be visible once it is mapped.
-    ## 
-    ## For an xdg_surface to be mapped by the compositor, the following
-    ## conditions must be met:
-    ## (1) the client has assigned an xdg_surface-based role to the surface
-    ## (2) the client has set and committed the xdg_surface state and the
-    ##   role-dependent state to the surface
-    ## (3) the client has committed a buffer to the surface
-    ## 
-    ## A newly-unmapped surface is considered to have met condition (1) out
-    ## of the 3 required conditions for mapping a surface if its role surface
-    ## has not been destroyed, i.e. the client must perform the initial commit
-    ## again before attaching a buffer.
-    proxy*: Wl_proxy
-  `Xdg_surface / Error`* {.size: 4.} = enum
-    not_constructed = 1, already_constructed = 2, unconfigured_buffer = 3,
-    invalid_serial = 4, invalid_size = 5, defunct_role_object = 6
-  `Xdg_surface / Callbacks`* = object
-    interfaces*: ptr ptr WaylandInterfaces
-    destroy*: proc (cb: pointer) {.cdecl, raises: [].}
-    configure*: proc (serial: uint32)
-  Xdg_toplevel* = object
-    ## This interface defines an xdg_surface role which allows a surface to,
-    ## among other things, set window-like properties such as maximize,
-    ## fullscreen, and minimize, set application-specific metadata like title and
-    ## id, and well as trigger user interactive operations such as interactive
-    ## resize and move.
-    ## 
-    ## Unmapping an xdg_toplevel means that the surface cannot be shown
-    ## by the compositor until it is explicitly mapped again.
-    ## All active operations (e.g., move, resize) are canceled and all
-    ## attributes (e.g. title, state, stacking, ...) are discarded for
-    ## an xdg_toplevel surface when it is unmapped. The xdg_toplevel returns to
-    ## the state it had right after xdg_surface.get_toplevel. The client
-    ## can re-map the toplevel by perfoming a commit without any buffer
-    ## attached, waiting for a configure event and handling it as usual (see
-    ## xdg_surface description).
-    ## 
-    ## Attaching a null buffer to a toplevel unmaps the surface.
-    proxy*: Wl_proxy
-  `Xdg_toplevel / Error`* {.size: 4.} = enum
-    invalid_resize_edge = 0, invalid_parent = 1, invalid_size = 2
-  `Xdg_toplevel / Resize_edge`* {.size: 4.} = enum ## These values are used to indicate which edge of a surface
-                                                    ## is being dragged in a resize operation.
-    none = 0, top = 1, bottom = 2, left = 4, top_left = 5, bottom_left = 6,
-    right = 8, top_right = 9, bottom_right = 10
-  `Xdg_toplevel / State`* {.size: 4.} = enum ## The different state values used on the surface. This is designed for
-                                              ## state values like maximized, fullscreen. It is paired with the
-                                              ## configure event to ensure that both the client and the compositor
-                                              ## setting the state can be synchronized.
-                                              ## 
-                                              ## States set in this way are double-buffered. They will get applied on
-                                              ## the next commit.
-    maximized = 1, fullscreen = 2, resizing = 3, activated = 4, tiled_left = 5,
-    tiled_right = 6, tiled_top = 7, tiled_bottom = 8, suspended = 9
-  `Xdg_toplevel / Wm_capabilities`* {.size: 4.} = enum
-    window_menu = 1, maximize = 2, fullscreen = 3, minimize = 4
-  `Xdg_toplevel / Callbacks`* = object
-    interfaces*: ptr ptr WaylandInterfaces
-    destroy*: proc (cb: pointer) {.cdecl, raises: [].}
-    configure*: proc (width: int32; height: int32; states: Wl_array)
-    close*: proc ()
-    configure_bounds*: proc (width: int32; height: int32)
-    wm_capabilities*: proc (capabilities: Wl_array)
-  Xdg_popup* = object
-    ## A popup surface is a short-lived, temporary surface. It can be used to
-    ## implement for example menus, popovers, tooltips and other similar user
-    ## interface concepts.
-    ## 
-    ## A popup can be made to take an explicit grab. See xdg_popup.grab for
-    ## details.
-    ## 
-    ## When the popup is dismissed, a popup_done event will be sent out, and at
-    ## the same time the surface will be unmapped. See the xdg_popup.popup_done
-    ## event for details.
-    ## 
-    ## Explicitly destroying the xdg_popup object will also dismiss the popup and
-    ## unmap the surface. Clients that want to dismiss the popup when another
-    ## surface of their own is clicked should dismiss the popup using the destroy
-    ## request.
-    ## 
-    ## A newly created xdg_popup will be stacked on top of all previously created
-    ## xdg_popup surfaces associated with the same xdg_toplevel.
-    ## 
-    ## The parent of an xdg_popup must be mapped (see the xdg_surface
-    ## description) before the xdg_popup itself.
-    ## 
-    ## The client must call wl_surface.commit on the corresponding wl_surface
-    ## for the xdg_popup state to take effect.
-    proxy*: Wl_proxy
-  `Xdg_popup / Error`* {.size: 4.} = enum
-    invalid_grab = 0
-  `Xdg_popup / Callbacks`* = object
-    interfaces*: ptr ptr WaylandInterfaces
-    destroy*: proc (cb: pointer) {.cdecl, raises: [].}
-    configure*: proc (x: int32; y: int32; width: int32; height: int32)
-    popup_done*: proc ()
-    repositioned*: proc (token: uint32)
   `Wl_display / Error`* {.size: 4.} = enum ## These errors are global and can be emitted in response to any
                                             ## server request.
     invalid_object = 0, invalid_method = 1, no_memory = 2, implementation = 3
@@ -1256,30 +1009,60 @@ type
   `Wl_subsurface / Callbacks`* = object
     interfaces*: ptr ptr WaylandInterfaces
     destroy*: proc (cb: pointer) {.cdecl, raises: [].}
-  Xdg_toplevel_icon_manager_v1* = object
-    ## This interface allows clients to create toplevel window icons and set
-    ## them on toplevel windows to be displayed to the user.
+  Zwlr_layer_shell_v1* = object
+    ## Clients can use this interface to assign the surface_layer role to
+    ## wl_surfaces. Such surfaces are assigned to a "layer" of the output and
+    ## rendered with a defined z-depth respective to each other. They may also be
+    ## anchored to the edges and corners of a screen and specify input handling
+    ## semantics. This interface should be suitable for the implementation of
+    ## many desktop shell components, and a broad number of other applications
+    ## that interact with the desktop.
     proxy*: Wl_proxy
-  `Xdg_toplevel_icon_manager_v1 / Callbacks`* = object
+  `Zwlr_layer_shell_v1 / Error`* {.size: 4.} = enum
+    role = 0, invalid_layer = 1, already_constructed = 2
+  `Zwlr_layer_shell_v1 / Layer`* {.size: 4.} = enum ## These values indicate which layers a surface can be rendered in. They
+                                                     ## are ordered by z depth, bottom-most first. Traditional shell surfaces
+                                                     ## will typically be rendered between the bottom and top layers.
+                                                     ## Fullscreen shell surfaces are typically rendered at the top layer.
+                                                     ## Multiple surfaces can share a single layer, and ordering within a
+                                                     ## single layer is undefined.
+    background = 0, bottom = 1, top = 2, overlay = 3
+  `Zwlr_layer_shell_v1 / Callbacks`* = object
     interfaces*: ptr ptr WaylandInterfaces
     destroy*: proc (cb: pointer) {.cdecl, raises: [].}
-    icon_size*: proc (size: int32)
-    done*: proc ()
-  Xdg_toplevel_icon_v1* = object
-    ## This interface defines a toplevel icon.
-    ## An icon can have a name, and multiple buffers.
-    ## In order to be applied, the icon must have either a name, or at least
-    ## one buffer assigned. Applying an empty icon (with no buffer or name) to
-    ## a toplevel should reset its icon to the default icon.
+  Zwlr_layer_surface_v1* = object
+    ## An interface that may be implemented by a wl_surface, for surfaces that
+    ## are designed to be rendered as a layer of a stacked desktop-like
+    ## environment.
     ## 
-    ## It is up to compositor policy whether to prefer using a buffer or loading
-    ## an icon via its name. See 'set_name' and 'add_buffer' for details.
+    ## Layer surface state (layer, size, anchor, exclusive zone,
+    ## margin, interactivity) is double-buffered, and will be applied at the
+    ## time wl_surface.commit of the corresponding wl_surface is called.
+    ## 
+    ## Attaching a null buffer to a layer surface unmaps it.
+    ## 
+    ## Unmapping a layer_surface means that the surface cannot be shown by the
+    ## compositor until it is explicitly mapped again. The layer_surface
+    ## returns to the state it had right after layer_shell.get_layer_surface.
+    ## The client can re-map the surface by performing a commit without any
+    ## buffer attached, waiting for a configure event and handling it as usual.
     proxy*: Wl_proxy
-  `Xdg_toplevel_icon_v1 / Error`* {.size: 4.} = enum
-    invalid_buffer = 1, immutable = 2, no_buffer = 3
-  `Xdg_toplevel_icon_v1 / Callbacks`* = object
+  `Zwlr_layer_surface_v1 / Keyboard_interactivity`* {.size: 4.} = enum ## Types of keyboard interaction possible for layer shell surfaces. The
+                                                                        ## rationale for this is twofold: (1) some applications are not interested
+                                                                        ## in keyboard events and not allowing them to be focused can improve the
+                                                                        ## desktop experience; (2) some applications will want to take exclusive
+                                                                        ## keyboard focus.
+    none = 0, exclusive = 1, on_demand = 2
+  `Zwlr_layer_surface_v1 / Error`* {.size: 4.} = enum
+    invalid_surface_state = 0, invalid_size = 1, invalid_anchor = 2,
+    invalid_keyboard_interactivity = 3
+  `Zwlr_layer_surface_v1 / Anchor`* {.size: 4.} = enum
+    top = 1, bottom = 2, left = 4, right = 8
+  `Zwlr_layer_surface_v1 / Callbacks`* = object
     interfaces*: ptr ptr WaylandInterfaces
     destroy*: proc (cb: pointer) {.cdecl, raises: [].}
+    configure*: proc (serial: uint32; width: uint32; height: uint32)
+    closed*: proc ()
   Zxdg_decoration_manager_v1* = object
     ## This interface allows a compositor to announce support for server-side
     ## decorations.
@@ -1323,11 +1106,232 @@ type
     interfaces*: ptr ptr WaylandInterfaces
     destroy*: proc (cb: pointer) {.cdecl, raises: [].}
     configure*: proc (mode: `Zxdg_toplevel_decoration_v1 / Mode`)
+  Xdg_wm_base* = object
+    ## The xdg_wm_base interface is exposed as a global object enabling clients
+    ## to turn their wl_surfaces into windows in a desktop environment. It
+    ## defines the basic functionality needed for clients and the compositor to
+    ## create windows that can be dragged, resized, maximized, etc, as well as
+    ## creating transient windows such as popup menus.
+    proxy*: Wl_proxy
+  `Xdg_wm_base / Error`* {.size: 4.} = enum
+    role = 0, defunct_surfaces = 1, not_the_topmost_popup = 2,
+    invalid_popup_parent = 3, invalid_surface_state = 4, invalid_positioner = 5,
+    unresponsive = 6
+  `Xdg_wm_base / Callbacks`* = object
+    interfaces*: ptr ptr WaylandInterfaces
+    destroy*: proc (cb: pointer) {.cdecl, raises: [].}
+    ping*: proc (serial: uint32)
+  Xdg_positioner* = object
+    ## The xdg_positioner provides a collection of rules for the placement of a
+    ## child surface relative to a parent surface. Rules can be defined to ensure
+    ## the child surface remains within the visible area's borders, and to
+    ## specify how the child surface changes its position, such as sliding along
+    ## an axis, or flipping around a rectangle. These positioner-created rules are
+    ## constrained by the requirement that a child surface must intersect with or
+    ## be at least partially adjacent to its parent surface.
+    ## 
+    ## See the various requests for details about possible rules.
+    ## 
+    ## At the time of the request, the compositor makes a copy of the rules
+    ## specified by the xdg_positioner. Thus, after the request is complete the
+    ## xdg_positioner object can be destroyed or reused; further changes to the
+    ## object will have no effect on previous usages.
+    ## 
+    ## For an xdg_positioner object to be considered complete, it must have a
+    ## non-zero size set by set_size, and a non-zero anchor rectangle set by
+    ## set_anchor_rect. Passing an incomplete xdg_positioner object when
+    ## positioning a surface raises an invalid_positioner error.
+    proxy*: Wl_proxy
+  `Xdg_positioner / Error`* {.size: 4.} = enum
+    invalid_input = 0
+  `Xdg_positioner / Anchor`* {.size: 4.} = enum
+    none = 0, top = 1, bottom = 2, left = 3, right = 4, top_left = 5,
+    bottom_left = 6, top_right = 7, bottom_right = 8
+  `Xdg_positioner / Gravity`* {.size: 4.} = enum
+    none = 0, top = 1, bottom = 2, left = 3, right = 4, top_left = 5,
+    bottom_left = 6, top_right = 7, bottom_right = 8
+  `Xdg_positioner / Constraint_adjustment`* {.size: 4.} = enum ## The constraint adjustment value define ways the compositor will adjust
+                                                                ## the position of the surface, if the unadjusted position would result
+                                                                ## in the surface being partly constrained.
+                                                                ## 
+                                                                ## Whether a surface is considered 'constrained' is left to the compositor
+                                                                ## to determine. For example, the surface may be partly outside the
+                                                                ## compositor's defined 'work area', thus necessitating the child surface's
+                                                                ## position be adjusted until it is entirely inside the work area.
+                                                                ## 
+                                                                ## The adjustments can be combined, according to a defined precedence: 1)
+                                                                ## Flip, 2) Slide, 3) Resize.
+    none = 0, slide_x = 1, slide_y = 2, flip_x = 4, flip_y = 8, resize_x = 16,
+    resize_y = 32
+  `Xdg_positioner / Callbacks`* = object
+    interfaces*: ptr ptr WaylandInterfaces
+    destroy*: proc (cb: pointer) {.cdecl, raises: [].}
+  Xdg_surface* = object
+    ## An interface that may be implemented by a wl_surface, for
+    ## implementations that provide a desktop-style user interface.
+    ## 
+    ## It provides a base set of functionality required to construct user
+    ## interface elements requiring management by the compositor, such as
+    ## toplevel windows, menus, etc. The types of functionality are split into
+    ## xdg_surface roles.
+    ## 
+    ## Creating an xdg_surface does not set the role for a wl_surface. In order
+    ## to map an xdg_surface, the client must create a role-specific object
+    ## using, e.g., get_toplevel, get_popup. The wl_surface for any given
+    ## xdg_surface can have at most one role, and may not be assigned any role
+    ## not based on xdg_surface.
+    ## 
+    ## A role must be assigned before any other requests are made to the
+    ## xdg_surface object.
+    ## 
+    ## The client must call wl_surface.commit on the corresponding wl_surface
+    ## for the xdg_surface state to take effect.
+    ## 
+    ## Creating an xdg_surface from a wl_surface which has a buffer attached or
+    ## committed is a client error, and any attempts by a client to attach or
+    ## manipulate a buffer prior to the first xdg_surface.configure call must
+    ## also be treated as errors.
+    ## 
+    ## After creating a role-specific object and setting it up, the client must
+    ## perform an initial commit without any buffer attached. The compositor
+    ## will reply with initial wl_surface state such as
+    ## wl_surface.preferred_buffer_scale followed by an xdg_surface.configure
+    ## event. The client must acknowledge it and is then allowed to attach a
+    ## buffer to map the surface.
+    ## 
+    ## Mapping an xdg_surface-based role surface is defined as making it
+    ## possible for the surface to be shown by the compositor. Note that
+    ## a mapped surface is not guaranteed to be visible once it is mapped.
+    ## 
+    ## For an xdg_surface to be mapped by the compositor, the following
+    ## conditions must be met:
+    ## (1) the client has assigned an xdg_surface-based role to the surface
+    ## (2) the client has set and committed the xdg_surface state and the
+    ##   role-dependent state to the surface
+    ## (3) the client has committed a buffer to the surface
+    ## 
+    ## A newly-unmapped surface is considered to have met condition (1) out
+    ## of the 3 required conditions for mapping a surface if its role surface
+    ## has not been destroyed, i.e. the client must perform the initial commit
+    ## again before attaching a buffer.
+    proxy*: Wl_proxy
+  `Xdg_surface / Error`* {.size: 4.} = enum
+    not_constructed = 1, already_constructed = 2, unconfigured_buffer = 3,
+    invalid_serial = 4, invalid_size = 5, defunct_role_object = 6
+  `Xdg_surface / Callbacks`* = object
+    interfaces*: ptr ptr WaylandInterfaces
+    destroy*: proc (cb: pointer) {.cdecl, raises: [].}
+    configure*: proc (serial: uint32)
+  Xdg_toplevel* = object
+    ## This interface defines an xdg_surface role which allows a surface to,
+    ## among other things, set window-like properties such as maximize,
+    ## fullscreen, and minimize, set application-specific metadata like title and
+    ## id, and well as trigger user interactive operations such as interactive
+    ## resize and move.
+    ## 
+    ## Unmapping an xdg_toplevel means that the surface cannot be shown
+    ## by the compositor until it is explicitly mapped again.
+    ## All active operations (e.g., move, resize) are canceled and all
+    ## attributes (e.g. title, state, stacking, ...) are discarded for
+    ## an xdg_toplevel surface when it is unmapped. The xdg_toplevel returns to
+    ## the state it had right after xdg_surface.get_toplevel. The client
+    ## can re-map the toplevel by perfoming a commit without any buffer
+    ## attached, waiting for a configure event and handling it as usual (see
+    ## xdg_surface description).
+    ## 
+    ## Attaching a null buffer to a toplevel unmaps the surface.
+    proxy*: Wl_proxy
+  `Xdg_toplevel / Error`* {.size: 4.} = enum
+    invalid_resize_edge = 0, invalid_parent = 1, invalid_size = 2
+  `Xdg_toplevel / Resize_edge`* {.size: 4.} = enum ## These values are used to indicate which edge of a surface
+                                                    ## is being dragged in a resize operation.
+    none = 0, top = 1, bottom = 2, left = 4, top_left = 5, bottom_left = 6,
+    right = 8, top_right = 9, bottom_right = 10
+  `Xdg_toplevel / State`* {.size: 4.} = enum ## The different state values used on the surface. This is designed for
+                                              ## state values like maximized, fullscreen. It is paired with the
+                                              ## configure event to ensure that both the client and the compositor
+                                              ## setting the state can be synchronized.
+                                              ## 
+                                              ## States set in this way are double-buffered. They will get applied on
+                                              ## the next commit.
+    maximized = 1, fullscreen = 2, resizing = 3, activated = 4, tiled_left = 5,
+    tiled_right = 6, tiled_top = 7, tiled_bottom = 8, suspended = 9
+  `Xdg_toplevel / Wm_capabilities`* {.size: 4.} = enum
+    window_menu = 1, maximize = 2, fullscreen = 3, minimize = 4
+  `Xdg_toplevel / Callbacks`* = object
+    interfaces*: ptr ptr WaylandInterfaces
+    destroy*: proc (cb: pointer) {.cdecl, raises: [].}
+    configure*: proc (width: int32; height: int32; states: Wl_array)
+    close*: proc ()
+    configure_bounds*: proc (width: int32; height: int32)
+    wm_capabilities*: proc (capabilities: Wl_array)
+  Xdg_popup* = object
+    ## A popup surface is a short-lived, temporary surface. It can be used to
+    ## implement for example menus, popovers, tooltips and other similar user
+    ## interface concepts.
+    ## 
+    ## A popup can be made to take an explicit grab. See xdg_popup.grab for
+    ## details.
+    ## 
+    ## When the popup is dismissed, a popup_done event will be sent out, and at
+    ## the same time the surface will be unmapped. See the xdg_popup.popup_done
+    ## event for details.
+    ## 
+    ## Explicitly destroying the xdg_popup object will also dismiss the popup and
+    ## unmap the surface. Clients that want to dismiss the popup when another
+    ## surface of their own is clicked should dismiss the popup using the destroy
+    ## request.
+    ## 
+    ## A newly created xdg_popup will be stacked on top of all previously created
+    ## xdg_popup surfaces associated with the same xdg_toplevel.
+    ## 
+    ## The parent of an xdg_popup must be mapped (see the xdg_surface
+    ## description) before the xdg_popup itself.
+    ## 
+    ## The client must call wl_surface.commit on the corresponding wl_surface
+    ## for the xdg_popup state to take effect.
+    proxy*: Wl_proxy
+  `Xdg_popup / Error`* {.size: 4.} = enum
+    invalid_grab = 0
+  `Xdg_popup / Callbacks`* = object
+    interfaces*: ptr ptr WaylandInterfaces
+    destroy*: proc (cb: pointer) {.cdecl, raises: [].}
+    configure*: proc (x: int32; y: int32; width: int32; height: int32)
+    popup_done*: proc ()
+    repositioned*: proc (token: uint32)
+  Xdg_toplevel_icon_manager_v1* = object
+    ## This interface allows clients to create toplevel window icons and set
+    ## them on toplevel windows to be displayed to the user.
+    proxy*: Wl_proxy
+  `Xdg_toplevel_icon_manager_v1 / Callbacks`* = object
+    interfaces*: ptr ptr WaylandInterfaces
+    destroy*: proc (cb: pointer) {.cdecl, raises: [].}
+    icon_size*: proc (size: int32)
+    done*: proc ()
+  Xdg_toplevel_icon_v1* = object
+    ## This interface defines a toplevel icon.
+    ## An icon can have a name, and multiple buffers.
+    ## In order to be applied, the icon must have either a name, or at least
+    ## one buffer assigned. Applying an empty icon (with no buffer or name) to
+    ## a toplevel should reset its icon to the default icon.
+    ## 
+    ## It is up to compositor policy whether to prefer using a buffer or loading
+    ## an icon via its name. See 'set_name' and 'add_buffer' for details.
+    proxy*: Wl_proxy
+  `Xdg_toplevel_icon_v1 / Error`* {.size: 4.} = enum
+    invalid_buffer = 1, immutable = 2, no_buffer = 3
+  `Xdg_toplevel_icon_v1 / Callbacks`* = object
+    interfaces*: ptr ptr WaylandInterfaces
+    destroy*: proc (cb: pointer) {.cdecl, raises: [].}
   WaylandInterfaces* = object
-    `iface Zwlr_layer_shell_v1`*: WlInterface
-    `iface Zwlr_layer_surface_v1`*: WlInterface
+    `iface Wp_cursor_shape_manager_v1`*: WlInterface
+    `iface Wp_cursor_shape_device_v1`*: WlInterface
+    `iface Wp_fractional_scale_manager_v1`*: WlInterface
+    `iface Wp_fractional_scale_v1`*: WlInterface
     `iface Zwp_idle_inhibit_manager_v1`*: WlInterface
     `iface Zwp_idle_inhibitor_v1`*: WlInterface
+    `iface Org_kde_plasma_shell`*: WlInterface
+    `iface Org_kde_plasma_surface`*: WlInterface
     `iface Zwp_tablet_manager_v2`*: WlInterface
     `iface Zwp_tablet_seat_v2`*: WlInterface
     `iface Zwp_tablet_tool_v2`*: WlInterface
@@ -1337,19 +1341,8 @@ type
     `iface Zwp_tablet_pad_group_v2`*: WlInterface
     `iface Zwp_tablet_pad_v2`*: WlInterface
     `iface Zwp_tablet_pad_dial_v2`*: WlInterface
-    `iface Wp_fractional_scale_manager_v1`*: WlInterface
-    `iface Wp_fractional_scale_v1`*: WlInterface
-    `iface Org_kde_plasma_shell`*: WlInterface
-    `iface Org_kde_plasma_surface`*: WlInterface
     `iface Wp_viewporter`*: WlInterface
     `iface Wp_viewport`*: WlInterface
-    `iface Wp_cursor_shape_manager_v1`*: WlInterface
-    `iface Wp_cursor_shape_device_v1`*: WlInterface
-    `iface Xdg_wm_base`*: WlInterface
-    `iface Xdg_positioner`*: WlInterface
-    `iface Xdg_surface`*: WlInterface
-    `iface Xdg_toplevel`*: WlInterface
-    `iface Xdg_popup`*: WlInterface
     `iface Wl_registry`*: WlInterface
     `iface Wl_callback`*: WlInterface
     `iface Wl_compositor`*: WlInterface
@@ -1371,34 +1364,42 @@ type
     `iface Wl_region`*: WlInterface
     `iface Wl_subcompositor`*: WlInterface
     `iface Wl_subsurface`*: WlInterface
-    `iface Xdg_toplevel_icon_manager_v1`*: WlInterface
-    `iface Xdg_toplevel_icon_v1`*: WlInterface
+    `iface Zwlr_layer_shell_v1`*: WlInterface
+    `iface Zwlr_layer_surface_v1`*: WlInterface
     `iface Zxdg_decoration_manager_v1`*: WlInterface
     `iface Zxdg_toplevel_decoration_v1`*: WlInterface
+    `iface Xdg_wm_base`*: WlInterface
+    `iface Xdg_positioner`*: WlInterface
+    `iface Xdg_surface`*: WlInterface
+    `iface Xdg_toplevel`*: WlInterface
+    `iface Xdg_popup`*: WlInterface
+    `iface Xdg_toplevel_icon_manager_v1`*: WlInterface
+    `iface Xdg_toplevel_icon_v1`*: WlInterface
 proc initInterfaces*(interfaces: var WaylandInterfaces) =
-  interfaces.`iface Zwlr_layer_shell_v1` = newWlInterface("zwlr_layer_shell_v1",
-      4, [newWlMessage("zwlr_layer_shell_v1.get_layer_surface", "1no?ous", [
-      addr(interfaces.`iface Zwlr_layer_surface_v1`),
-      addr(interfaces.`iface Wl_surface`), addr(interfaces.`iface Wl_output`),
-      (ptr WlInterface) nil, (ptr WlInterface) nil]),
-          newWlMessage("zwlr_layer_shell_v1.destroy", "1", [])], [])
-  interfaces.`iface Zwlr_layer_surface_v1` = newWlInterface(
-      "zwlr_layer_surface_v1", 4, [newWlMessage(
-      "zwlr_layer_surface_v1.set_size", "1uu",
-      [(ptr WlInterface) nil, (ptr WlInterface) nil]), newWlMessage(
-      "zwlr_layer_surface_v1.set_anchor", "1u", [(ptr WlInterface) nil]), newWlMessage(
-      "zwlr_layer_surface_v1.set_exclusive_zone", "1i", [(ptr WlInterface) nil]), newWlMessage(
-      "zwlr_layer_surface_v1.set_margin", "1iiii", [(ptr WlInterface) nil,
-      (ptr WlInterface) nil, (ptr WlInterface) nil, (ptr WlInterface) nil]), newWlMessage(
-      "zwlr_layer_surface_v1.set_keyboard_interactivity", "1u",
-      [(ptr WlInterface) nil]), newWlMessage("zwlr_layer_surface_v1.get_popup",
-      "1o", [addr(interfaces.`iface Xdg_popup`)]), newWlMessage(
-      "zwlr_layer_surface_v1.ack_configure", "1u", [(ptr WlInterface) nil]), newWlMessage(
-      "zwlr_layer_surface_v1.destroy", "1", []), newWlMessage(
-      "zwlr_layer_surface_v1.set_layer", "1u", [(ptr WlInterface) nil])], [newWlMessage(
-      "zwlr_layer_surface_v1.configure", "1uuu",
-      [(ptr WlInterface) nil, (ptr WlInterface) nil, (ptr WlInterface) nil]),
-      newWlMessage("zwlr_layer_surface_v1.closed", "1", [])])
+  interfaces.`iface Wp_cursor_shape_manager_v1` = newWlInterface(
+      "wp_cursor_shape_manager_v1", 1, [newWlMessage(
+      "wp_cursor_shape_manager_v1.destroy", "1", []), newWlMessage(
+      "wp_cursor_shape_manager_v1.get_pointer", "1no", [
+      addr(interfaces.`iface Wp_cursor_shape_device_v1`),
+      addr(interfaces.`iface Wl_pointer`)]), newWlMessage(
+      "wp_cursor_shape_manager_v1.get_tablet_tool_v2", "1no", [
+      addr(interfaces.`iface Wp_cursor_shape_device_v1`),
+      addr(interfaces.`iface Zwp_tablet_tool_v2`)])], [])
+  interfaces.`iface Wp_cursor_shape_device_v1` = newWlInterface(
+      "wp_cursor_shape_device_v1", 1, [newWlMessage(
+      "wp_cursor_shape_device_v1.destroy", "1", []), newWlMessage(
+      "wp_cursor_shape_device_v1.set_shape", "1uu",
+      [(ptr WlInterface) nil, (ptr WlInterface) nil])], [])
+  interfaces.`iface Wp_fractional_scale_manager_v1` = newWlInterface(
+      "wp_fractional_scale_manager_v1", 1, [
+      newWlMessage("wp_fractional_scale_manager_v1.destroy", "1", []), newWlMessage(
+      "wp_fractional_scale_manager_v1.get_fractional_scale", "1no", [
+      addr(interfaces.`iface Wp_fractional_scale_v1`),
+      addr(interfaces.`iface Wl_surface`)])], [])
+  interfaces.`iface Wp_fractional_scale_v1` = newWlInterface(
+      "wp_fractional_scale_v1", 1,
+      [newWlMessage("wp_fractional_scale_v1.destroy", "1", [])], [newWlMessage(
+      "wp_fractional_scale_v1.preferred_scale", "1u", [(ptr WlInterface) nil])])
   interfaces.`iface Zwp_idle_inhibit_manager_v1` = newWlInterface(
       "zwp_idle_inhibit_manager_v1", 1, [
       newWlMessage("zwp_idle_inhibit_manager_v1.destroy", "1", []), newWlMessage(
@@ -1408,6 +1409,29 @@ proc initInterfaces*(interfaces: var WaylandInterfaces) =
   interfaces.`iface Zwp_idle_inhibitor_v1` = newWlInterface(
       "zwp_idle_inhibitor_v1", 1,
       [newWlMessage("zwp_idle_inhibitor_v1.destroy", "1", [])], [])
+  interfaces.`iface Org_kde_plasma_shell` = newWlInterface(
+      "org_kde_plasma_shell", 8, [newWlMessage(
+      "org_kde_plasma_shell.get_surface", "1no", [
+      addr(interfaces.`iface Org_kde_plasma_surface`),
+      addr(interfaces.`iface Wl_surface`)])], [])
+  interfaces.`iface Org_kde_plasma_surface` = newWlInterface(
+      "org_kde_plasma_surface", 8, [newWlMessage(
+      "org_kde_plasma_surface.destroy", "1", []), newWlMessage(
+      "org_kde_plasma_surface.set_output", "1o",
+      [addr(interfaces.`iface Wl_output`)]), newWlMessage(
+      "org_kde_plasma_surface.set_position", "1ii",
+      [(ptr WlInterface) nil, (ptr WlInterface) nil]), newWlMessage(
+      "org_kde_plasma_surface.set_role", "1u", [(ptr WlInterface) nil]), newWlMessage(
+      "org_kde_plasma_surface.set_panel_behavior", "1u", [(ptr WlInterface) nil]), newWlMessage(
+      "org_kde_plasma_surface.set_skip_taskbar", "1u", [(ptr WlInterface) nil]), newWlMessage(
+      "org_kde_plasma_surface.panel_auto_hide_hide", "1", []), newWlMessage(
+      "org_kde_plasma_surface.panel_auto_hide_show", "1", []), newWlMessage(
+      "org_kde_plasma_surface.set_panel_takes_focus", "1u",
+      [(ptr WlInterface) nil]), newWlMessage(
+      "org_kde_plasma_surface.set_skip_switcher", "1u", [(ptr WlInterface) nil]), newWlMessage(
+      "org_kde_plasma_surface.open_under_cursor", "1", [])], [
+      newWlMessage("org_kde_plasma_surface.auto_hidden_panel_hidden", "1", []),
+      newWlMessage("org_kde_plasma_surface.auto_hidden_panel_shown", "1", [])])
   interfaces.`iface Zwp_tablet_manager_v2` = newWlInterface(
       "zwp_tablet_manager_v2", 2, [newWlMessage(
       "zwp_tablet_manager_v2.get_tablet_seat", "1no", [
@@ -1516,39 +1540,6 @@ proc initInterfaces*(interfaces: var WaylandInterfaces) =
       "zwp_tablet_pad_dial_v2.destroy", "1", [])], [newWlMessage(
       "zwp_tablet_pad_dial_v2.delta", "1i", [(ptr WlInterface) nil]), newWlMessage(
       "zwp_tablet_pad_dial_v2.frame", "1u", [(ptr WlInterface) nil])])
-  interfaces.`iface Wp_fractional_scale_manager_v1` = newWlInterface(
-      "wp_fractional_scale_manager_v1", 1, [
-      newWlMessage("wp_fractional_scale_manager_v1.destroy", "1", []), newWlMessage(
-      "wp_fractional_scale_manager_v1.get_fractional_scale", "1no", [
-      addr(interfaces.`iface Wp_fractional_scale_v1`),
-      addr(interfaces.`iface Wl_surface`)])], [])
-  interfaces.`iface Wp_fractional_scale_v1` = newWlInterface(
-      "wp_fractional_scale_v1", 1,
-      [newWlMessage("wp_fractional_scale_v1.destroy", "1", [])], [newWlMessage(
-      "wp_fractional_scale_v1.preferred_scale", "1u", [(ptr WlInterface) nil])])
-  interfaces.`iface Org_kde_plasma_shell` = newWlInterface(
-      "org_kde_plasma_shell", 8, [newWlMessage(
-      "org_kde_plasma_shell.get_surface", "1no", [
-      addr(interfaces.`iface Org_kde_plasma_surface`),
-      addr(interfaces.`iface Wl_surface`)])], [])
-  interfaces.`iface Org_kde_plasma_surface` = newWlInterface(
-      "org_kde_plasma_surface", 8, [newWlMessage(
-      "org_kde_plasma_surface.destroy", "1", []), newWlMessage(
-      "org_kde_plasma_surface.set_output", "1o",
-      [addr(interfaces.`iface Wl_output`)]), newWlMessage(
-      "org_kde_plasma_surface.set_position", "1ii",
-      [(ptr WlInterface) nil, (ptr WlInterface) nil]), newWlMessage(
-      "org_kde_plasma_surface.set_role", "1u", [(ptr WlInterface) nil]), newWlMessage(
-      "org_kde_plasma_surface.set_panel_behavior", "1u", [(ptr WlInterface) nil]), newWlMessage(
-      "org_kde_plasma_surface.set_skip_taskbar", "1u", [(ptr WlInterface) nil]), newWlMessage(
-      "org_kde_plasma_surface.panel_auto_hide_hide", "1", []), newWlMessage(
-      "org_kde_plasma_surface.panel_auto_hide_show", "1", []), newWlMessage(
-      "org_kde_plasma_surface.set_panel_takes_focus", "1u",
-      [(ptr WlInterface) nil]), newWlMessage(
-      "org_kde_plasma_surface.set_skip_switcher", "1u", [(ptr WlInterface) nil]), newWlMessage(
-      "org_kde_plasma_surface.open_under_cursor", "1", [])], [
-      newWlMessage("org_kde_plasma_surface.auto_hidden_panel_hidden", "1", []),
-      newWlMessage("org_kde_plasma_surface.auto_hidden_panel_shown", "1", [])])
   interfaces.`iface Wp_viewporter` = newWlInterface("wp_viewporter", 1, [
       newWlMessage("wp_viewporter.destroy", "1", []), newWlMessage(
       "wp_viewporter.get_viewport", "1no",
@@ -1560,95 +1551,10 @@ proc initInterfaces*(interfaces: var WaylandInterfaces) =
       (ptr WlInterface) nil, (ptr WlInterface) nil, (ptr WlInterface) nil]), newWlMessage(
       "wp_viewport.set_destination", "1ii",
       [(ptr WlInterface) nil, (ptr WlInterface) nil])], [])
-  interfaces.`iface Wp_cursor_shape_manager_v1` = newWlInterface(
-      "wp_cursor_shape_manager_v1", 1, [newWlMessage(
-      "wp_cursor_shape_manager_v1.destroy", "1", []), newWlMessage(
-      "wp_cursor_shape_manager_v1.get_pointer", "1no", [
-      addr(interfaces.`iface Wp_cursor_shape_device_v1`),
-      addr(interfaces.`iface Wl_pointer`)]), newWlMessage(
-      "wp_cursor_shape_manager_v1.get_tablet_tool_v2", "1no", [
-      addr(interfaces.`iface Wp_cursor_shape_device_v1`),
-      addr(interfaces.`iface Zwp_tablet_tool_v2`)])], [])
-  interfaces.`iface Wp_cursor_shape_device_v1` = newWlInterface(
-      "wp_cursor_shape_device_v1", 1, [newWlMessage(
-      "wp_cursor_shape_device_v1.destroy", "1", []), newWlMessage(
-      "wp_cursor_shape_device_v1.set_shape", "1uu",
-      [(ptr WlInterface) nil, (ptr WlInterface) nil])], [])
-  interfaces.`iface Xdg_wm_base` = newWlInterface("xdg_wm_base", 6, [
-      newWlMessage("xdg_wm_base.destroy", "1", []), newWlMessage(
-      "xdg_wm_base.create_positioner", "1n",
-      [addr(interfaces.`iface Xdg_positioner`)]), newWlMessage(
-      "xdg_wm_base.get_xdg_surface", "1no",
-      [addr(interfaces.`iface Xdg_surface`), addr(interfaces.`iface Wl_surface`)]),
-      newWlMessage("xdg_wm_base.pong", "1u", [(ptr WlInterface) nil])],
-      [newWlMessage("xdg_wm_base.ping", "1u", [(ptr WlInterface) nil])])
-  interfaces.`iface Xdg_positioner` = newWlInterface("xdg_positioner", 6, [
-      newWlMessage("xdg_positioner.destroy", "1", []), newWlMessage(
-      "xdg_positioner.set_size", "1ii",
-      [(ptr WlInterface) nil, (ptr WlInterface) nil]), newWlMessage(
-      "xdg_positioner.set_anchor_rect", "1iiii", [(ptr WlInterface) nil,
-      (ptr WlInterface) nil, (ptr WlInterface) nil, (ptr WlInterface) nil]),
-      newWlMessage("xdg_positioner.set_anchor", "1u", [(ptr WlInterface) nil]), newWlMessage(
-      "xdg_positioner.set_gravity", "1u", [(ptr WlInterface) nil]), newWlMessage(
-      "xdg_positioner.set_constraint_adjustment", "1u", [(ptr WlInterface) nil]), newWlMessage(
-      "xdg_positioner.set_offset", "1ii",
-      [(ptr WlInterface) nil, (ptr WlInterface) nil]),
-      newWlMessage("xdg_positioner.set_reactive", "1", []), newWlMessage(
-      "xdg_positioner.set_parent_size", "1ii",
-      [(ptr WlInterface) nil, (ptr WlInterface) nil]), newWlMessage(
-      "xdg_positioner.set_parent_configure", "1u", [(ptr WlInterface) nil])], [])
-  interfaces.`iface Xdg_surface` = newWlInterface("xdg_surface", 6, [
-      newWlMessage("xdg_surface.destroy", "1", []), newWlMessage(
-      "xdg_surface.get_toplevel", "1n", [addr(interfaces.`iface Xdg_toplevel`)]), newWlMessage(
-      "xdg_surface.get_popup", "1n?oo", [addr(interfaces.`iface Xdg_popup`),
-      addr(interfaces.`iface Xdg_surface`),
-      addr(interfaces.`iface Xdg_positioner`)]), newWlMessage(
-      "xdg_surface.set_window_geometry", "1iiii", [(ptr WlInterface) nil,
-      (ptr WlInterface) nil, (ptr WlInterface) nil, (ptr WlInterface) nil]),
-      newWlMessage("xdg_surface.ack_configure", "1u", [(ptr WlInterface) nil])],
-      [newWlMessage("xdg_surface.configure", "1u", [(ptr WlInterface) nil])])
-  interfaces.`iface Xdg_toplevel` = newWlInterface("xdg_toplevel", 6, [
-      newWlMessage("xdg_toplevel.destroy", "1", []), newWlMessage(
-      "xdg_toplevel.set_parent", "1?o", [addr(interfaces.`iface Xdg_toplevel`)]),
-      newWlMessage("xdg_toplevel.set_title", "1s", [(ptr WlInterface) nil]),
-      newWlMessage("xdg_toplevel.set_app_id", "1s", [(ptr WlInterface) nil]), newWlMessage(
-      "xdg_toplevel.show_window_menu", "1ouii", [
-      addr(interfaces.`iface Wl_seat`), (ptr WlInterface) nil,
-      (ptr WlInterface) nil, (ptr WlInterface) nil]), newWlMessage(
-      "xdg_toplevel.move", "1ou",
-      [addr(interfaces.`iface Wl_seat`), (ptr WlInterface) nil]), newWlMessage(
-      "xdg_toplevel.resize", "1ouu", [addr(interfaces.`iface Wl_seat`),
-                                      (ptr WlInterface) nil,
-                                      (ptr WlInterface) nil]), newWlMessage(
-      "xdg_toplevel.set_max_size", "1ii",
-      [(ptr WlInterface) nil, (ptr WlInterface) nil]), newWlMessage(
-      "xdg_toplevel.set_min_size", "1ii",
-      [(ptr WlInterface) nil, (ptr WlInterface) nil]),
-      newWlMessage("xdg_toplevel.set_maximized", "1", []),
-      newWlMessage("xdg_toplevel.unset_maximized", "1", []), newWlMessage(
-      "xdg_toplevel.set_fullscreen", "1?o", [addr(interfaces.`iface Wl_output`)]),
-      newWlMessage("xdg_toplevel.unset_fullscreen", "1", []),
-      newWlMessage("xdg_toplevel.set_minimized", "1", [])], [newWlMessage(
-      "xdg_toplevel.configure", "1iia",
-      [(ptr WlInterface) nil, (ptr WlInterface) nil, (ptr WlInterface) nil]),
-      newWlMessage("xdg_toplevel.close", "1", []), newWlMessage(
-      "xdg_toplevel.configure_bounds", "1ii",
-      [(ptr WlInterface) nil, (ptr WlInterface) nil]), newWlMessage(
-      "xdg_toplevel.wm_capabilities", "1a", [(ptr WlInterface) nil])])
-  interfaces.`iface Xdg_popup` = newWlInterface("xdg_popup", 6, [
-      newWlMessage("xdg_popup.destroy", "1", []), newWlMessage("xdg_popup.grab",
-      "1ou", [addr(interfaces.`iface Wl_seat`), (ptr WlInterface) nil]), newWlMessage(
-      "xdg_popup.reposition", "1ou",
-      [addr(interfaces.`iface Xdg_positioner`), (ptr WlInterface) nil])], [newWlMessage(
-      "xdg_popup.configure", "1iiii", [(ptr WlInterface) nil,
-                                       (ptr WlInterface) nil,
-                                       (ptr WlInterface) nil,
-                                       (ptr WlInterface) nil]),
-      newWlMessage("xdg_popup.popup_done", "1", []),
-      newWlMessage("xdg_popup.repositioned", "1u", [(ptr WlInterface) nil])])
   interfaces.`iface Wl_registry` = newWlInterface("wl_registry", 1, [newWlMessage(
-      "wl_registry.bind", "1usun",
-      [(ptr WlInterface) nil, (ptr WlInterface) nil])], [newWlMessage(
+      "wl_registry.bind", "1usun", [(ptr WlInterface) nil,
+                                    (ptr WlInterface) nil,
+                                    (ptr WlInterface) nil, (ptr WlInterface) nil])], [newWlMessage(
       "wl_registry.global", "1usu",
       [(ptr WlInterface) nil, (ptr WlInterface) nil, (ptr WlInterface) nil]),
       newWlMessage("wl_registry.global_remove", "1u", [(ptr WlInterface) nil])])
@@ -1865,6 +1771,113 @@ proc initInterfaces*(interfaces: var WaylandInterfaces) =
       "wl_subsurface.place_below", "1o", [addr(interfaces.`iface Wl_surface`)]),
       newWlMessage("wl_subsurface.set_sync", "1", []),
       newWlMessage("wl_subsurface.set_desync", "1", [])], [])
+  interfaces.`iface Zwlr_layer_shell_v1` = newWlInterface("zwlr_layer_shell_v1",
+      4, [newWlMessage("zwlr_layer_shell_v1.get_layer_surface", "1no?ous", [
+      addr(interfaces.`iface Zwlr_layer_surface_v1`),
+      addr(interfaces.`iface Wl_surface`), addr(interfaces.`iface Wl_output`),
+      (ptr WlInterface) nil, (ptr WlInterface) nil]),
+          newWlMessage("zwlr_layer_shell_v1.destroy", "1", [])], [])
+  interfaces.`iface Zwlr_layer_surface_v1` = newWlInterface(
+      "zwlr_layer_surface_v1", 4, [newWlMessage(
+      "zwlr_layer_surface_v1.set_size", "1uu",
+      [(ptr WlInterface) nil, (ptr WlInterface) nil]), newWlMessage(
+      "zwlr_layer_surface_v1.set_anchor", "1u", [(ptr WlInterface) nil]), newWlMessage(
+      "zwlr_layer_surface_v1.set_exclusive_zone", "1i", [(ptr WlInterface) nil]), newWlMessage(
+      "zwlr_layer_surface_v1.set_margin", "1iiii", [(ptr WlInterface) nil,
+      (ptr WlInterface) nil, (ptr WlInterface) nil, (ptr WlInterface) nil]), newWlMessage(
+      "zwlr_layer_surface_v1.set_keyboard_interactivity", "1u",
+      [(ptr WlInterface) nil]), newWlMessage("zwlr_layer_surface_v1.get_popup",
+      "1o", [addr(interfaces.`iface Xdg_popup`)]), newWlMessage(
+      "zwlr_layer_surface_v1.ack_configure", "1u", [(ptr WlInterface) nil]), newWlMessage(
+      "zwlr_layer_surface_v1.destroy", "1", []), newWlMessage(
+      "zwlr_layer_surface_v1.set_layer", "1u", [(ptr WlInterface) nil])], [newWlMessage(
+      "zwlr_layer_surface_v1.configure", "1uuu",
+      [(ptr WlInterface) nil, (ptr WlInterface) nil, (ptr WlInterface) nil]),
+      newWlMessage("zwlr_layer_surface_v1.closed", "1", [])])
+  interfaces.`iface Zxdg_decoration_manager_v1` = newWlInterface(
+      "zxdg_decoration_manager_v1", 1, [newWlMessage(
+      "zxdg_decoration_manager_v1.destroy", "1", []), newWlMessage(
+      "zxdg_decoration_manager_v1.get_toplevel_decoration", "1no", [
+      addr(interfaces.`iface Zxdg_toplevel_decoration_v1`),
+      addr(interfaces.`iface Xdg_toplevel`)])], [])
+  interfaces.`iface Zxdg_toplevel_decoration_v1` = newWlInterface(
+      "zxdg_toplevel_decoration_v1", 1, [
+      newWlMessage("zxdg_toplevel_decoration_v1.destroy", "1", []), newWlMessage(
+      "zxdg_toplevel_decoration_v1.set_mode", "1u", [(ptr WlInterface) nil]),
+      newWlMessage("zxdg_toplevel_decoration_v1.unset_mode", "1", [])], [newWlMessage(
+      "zxdg_toplevel_decoration_v1.configure", "1u", [(ptr WlInterface) nil])])
+  interfaces.`iface Xdg_wm_base` = newWlInterface("xdg_wm_base", 6, [
+      newWlMessage("xdg_wm_base.destroy", "1", []), newWlMessage(
+      "xdg_wm_base.create_positioner", "1n",
+      [addr(interfaces.`iface Xdg_positioner`)]), newWlMessage(
+      "xdg_wm_base.get_xdg_surface", "1no",
+      [addr(interfaces.`iface Xdg_surface`), addr(interfaces.`iface Wl_surface`)]),
+      newWlMessage("xdg_wm_base.pong", "1u", [(ptr WlInterface) nil])],
+      [newWlMessage("xdg_wm_base.ping", "1u", [(ptr WlInterface) nil])])
+  interfaces.`iface Xdg_positioner` = newWlInterface("xdg_positioner", 6, [
+      newWlMessage("xdg_positioner.destroy", "1", []), newWlMessage(
+      "xdg_positioner.set_size", "1ii",
+      [(ptr WlInterface) nil, (ptr WlInterface) nil]), newWlMessage(
+      "xdg_positioner.set_anchor_rect", "1iiii", [(ptr WlInterface) nil,
+      (ptr WlInterface) nil, (ptr WlInterface) nil, (ptr WlInterface) nil]),
+      newWlMessage("xdg_positioner.set_anchor", "1u", [(ptr WlInterface) nil]), newWlMessage(
+      "xdg_positioner.set_gravity", "1u", [(ptr WlInterface) nil]), newWlMessage(
+      "xdg_positioner.set_constraint_adjustment", "1u", [(ptr WlInterface) nil]), newWlMessage(
+      "xdg_positioner.set_offset", "1ii",
+      [(ptr WlInterface) nil, (ptr WlInterface) nil]),
+      newWlMessage("xdg_positioner.set_reactive", "1", []), newWlMessage(
+      "xdg_positioner.set_parent_size", "1ii",
+      [(ptr WlInterface) nil, (ptr WlInterface) nil]), newWlMessage(
+      "xdg_positioner.set_parent_configure", "1u", [(ptr WlInterface) nil])], [])
+  interfaces.`iface Xdg_surface` = newWlInterface("xdg_surface", 6, [
+      newWlMessage("xdg_surface.destroy", "1", []), newWlMessage(
+      "xdg_surface.get_toplevel", "1n", [addr(interfaces.`iface Xdg_toplevel`)]), newWlMessage(
+      "xdg_surface.get_popup", "1n?oo", [addr(interfaces.`iface Xdg_popup`),
+      addr(interfaces.`iface Xdg_surface`),
+      addr(interfaces.`iface Xdg_positioner`)]), newWlMessage(
+      "xdg_surface.set_window_geometry", "1iiii", [(ptr WlInterface) nil,
+      (ptr WlInterface) nil, (ptr WlInterface) nil, (ptr WlInterface) nil]),
+      newWlMessage("xdg_surface.ack_configure", "1u", [(ptr WlInterface) nil])],
+      [newWlMessage("xdg_surface.configure", "1u", [(ptr WlInterface) nil])])
+  interfaces.`iface Xdg_toplevel` = newWlInterface("xdg_toplevel", 6, [
+      newWlMessage("xdg_toplevel.destroy", "1", []), newWlMessage(
+      "xdg_toplevel.set_parent", "1?o", [addr(interfaces.`iface Xdg_toplevel`)]),
+      newWlMessage("xdg_toplevel.set_title", "1s", [(ptr WlInterface) nil]),
+      newWlMessage("xdg_toplevel.set_app_id", "1s", [(ptr WlInterface) nil]), newWlMessage(
+      "xdg_toplevel.show_window_menu", "1ouii", [
+      addr(interfaces.`iface Wl_seat`), (ptr WlInterface) nil,
+      (ptr WlInterface) nil, (ptr WlInterface) nil]), newWlMessage(
+      "xdg_toplevel.move", "1ou",
+      [addr(interfaces.`iface Wl_seat`), (ptr WlInterface) nil]), newWlMessage(
+      "xdg_toplevel.resize", "1ouu", [addr(interfaces.`iface Wl_seat`),
+                                      (ptr WlInterface) nil,
+                                      (ptr WlInterface) nil]), newWlMessage(
+      "xdg_toplevel.set_max_size", "1ii",
+      [(ptr WlInterface) nil, (ptr WlInterface) nil]), newWlMessage(
+      "xdg_toplevel.set_min_size", "1ii",
+      [(ptr WlInterface) nil, (ptr WlInterface) nil]),
+      newWlMessage("xdg_toplevel.set_maximized", "1", []),
+      newWlMessage("xdg_toplevel.unset_maximized", "1", []), newWlMessage(
+      "xdg_toplevel.set_fullscreen", "1?o", [addr(interfaces.`iface Wl_output`)]),
+      newWlMessage("xdg_toplevel.unset_fullscreen", "1", []),
+      newWlMessage("xdg_toplevel.set_minimized", "1", [])], [newWlMessage(
+      "xdg_toplevel.configure", "1iia",
+      [(ptr WlInterface) nil, (ptr WlInterface) nil, (ptr WlInterface) nil]),
+      newWlMessage("xdg_toplevel.close", "1", []), newWlMessage(
+      "xdg_toplevel.configure_bounds", "1ii",
+      [(ptr WlInterface) nil, (ptr WlInterface) nil]), newWlMessage(
+      "xdg_toplevel.wm_capabilities", "1a", [(ptr WlInterface) nil])])
+  interfaces.`iface Xdg_popup` = newWlInterface("xdg_popup", 6, [
+      newWlMessage("xdg_popup.destroy", "1", []), newWlMessage("xdg_popup.grab",
+      "1ou", [addr(interfaces.`iface Wl_seat`), (ptr WlInterface) nil]), newWlMessage(
+      "xdg_popup.reposition", "1ou",
+      [addr(interfaces.`iface Xdg_positioner`), (ptr WlInterface) nil])], [newWlMessage(
+      "xdg_popup.configure", "1iiii", [(ptr WlInterface) nil,
+                                       (ptr WlInterface) nil,
+                                       (ptr WlInterface) nil,
+                                       (ptr WlInterface) nil]),
+      newWlMessage("xdg_popup.popup_done", "1", []),
+      newWlMessage("xdg_popup.repositioned", "1u", [(ptr WlInterface) nil])])
   interfaces.`iface Xdg_toplevel_icon_manager_v1` = newWlInterface(
       "xdg_toplevel_icon_manager_v1", 1, [
       newWlMessage("xdg_toplevel_icon_manager_v1.destroy", "1", []), newWlMessage(
@@ -1881,30 +1894,30 @@ proc initInterfaces*(interfaces: var WaylandInterfaces) =
                              [(ptr WlInterface) nil]), newWlMessage(
       "xdg_toplevel_icon_v1.add_buffer", "1oi",
       [addr(interfaces.`iface Wl_buffer`), (ptr WlInterface) nil])], [])
-  interfaces.`iface Zxdg_decoration_manager_v1` = newWlInterface(
-      "zxdg_decoration_manager_v1", 1, [newWlMessage(
-      "zxdg_decoration_manager_v1.destroy", "1", []), newWlMessage(
-      "zxdg_decoration_manager_v1.get_toplevel_decoration", "1no", [
-      addr(interfaces.`iface Zxdg_toplevel_decoration_v1`),
-      addr(interfaces.`iface Xdg_toplevel`)])], [])
-  interfaces.`iface Zxdg_toplevel_decoration_v1` = newWlInterface(
-      "zxdg_toplevel_decoration_v1", 1, [
-      newWlMessage("zxdg_toplevel_decoration_v1.destroy", "1", []), newWlMessage(
-      "zxdg_toplevel_decoration_v1.set_mode", "1u", [(ptr WlInterface) nil]),
-      newWlMessage("zxdg_toplevel_decoration_v1.unset_mode", "1", [])], [newWlMessage(
-      "zxdg_toplevel_decoration_v1.configure", "1u", [(ptr WlInterface) nil])])
 
-template ifaceName*(t: typedesc[Zwlr_layer_shell_v1]): string =
-  "zwlr_layer_shell_v1"
+template ifaceName*(t: typedesc[Wp_cursor_shape_manager_v1]): string =
+  "wp_cursor_shape_manager_v1"
 
-template ifaceName*(t: typedesc[Zwlr_layer_surface_v1]): string =
-  "zwlr_layer_surface_v1"
+template ifaceName*(t: typedesc[Wp_cursor_shape_device_v1]): string =
+  "wp_cursor_shape_device_v1"
+
+template ifaceName*(t: typedesc[Wp_fractional_scale_manager_v1]): string =
+  "wp_fractional_scale_manager_v1"
+
+template ifaceName*(t: typedesc[Wp_fractional_scale_v1]): string =
+  "wp_fractional_scale_v1"
 
 template ifaceName*(t: typedesc[Zwp_idle_inhibit_manager_v1]): string =
   "zwp_idle_inhibit_manager_v1"
 
 template ifaceName*(t: typedesc[Zwp_idle_inhibitor_v1]): string =
   "zwp_idle_inhibitor_v1"
+
+template ifaceName*(t: typedesc[Org_kde_plasma_shell]): string =
+  "org_kde_plasma_shell"
+
+template ifaceName*(t: typedesc[Org_kde_plasma_surface]): string =
+  "org_kde_plasma_surface"
 
 template ifaceName*(t: typedesc[Zwp_tablet_manager_v2]): string =
   "zwp_tablet_manager_v2"
@@ -1933,44 +1946,11 @@ template ifaceName*(t: typedesc[Zwp_tablet_pad_v2]): string =
 template ifaceName*(t: typedesc[Zwp_tablet_pad_dial_v2]): string =
   "zwp_tablet_pad_dial_v2"
 
-template ifaceName*(t: typedesc[Wp_fractional_scale_manager_v1]): string =
-  "wp_fractional_scale_manager_v1"
-
-template ifaceName*(t: typedesc[Wp_fractional_scale_v1]): string =
-  "wp_fractional_scale_v1"
-
-template ifaceName*(t: typedesc[Org_kde_plasma_shell]): string =
-  "org_kde_plasma_shell"
-
-template ifaceName*(t: typedesc[Org_kde_plasma_surface]): string =
-  "org_kde_plasma_surface"
-
 template ifaceName*(t: typedesc[Wp_viewporter]): string =
   "wp_viewporter"
 
 template ifaceName*(t: typedesc[Wp_viewport]): string =
   "wp_viewport"
-
-template ifaceName*(t: typedesc[Wp_cursor_shape_manager_v1]): string =
-  "wp_cursor_shape_manager_v1"
-
-template ifaceName*(t: typedesc[Wp_cursor_shape_device_v1]): string =
-  "wp_cursor_shape_device_v1"
-
-template ifaceName*(t: typedesc[Xdg_wm_base]): string =
-  "xdg_wm_base"
-
-template ifaceName*(t: typedesc[Xdg_positioner]): string =
-  "xdg_positioner"
-
-template ifaceName*(t: typedesc[Xdg_surface]): string =
-  "xdg_surface"
-
-template ifaceName*(t: typedesc[Xdg_toplevel]): string =
-  "xdg_toplevel"
-
-template ifaceName*(t: typedesc[Xdg_popup]): string =
-  "xdg_popup"
 
 template ifaceName*(t: typedesc[Wl_registry]): string =
   "wl_registry"
@@ -2035,11 +2015,11 @@ template ifaceName*(t: typedesc[Wl_subcompositor]): string =
 template ifaceName*(t: typedesc[Wl_subsurface]): string =
   "wl_subsurface"
 
-template ifaceName*(t: typedesc[Xdg_toplevel_icon_manager_v1]): string =
-  "xdg_toplevel_icon_manager_v1"
+template ifaceName*(t: typedesc[Zwlr_layer_shell_v1]): string =
+  "zwlr_layer_shell_v1"
 
-template ifaceName*(t: typedesc[Xdg_toplevel_icon_v1]): string =
-  "xdg_toplevel_icon_v1"
+template ifaceName*(t: typedesc[Zwlr_layer_surface_v1]): string =
+  "zwlr_layer_surface_v1"
 
 template ifaceName*(t: typedesc[Zxdg_decoration_manager_v1]): string =
   "zxdg_decoration_manager_v1"
@@ -2047,26 +2027,53 @@ template ifaceName*(t: typedesc[Zxdg_decoration_manager_v1]): string =
 template ifaceName*(t: typedesc[Zxdg_toplevel_decoration_v1]): string =
   "zxdg_toplevel_decoration_v1"
 
-proc `Zwlr_layer_shell_v1 / dispatch`*(impl: pointer; obj: pointer;
-                                       opcode: uint32; msg: ptr WlMessage;
-                                       args: pointer): int32 {.cdecl.} =
+template ifaceName*(t: typedesc[Xdg_wm_base]): string =
+  "xdg_wm_base"
+
+template ifaceName*(t: typedesc[Xdg_positioner]): string =
+  "xdg_positioner"
+
+template ifaceName*(t: typedesc[Xdg_surface]): string =
+  "xdg_surface"
+
+template ifaceName*(t: typedesc[Xdg_toplevel]): string =
+  "xdg_toplevel"
+
+template ifaceName*(t: typedesc[Xdg_popup]): string =
+  "xdg_popup"
+
+template ifaceName*(t: typedesc[Xdg_toplevel_icon_manager_v1]): string =
+  "xdg_toplevel_icon_manager_v1"
+
+template ifaceName*(t: typedesc[Xdg_toplevel_icon_v1]): string =
+  "xdg_toplevel_icon_v1"
+
+proc `Wp_cursor_shape_manager_v1 / dispatch`*(impl: pointer; obj: pointer;
+    opcode: uint32; msg: ptr WlMessage; args: pointer): int32 {.cdecl.} =
   case opcode
   else:
     discard
 
-proc `Zwlr_layer_surface_v1 / dispatch`*(impl: pointer; obj: pointer;
+proc `Wp_cursor_shape_device_v1 / dispatch`*(impl: pointer; obj: pointer;
     opcode: uint32; msg: ptr WlMessage; args: pointer): int32 {.cdecl.} =
-  let callbacks = cast[ptr `Zwlr_layer_surface_v1 / Callbacks`](impl)
+  case opcode
+  else:
+    discard
+
+proc `Wp_fractional_scale_manager_v1 / dispatch`*(impl: pointer; obj: pointer;
+    opcode: uint32; msg: ptr WlMessage; args: pointer): int32 {.cdecl.} =
+  case opcode
+  else:
+    discard
+
+proc `Wp_fractional_scale_v1 / dispatch`*(impl: pointer; obj: pointer;
+    opcode: uint32; msg: ptr WlMessage; args: pointer): int32 {.cdecl.} =
+  let callbacks = cast[ptr `Wp_fractional_scale_v1 / Callbacks`](impl)
   case opcode
   of 0:
-    let argsArray = cast[ptr array[3, Wl_argument]](args)
-    if callbacks.configure != nil:
-      callbacks.configure(cast[uint32](argsArray[][0]),
-                          cast[uint32](argsArray[][1]),
-                          cast[uint32](argsArray[][2]))
-  of 1:
-    if callbacks.closed != nil:
-      callbacks.closed()
+    let argsArray = cast[ptr array[1, Wl_argument]](args)
+    if callbacks.preferred_scale != nil:
+      callbacks.preferred_scale(cast[uint32](argsArray[][0]))
   else:
     discard
 
@@ -2079,6 +2086,26 @@ proc `Zwp_idle_inhibit_manager_v1 / dispatch`*(impl: pointer; obj: pointer;
 proc `Zwp_idle_inhibitor_v1 / dispatch`*(impl: pointer; obj: pointer;
     opcode: uint32; msg: ptr WlMessage; args: pointer): int32 {.cdecl.} =
   case opcode
+  else:
+    discard
+
+proc `Org_kde_plasma_shell / dispatch`*(impl: pointer; obj: pointer;
+                                        opcode: uint32; msg: ptr WlMessage;
+                                        args: pointer): int32 {.cdecl.} =
+  case opcode
+  else:
+    discard
+
+proc `Org_kde_plasma_surface / dispatch`*(impl: pointer; obj: pointer;
+    opcode: uint32; msg: ptr WlMessage; args: pointer): int32 {.cdecl.} =
+  let callbacks = cast[ptr `Org_kde_plasma_surface / Callbacks`](impl)
+  case opcode
+  of 0:
+    if callbacks.auto_hidden_panel_hidden != nil:
+      callbacks.auto_hidden_panel_hidden()
+  of 1:
+    if callbacks.auto_hidden_panel_shown != nil:
+      callbacks.auto_hidden_panel_shown()
   else:
     discard
 
@@ -2365,43 +2392,6 @@ proc `Zwp_tablet_pad_dial_v2 / dispatch`*(impl: pointer; obj: pointer;
   else:
     discard
 
-proc `Wp_fractional_scale_manager_v1 / dispatch`*(impl: pointer; obj: pointer;
-    opcode: uint32; msg: ptr WlMessage; args: pointer): int32 {.cdecl.} =
-  case opcode
-  else:
-    discard
-
-proc `Wp_fractional_scale_v1 / dispatch`*(impl: pointer; obj: pointer;
-    opcode: uint32; msg: ptr WlMessage; args: pointer): int32 {.cdecl.} =
-  let callbacks = cast[ptr `Wp_fractional_scale_v1 / Callbacks`](impl)
-  case opcode
-  of 0:
-    let argsArray = cast[ptr array[1, Wl_argument]](args)
-    if callbacks.preferred_scale != nil:
-      callbacks.preferred_scale(cast[uint32](argsArray[][0]))
-  else:
-    discard
-
-proc `Org_kde_plasma_shell / dispatch`*(impl: pointer; obj: pointer;
-                                        opcode: uint32; msg: ptr WlMessage;
-                                        args: pointer): int32 {.cdecl.} =
-  case opcode
-  else:
-    discard
-
-proc `Org_kde_plasma_surface / dispatch`*(impl: pointer; obj: pointer;
-    opcode: uint32; msg: ptr WlMessage; args: pointer): int32 {.cdecl.} =
-  let callbacks = cast[ptr `Org_kde_plasma_surface / Callbacks`](impl)
-  case opcode
-  of 0:
-    if callbacks.auto_hidden_panel_hidden != nil:
-      callbacks.auto_hidden_panel_hidden()
-  of 1:
-    if callbacks.auto_hidden_panel_shown != nil:
-      callbacks.auto_hidden_panel_shown()
-  else:
-    discard
-
 proc `Wp_viewporter / dispatch`*(impl: pointer; obj: pointer; opcode: uint32;
                                  msg: ptr WlMessage; args: pointer): int32 {.
     cdecl.} =
@@ -2412,94 +2402,6 @@ proc `Wp_viewporter / dispatch`*(impl: pointer; obj: pointer; opcode: uint32;
 proc `Wp_viewport / dispatch`*(impl: pointer; obj: pointer; opcode: uint32;
                                msg: ptr WlMessage; args: pointer): int32 {.cdecl.} =
   case opcode
-  else:
-    discard
-
-proc `Wp_cursor_shape_manager_v1 / dispatch`*(impl: pointer; obj: pointer;
-    opcode: uint32; msg: ptr WlMessage; args: pointer): int32 {.cdecl.} =
-  case opcode
-  else:
-    discard
-
-proc `Wp_cursor_shape_device_v1 / dispatch`*(impl: pointer; obj: pointer;
-    opcode: uint32; msg: ptr WlMessage; args: pointer): int32 {.cdecl.} =
-  case opcode
-  else:
-    discard
-
-proc `Xdg_wm_base / dispatch`*(impl: pointer; obj: pointer; opcode: uint32;
-                               msg: ptr WlMessage; args: pointer): int32 {.cdecl.} =
-  let callbacks = cast[ptr `Xdg_wm_base / Callbacks`](impl)
-  case opcode
-  of 0:
-    let argsArray = cast[ptr array[1, Wl_argument]](args)
-    if callbacks.ping != nil:
-      callbacks.ping(cast[uint32](argsArray[][0]))
-  else:
-    discard
-
-proc `Xdg_positioner / dispatch`*(impl: pointer; obj: pointer; opcode: uint32;
-                                  msg: ptr WlMessage; args: pointer): int32 {.
-    cdecl.} =
-  case opcode
-  else:
-    discard
-
-proc `Xdg_surface / dispatch`*(impl: pointer; obj: pointer; opcode: uint32;
-                               msg: ptr WlMessage; args: pointer): int32 {.cdecl.} =
-  let callbacks = cast[ptr `Xdg_surface / Callbacks`](impl)
-  case opcode
-  of 0:
-    let argsArray = cast[ptr array[1, Wl_argument]](args)
-    if callbacks.configure != nil:
-      callbacks.configure(cast[uint32](argsArray[][0]))
-  else:
-    discard
-
-proc `Xdg_toplevel / dispatch`*(impl: pointer; obj: pointer; opcode: uint32;
-                                msg: ptr WlMessage; args: pointer): int32 {.
-    cdecl.} =
-  let callbacks = cast[ptr `Xdg_toplevel / Callbacks`](impl)
-  case opcode
-  of 0:
-    let argsArray = cast[ptr array[3, Wl_argument]](args)
-    if callbacks.configure != nil:
-      callbacks.configure(cast[int32](argsArray[][0]),
-                          cast[int32](argsArray[][1]),
-                          cast[Wl_array](argsArray[][2]))
-  of 1:
-    if callbacks.close != nil:
-      callbacks.close()
-  of 2:
-    let argsArray = cast[ptr array[2, Wl_argument]](args)
-    if callbacks.configure_bounds != nil:
-      callbacks.configure_bounds(cast[int32](argsArray[][0]),
-                                 cast[int32](argsArray[][1]))
-  of 3:
-    let argsArray = cast[ptr array[1, Wl_argument]](args)
-    if callbacks.wm_capabilities != nil:
-      callbacks.wm_capabilities(cast[Wl_array](argsArray[][0]))
-  else:
-    discard
-
-proc `Xdg_popup / dispatch`*(impl: pointer; obj: pointer; opcode: uint32;
-                             msg: ptr WlMessage; args: pointer): int32 {.cdecl.} =
-  let callbacks = cast[ptr `Xdg_popup / Callbacks`](impl)
-  case opcode
-  of 0:
-    let argsArray = cast[ptr array[4, Wl_argument]](args)
-    if callbacks.configure != nil:
-      callbacks.configure(cast[int32](argsArray[][0]),
-                          cast[int32](argsArray[][1]),
-                          cast[int32](argsArray[][2]),
-                          cast[int32](argsArray[][3]))
-  of 1:
-    if callbacks.popup_done != nil:
-      callbacks.popup_done()
-  of 2:
-    let argsArray = cast[ptr array[1, Wl_argument]](args)
-    if callbacks.repositioned != nil:
-      callbacks.repositioned(cast[uint32](argsArray[][0]))
   else:
     discard
 
@@ -2935,24 +2837,26 @@ proc `Wl_subsurface / dispatch`*(impl: pointer; obj: pointer; opcode: uint32;
   else:
     discard
 
-proc `Xdg_toplevel_icon_manager_v1 / dispatch`*(impl: pointer; obj: pointer;
-    opcode: uint32; msg: ptr WlMessage; args: pointer): int32 {.cdecl.} =
-  let callbacks = cast[ptr `Xdg_toplevel_icon_manager_v1 / Callbacks`](impl)
+proc `Zwlr_layer_shell_v1 / dispatch`*(impl: pointer; obj: pointer;
+                                       opcode: uint32; msg: ptr WlMessage;
+                                       args: pointer): int32 {.cdecl.} =
   case opcode
-  of 0:
-    let argsArray = cast[ptr array[1, Wl_argument]](args)
-    if callbacks.icon_size != nil:
-      callbacks.icon_size(cast[int32](argsArray[][0]))
-  of 1:
-    if callbacks.done != nil:
-      callbacks.done()
   else:
     discard
 
-proc `Xdg_toplevel_icon_v1 / dispatch`*(impl: pointer; obj: pointer;
-                                        opcode: uint32; msg: ptr WlMessage;
-                                        args: pointer): int32 {.cdecl.} =
+proc `Zwlr_layer_surface_v1 / dispatch`*(impl: pointer; obj: pointer;
+    opcode: uint32; msg: ptr WlMessage; args: pointer): int32 {.cdecl.} =
+  let callbacks = cast[ptr `Zwlr_layer_surface_v1 / Callbacks`](impl)
   case opcode
+  of 0:
+    let argsArray = cast[ptr array[3, Wl_argument]](args)
+    if callbacks.configure != nil:
+      callbacks.configure(cast[uint32](argsArray[][0]),
+                          cast[uint32](argsArray[][1]),
+                          cast[uint32](argsArray[][2]))
+  of 1:
+    if callbacks.closed != nil:
+      callbacks.closed()
   else:
     discard
 
@@ -2974,170 +2878,180 @@ proc `Zxdg_toplevel_decoration_v1 / dispatch`*(impl: pointer; obj: pointer;
   else:
     discard
 
-proc get_layer_surface*(this: Zwlr_layer_shell_v1; surface: Wl_surface;
-                        output: Wl_output; layer: `Zwlr_layer_shell_v1 / Layer`;
-                        namespace: cstring): Zwlr_layer_surface_v1 =
-  ## Create a layer surface for an existing surface. This assigns the role of
-  ## layer_surface, or raises a protocol error if another role is already
-  ## assigned.
-  ## 
-  ## Creating a layer surface from a wl_surface which has a buffer attached
-  ## or committed is a client error, and any attempts by a client to attach
-  ## or manipulate a buffer prior to the first layer_surface.configure call
-  ## must also be treated as errors.
-  ## 
-  ## After creating a layer_surface object and setting it up, the client
-  ## must perform an initial commit without any buffer attached.
-  ## The compositor will reply with a layer_surface.configure event.
-  ## The client must acknowledge it and is then allowed to attach a buffer
-  ## to map the surface.
-  ## 
-  ## You may pass NULL for output to allow the compositor to decide which
-  ## output to use. Generally this will be the one that the user most
-  ## recently interacted with.
-  ## 
-  ## Clients can specify a namespace that defines the purpose of the layer
-  ## surface.
+proc `Xdg_wm_base / dispatch`*(impl: pointer; obj: pointer; opcode: uint32;
+                               msg: ptr WlMessage; args: pointer): int32 {.cdecl.} =
+  let callbacks = cast[ptr `Xdg_wm_base / Callbacks`](impl)
+  case opcode
+  of 0:
+    let argsArray = cast[ptr array[1, Wl_argument]](args)
+    if callbacks.ping != nil:
+      callbacks.ping(cast[uint32](argsArray[][0]))
+  else:
+    discard
+
+proc `Xdg_positioner / dispatch`*(impl: pointer; obj: pointer; opcode: uint32;
+                                  msg: ptr WlMessage; args: pointer): int32 {.
+    cdecl.} =
+  case opcode
+  else:
+    discard
+
+proc `Xdg_surface / dispatch`*(impl: pointer; obj: pointer; opcode: uint32;
+                               msg: ptr WlMessage; args: pointer): int32 {.cdecl.} =
+  let callbacks = cast[ptr `Xdg_surface / Callbacks`](impl)
+  case opcode
+  of 0:
+    let argsArray = cast[ptr array[1, Wl_argument]](args)
+    if callbacks.configure != nil:
+      callbacks.configure(cast[uint32](argsArray[][0]))
+  else:
+    discard
+
+proc `Xdg_toplevel / dispatch`*(impl: pointer; obj: pointer; opcode: uint32;
+                                msg: ptr WlMessage; args: pointer): int32 {.
+    cdecl.} =
+  let callbacks = cast[ptr `Xdg_toplevel / Callbacks`](impl)
+  case opcode
+  of 0:
+    let argsArray = cast[ptr array[3, Wl_argument]](args)
+    if callbacks.configure != nil:
+      callbacks.configure(cast[int32](argsArray[][0]),
+                          cast[int32](argsArray[][1]),
+                          cast[Wl_array](argsArray[][2]))
+  of 1:
+    if callbacks.close != nil:
+      callbacks.close()
+  of 2:
+    let argsArray = cast[ptr array[2, Wl_argument]](args)
+    if callbacks.configure_bounds != nil:
+      callbacks.configure_bounds(cast[int32](argsArray[][0]),
+                                 cast[int32](argsArray[][1]))
+  of 3:
+    let argsArray = cast[ptr array[1, Wl_argument]](args)
+    if callbacks.wm_capabilities != nil:
+      callbacks.wm_capabilities(cast[Wl_array](argsArray[][0]))
+  else:
+    discard
+
+proc `Xdg_popup / dispatch`*(impl: pointer; obj: pointer; opcode: uint32;
+                             msg: ptr WlMessage; args: pointer): int32 {.cdecl.} =
+  let callbacks = cast[ptr `Xdg_popup / Callbacks`](impl)
+  case opcode
+  of 0:
+    let argsArray = cast[ptr array[4, Wl_argument]](args)
+    if callbacks.configure != nil:
+      callbacks.configure(cast[int32](argsArray[][0]),
+                          cast[int32](argsArray[][1]),
+                          cast[int32](argsArray[][2]),
+                          cast[int32](argsArray[][3]))
+  of 1:
+    if callbacks.popup_done != nil:
+      callbacks.popup_done()
+  of 2:
+    let argsArray = cast[ptr array[1, Wl_argument]](args)
+    if callbacks.repositioned != nil:
+      callbacks.repositioned(cast[uint32](argsArray[][0]))
+  else:
+    discard
+
+proc `Xdg_toplevel_icon_manager_v1 / dispatch`*(impl: pointer; obj: pointer;
+    opcode: uint32; msg: ptr WlMessage; args: pointer): int32 {.cdecl.} =
+  let callbacks = cast[ptr `Xdg_toplevel_icon_manager_v1 / Callbacks`](impl)
+  case opcode
+  of 0:
+    let argsArray = cast[ptr array[1, Wl_argument]](args)
+    if callbacks.icon_size != nil:
+      callbacks.icon_size(cast[int32](argsArray[][0]))
+  of 1:
+    if callbacks.done != nil:
+      callbacks.done()
+  else:
+    discard
+
+proc `Xdg_toplevel_icon_v1 / dispatch`*(impl: pointer; obj: pointer;
+                                        opcode: uint32; msg: ptr WlMessage;
+                                        args: pointer): int32 {.cdecl.} =
+  case opcode
+  else:
+    discard
+
+proc destroy*(this: Wp_cursor_shape_manager_v1) =
+  ## Destroy the cursor shape manager.
+  destroyCallbacks(this.proxy)
+  discard wl_proxy_marshal_flags(this.proxy.raw, 0, nil, 1, 1)
+
+proc get_pointer*(this: Wp_cursor_shape_manager_v1; pointer: Wl_pointer): Wp_cursor_shape_device_v1 =
+  ## Obtain a wp_cursor_shape_device_v1 for a wl_pointer object.
   let interfaces = cast[ptr ptr WaylandInterfaces](this.proxy.raw.impl)
-  result = wl_proxy_marshal_flags(this.proxy.raw, 0, addr(
-      interfaces[].`iface Zwlr_layer_surface_v1`), 1, 0, nil, surface, output,
-                                  layer, namespace).construct(interfaces[],
-      Zwlr_layer_surface_v1, `Zwlr_layer_surface_v1 / dispatch`,
-      `Zwlr_layer_surface_v1 / Callbacks`)
+  result = wl_proxy_marshal_flags(this.proxy.raw, 1, addr(
+      interfaces[].`iface Wp_cursor_shape_device_v1`), 1, 0, nil, pointer).construct(
+      interfaces[], Wp_cursor_shape_device_v1,
+      `Wp_cursor_shape_device_v1 / dispatch`,
+      `Wp_cursor_shape_device_v1 / Callbacks`)
 
-proc destroy*(this: Zwlr_layer_shell_v1) =
-  ## This request indicates that the client will not use the layer_shell
-  ## object any more. Objects that have been created through this instance
-  ## are not affected.
+proc get_tablet_tool_v2*(this: Wp_cursor_shape_manager_v1;
+                         tablet_tool: Zwp_tablet_tool_v2): Wp_cursor_shape_device_v1 =
+  ## Obtain a wp_cursor_shape_device_v1 for a zwp_tablet_tool_v2 object.
+  let interfaces = cast[ptr ptr WaylandInterfaces](this.proxy.raw.impl)
+  result = wl_proxy_marshal_flags(this.proxy.raw, 2, addr(
+      interfaces[].`iface Wp_cursor_shape_device_v1`), 1, 0, nil, tablet_tool).construct(
+      interfaces[], Wp_cursor_shape_device_v1,
+      `Wp_cursor_shape_device_v1 / dispatch`,
+      `Wp_cursor_shape_device_v1 / Callbacks`)
+
+proc destroy*(this: Wp_cursor_shape_device_v1) =
+  ## Destroy the cursor shape device.
+  ## 
+  ## The device cursor shape remains unchanged.
   destroyCallbacks(this.proxy)
-  discard wl_proxy_marshal_flags(this.proxy.raw, 1, nil, 1, 1)
+  discard wl_proxy_marshal_flags(this.proxy.raw, 0, nil, 1, 1)
 
-proc set_size*(this: Zwlr_layer_surface_v1; width: uint32; height: uint32) =
-  ## Sets the size of the surface in surface-local coordinates. The
-  ## compositor will display the surface centered with respect to its
-  ## anchors.
+proc set_shape*(this: Wp_cursor_shape_device_v1; serial: uint32;
+                shape: `Wp_cursor_shape_device_v1 / Shape`) =
+  ## Sets the device cursor to the specified shape. The compositor will
+  ## change the cursor image based on the specified shape.
   ## 
-  ## If you pass 0 for either value, the compositor will assign it and
-  ## inform you of the assignment in the configure event. You must set your
-  ## anchor to opposite edges in the dimensions you omit; not doing so is a
-  ## protocol error. Both values are 0 by default.
+  ## The cursor actually changes only if the input device focus is one of
+  ## the requesting client's surfaces. If any, the previous cursor image
+  ## (surface or shape) is replaced.
   ## 
-  ## Size is double-buffered, see wl_surface.commit.
-  discard wl_proxy_marshal_flags(this.proxy.raw, 0, nil, 1, 0, width, height)
+  ## The "shape" argument must be a valid enum entry, otherwise the
+  ## invalid_shape protocol error is raised.
+  ## 
+  ## This is similar to the wl_pointer.set_cursor and
+  ## zwp_tablet_tool_v2.set_cursor requests, but this request accepts a
+  ## shape instead of contents in the form of a surface. Clients can mix
+  ## set_cursor and set_shape requests.
+  ## 
+  ## The serial parameter must match the latest wl_pointer.enter or
+  ## zwp_tablet_tool_v2.proximity_in serial number sent to the client.
+  ## Otherwise the request will be ignored.
+  discard wl_proxy_marshal_flags(this.proxy.raw, 1, nil, 1, 0, serial, shape)
 
-proc set_anchor*(this: Zwlr_layer_surface_v1;
-                 anchor: `Zwlr_layer_surface_v1 / Anchor`) =
-  ## Requests that the compositor anchor the surface to the specified edges
-  ## and corners. If two orthogonal edges are specified (e.g. 'top' and
-  ## 'left'), then the anchor point will be the intersection of the edges
-  ## (e.g. the top left corner of the output); otherwise the anchor point
-  ## will be centered on that edge, or in the center if none is specified.
-  ## 
-  ## Anchor is double-buffered, see wl_surface.commit.
-  discard wl_proxy_marshal_flags(this.proxy.raw, 1, nil, 1, 0, anchor)
-
-proc set_exclusive_zone*(this: Zwlr_layer_surface_v1; zone: int32) =
-  ## Requests that the compositor avoids occluding an area with other
-  ## surfaces. The compositor's use of this information is
-  ## implementation-dependent - do not assume that this region will not
-  ## actually be occluded.
-  ## 
-  ## A positive value is only meaningful if the surface is anchored to one
-  ## edge or an edge and both perpendicular edges. If the surface is not
-  ## anchored, anchored to only two perpendicular edges (a corner), anchored
-  ## to only two parallel edges or anchored to all edges, a positive value
-  ## will be treated the same as zero.
-  ## 
-  ## A positive zone is the distance from the edge in surface-local
-  ## coordinates to consider exclusive.
-  ## 
-  ## Surfaces that do not wish to have an exclusive zone may instead specify
-  ## how they should interact with surfaces that do. If set to zero, the
-  ## surface indicates that it would like to be moved to avoid occluding
-  ## surfaces with a positive exclusive zone. If set to -1, the surface
-  ## indicates that it would not like to be moved to accommodate for other
-  ## surfaces, and the compositor should extend it all the way to the edges
-  ## it is anchored to.
-  ## 
-  ## For example, a panel might set its exclusive zone to 10, so that
-  ## maximized shell surfaces are not shown on top of it. A notification
-  ## might set its exclusive zone to 0, so that it is moved to avoid
-  ## occluding the panel, but shell surfaces are shown underneath it. A
-  ## wallpaper or lock screen might set their exclusive zone to -1, so that
-  ## they stretch below or over the panel.
-  ## 
-  ## The default value is 0.
-  ## 
-  ## Exclusive zone is double-buffered, see wl_surface.commit.
-  discard wl_proxy_marshal_flags(this.proxy.raw, 2, nil, 1, 0, zone)
-
-proc set_margin*(this: Zwlr_layer_surface_v1; top: int32; right: int32;
-                 bottom: int32; left: int32) =
-  ## Requests that the surface be placed some distance away from the anchor
-  ## point on the output, in surface-local coordinates. Setting this value
-  ## for edges you are not anchored to has no effect.
-  ## 
-  ## The exclusive zone includes the margin.
-  ## 
-  ## Margin is double-buffered, see wl_surface.commit.
-  discard wl_proxy_marshal_flags(this.proxy.raw, 3, nil, 1, 0, top, right,
-                                 bottom, left)
-
-proc set_keyboard_interactivity*(this: Zwlr_layer_surface_v1;
-    keyboard_interactivity: `Zwlr_layer_surface_v1 / Keyboard_interactivity`) =
-  ## Set how keyboard events are delivered to this surface. By default,
-  ## layer shell surfaces do not receive keyboard events; this request can
-  ## be used to change this.
-  ## 
-  ## This setting is inherited by child surfaces set by the get_popup
-  ## request.
-  ## 
-  ## Layer surfaces receive pointer, touch, and tablet events normally. If
-  ## you do not want to receive them, set the input region on your surface
-  ## to an empty region.
-  ## 
-  ## Keyboard interactivity is double-buffered, see wl_surface.commit.
-  discard wl_proxy_marshal_flags(this.proxy.raw, 4, nil, 1, 0,
-                                 keyboard_interactivity)
-
-proc get_popup*(this: Zwlr_layer_surface_v1; popup: Xdg_popup) =
-  ## This assigns an xdg_popup's parent to this layer_surface.  This popup
-  ## should have been created via xdg_surface::get_popup with the parent set
-  ## to NULL, and this request must be invoked before committing the popup's
-  ## initial state.
-  ## 
-  ## See the documentation of xdg_popup for more details about what an
-  ## xdg_popup is and how it is used.
-  discard wl_proxy_marshal_flags(this.proxy.raw, 5, nil, 1, 0, popup)
-
-proc ack_configure*(this: Zwlr_layer_surface_v1; serial: uint32) =
-  ## When a configure event is received, if a client commits the
-  ## surface in response to the configure event, then the client
-  ## must make an ack_configure request sometime before the commit
-  ## request, passing along the serial of the configure event.
-  ## 
-  ## If the client receives multiple configure events before it
-  ## can respond to one, it only has to ack the last configure event.
-  ## 
-  ## A client is not required to commit immediately after sending
-  ## an ack_configure request - it may even ack_configure several times
-  ## before its next surface commit.
-  ## 
-  ## A client may send multiple ack_configure requests before committing, but
-  ## only the last request sent before a commit indicates which configure
-  ## event the client really is responding to.
-  discard wl_proxy_marshal_flags(this.proxy.raw, 6, nil, 1, 0, serial)
-
-proc destroy*(this: Zwlr_layer_surface_v1) =
-  ## This request destroys the layer surface.
+proc destroy*(this: Wp_fractional_scale_manager_v1) =
+  ## Informs the server that the client will not be using this protocol
+  ## object anymore. This does not affect any other objects,
+  ## wp_fractional_scale_v1 objects included.
   destroyCallbacks(this.proxy)
-  discard wl_proxy_marshal_flags(this.proxy.raw, 7, nil, 1, 1)
+  discard wl_proxy_marshal_flags(this.proxy.raw, 0, nil, 1, 1)
 
-proc set_layer*(this: Zwlr_layer_surface_v1; layer: `Zwlr_layer_shell_v1 / Layer`) =
-  ## Change the layer that the surface is rendered on.
-  ## 
-  ## Layer is double-buffered, see wl_surface.commit.
-  discard wl_proxy_marshal_flags(this.proxy.raw, 8, nil, 1, 0, layer)
+proc get_fractional_scale*(this: Wp_fractional_scale_manager_v1;
+                           surface: Wl_surface): Wp_fractional_scale_v1 =
+  ## Create an add-on object for the the wl_surface to let the compositor
+  ## request fractional scales. If the given wl_surface already has a
+  ## wp_fractional_scale_v1 object associated, the fractional_scale_exists
+  ## protocol error is raised.
+  let interfaces = cast[ptr ptr WaylandInterfaces](this.proxy.raw.impl)
+  result = wl_proxy_marshal_flags(this.proxy.raw, 1, addr(
+      interfaces[].`iface Wp_fractional_scale_v1`), 1, 0, nil, surface).construct(
+      interfaces[], Wp_fractional_scale_v1, `Wp_fractional_scale_v1 / dispatch`,
+      `Wp_fractional_scale_v1 / Callbacks`)
+
+proc destroy*(this: Wp_fractional_scale_v1) =
+  ## Destroy the fractional scale object. When this object is destroyed,
+  ## preferred_scale events will no longer be sent.
+  destroyCallbacks(this.proxy)
+  discard wl_proxy_marshal_flags(this.proxy.raw, 0, nil, 1, 1)
 
 proc destroy*(this: Zwp_idle_inhibit_manager_v1) =
   ## Destroy the inhibit manager.
@@ -3156,6 +3070,183 @@ proc destroy*(this: Zwp_idle_inhibitor_v1) =
   ## Remove the inhibitor effect from the associated wl_surface.
   destroyCallbacks(this.proxy)
   discard wl_proxy_marshal_flags(this.proxy.raw, 0, nil, 1, 1)
+
+proc get_surface*(this: Org_kde_plasma_shell; surface: Wl_surface): Org_kde_plasma_surface =
+  ## Create a shell surface for an existing surface.
+  ## 
+  ## Only one shell surface can be associated with a given
+  ## surface.
+  let interfaces = cast[ptr ptr WaylandInterfaces](this.proxy.raw.impl)
+  result = wl_proxy_marshal_flags(this.proxy.raw, 0, addr(
+      interfaces[].`iface Org_kde_plasma_surface`), 1, 0, nil, surface).construct(
+      interfaces[], Org_kde_plasma_surface, `Org_kde_plasma_surface / dispatch`,
+      `Org_kde_plasma_surface / Callbacks`)
+
+proc destroy*(this: Org_kde_plasma_surface) =
+  ## The org_kde_plasma_surface interface is removed from the
+  ## wl_surface object that was turned into a shell surface with the
+  ## org_kde_plasma_shell.get_surface request.
+  ## The shell surface role is lost and wl_surface is unmapped.
+  destroyCallbacks(this.proxy)
+  discard wl_proxy_marshal_flags(this.proxy.raw, 0, nil, 1, 1)
+
+proc set_output*(this: Org_kde_plasma_surface; output: Wl_output) =
+  ## Assign an output to this shell surface.
+  ## The compositor will use this information to set the position
+  ## when org_kde_plasma_surface.set_position request is
+  ## called.
+  discard wl_proxy_marshal_flags(this.proxy.raw, 1, nil, 1, 0, output)
+
+proc set_position*(this: Org_kde_plasma_surface; x: int32; y: int32) =
+  ## Move the surface to new coordinates.
+  ## 
+  ## Coordinates are global, for example 50,50 for a 1920,0+1920x1080 output
+  ## is 1970,50 in global coordinates space.
+  ## 
+  ## Use org_kde_plasma_surface.set_output to assign an output
+  ## to this surface.
+  discard wl_proxy_marshal_flags(this.proxy.raw, 2, nil, 1, 0, x, y)
+
+proc set_role*(this: Org_kde_plasma_surface; role: uint32) =
+  ## Assign a role to a shell surface.
+  ## 
+  ## The compositor handles surfaces depending on their role.
+  ## See the explanation below.
+  ## 
+  ## This request fails if the surface already has a role, this means
+  ## the surface role may be assigned only once.
+  ## 
+  ## == Surfaces with splash role ==
+  ## 
+  ## Splash surfaces are placed above every other surface during the
+  ## shell startup phase.
+  ## 
+  ## The surfaces are placed according to the output coordinates.
+  ## No size is imposed to those surfaces, the shell has to resize
+  ## them according to output size.
+  ## 
+  ## These surfaces are meant to hide the desktop during the startup
+  ## phase so that the user will always see a ready to work desktop.
+  ## 
+  ## A shell might not create splash surfaces if the compositor reveals
+  ## the desktop in an alternative fashion, for example with a fade
+  ## in effect.
+  ## 
+  ## That depends on how much time the desktop usually need to prepare
+  ## the workspace or specific design decisions.
+  ## This specification doesn't impose any particular design.
+  ## 
+  ## When the startup phase is finished, the shell will send the
+  ## org_kde_plasma.desktop_ready request to the compositor.
+  ## 
+  ## == Surfaces with desktop role ==
+  ## 
+  ## Desktop surfaces are placed below all other surfaces and are used
+  ## to show the actual desktop view with icons, search results or
+  ## controls the user will interact with. What to show depends on the
+  ## shell implementation.
+  ## 
+  ## The surfaces are placed according to the output coordinates.
+  ## No size is imposed to those surfaces, the shell has to resize
+  ## them according to output size.
+  ## 
+  ## Only one surface per output can have the desktop role.
+  ## 
+  ## == Surfaces with dashboard role ==
+  ## 
+  ## Dashboard surfaces are placed above desktop surfaces and are used to
+  ## show additional widgets and controls.
+  ## 
+  ## The surfaces are placed according to the output coordinates.
+  ## No size is imposed to those surfaces, the shell has to resize
+  ## them according to output size.
+  ## 
+  ## Only one surface per output can have the dashboard role.
+  ## 
+  ## == Surfaces with config role ==
+  ## 
+  ## A configuration surface is shown when the user wants to configure
+  ## panel or desktop views.
+  ## 
+  ## Only one surface per output can have the config role.
+  ## 
+  ## TODO: This should grab the input like popup menus, right?
+  ## 
+  ## == Surfaces with overlay role ==
+  ## 
+  ## Overlays are special surfaces that shows for a limited amount
+  ## of time.  Such surfaces are useful to display things like volume,
+  ## brightness and status changes.
+  ## 
+  ## Compositors may decide to show those surfaces in a layer above
+  ## all surfaces, even full screen ones if so is desired.
+  ## 
+  ## == Surfaces with notification role ==
+  ## 
+  ## Notification surfaces display informative content for a limited
+  ## amount of time.  The compositor may decide to show them in a corner
+  ## depending on the configuration.
+  ## 
+  ## These surfaces are shown in a layer above all other surfaces except
+  ## for full screen ones.
+  ## 
+  ## == Surfaces with lock role ==
+  ## 
+  ## The lock surface is shown by the compositor when the session is
+  ## locked, users interact with it to unlock the session.
+  ## 
+  ## Compositors should move lock surfaces to 0,0 in output
+  ## coordinates space and hide all other surfaces for security sake.
+  ## For the same reason it is recommended that clients make the
+  ## lock surface as big as the screen.
+  ## 
+  ## Only one surface per output can have the lock role.
+  discard wl_proxy_marshal_flags(this.proxy.raw, 3, nil, 1, 0, role)
+
+proc set_panel_behavior*(this: Org_kde_plasma_surface; flag: uint32) =
+  ## Set flags bitmask as described by the flag enum.
+  ## Pass 0 to unset any flag, the surface will adjust its behavior to
+  ## the default.
+  ## 
+  ## Deprecated in Plasma 6. Setting this flag will have no effect. Applications should use layer shell where appropriate.
+  discard wl_proxy_marshal_flags(this.proxy.raw, 4, nil, 1, 0, flag)
+
+proc set_skip_taskbar*(this: Org_kde_plasma_surface; skip: uint32) =
+  ## Setting this bit to the window, will make it say it prefers to not be listed in the taskbar. Taskbar implementations may or may not follow this hint.
+  discard wl_proxy_marshal_flags(this.proxy.raw, 5, nil, 1, 0, skip)
+
+proc panel_auto_hide_hide*(this: Org_kde_plasma_surface) =
+  ## A panel surface with panel_behavior auto_hide can perform this request to hide the panel
+  ## on a screen edge without unmapping it. The compositor informs the client about the panel
+  ## being hidden with the event auto_hidden_panel_hidden.
+  ## 
+  ## The compositor will restore the visibility state of the
+  ## surface when the pointer touches the screen edge the panel borders. Once the compositor restores
+  ## the visibility the event auto_hidden_panel_shown will be sent. This event will also be sent
+  ## if the compositor is unable to hide the panel.
+  ## 
+  ## The client can also request to show the panel again with the request panel_auto_hide_show.
+  discard wl_proxy_marshal_flags(this.proxy.raw, 6, nil, 1, 0)
+
+proc panel_auto_hide_show*(this: Org_kde_plasma_surface) =
+  ## A panel surface with panel_behavior auto_hide can perform this request to show the panel
+  ## again which got hidden with panel_auto_hide_hide.
+  discard wl_proxy_marshal_flags(this.proxy.raw, 7, nil, 1, 0)
+
+proc set_panel_takes_focus*(this: Org_kde_plasma_surface; takes_focus: uint32) =
+  ## By default various org_kde_plasma_surface roles do not take focus and cannot be
+  ## activated. With this request the compositor can be instructed to pass focus also to this
+  ## org_kde_plasma_surface.
+  discard wl_proxy_marshal_flags(this.proxy.raw, 8, nil, 1, 0, takes_focus)
+
+proc set_skip_switcher*(this: Org_kde_plasma_surface; skip: uint32) =
+  ## Setting this bit will indicate that the window prefers not to be listed in a switcher.
+  discard wl_proxy_marshal_flags(this.proxy.raw, 9, nil, 1, 0, skip)
+
+proc open_under_cursor*(this: Org_kde_plasma_surface) =
+  ## Request the initial position of this surface to be under the current
+  ## cursor position. Has to be called before attaching any buffer to this surface.
+  discard wl_proxy_marshal_flags(this.proxy.raw, 10, nil, 1, 0)
 
 proc get_tablet_seat*(this: Zwp_tablet_manager_v2; seat: Wl_seat): Zwp_tablet_seat_v2 =
   ## Get the zwp_tablet_seat_v2 object for the given seat. This object
@@ -3352,208 +3443,6 @@ proc destroy*(this: Zwp_tablet_pad_dial_v2) =
   destroyCallbacks(this.proxy)
   discard wl_proxy_marshal_flags(this.proxy.raw, 1, nil, 1, 1)
 
-proc destroy*(this: Wp_fractional_scale_manager_v1) =
-  ## Informs the server that the client will not be using this protocol
-  ## object anymore. This does not affect any other objects,
-  ## wp_fractional_scale_v1 objects included.
-  destroyCallbacks(this.proxy)
-  discard wl_proxy_marshal_flags(this.proxy.raw, 0, nil, 1, 1)
-
-proc get_fractional_scale*(this: Wp_fractional_scale_manager_v1;
-                           surface: Wl_surface): Wp_fractional_scale_v1 =
-  ## Create an add-on object for the the wl_surface to let the compositor
-  ## request fractional scales. If the given wl_surface already has a
-  ## wp_fractional_scale_v1 object associated, the fractional_scale_exists
-  ## protocol error is raised.
-  let interfaces = cast[ptr ptr WaylandInterfaces](this.proxy.raw.impl)
-  result = wl_proxy_marshal_flags(this.proxy.raw, 1, addr(
-      interfaces[].`iface Wp_fractional_scale_v1`), 1, 0, nil, surface).construct(
-      interfaces[], Wp_fractional_scale_v1, `Wp_fractional_scale_v1 / dispatch`,
-      `Wp_fractional_scale_v1 / Callbacks`)
-
-proc destroy*(this: Wp_fractional_scale_v1) =
-  ## Destroy the fractional scale object. When this object is destroyed,
-  ## preferred_scale events will no longer be sent.
-  destroyCallbacks(this.proxy)
-  discard wl_proxy_marshal_flags(this.proxy.raw, 0, nil, 1, 1)
-
-proc get_surface*(this: Org_kde_plasma_shell; surface: Wl_surface): Org_kde_plasma_surface =
-  ## Create a shell surface for an existing surface.
-  ## 
-  ## Only one shell surface can be associated with a given
-  ## surface.
-  let interfaces = cast[ptr ptr WaylandInterfaces](this.proxy.raw.impl)
-  result = wl_proxy_marshal_flags(this.proxy.raw, 0, addr(
-      interfaces[].`iface Org_kde_plasma_surface`), 1, 0, nil, surface).construct(
-      interfaces[], Org_kde_plasma_surface, `Org_kde_plasma_surface / dispatch`,
-      `Org_kde_plasma_surface / Callbacks`)
-
-proc destroy*(this: Org_kde_plasma_surface) =
-  ## The org_kde_plasma_surface interface is removed from the
-  ## wl_surface object that was turned into a shell surface with the
-  ## org_kde_plasma_shell.get_surface request.
-  ## The shell surface role is lost and wl_surface is unmapped.
-  destroyCallbacks(this.proxy)
-  discard wl_proxy_marshal_flags(this.proxy.raw, 0, nil, 1, 1)
-
-proc set_output*(this: Org_kde_plasma_surface; output: Wl_output) =
-  ## Assign an output to this shell surface.
-  ## The compositor will use this information to set the position
-  ## when org_kde_plasma_surface.set_position request is
-  ## called.
-  discard wl_proxy_marshal_flags(this.proxy.raw, 1, nil, 1, 0, output)
-
-proc set_position*(this: Org_kde_plasma_surface; x: int32; y: int32) =
-  ## Move the surface to new coordinates.
-  ## 
-  ## Coordinates are global, for example 50,50 for a 1920,0+1920x1080 output
-  ## is 1970,50 in global coordinates space.
-  ## 
-  ## Use org_kde_plasma_surface.set_output to assign an output
-  ## to this surface.
-  discard wl_proxy_marshal_flags(this.proxy.raw, 2, nil, 1, 0, x, y)
-
-proc set_role*(this: Org_kde_plasma_surface; role: uint32) =
-  ## Assign a role to a shell surface.
-  ## 
-  ## The compositor handles surfaces depending on their role.
-  ## See the explanation below.
-  ## 
-  ## This request fails if the surface already has a role, this means
-  ## the surface role may be assigned only once.
-  ## 
-  ## == Surfaces with splash role ==
-  ## 
-  ## Splash surfaces are placed above every other surface during the
-  ## shell startup phase.
-  ## 
-  ## The surfaces are placed according to the output coordinates.
-  ## No size is imposed to those surfaces, the shell has to resize
-  ## them according to output size.
-  ## 
-  ## These surfaces are meant to hide the desktop during the startup
-  ## phase so that the user will always see a ready to work desktop.
-  ## 
-  ## A shell might not create splash surfaces if the compositor reveals
-  ## the desktop in an alternative fashion, for example with a fade
-  ## in effect.
-  ## 
-  ## That depends on how much time the desktop usually need to prepare
-  ## the workspace or specific design decisions.
-  ## This specification doesn't impose any particular design.
-  ## 
-  ## When the startup phase is finished, the shell will send the
-  ## org_kde_plasma.desktop_ready request to the compositor.
-  ## 
-  ## == Surfaces with desktop role ==
-  ## 
-  ## Desktop surfaces are placed below all other surfaces and are used
-  ## to show the actual desktop view with icons, search results or
-  ## controls the user will interact with. What to show depends on the
-  ## shell implementation.
-  ## 
-  ## The surfaces are placed according to the output coordinates.
-  ## No size is imposed to those surfaces, the shell has to resize
-  ## them according to output size.
-  ## 
-  ## Only one surface per output can have the desktop role.
-  ## 
-  ## == Surfaces with dashboard role ==
-  ## 
-  ## Dashboard surfaces are placed above desktop surfaces and are used to
-  ## show additional widgets and controls.
-  ## 
-  ## The surfaces are placed according to the output coordinates.
-  ## No size is imposed to those surfaces, the shell has to resize
-  ## them according to output size.
-  ## 
-  ## Only one surface per output can have the dashboard role.
-  ## 
-  ## == Surfaces with config role ==
-  ## 
-  ## A configuration surface is shown when the user wants to configure
-  ## panel or desktop views.
-  ## 
-  ## Only one surface per output can have the config role.
-  ## 
-  ## TODO: This should grab the input like popup menus, right?
-  ## 
-  ## == Surfaces with overlay role ==
-  ## 
-  ## Overlays are special surfaces that shows for a limited amount
-  ## of time.  Such surfaces are useful to display things like volume,
-  ## brightness and status changes.
-  ## 
-  ## Compositors may decide to show those surfaces in a layer above
-  ## all surfaces, even full screen ones if so is desired.
-  ## 
-  ## == Surfaces with notification role ==
-  ## 
-  ## Notification surfaces display informative content for a limited
-  ## amount of time.  The compositor may decide to show them in a corner
-  ## depending on the configuration.
-  ## 
-  ## These surfaces are shown in a layer above all other surfaces except
-  ## for full screen ones.
-  ## 
-  ## == Surfaces with lock role ==
-  ## 
-  ## The lock surface is shown by the compositor when the session is
-  ## locked, users interact with it to unlock the session.
-  ## 
-  ## Compositors should move lock surfaces to 0,0 in output
-  ## coordinates space and hide all other surfaces for security sake.
-  ## For the same reason it is recommended that clients make the
-  ## lock surface as big as the screen.
-  ## 
-  ## Only one surface per output can have the lock role.
-  discard wl_proxy_marshal_flags(this.proxy.raw, 3, nil, 1, 0, role)
-
-proc set_panel_behavior*(this: Org_kde_plasma_surface; flag: uint32) =
-  ## Set flags bitmask as described by the flag enum.
-  ## Pass 0 to unset any flag, the surface will adjust its behavior to
-  ## the default.
-  ## 
-  ## Deprecated in Plasma 6. Setting this flag will have no effect. Applications should use layer shell where appropriate.
-  discard wl_proxy_marshal_flags(this.proxy.raw, 4, nil, 1, 0, flag)
-
-proc set_skip_taskbar*(this: Org_kde_plasma_surface; skip: uint32) =
-  ## Setting this bit to the window, will make it say it prefers to not be listed in the taskbar. Taskbar implementations may or may not follow this hint.
-  discard wl_proxy_marshal_flags(this.proxy.raw, 5, nil, 1, 0, skip)
-
-proc panel_auto_hide_hide*(this: Org_kde_plasma_surface) =
-  ## A panel surface with panel_behavior auto_hide can perform this request to hide the panel
-  ## on a screen edge without unmapping it. The compositor informs the client about the panel
-  ## being hidden with the event auto_hidden_panel_hidden.
-  ## 
-  ## The compositor will restore the visibility state of the
-  ## surface when the pointer touches the screen edge the panel borders. Once the compositor restores
-  ## the visibility the event auto_hidden_panel_shown will be sent. This event will also be sent
-  ## if the compositor is unable to hide the panel.
-  ## 
-  ## The client can also request to show the panel again with the request panel_auto_hide_show.
-  discard wl_proxy_marshal_flags(this.proxy.raw, 6, nil, 1, 0)
-
-proc panel_auto_hide_show*(this: Org_kde_plasma_surface) =
-  ## A panel surface with panel_behavior auto_hide can perform this request to show the panel
-  ## again which got hidden with panel_auto_hide_hide.
-  discard wl_proxy_marshal_flags(this.proxy.raw, 7, nil, 1, 0)
-
-proc set_panel_takes_focus*(this: Org_kde_plasma_surface; takes_focus: uint32) =
-  ## By default various org_kde_plasma_surface roles do not take focus and cannot be
-  ## activated. With this request the compositor can be instructed to pass focus also to this
-  ## org_kde_plasma_surface.
-  discard wl_proxy_marshal_flags(this.proxy.raw, 8, nil, 1, 0, takes_focus)
-
-proc set_skip_switcher*(this: Org_kde_plasma_surface; skip: uint32) =
-  ## Setting this bit will indicate that the window prefers not to be listed in a switcher.
-  discard wl_proxy_marshal_flags(this.proxy.raw, 9, nil, 1, 0, skip)
-
-proc open_under_cursor*(this: Org_kde_plasma_surface) =
-  ## Request the initial position of this surface to be under the current
-  ## cursor position. Has to be called before attaching any buffer to this surface.
-  discard wl_proxy_marshal_flags(this.proxy.raw, 10, nil, 1, 0)
-
 proc destroy*(this: Wp_viewporter) =
   ## Informs the server that the client will not be using this
   ## protocol object anymore. This does not affect any other objects,
@@ -3605,713 +3494,6 @@ proc set_destination*(this: Wp_viewport; width: int32; height: int32) =
   ## 
   ## The crop and scale state is double-buffered, see wl_surface.commit.
   discard wl_proxy_marshal_flags(this.proxy.raw, 2, nil, 1, 0, width, height)
-
-proc destroy*(this: Wp_cursor_shape_manager_v1) =
-  ## Destroy the cursor shape manager.
-  destroyCallbacks(this.proxy)
-  discard wl_proxy_marshal_flags(this.proxy.raw, 0, nil, 1, 1)
-
-proc get_pointer*(this: Wp_cursor_shape_manager_v1; pointer: Wl_pointer): Wp_cursor_shape_device_v1 =
-  ## Obtain a wp_cursor_shape_device_v1 for a wl_pointer object.
-  let interfaces = cast[ptr ptr WaylandInterfaces](this.proxy.raw.impl)
-  result = wl_proxy_marshal_flags(this.proxy.raw, 1, addr(
-      interfaces[].`iface Wp_cursor_shape_device_v1`), 1, 0, nil, pointer).construct(
-      interfaces[], Wp_cursor_shape_device_v1,
-      `Wp_cursor_shape_device_v1 / dispatch`,
-      `Wp_cursor_shape_device_v1 / Callbacks`)
-
-proc get_tablet_tool_v2*(this: Wp_cursor_shape_manager_v1;
-                         tablet_tool: Zwp_tablet_tool_v2): Wp_cursor_shape_device_v1 =
-  ## Obtain a wp_cursor_shape_device_v1 for a zwp_tablet_tool_v2 object.
-  let interfaces = cast[ptr ptr WaylandInterfaces](this.proxy.raw.impl)
-  result = wl_proxy_marshal_flags(this.proxy.raw, 2, addr(
-      interfaces[].`iface Wp_cursor_shape_device_v1`), 1, 0, nil, tablet_tool).construct(
-      interfaces[], Wp_cursor_shape_device_v1,
-      `Wp_cursor_shape_device_v1 / dispatch`,
-      `Wp_cursor_shape_device_v1 / Callbacks`)
-
-proc destroy*(this: Wp_cursor_shape_device_v1) =
-  ## Destroy the cursor shape device.
-  ## 
-  ## The device cursor shape remains unchanged.
-  destroyCallbacks(this.proxy)
-  discard wl_proxy_marshal_flags(this.proxy.raw, 0, nil, 1, 1)
-
-proc set_shape*(this: Wp_cursor_shape_device_v1; serial: uint32;
-                shape: `Wp_cursor_shape_device_v1 / Shape`) =
-  ## Sets the device cursor to the specified shape. The compositor will
-  ## change the cursor image based on the specified shape.
-  ## 
-  ## The cursor actually changes only if the input device focus is one of
-  ## the requesting client's surfaces. If any, the previous cursor image
-  ## (surface or shape) is replaced.
-  ## 
-  ## The "shape" argument must be a valid enum entry, otherwise the
-  ## invalid_shape protocol error is raised.
-  ## 
-  ## This is similar to the wl_pointer.set_cursor and
-  ## zwp_tablet_tool_v2.set_cursor requests, but this request accepts a
-  ## shape instead of contents in the form of a surface. Clients can mix
-  ## set_cursor and set_shape requests.
-  ## 
-  ## The serial parameter must match the latest wl_pointer.enter or
-  ## zwp_tablet_tool_v2.proximity_in serial number sent to the client.
-  ## Otherwise the request will be ignored.
-  discard wl_proxy_marshal_flags(this.proxy.raw, 1, nil, 1, 0, serial, shape)
-
-proc destroy*(this: Xdg_wm_base) =
-  ## Destroy this xdg_wm_base object.
-  ## 
-  ## Destroying a bound xdg_wm_base object while there are surfaces
-  ## still alive created by this xdg_wm_base object instance is illegal
-  ## and will result in a defunct_surfaces error.
-  destroyCallbacks(this.proxy)
-  discard wl_proxy_marshal_flags(this.proxy.raw, 0, nil, 1, 1)
-
-proc create_positioner*(this: Xdg_wm_base): Xdg_positioner =
-  ## Create a positioner object. A positioner object is used to position
-  ## surfaces relative to some parent surface. See the interface description
-  ## and xdg_surface.get_popup for details.
-  let interfaces = cast[ptr ptr WaylandInterfaces](this.proxy.raw.impl)
-  result = wl_proxy_marshal_flags(this.proxy.raw, 1,
-                                  addr(interfaces[].`iface Xdg_positioner`), 1,
-                                  0, nil).construct(interfaces[],
-      Xdg_positioner, `Xdg_positioner / dispatch`, `Xdg_positioner / Callbacks`)
-
-proc get_xdg_surface*(this: Xdg_wm_base; surface: Wl_surface): Xdg_surface =
-  ## This creates an xdg_surface for the given surface. While xdg_surface
-  ## itself is not a role, the corresponding surface may only be assigned
-  ## a role extending xdg_surface, such as xdg_toplevel or xdg_popup. It is
-  ## illegal to create an xdg_surface for a wl_surface which already has an
-  ## assigned role and this will result in a role error.
-  ## 
-  ## This creates an xdg_surface for the given surface. An xdg_surface is
-  ## used as basis to define a role to a given surface, such as xdg_toplevel
-  ## or xdg_popup. It also manages functionality shared between xdg_surface
-  ## based surface roles.
-  ## 
-  ## See the documentation of xdg_surface for more details about what an
-  ## xdg_surface is and how it is used.
-  let interfaces = cast[ptr ptr WaylandInterfaces](this.proxy.raw.impl)
-  result = wl_proxy_marshal_flags(this.proxy.raw, 2,
-                                  addr(interfaces[].`iface Xdg_surface`), 1, 0,
-                                  nil, surface).construct(interfaces[],
-      Xdg_surface, `Xdg_surface / dispatch`, `Xdg_surface / Callbacks`)
-
-proc pong*(this: Xdg_wm_base; serial: uint32) =
-  ## A client must respond to a ping event with a pong request or
-  ## the client may be deemed unresponsive. See xdg_wm_base.ping
-  ## and xdg_wm_base.error.unresponsive.
-  discard wl_proxy_marshal_flags(this.proxy.raw, 3, nil, 1, 0, serial)
-
-proc destroy*(this: Xdg_positioner) =
-  ## Notify the compositor that the xdg_positioner will no longer be used.
-  destroyCallbacks(this.proxy)
-  discard wl_proxy_marshal_flags(this.proxy.raw, 0, nil, 1, 1)
-
-proc set_size*(this: Xdg_positioner; width: int32; height: int32) =
-  ## Set the size of the surface that is to be positioned with the positioner
-  ## object. The size is in surface-local coordinates and corresponds to the
-  ## window geometry. See xdg_surface.set_window_geometry.
-  ## 
-  ## If a zero or negative size is set the invalid_input error is raised.
-  discard wl_proxy_marshal_flags(this.proxy.raw, 1, nil, 1, 0, width, height)
-
-proc set_anchor_rect*(this: Xdg_positioner; x: int32; y: int32; width: int32;
-                      height: int32) =
-  ## Specify the anchor rectangle within the parent surface that the child
-  ## surface will be placed relative to. The rectangle is relative to the
-  ## window geometry as defined by xdg_surface.set_window_geometry of the
-  ## parent surface.
-  ## 
-  ## When the xdg_positioner object is used to position a child surface, the
-  ## anchor rectangle may not extend outside the window geometry of the
-  ## positioned child's parent surface.
-  ## 
-  ## If a negative size is set the invalid_input error is raised.
-  discard wl_proxy_marshal_flags(this.proxy.raw, 2, nil, 1, 0, x, y, width,
-                                 height)
-
-proc set_anchor*(this: Xdg_positioner; anchor: `Xdg_positioner / Anchor`) =
-  ## Defines the anchor point for the anchor rectangle. The specified anchor
-  ## is used derive an anchor point that the child surface will be
-  ## positioned relative to. If a corner anchor is set (e.g. 'top_left' or
-  ## 'bottom_right'), the anchor point will be at the specified corner;
-  ## otherwise, the derived anchor point will be centered on the specified
-  ## edge, or in the center of the anchor rectangle if no edge is specified.
-  discard wl_proxy_marshal_flags(this.proxy.raw, 3, nil, 1, 0, anchor)
-
-proc set_gravity*(this: Xdg_positioner; gravity: `Xdg_positioner / Gravity`) =
-  ## Defines in what direction a surface should be positioned, relative to
-  ## the anchor point of the parent surface. If a corner gravity is
-  ## specified (e.g. 'bottom_right' or 'top_left'), then the child surface
-  ## will be placed towards the specified gravity; otherwise, the child
-  ## surface will be centered over the anchor point on any axis that had no
-  ## gravity specified. If the gravity is not in the ‘gravity’ enum, an
-  ## invalid_input error is raised.
-  discard wl_proxy_marshal_flags(this.proxy.raw, 4, nil, 1, 0, gravity)
-
-proc set_constraint_adjustment*(this: Xdg_positioner;
-                                constraint_adjustment: uint32) =
-  ## Specify how the window should be positioned if the originally intended
-  ## position caused the surface to be constrained, meaning at least
-  ## partially outside positioning boundaries set by the compositor. The
-  ## adjustment is set by constructing a bitmask describing the adjustment to
-  ## be made when the surface is constrained on that axis.
-  ## 
-  ## If no bit for one axis is set, the compositor will assume that the child
-  ## surface should not change its position on that axis when constrained.
-  ## 
-  ## If more than one bit for one axis is set, the order of how adjustments
-  ## are applied is specified in the corresponding adjustment descriptions.
-  ## 
-  ## The default adjustment is none.
-  discard wl_proxy_marshal_flags(this.proxy.raw, 5, nil, 1, 0,
-                                 constraint_adjustment)
-
-proc set_offset*(this: Xdg_positioner; x: int32; y: int32) =
-  ## Specify the surface position offset relative to the position of the
-  ## anchor on the anchor rectangle and the anchor on the surface. For
-  ## example if the anchor of the anchor rectangle is at (x, y), the surface
-  ## has the gravity bottom|right, and the offset is (ox, oy), the calculated
-  ## surface position will be (x + ox, y + oy). The offset position of the
-  ## surface is the one used for constraint testing. See
-  ## set_constraint_adjustment.
-  ## 
-  ## An example use case is placing a popup menu on top of a user interface
-  ## element, while aligning the user interface element of the parent surface
-  ## with some user interface element placed somewhere in the popup surface.
-  discard wl_proxy_marshal_flags(this.proxy.raw, 6, nil, 1, 0, x, y)
-
-proc set_reactive*(this: Xdg_positioner) =
-  ## When set reactive, the surface is reconstrained if the conditions used
-  ## for constraining changed, e.g. the parent window moved.
-  ## 
-  ## If the conditions changed and the popup was reconstrained, an
-  ## xdg_popup.configure event is sent with updated geometry, followed by an
-  ## xdg_surface.configure event.
-  discard wl_proxy_marshal_flags(this.proxy.raw, 7, nil, 1, 0)
-
-proc set_parent_size*(this: Xdg_positioner; parent_width: int32;
-                      parent_height: int32) =
-  ## Set the parent window geometry the compositor should use when
-  ## positioning the popup. The compositor may use this information to
-  ## determine the future state the popup should be constrained using. If
-  ## this doesn't match the dimension of the parent the popup is eventually
-  ## positioned against, the behavior is undefined.
-  ## 
-  ## The arguments are given in the surface-local coordinate space.
-  discard wl_proxy_marshal_flags(this.proxy.raw, 8, nil, 1, 0, parent_width,
-                                 parent_height)
-
-proc set_parent_configure*(this: Xdg_positioner; serial: uint32) =
-  ## Set the serial of an xdg_surface.configure event this positioner will be
-  ## used in response to. The compositor may use this information together
-  ## with set_parent_size to determine what future state the popup should be
-  ## constrained using.
-  discard wl_proxy_marshal_flags(this.proxy.raw, 9, nil, 1, 0, serial)
-
-proc destroy*(this: Xdg_surface) =
-  ## Destroy the xdg_surface object. An xdg_surface must only be destroyed
-  ## after its role object has been destroyed, otherwise
-  ## a defunct_role_object error is raised.
-  destroyCallbacks(this.proxy)
-  discard wl_proxy_marshal_flags(this.proxy.raw, 0, nil, 1, 1)
-
-proc get_toplevel*(this: Xdg_surface): Xdg_toplevel =
-  ## This creates an xdg_toplevel object for the given xdg_surface and gives
-  ## the associated wl_surface the xdg_toplevel role.
-  ## 
-  ## See the documentation of xdg_toplevel for more details about what an
-  ## xdg_toplevel is and how it is used.
-  let interfaces = cast[ptr ptr WaylandInterfaces](this.proxy.raw.impl)
-  result = wl_proxy_marshal_flags(this.proxy.raw, 1,
-                                  addr(interfaces[].`iface Xdg_toplevel`), 1, 0,
-                                  nil).construct(interfaces[], Xdg_toplevel,
-      `Xdg_toplevel / dispatch`, `Xdg_toplevel / Callbacks`)
-
-proc get_popup*(this: Xdg_surface; parent: Xdg_surface;
-                positioner: Xdg_positioner): Xdg_popup =
-  ## This creates an xdg_popup object for the given xdg_surface and gives
-  ## the associated wl_surface the xdg_popup role.
-  ## 
-  ## If null is passed as a parent, a parent surface must be specified using
-  ## some other protocol, before committing the initial state.
-  ## 
-  ## See the documentation of xdg_popup for more details about what an
-  ## xdg_popup is and how it is used.
-  let interfaces = cast[ptr ptr WaylandInterfaces](this.proxy.raw.impl)
-  result = wl_proxy_marshal_flags(this.proxy.raw, 2,
-                                  addr(interfaces[].`iface Xdg_popup`), 1, 0,
-                                  nil, parent, positioner).construct(
-      interfaces[], Xdg_popup, `Xdg_popup / dispatch`, `Xdg_popup / Callbacks`)
-
-proc set_window_geometry*(this: Xdg_surface; x: int32; y: int32; width: int32;
-                          height: int32) =
-  ## The window geometry of a surface is its "visible bounds" from the
-  ## user's perspective. Client-side decorations often have invisible
-  ## portions like drop-shadows which should be ignored for the
-  ## purposes of aligning, placing and constraining windows.
-  ## 
-  ## The window geometry is double buffered, and will be applied at the
-  ## time wl_surface.commit of the corresponding wl_surface is called.
-  ## 
-  ## When maintaining a position, the compositor should treat the (x, y)
-  ## coordinate of the window geometry as the top left corner of the window.
-  ## A client changing the (x, y) window geometry coordinate should in
-  ## general not alter the position of the window.
-  ## 
-  ## Once the window geometry of the surface is set, it is not possible to
-  ## unset it, and it will remain the same until set_window_geometry is
-  ## called again, even if a new subsurface or buffer is attached.
-  ## 
-  ## If never set, the value is the full bounds of the surface,
-  ## including any subsurfaces. This updates dynamically on every
-  ## commit. This unset is meant for extremely simple clients.
-  ## 
-  ## The arguments are given in the surface-local coordinate space of
-  ## the wl_surface associated with this xdg_surface, and may extend outside
-  ## of the wl_surface itself to mark parts of the subsurface tree as part of
-  ## the window geometry.
-  ## 
-  ## When applied, the effective window geometry will be the set window
-  ## geometry clamped to the bounding rectangle of the combined
-  ## geometry of the surface of the xdg_surface and the associated
-  ## subsurfaces.
-  ## 
-  ## The effective geometry will not be recalculated unless a new call to
-  ## set_window_geometry is done and the new pending surface state is
-  ## subsequently applied.
-  ## 
-  ## The width and height of the effective window geometry must be
-  ## greater than zero. Setting an invalid size will raise an
-  ## invalid_size error.
-  discard wl_proxy_marshal_flags(this.proxy.raw, 3, nil, 1, 0, x, y, width,
-                                 height)
-
-proc ack_configure*(this: Xdg_surface; serial: uint32) =
-  ## When a configure event is received, if a client commits the
-  ## surface in response to the configure event, then the client
-  ## must make an ack_configure request sometime before the commit
-  ## request, passing along the serial of the configure event.
-  ## 
-  ## For instance, for toplevel surfaces the compositor might use this
-  ## information to move a surface to the top left only when the client has
-  ## drawn itself for the maximized or fullscreen state.
-  ## 
-  ## If the client receives multiple configure events before it
-  ## can respond to one, it only has to ack the last configure event.
-  ## Acking a configure event that was never sent raises an invalid_serial
-  ## error.
-  ## 
-  ## A client is not required to commit immediately after sending
-  ## an ack_configure request - it may even ack_configure several times
-  ## before its next surface commit.
-  ## 
-  ## A client may send multiple ack_configure requests before committing, but
-  ## only the last request sent before a commit indicates which configure
-  ## event the client really is responding to.
-  ## 
-  ## Sending an ack_configure request consumes the serial number sent with
-  ## the request, as well as serial numbers sent by all configure events
-  ## sent on this xdg_surface prior to the configure event referenced by
-  ## the committed serial.
-  ## 
-  ## It is an error to issue multiple ack_configure requests referencing a
-  ## serial from the same configure event, or to issue an ack_configure
-  ## request referencing a serial from a configure event issued before the
-  ## event identified by the last ack_configure request for the same
-  ## xdg_surface. Doing so will raise an invalid_serial error.
-  discard wl_proxy_marshal_flags(this.proxy.raw, 4, nil, 1, 0, serial)
-
-proc destroy*(this: Xdg_toplevel) =
-  ## This request destroys the role surface and unmaps the surface;
-  ## see "Unmapping" behavior in interface section for details.
-  destroyCallbacks(this.proxy)
-  discard wl_proxy_marshal_flags(this.proxy.raw, 0, nil, 1, 1)
-
-proc set_parent*(this: Xdg_toplevel; parent: Xdg_toplevel) =
-  ## Set the "parent" of this surface. This surface should be stacked
-  ## above the parent surface and all other ancestor surfaces.
-  ## 
-  ## Parent surfaces should be set on dialogs, toolboxes, or other
-  ## "auxiliary" surfaces, so that the parent is raised when the dialog
-  ## is raised.
-  ## 
-  ## Setting a null parent for a child surface unsets its parent. Setting
-  ## a null parent for a surface which currently has no parent is a no-op.
-  ## 
-  ## Only mapped surfaces can have child surfaces. Setting a parent which
-  ## is not mapped is equivalent to setting a null parent. If a surface
-  ## becomes unmapped, its children's parent is set to the parent of
-  ## the now-unmapped surface. If the now-unmapped surface has no parent,
-  ## its children's parent is unset. If the now-unmapped surface becomes
-  ## mapped again, its parent-child relationship is not restored.
-  ## 
-  ## The parent toplevel must not be one of the child toplevel's
-  ## descendants, and the parent must be different from the child toplevel,
-  ## otherwise the invalid_parent protocol error is raised.
-  discard wl_proxy_marshal_flags(this.proxy.raw, 1, nil, 1, 0, parent)
-
-proc set_title*(this: Xdg_toplevel; title: cstring) =
-  ## Set a short title for the surface.
-  ## 
-  ## This string may be used to identify the surface in a task bar,
-  ## window list, or other user interface elements provided by the
-  ## compositor.
-  ## 
-  ## The string must be encoded in UTF-8.
-  discard wl_proxy_marshal_flags(this.proxy.raw, 2, nil, 1, 0, title)
-
-proc set_app_id*(this: Xdg_toplevel; app_id: cstring) =
-  ## Set an application identifier for the surface.
-  ## 
-  ## The app ID identifies the general class of applications to which
-  ## the surface belongs. The compositor can use this to group multiple
-  ## surfaces together, or to determine how to launch a new application.
-  ## 
-  ## For D-Bus activatable applications, the app ID is used as the D-Bus
-  ## service name.
-  ## 
-  ## The compositor shell will try to group application surfaces together
-  ## by their app ID. As a best practice, it is suggested to select app
-  ## ID's that match the basename of the application's .desktop file.
-  ## For example, "org.freedesktop.FooViewer" where the .desktop file is
-  ## "org.freedesktop.FooViewer.desktop".
-  ## 
-  ## Like other properties, a set_app_id request can be sent after the
-  ## xdg_toplevel has been mapped to update the property.
-  ## 
-  ## See the desktop-entry specification [0] for more details on
-  ## application identifiers and how they relate to well-known D-Bus
-  ## names and .desktop files.
-  ## 
-  ## [0] https://standards.freedesktop.org/desktop-entry-spec/
-  discard wl_proxy_marshal_flags(this.proxy.raw, 3, nil, 1, 0, app_id)
-
-proc show_window_menu*(this: Xdg_toplevel; seat: Wl_seat; serial: uint32;
-                       x: int32; y: int32) =
-  ## Clients implementing client-side decorations might want to show
-  ## a context menu when right-clicking on the decorations, giving the
-  ## user a menu that they can use to maximize or minimize the window.
-  ## 
-  ## This request asks the compositor to pop up such a window menu at
-  ## the given position, relative to the local surface coordinates of
-  ## the parent surface. There are no guarantees as to what menu items
-  ## the window menu contains, or even if a window menu will be drawn
-  ## at all.
-  ## 
-  ## This request must be used in response to some sort of user action
-  ## like a button press, key press, or touch down event.
-  discard wl_proxy_marshal_flags(this.proxy.raw, 4, nil, 1, 0, seat, serial, x,
-                                 y)
-
-proc move*(this: Xdg_toplevel; seat: Wl_seat; serial: uint32) =
-  ## Start an interactive, user-driven move of the surface.
-  ## 
-  ## This request must be used in response to some sort of user action
-  ## like a button press, key press, or touch down event. The passed
-  ## serial is used to determine the type of interactive move (touch,
-  ## pointer, etc).
-  ## 
-  ## The server may ignore move requests depending on the state of
-  ## the surface (e.g. fullscreen or maximized), or if the passed serial
-  ## is no longer valid.
-  ## 
-  ## If triggered, the surface will lose the focus of the device
-  ## (wl_pointer, wl_touch, etc) used for the move. It is up to the
-  ## compositor to visually indicate that the move is taking place, such as
-  ## updating a pointer cursor, during the move. There is no guarantee
-  ## that the device focus will return when the move is completed.
-  discard wl_proxy_marshal_flags(this.proxy.raw, 5, nil, 1, 0, seat, serial)
-
-proc resize*(this: Xdg_toplevel; seat: Wl_seat; serial: uint32;
-             edges: `Xdg_toplevel / Resize_edge`) =
-  ## Start a user-driven, interactive resize of the surface.
-  ## 
-  ## This request must be used in response to some sort of user action
-  ## like a button press, key press, or touch down event. The passed
-  ## serial is used to determine the type of interactive resize (touch,
-  ## pointer, etc).
-  ## 
-  ## The server may ignore resize requests depending on the state of
-  ## the surface (e.g. fullscreen or maximized).
-  ## 
-  ## If triggered, the client will receive configure events with the
-  ## "resize" state enum value and the expected sizes. See the "resize"
-  ## enum value for more details about what is required. The client
-  ## must also acknowledge configure events using "ack_configure". After
-  ## the resize is completed, the client will receive another "configure"
-  ## event without the resize state.
-  ## 
-  ## If triggered, the surface also will lose the focus of the device
-  ## (wl_pointer, wl_touch, etc) used for the resize. It is up to the
-  ## compositor to visually indicate that the resize is taking place,
-  ## such as updating a pointer cursor, during the resize. There is no
-  ## guarantee that the device focus will return when the resize is
-  ## completed.
-  ## 
-  ## The edges parameter specifies how the surface should be resized, and
-  ## is one of the values of the resize_edge enum. Values not matching
-  ## a variant of the enum will cause the invalid_resize_edge protocol error.
-  ## The compositor may use this information to update the surface position
-  ## for example when dragging the top left corner. The compositor may also
-  ## use this information to adapt its behavior, e.g. choose an appropriate
-  ## cursor image.
-  discard wl_proxy_marshal_flags(this.proxy.raw, 6, nil, 1, 0, seat, serial,
-                                 edges)
-
-proc set_max_size*(this: Xdg_toplevel; width: int32; height: int32) =
-  ## Set a maximum size for the window.
-  ## 
-  ## The client can specify a maximum size so that the compositor does
-  ## not try to configure the window beyond this size.
-  ## 
-  ## The width and height arguments are in window geometry coordinates.
-  ## See xdg_surface.set_window_geometry.
-  ## 
-  ## Values set in this way are double-buffered. They will get applied
-  ## on the next commit.
-  ## 
-  ## The compositor can use this information to allow or disallow
-  ## different states like maximize or fullscreen and draw accurate
-  ## animations.
-  ## 
-  ## Similarly, a tiling window manager may use this information to
-  ## place and resize client windows in a more effective way.
-  ## 
-  ## The client should not rely on the compositor to obey the maximum
-  ## size. The compositor may decide to ignore the values set by the
-  ## client and request a larger size.
-  ## 
-  ## If never set, or a value of zero in the request, means that the
-  ## client has no expected maximum size in the given dimension.
-  ## As a result, a client wishing to reset the maximum size
-  ## to an unspecified state can use zero for width and height in the
-  ## request.
-  ## 
-  ## Requesting a maximum size to be smaller than the minimum size of
-  ## a surface is illegal and will result in an invalid_size error.
-  ## 
-  ## The width and height must be greater than or equal to zero. Using
-  ## strictly negative values for width or height will result in a
-  ## invalid_size error.
-  discard wl_proxy_marshal_flags(this.proxy.raw, 7, nil, 1, 0, width, height)
-
-proc set_min_size*(this: Xdg_toplevel; width: int32; height: int32) =
-  ## Set a minimum size for the window.
-  ## 
-  ## The client can specify a minimum size so that the compositor does
-  ## not try to configure the window below this size.
-  ## 
-  ## The width and height arguments are in window geometry coordinates.
-  ## See xdg_surface.set_window_geometry.
-  ## 
-  ## Values set in this way are double-buffered. They will get applied
-  ## on the next commit.
-  ## 
-  ## The compositor can use this information to allow or disallow
-  ## different states like maximize or fullscreen and draw accurate
-  ## animations.
-  ## 
-  ## Similarly, a tiling window manager may use this information to
-  ## place and resize client windows in a more effective way.
-  ## 
-  ## The client should not rely on the compositor to obey the minimum
-  ## size. The compositor may decide to ignore the values set by the
-  ## client and request a smaller size.
-  ## 
-  ## If never set, or a value of zero in the request, means that the
-  ## client has no expected minimum size in the given dimension.
-  ## As a result, a client wishing to reset the minimum size
-  ## to an unspecified state can use zero for width and height in the
-  ## request.
-  ## 
-  ## Requesting a minimum size to be larger than the maximum size of
-  ## a surface is illegal and will result in an invalid_size error.
-  ## 
-  ## The width and height must be greater than or equal to zero. Using
-  ## strictly negative values for width and height will result in a
-  ## invalid_size error.
-  discard wl_proxy_marshal_flags(this.proxy.raw, 8, nil, 1, 0, width, height)
-
-proc set_maximized*(this: Xdg_toplevel) =
-  ## Maximize the surface.
-  ## 
-  ## After requesting that the surface should be maximized, the compositor
-  ## will respond by emitting a configure event. Whether this configure
-  ## actually sets the window maximized is subject to compositor policies.
-  ## The client must then update its content, drawing in the configured
-  ## state. The client must also acknowledge the configure when committing
-  ## the new content (see ack_configure).
-  ## 
-  ## It is up to the compositor to decide how and where to maximize the
-  ## surface, for example which output and what region of the screen should
-  ## be used.
-  ## 
-  ## If the surface was already maximized, the compositor will still emit
-  ## a configure event with the "maximized" state.
-  ## 
-  ## If the surface is in a fullscreen state, this request has no direct
-  ## effect. It may alter the state the surface is returned to when
-  ## unmaximized unless overridden by the compositor.
-  discard wl_proxy_marshal_flags(this.proxy.raw, 9, nil, 1, 0)
-
-proc unset_maximized*(this: Xdg_toplevel) =
-  ## Unmaximize the surface.
-  ## 
-  ## After requesting that the surface should be unmaximized, the compositor
-  ## will respond by emitting a configure event. Whether this actually
-  ## un-maximizes the window is subject to compositor policies.
-  ## If available and applicable, the compositor will include the window
-  ## geometry dimensions the window had prior to being maximized in the
-  ## configure event. The client must then update its content, drawing it in
-  ## the configured state. The client must also acknowledge the configure
-  ## when committing the new content (see ack_configure).
-  ## 
-  ## It is up to the compositor to position the surface after it was
-  ## unmaximized; usually the position the surface had before maximizing, if
-  ## applicable.
-  ## 
-  ## If the surface was already not maximized, the compositor will still
-  ## emit a configure event without the "maximized" state.
-  ## 
-  ## If the surface is in a fullscreen state, this request has no direct
-  ## effect. It may alter the state the surface is returned to when
-  ## unmaximized unless overridden by the compositor.
-  discard wl_proxy_marshal_flags(this.proxy.raw, 10, nil, 1, 0)
-
-proc set_fullscreen*(this: Xdg_toplevel; output: Wl_output) =
-  ## Make the surface fullscreen.
-  ## 
-  ## After requesting that the surface should be fullscreened, the
-  ## compositor will respond by emitting a configure event. Whether the
-  ## client is actually put into a fullscreen state is subject to compositor
-  ## policies. The client must also acknowledge the configure when
-  ## committing the new content (see ack_configure).
-  ## 
-  ## The output passed by the request indicates the client's preference as
-  ## to which display it should be set fullscreen on. If this value is NULL,
-  ## it's up to the compositor to choose which display will be used to map
-  ## this surface.
-  ## 
-  ## If the surface doesn't cover the whole output, the compositor will
-  ## position the surface in the center of the output and compensate with
-  ## with border fill covering the rest of the output. The content of the
-  ## border fill is undefined, but should be assumed to be in some way that
-  ## attempts to blend into the surrounding area (e.g. solid black).
-  ## 
-  ## If the fullscreened surface is not opaque, the compositor must make
-  ## sure that other screen content not part of the same surface tree (made
-  ## up of subsurfaces, popups or similarly coupled surfaces) are not
-  ## visible below the fullscreened surface.
-  discard wl_proxy_marshal_flags(this.proxy.raw, 11, nil, 1, 0, output)
-
-proc unset_fullscreen*(this: Xdg_toplevel) =
-  ## Make the surface no longer fullscreen.
-  ## 
-  ## After requesting that the surface should be unfullscreened, the
-  ## compositor will respond by emitting a configure event.
-  ## Whether this actually removes the fullscreen state of the client is
-  ## subject to compositor policies.
-  ## 
-  ## Making a surface unfullscreen sets states for the surface based on the following:
-  ## * the state(s) it may have had before becoming fullscreen
-  ## * any state(s) decided by the compositor
-  ## * any state(s) requested by the client while the surface was fullscreen
-  ## 
-  ## The compositor may include the previous window geometry dimensions in
-  ## the configure event, if applicable.
-  ## 
-  ## The client must also acknowledge the configure when committing the new
-  ## content (see ack_configure).
-  discard wl_proxy_marshal_flags(this.proxy.raw, 12, nil, 1, 0)
-
-proc set_minimized*(this: Xdg_toplevel) =
-  ## Request that the compositor minimize your surface. There is no
-  ## way to know if the surface is currently minimized, nor is there
-  ## any way to unset minimization on this surface.
-  ## 
-  ## If you are looking to throttle redrawing when minimized, please
-  ## instead use the wl_surface.frame event for this, as this will
-  ## also work with live previews on windows in Alt-Tab, Expose or
-  ## similar compositor features.
-  discard wl_proxy_marshal_flags(this.proxy.raw, 13, nil, 1, 0)
-
-proc destroy*(this: Xdg_popup) =
-  ## This destroys the popup. Explicitly destroying the xdg_popup
-  ## object will also dismiss the popup, and unmap the surface.
-  ## 
-  ## If this xdg_popup is not the "topmost" popup, the
-  ## xdg_wm_base.not_the_topmost_popup protocol error will be sent.
-  destroyCallbacks(this.proxy)
-  discard wl_proxy_marshal_flags(this.proxy.raw, 0, nil, 1, 1)
-
-proc grab*(this: Xdg_popup; seat: Wl_seat; serial: uint32) =
-  ## This request makes the created popup take an explicit grab. An explicit
-  ## grab will be dismissed when the user dismisses the popup, or when the
-  ## client destroys the xdg_popup. This can be done by the user clicking
-  ## outside the surface, using the keyboard, or even locking the screen
-  ## through closing the lid or a timeout.
-  ## 
-  ## If the compositor denies the grab, the popup will be immediately
-  ## dismissed.
-  ## 
-  ## This request must be used in response to some sort of user action like a
-  ## button press, key press, or touch down event. The serial number of the
-  ## event should be passed as 'serial'.
-  ## 
-  ## The parent of a grabbing popup must either be an xdg_toplevel surface or
-  ## another xdg_popup with an explicit grab. If the parent is another
-  ## xdg_popup it means that the popups are nested, with this popup now being
-  ## the topmost popup.
-  ## 
-  ## Nested popups must be destroyed in the reverse order they were created
-  ## in, e.g. the only popup you are allowed to destroy at all times is the
-  ## topmost one.
-  ## 
-  ## When compositors choose to dismiss a popup, they may dismiss every
-  ## nested grabbing popup as well. When a compositor dismisses popups, it
-  ## will follow the same dismissing order as required from the client.
-  ## 
-  ## If the topmost grabbing popup is destroyed, the grab will be returned to
-  ## the parent of the popup, if that parent previously had an explicit grab.
-  ## 
-  ## If the parent is a grabbing popup which has already been dismissed, this
-  ## popup will be immediately dismissed. If the parent is a popup that did
-  ## not take an explicit grab, an error will be raised.
-  ## 
-  ## During a popup grab, the client owning the grab will receive pointer
-  ## and touch events for all their surfaces as normal (similar to an
-  ## "owner-events" grab in X11 parlance), while the top most grabbing popup
-  ## will always have keyboard focus.
-  discard wl_proxy_marshal_flags(this.proxy.raw, 1, nil, 1, 0, seat, serial)
-
-proc reposition*(this: Xdg_popup; positioner: Xdg_positioner; token: uint32) =
-  ## Reposition an already-mapped popup. The popup will be placed given the
-  ## details in the passed xdg_positioner object, and a
-  ## xdg_popup.repositioned followed by xdg_popup.configure and
-  ## xdg_surface.configure will be emitted in response. Any parameters set
-  ## by the previous positioner will be discarded.
-  ## 
-  ## The passed token will be sent in the corresponding
-  ## xdg_popup.repositioned event. The new popup position will not take
-  ## effect until the corresponding configure event is acknowledged by the
-  ## client. See xdg_popup.repositioned for details. The token itself is
-  ## opaque, and has no other special meaning.
-  ## 
-  ## If multiple reposition requests are sent, the compositor may skip all
-  ## but the last one.
-  ## 
-  ## If the popup is repositioned in response to a configure event for its
-  ## parent, the client should send an xdg_positioner.set_parent_configure
-  ## and possibly an xdg_positioner.set_parent_size request to allow the
-  ## compositor to properly constrain the popup.
-  ## 
-  ## If the popup is repositioned together with a parent that is being
-  ## resized, but not in response to a configure event, the client should
-  ## send an xdg_positioner.set_parent_size request.
-  discard wl_proxy_marshal_flags(this.proxy.raw, 2, nil, 1, 0, positioner, token)
 
 proc `bind`*(this: Wl_registry; name: uint32): uint32 =
   ## Binds a new, client-created object to the server using the
@@ -5303,6 +4485,882 @@ proc set_desync*(this: Wl_subsurface) =
   ## the cached state is applied on set_desync.
   discard wl_proxy_marshal_flags(this.proxy.raw, 5, nil, 1, 0)
 
+proc get_layer_surface*(this: Zwlr_layer_shell_v1; surface: Wl_surface;
+                        output: Wl_output; layer: `Zwlr_layer_shell_v1 / Layer`;
+                        namespace: cstring): Zwlr_layer_surface_v1 =
+  ## Create a layer surface for an existing surface. This assigns the role of
+  ## layer_surface, or raises a protocol error if another role is already
+  ## assigned.
+  ## 
+  ## Creating a layer surface from a wl_surface which has a buffer attached
+  ## or committed is a client error, and any attempts by a client to attach
+  ## or manipulate a buffer prior to the first layer_surface.configure call
+  ## must also be treated as errors.
+  ## 
+  ## After creating a layer_surface object and setting it up, the client
+  ## must perform an initial commit without any buffer attached.
+  ## The compositor will reply with a layer_surface.configure event.
+  ## The client must acknowledge it and is then allowed to attach a buffer
+  ## to map the surface.
+  ## 
+  ## You may pass NULL for output to allow the compositor to decide which
+  ## output to use. Generally this will be the one that the user most
+  ## recently interacted with.
+  ## 
+  ## Clients can specify a namespace that defines the purpose of the layer
+  ## surface.
+  let interfaces = cast[ptr ptr WaylandInterfaces](this.proxy.raw.impl)
+  result = wl_proxy_marshal_flags(this.proxy.raw, 0, addr(
+      interfaces[].`iface Zwlr_layer_surface_v1`), 1, 0, nil, surface, output,
+                                  layer, namespace).construct(interfaces[],
+      Zwlr_layer_surface_v1, `Zwlr_layer_surface_v1 / dispatch`,
+      `Zwlr_layer_surface_v1 / Callbacks`)
+
+proc destroy*(this: Zwlr_layer_shell_v1) =
+  ## This request indicates that the client will not use the layer_shell
+  ## object any more. Objects that have been created through this instance
+  ## are not affected.
+  destroyCallbacks(this.proxy)
+  discard wl_proxy_marshal_flags(this.proxy.raw, 1, nil, 1, 1)
+
+proc set_size*(this: Zwlr_layer_surface_v1; width: uint32; height: uint32) =
+  ## Sets the size of the surface in surface-local coordinates. The
+  ## compositor will display the surface centered with respect to its
+  ## anchors.
+  ## 
+  ## If you pass 0 for either value, the compositor will assign it and
+  ## inform you of the assignment in the configure event. You must set your
+  ## anchor to opposite edges in the dimensions you omit; not doing so is a
+  ## protocol error. Both values are 0 by default.
+  ## 
+  ## Size is double-buffered, see wl_surface.commit.
+  discard wl_proxy_marshal_flags(this.proxy.raw, 0, nil, 1, 0, width, height)
+
+proc set_anchor*(this: Zwlr_layer_surface_v1;
+                 anchor: `Zwlr_layer_surface_v1 / Anchor`) =
+  ## Requests that the compositor anchor the surface to the specified edges
+  ## and corners. If two orthogonal edges are specified (e.g. 'top' and
+  ## 'left'), then the anchor point will be the intersection of the edges
+  ## (e.g. the top left corner of the output); otherwise the anchor point
+  ## will be centered on that edge, or in the center if none is specified.
+  ## 
+  ## Anchor is double-buffered, see wl_surface.commit.
+  discard wl_proxy_marshal_flags(this.proxy.raw, 1, nil, 1, 0, anchor)
+
+proc set_exclusive_zone*(this: Zwlr_layer_surface_v1; zone: int32) =
+  ## Requests that the compositor avoids occluding an area with other
+  ## surfaces. The compositor's use of this information is
+  ## implementation-dependent - do not assume that this region will not
+  ## actually be occluded.
+  ## 
+  ## A positive value is only meaningful if the surface is anchored to one
+  ## edge or an edge and both perpendicular edges. If the surface is not
+  ## anchored, anchored to only two perpendicular edges (a corner), anchored
+  ## to only two parallel edges or anchored to all edges, a positive value
+  ## will be treated the same as zero.
+  ## 
+  ## A positive zone is the distance from the edge in surface-local
+  ## coordinates to consider exclusive.
+  ## 
+  ## Surfaces that do not wish to have an exclusive zone may instead specify
+  ## how they should interact with surfaces that do. If set to zero, the
+  ## surface indicates that it would like to be moved to avoid occluding
+  ## surfaces with a positive exclusive zone. If set to -1, the surface
+  ## indicates that it would not like to be moved to accommodate for other
+  ## surfaces, and the compositor should extend it all the way to the edges
+  ## it is anchored to.
+  ## 
+  ## For example, a panel might set its exclusive zone to 10, so that
+  ## maximized shell surfaces are not shown on top of it. A notification
+  ## might set its exclusive zone to 0, so that it is moved to avoid
+  ## occluding the panel, but shell surfaces are shown underneath it. A
+  ## wallpaper or lock screen might set their exclusive zone to -1, so that
+  ## they stretch below or over the panel.
+  ## 
+  ## The default value is 0.
+  ## 
+  ## Exclusive zone is double-buffered, see wl_surface.commit.
+  discard wl_proxy_marshal_flags(this.proxy.raw, 2, nil, 1, 0, zone)
+
+proc set_margin*(this: Zwlr_layer_surface_v1; top: int32; right: int32;
+                 bottom: int32; left: int32) =
+  ## Requests that the surface be placed some distance away from the anchor
+  ## point on the output, in surface-local coordinates. Setting this value
+  ## for edges you are not anchored to has no effect.
+  ## 
+  ## The exclusive zone includes the margin.
+  ## 
+  ## Margin is double-buffered, see wl_surface.commit.
+  discard wl_proxy_marshal_flags(this.proxy.raw, 3, nil, 1, 0, top, right,
+                                 bottom, left)
+
+proc set_keyboard_interactivity*(this: Zwlr_layer_surface_v1;
+    keyboard_interactivity: `Zwlr_layer_surface_v1 / Keyboard_interactivity`) =
+  ## Set how keyboard events are delivered to this surface. By default,
+  ## layer shell surfaces do not receive keyboard events; this request can
+  ## be used to change this.
+  ## 
+  ## This setting is inherited by child surfaces set by the get_popup
+  ## request.
+  ## 
+  ## Layer surfaces receive pointer, touch, and tablet events normally. If
+  ## you do not want to receive them, set the input region on your surface
+  ## to an empty region.
+  ## 
+  ## Keyboard interactivity is double-buffered, see wl_surface.commit.
+  discard wl_proxy_marshal_flags(this.proxy.raw, 4, nil, 1, 0,
+                                 keyboard_interactivity)
+
+proc get_popup*(this: Zwlr_layer_surface_v1; popup: Xdg_popup) =
+  ## This assigns an xdg_popup's parent to this layer_surface.  This popup
+  ## should have been created via xdg_surface::get_popup with the parent set
+  ## to NULL, and this request must be invoked before committing the popup's
+  ## initial state.
+  ## 
+  ## See the documentation of xdg_popup for more details about what an
+  ## xdg_popup is and how it is used.
+  discard wl_proxy_marshal_flags(this.proxy.raw, 5, nil, 1, 0, popup)
+
+proc ack_configure*(this: Zwlr_layer_surface_v1; serial: uint32) =
+  ## When a configure event is received, if a client commits the
+  ## surface in response to the configure event, then the client
+  ## must make an ack_configure request sometime before the commit
+  ## request, passing along the serial of the configure event.
+  ## 
+  ## If the client receives multiple configure events before it
+  ## can respond to one, it only has to ack the last configure event.
+  ## 
+  ## A client is not required to commit immediately after sending
+  ## an ack_configure request - it may even ack_configure several times
+  ## before its next surface commit.
+  ## 
+  ## A client may send multiple ack_configure requests before committing, but
+  ## only the last request sent before a commit indicates which configure
+  ## event the client really is responding to.
+  discard wl_proxy_marshal_flags(this.proxy.raw, 6, nil, 1, 0, serial)
+
+proc destroy*(this: Zwlr_layer_surface_v1) =
+  ## This request destroys the layer surface.
+  destroyCallbacks(this.proxy)
+  discard wl_proxy_marshal_flags(this.proxy.raw, 7, nil, 1, 1)
+
+proc set_layer*(this: Zwlr_layer_surface_v1; layer: `Zwlr_layer_shell_v1 / Layer`) =
+  ## Change the layer that the surface is rendered on.
+  ## 
+  ## Layer is double-buffered, see wl_surface.commit.
+  discard wl_proxy_marshal_flags(this.proxy.raw, 8, nil, 1, 0, layer)
+
+proc destroy*(this: Zxdg_decoration_manager_v1) =
+  ## Destroy the decoration manager. This doesn't destroy objects created
+  ## with the manager.
+  destroyCallbacks(this.proxy)
+  discard wl_proxy_marshal_flags(this.proxy.raw, 0, nil, 1, 1)
+
+proc get_toplevel_decoration*(this: Zxdg_decoration_manager_v1;
+                              toplevel: Xdg_toplevel): Zxdg_toplevel_decoration_v1 =
+  ## Create a new decoration object associated with the given toplevel.
+  ## 
+  ## Creating an xdg_toplevel_decoration from an xdg_toplevel which has a
+  ## buffer attached or committed is a client error, and any attempts by a
+  ## client to attach or manipulate a buffer prior to the first
+  ## xdg_toplevel_decoration.configure event must also be treated as
+  ## errors.
+  let interfaces = cast[ptr ptr WaylandInterfaces](this.proxy.raw.impl)
+  result = wl_proxy_marshal_flags(this.proxy.raw, 1, addr(
+      interfaces[].`iface Zxdg_toplevel_decoration_v1`), 1, 0, nil, toplevel).construct(
+      interfaces[], Zxdg_toplevel_decoration_v1,
+      `Zxdg_toplevel_decoration_v1 / dispatch`,
+      `Zxdg_toplevel_decoration_v1 / Callbacks`)
+
+proc destroy*(this: Zxdg_toplevel_decoration_v1) =
+  ## Switch back to a mode without any server-side decorations at the next
+  ## commit.
+  destroyCallbacks(this.proxy)
+  discard wl_proxy_marshal_flags(this.proxy.raw, 0, nil, 1, 1)
+
+proc set_mode*(this: Zxdg_toplevel_decoration_v1;
+               mode: `Zxdg_toplevel_decoration_v1 / Mode`) =
+  ## Set the toplevel surface decoration mode. This informs the compositor
+  ## that the client prefers the provided decoration mode.
+  ## 
+  ## After requesting a decoration mode, the compositor will respond by
+  ## emitting an xdg_surface.configure event. The client should then update
+  ## its content, drawing it without decorations if the received mode is
+  ## server-side decorations. The client must also acknowledge the configure
+  ## when committing the new content (see xdg_surface.ack_configure).
+  ## 
+  ## The compositor can decide not to use the client's mode and enforce a
+  ## different mode instead.
+  ## 
+  ## Clients whose decoration mode depend on the xdg_toplevel state may send
+  ## a set_mode request in response to an xdg_surface.configure event and wait
+  ## for the next xdg_surface.configure event to prevent unwanted state.
+  ## Such clients are responsible for preventing configure loops and must
+  ## make sure not to send multiple successive set_mode requests with the
+  ## same decoration mode.
+  discard wl_proxy_marshal_flags(this.proxy.raw, 1, nil, 1, 0, mode)
+
+proc unset_mode*(this: Zxdg_toplevel_decoration_v1) =
+  ## Unset the toplevel surface decoration mode. This informs the compositor
+  ## that the client doesn't prefer a particular decoration mode.
+  ## 
+  ## This request has the same semantics as set_mode.
+  discard wl_proxy_marshal_flags(this.proxy.raw, 2, nil, 1, 0)
+
+proc destroy*(this: Xdg_wm_base) =
+  ## Destroy this xdg_wm_base object.
+  ## 
+  ## Destroying a bound xdg_wm_base object while there are surfaces
+  ## still alive created by this xdg_wm_base object instance is illegal
+  ## and will result in a defunct_surfaces error.
+  destroyCallbacks(this.proxy)
+  discard wl_proxy_marshal_flags(this.proxy.raw, 0, nil, 1, 1)
+
+proc create_positioner*(this: Xdg_wm_base): Xdg_positioner =
+  ## Create a positioner object. A positioner object is used to position
+  ## surfaces relative to some parent surface. See the interface description
+  ## and xdg_surface.get_popup for details.
+  let interfaces = cast[ptr ptr WaylandInterfaces](this.proxy.raw.impl)
+  result = wl_proxy_marshal_flags(this.proxy.raw, 1,
+                                  addr(interfaces[].`iface Xdg_positioner`), 1,
+                                  0, nil).construct(interfaces[],
+      Xdg_positioner, `Xdg_positioner / dispatch`, `Xdg_positioner / Callbacks`)
+
+proc get_xdg_surface*(this: Xdg_wm_base; surface: Wl_surface): Xdg_surface =
+  ## This creates an xdg_surface for the given surface. While xdg_surface
+  ## itself is not a role, the corresponding surface may only be assigned
+  ## a role extending xdg_surface, such as xdg_toplevel or xdg_popup. It is
+  ## illegal to create an xdg_surface for a wl_surface which already has an
+  ## assigned role and this will result in a role error.
+  ## 
+  ## This creates an xdg_surface for the given surface. An xdg_surface is
+  ## used as basis to define a role to a given surface, such as xdg_toplevel
+  ## or xdg_popup. It also manages functionality shared between xdg_surface
+  ## based surface roles.
+  ## 
+  ## See the documentation of xdg_surface for more details about what an
+  ## xdg_surface is and how it is used.
+  let interfaces = cast[ptr ptr WaylandInterfaces](this.proxy.raw.impl)
+  result = wl_proxy_marshal_flags(this.proxy.raw, 2,
+                                  addr(interfaces[].`iface Xdg_surface`), 1, 0,
+                                  nil, surface).construct(interfaces[],
+      Xdg_surface, `Xdg_surface / dispatch`, `Xdg_surface / Callbacks`)
+
+proc pong*(this: Xdg_wm_base; serial: uint32) =
+  ## A client must respond to a ping event with a pong request or
+  ## the client may be deemed unresponsive. See xdg_wm_base.ping
+  ## and xdg_wm_base.error.unresponsive.
+  discard wl_proxy_marshal_flags(this.proxy.raw, 3, nil, 1, 0, serial)
+
+proc destroy*(this: Xdg_positioner) =
+  ## Notify the compositor that the xdg_positioner will no longer be used.
+  destroyCallbacks(this.proxy)
+  discard wl_proxy_marshal_flags(this.proxy.raw, 0, nil, 1, 1)
+
+proc set_size*(this: Xdg_positioner; width: int32; height: int32) =
+  ## Set the size of the surface that is to be positioned with the positioner
+  ## object. The size is in surface-local coordinates and corresponds to the
+  ## window geometry. See xdg_surface.set_window_geometry.
+  ## 
+  ## If a zero or negative size is set the invalid_input error is raised.
+  discard wl_proxy_marshal_flags(this.proxy.raw, 1, nil, 1, 0, width, height)
+
+proc set_anchor_rect*(this: Xdg_positioner; x: int32; y: int32; width: int32;
+                      height: int32) =
+  ## Specify the anchor rectangle within the parent surface that the child
+  ## surface will be placed relative to. The rectangle is relative to the
+  ## window geometry as defined by xdg_surface.set_window_geometry of the
+  ## parent surface.
+  ## 
+  ## When the xdg_positioner object is used to position a child surface, the
+  ## anchor rectangle may not extend outside the window geometry of the
+  ## positioned child's parent surface.
+  ## 
+  ## If a negative size is set the invalid_input error is raised.
+  discard wl_proxy_marshal_flags(this.proxy.raw, 2, nil, 1, 0, x, y, width,
+                                 height)
+
+proc set_anchor*(this: Xdg_positioner; anchor: `Xdg_positioner / Anchor`) =
+  ## Defines the anchor point for the anchor rectangle. The specified anchor
+  ## is used derive an anchor point that the child surface will be
+  ## positioned relative to. If a corner anchor is set (e.g. 'top_left' or
+  ## 'bottom_right'), the anchor point will be at the specified corner;
+  ## otherwise, the derived anchor point will be centered on the specified
+  ## edge, or in the center of the anchor rectangle if no edge is specified.
+  discard wl_proxy_marshal_flags(this.proxy.raw, 3, nil, 1, 0, anchor)
+
+proc set_gravity*(this: Xdg_positioner; gravity: `Xdg_positioner / Gravity`) =
+  ## Defines in what direction a surface should be positioned, relative to
+  ## the anchor point of the parent surface. If a corner gravity is
+  ## specified (e.g. 'bottom_right' or 'top_left'), then the child surface
+  ## will be placed towards the specified gravity; otherwise, the child
+  ## surface will be centered over the anchor point on any axis that had no
+  ## gravity specified. If the gravity is not in the ‘gravity’ enum, an
+  ## invalid_input error is raised.
+  discard wl_proxy_marshal_flags(this.proxy.raw, 4, nil, 1, 0, gravity)
+
+proc set_constraint_adjustment*(this: Xdg_positioner;
+                                constraint_adjustment: uint32) =
+  ## Specify how the window should be positioned if the originally intended
+  ## position caused the surface to be constrained, meaning at least
+  ## partially outside positioning boundaries set by the compositor. The
+  ## adjustment is set by constructing a bitmask describing the adjustment to
+  ## be made when the surface is constrained on that axis.
+  ## 
+  ## If no bit for one axis is set, the compositor will assume that the child
+  ## surface should not change its position on that axis when constrained.
+  ## 
+  ## If more than one bit for one axis is set, the order of how adjustments
+  ## are applied is specified in the corresponding adjustment descriptions.
+  ## 
+  ## The default adjustment is none.
+  discard wl_proxy_marshal_flags(this.proxy.raw, 5, nil, 1, 0,
+                                 constraint_adjustment)
+
+proc set_offset*(this: Xdg_positioner; x: int32; y: int32) =
+  ## Specify the surface position offset relative to the position of the
+  ## anchor on the anchor rectangle and the anchor on the surface. For
+  ## example if the anchor of the anchor rectangle is at (x, y), the surface
+  ## has the gravity bottom|right, and the offset is (ox, oy), the calculated
+  ## surface position will be (x + ox, y + oy). The offset position of the
+  ## surface is the one used for constraint testing. See
+  ## set_constraint_adjustment.
+  ## 
+  ## An example use case is placing a popup menu on top of a user interface
+  ## element, while aligning the user interface element of the parent surface
+  ## with some user interface element placed somewhere in the popup surface.
+  discard wl_proxy_marshal_flags(this.proxy.raw, 6, nil, 1, 0, x, y)
+
+proc set_reactive*(this: Xdg_positioner) =
+  ## When set reactive, the surface is reconstrained if the conditions used
+  ## for constraining changed, e.g. the parent window moved.
+  ## 
+  ## If the conditions changed and the popup was reconstrained, an
+  ## xdg_popup.configure event is sent with updated geometry, followed by an
+  ## xdg_surface.configure event.
+  discard wl_proxy_marshal_flags(this.proxy.raw, 7, nil, 1, 0)
+
+proc set_parent_size*(this: Xdg_positioner; parent_width: int32;
+                      parent_height: int32) =
+  ## Set the parent window geometry the compositor should use when
+  ## positioning the popup. The compositor may use this information to
+  ## determine the future state the popup should be constrained using. If
+  ## this doesn't match the dimension of the parent the popup is eventually
+  ## positioned against, the behavior is undefined.
+  ## 
+  ## The arguments are given in the surface-local coordinate space.
+  discard wl_proxy_marshal_flags(this.proxy.raw, 8, nil, 1, 0, parent_width,
+                                 parent_height)
+
+proc set_parent_configure*(this: Xdg_positioner; serial: uint32) =
+  ## Set the serial of an xdg_surface.configure event this positioner will be
+  ## used in response to. The compositor may use this information together
+  ## with set_parent_size to determine what future state the popup should be
+  ## constrained using.
+  discard wl_proxy_marshal_flags(this.proxy.raw, 9, nil, 1, 0, serial)
+
+proc destroy*(this: Xdg_surface) =
+  ## Destroy the xdg_surface object. An xdg_surface must only be destroyed
+  ## after its role object has been destroyed, otherwise
+  ## a defunct_role_object error is raised.
+  destroyCallbacks(this.proxy)
+  discard wl_proxy_marshal_flags(this.proxy.raw, 0, nil, 1, 1)
+
+proc get_toplevel*(this: Xdg_surface): Xdg_toplevel =
+  ## This creates an xdg_toplevel object for the given xdg_surface and gives
+  ## the associated wl_surface the xdg_toplevel role.
+  ## 
+  ## See the documentation of xdg_toplevel for more details about what an
+  ## xdg_toplevel is and how it is used.
+  let interfaces = cast[ptr ptr WaylandInterfaces](this.proxy.raw.impl)
+  result = wl_proxy_marshal_flags(this.proxy.raw, 1,
+                                  addr(interfaces[].`iface Xdg_toplevel`), 1, 0,
+                                  nil).construct(interfaces[], Xdg_toplevel,
+      `Xdg_toplevel / dispatch`, `Xdg_toplevel / Callbacks`)
+
+proc get_popup*(this: Xdg_surface; parent: Xdg_surface;
+                positioner: Xdg_positioner): Xdg_popup =
+  ## This creates an xdg_popup object for the given xdg_surface and gives
+  ## the associated wl_surface the xdg_popup role.
+  ## 
+  ## If null is passed as a parent, a parent surface must be specified using
+  ## some other protocol, before committing the initial state.
+  ## 
+  ## See the documentation of xdg_popup for more details about what an
+  ## xdg_popup is and how it is used.
+  let interfaces = cast[ptr ptr WaylandInterfaces](this.proxy.raw.impl)
+  result = wl_proxy_marshal_flags(this.proxy.raw, 2,
+                                  addr(interfaces[].`iface Xdg_popup`), 1, 0,
+                                  nil, parent, positioner).construct(
+      interfaces[], Xdg_popup, `Xdg_popup / dispatch`, `Xdg_popup / Callbacks`)
+
+proc set_window_geometry*(this: Xdg_surface; x: int32; y: int32; width: int32;
+                          height: int32) =
+  ## The window geometry of a surface is its "visible bounds" from the
+  ## user's perspective. Client-side decorations often have invisible
+  ## portions like drop-shadows which should be ignored for the
+  ## purposes of aligning, placing and constraining windows.
+  ## 
+  ## The window geometry is double buffered, and will be applied at the
+  ## time wl_surface.commit of the corresponding wl_surface is called.
+  ## 
+  ## When maintaining a position, the compositor should treat the (x, y)
+  ## coordinate of the window geometry as the top left corner of the window.
+  ## A client changing the (x, y) window geometry coordinate should in
+  ## general not alter the position of the window.
+  ## 
+  ## Once the window geometry of the surface is set, it is not possible to
+  ## unset it, and it will remain the same until set_window_geometry is
+  ## called again, even if a new subsurface or buffer is attached.
+  ## 
+  ## If never set, the value is the full bounds of the surface,
+  ## including any subsurfaces. This updates dynamically on every
+  ## commit. This unset is meant for extremely simple clients.
+  ## 
+  ## The arguments are given in the surface-local coordinate space of
+  ## the wl_surface associated with this xdg_surface, and may extend outside
+  ## of the wl_surface itself to mark parts of the subsurface tree as part of
+  ## the window geometry.
+  ## 
+  ## When applied, the effective window geometry will be the set window
+  ## geometry clamped to the bounding rectangle of the combined
+  ## geometry of the surface of the xdg_surface and the associated
+  ## subsurfaces.
+  ## 
+  ## The effective geometry will not be recalculated unless a new call to
+  ## set_window_geometry is done and the new pending surface state is
+  ## subsequently applied.
+  ## 
+  ## The width and height of the effective window geometry must be
+  ## greater than zero. Setting an invalid size will raise an
+  ## invalid_size error.
+  discard wl_proxy_marshal_flags(this.proxy.raw, 3, nil, 1, 0, x, y, width,
+                                 height)
+
+proc ack_configure*(this: Xdg_surface; serial: uint32) =
+  ## When a configure event is received, if a client commits the
+  ## surface in response to the configure event, then the client
+  ## must make an ack_configure request sometime before the commit
+  ## request, passing along the serial of the configure event.
+  ## 
+  ## For instance, for toplevel surfaces the compositor might use this
+  ## information to move a surface to the top left only when the client has
+  ## drawn itself for the maximized or fullscreen state.
+  ## 
+  ## If the client receives multiple configure events before it
+  ## can respond to one, it only has to ack the last configure event.
+  ## Acking a configure event that was never sent raises an invalid_serial
+  ## error.
+  ## 
+  ## A client is not required to commit immediately after sending
+  ## an ack_configure request - it may even ack_configure several times
+  ## before its next surface commit.
+  ## 
+  ## A client may send multiple ack_configure requests before committing, but
+  ## only the last request sent before a commit indicates which configure
+  ## event the client really is responding to.
+  ## 
+  ## Sending an ack_configure request consumes the serial number sent with
+  ## the request, as well as serial numbers sent by all configure events
+  ## sent on this xdg_surface prior to the configure event referenced by
+  ## the committed serial.
+  ## 
+  ## It is an error to issue multiple ack_configure requests referencing a
+  ## serial from the same configure event, or to issue an ack_configure
+  ## request referencing a serial from a configure event issued before the
+  ## event identified by the last ack_configure request for the same
+  ## xdg_surface. Doing so will raise an invalid_serial error.
+  discard wl_proxy_marshal_flags(this.proxy.raw, 4, nil, 1, 0, serial)
+
+proc destroy*(this: Xdg_toplevel) =
+  ## This request destroys the role surface and unmaps the surface;
+  ## see "Unmapping" behavior in interface section for details.
+  destroyCallbacks(this.proxy)
+  discard wl_proxy_marshal_flags(this.proxy.raw, 0, nil, 1, 1)
+
+proc set_parent*(this: Xdg_toplevel; parent: Xdg_toplevel) =
+  ## Set the "parent" of this surface. This surface should be stacked
+  ## above the parent surface and all other ancestor surfaces.
+  ## 
+  ## Parent surfaces should be set on dialogs, toolboxes, or other
+  ## "auxiliary" surfaces, so that the parent is raised when the dialog
+  ## is raised.
+  ## 
+  ## Setting a null parent for a child surface unsets its parent. Setting
+  ## a null parent for a surface which currently has no parent is a no-op.
+  ## 
+  ## Only mapped surfaces can have child surfaces. Setting a parent which
+  ## is not mapped is equivalent to setting a null parent. If a surface
+  ## becomes unmapped, its children's parent is set to the parent of
+  ## the now-unmapped surface. If the now-unmapped surface has no parent,
+  ## its children's parent is unset. If the now-unmapped surface becomes
+  ## mapped again, its parent-child relationship is not restored.
+  ## 
+  ## The parent toplevel must not be one of the child toplevel's
+  ## descendants, and the parent must be different from the child toplevel,
+  ## otherwise the invalid_parent protocol error is raised.
+  discard wl_proxy_marshal_flags(this.proxy.raw, 1, nil, 1, 0, parent)
+
+proc set_title*(this: Xdg_toplevel; title: cstring) =
+  ## Set a short title for the surface.
+  ## 
+  ## This string may be used to identify the surface in a task bar,
+  ## window list, or other user interface elements provided by the
+  ## compositor.
+  ## 
+  ## The string must be encoded in UTF-8.
+  discard wl_proxy_marshal_flags(this.proxy.raw, 2, nil, 1, 0, title)
+
+proc set_app_id*(this: Xdg_toplevel; app_id: cstring) =
+  ## Set an application identifier for the surface.
+  ## 
+  ## The app ID identifies the general class of applications to which
+  ## the surface belongs. The compositor can use this to group multiple
+  ## surfaces together, or to determine how to launch a new application.
+  ## 
+  ## For D-Bus activatable applications, the app ID is used as the D-Bus
+  ## service name.
+  ## 
+  ## The compositor shell will try to group application surfaces together
+  ## by their app ID. As a best practice, it is suggested to select app
+  ## ID's that match the basename of the application's .desktop file.
+  ## For example, "org.freedesktop.FooViewer" where the .desktop file is
+  ## "org.freedesktop.FooViewer.desktop".
+  ## 
+  ## Like other properties, a set_app_id request can be sent after the
+  ## xdg_toplevel has been mapped to update the property.
+  ## 
+  ## See the desktop-entry specification [0] for more details on
+  ## application identifiers and how they relate to well-known D-Bus
+  ## names and .desktop files.
+  ## 
+  ## [0] https://standards.freedesktop.org/desktop-entry-spec/
+  discard wl_proxy_marshal_flags(this.proxy.raw, 3, nil, 1, 0, app_id)
+
+proc show_window_menu*(this: Xdg_toplevel; seat: Wl_seat; serial: uint32;
+                       x: int32; y: int32) =
+  ## Clients implementing client-side decorations might want to show
+  ## a context menu when right-clicking on the decorations, giving the
+  ## user a menu that they can use to maximize or minimize the window.
+  ## 
+  ## This request asks the compositor to pop up such a window menu at
+  ## the given position, relative to the local surface coordinates of
+  ## the parent surface. There are no guarantees as to what menu items
+  ## the window menu contains, or even if a window menu will be drawn
+  ## at all.
+  ## 
+  ## This request must be used in response to some sort of user action
+  ## like a button press, key press, or touch down event.
+  discard wl_proxy_marshal_flags(this.proxy.raw, 4, nil, 1, 0, seat, serial, x,
+                                 y)
+
+proc move*(this: Xdg_toplevel; seat: Wl_seat; serial: uint32) =
+  ## Start an interactive, user-driven move of the surface.
+  ## 
+  ## This request must be used in response to some sort of user action
+  ## like a button press, key press, or touch down event. The passed
+  ## serial is used to determine the type of interactive move (touch,
+  ## pointer, etc).
+  ## 
+  ## The server may ignore move requests depending on the state of
+  ## the surface (e.g. fullscreen or maximized), or if the passed serial
+  ## is no longer valid.
+  ## 
+  ## If triggered, the surface will lose the focus of the device
+  ## (wl_pointer, wl_touch, etc) used for the move. It is up to the
+  ## compositor to visually indicate that the move is taking place, such as
+  ## updating a pointer cursor, during the move. There is no guarantee
+  ## that the device focus will return when the move is completed.
+  discard wl_proxy_marshal_flags(this.proxy.raw, 5, nil, 1, 0, seat, serial)
+
+proc resize*(this: Xdg_toplevel; seat: Wl_seat; serial: uint32;
+             edges: `Xdg_toplevel / Resize_edge`) =
+  ## Start a user-driven, interactive resize of the surface.
+  ## 
+  ## This request must be used in response to some sort of user action
+  ## like a button press, key press, or touch down event. The passed
+  ## serial is used to determine the type of interactive resize (touch,
+  ## pointer, etc).
+  ## 
+  ## The server may ignore resize requests depending on the state of
+  ## the surface (e.g. fullscreen or maximized).
+  ## 
+  ## If triggered, the client will receive configure events with the
+  ## "resize" state enum value and the expected sizes. See the "resize"
+  ## enum value for more details about what is required. The client
+  ## must also acknowledge configure events using "ack_configure". After
+  ## the resize is completed, the client will receive another "configure"
+  ## event without the resize state.
+  ## 
+  ## If triggered, the surface also will lose the focus of the device
+  ## (wl_pointer, wl_touch, etc) used for the resize. It is up to the
+  ## compositor to visually indicate that the resize is taking place,
+  ## such as updating a pointer cursor, during the resize. There is no
+  ## guarantee that the device focus will return when the resize is
+  ## completed.
+  ## 
+  ## The edges parameter specifies how the surface should be resized, and
+  ## is one of the values of the resize_edge enum. Values not matching
+  ## a variant of the enum will cause the invalid_resize_edge protocol error.
+  ## The compositor may use this information to update the surface position
+  ## for example when dragging the top left corner. The compositor may also
+  ## use this information to adapt its behavior, e.g. choose an appropriate
+  ## cursor image.
+  discard wl_proxy_marshal_flags(this.proxy.raw, 6, nil, 1, 0, seat, serial,
+                                 edges)
+
+proc set_max_size*(this: Xdg_toplevel; width: int32; height: int32) =
+  ## Set a maximum size for the window.
+  ## 
+  ## The client can specify a maximum size so that the compositor does
+  ## not try to configure the window beyond this size.
+  ## 
+  ## The width and height arguments are in window geometry coordinates.
+  ## See xdg_surface.set_window_geometry.
+  ## 
+  ## Values set in this way are double-buffered. They will get applied
+  ## on the next commit.
+  ## 
+  ## The compositor can use this information to allow or disallow
+  ## different states like maximize or fullscreen and draw accurate
+  ## animations.
+  ## 
+  ## Similarly, a tiling window manager may use this information to
+  ## place and resize client windows in a more effective way.
+  ## 
+  ## The client should not rely on the compositor to obey the maximum
+  ## size. The compositor may decide to ignore the values set by the
+  ## client and request a larger size.
+  ## 
+  ## If never set, or a value of zero in the request, means that the
+  ## client has no expected maximum size in the given dimension.
+  ## As a result, a client wishing to reset the maximum size
+  ## to an unspecified state can use zero for width and height in the
+  ## request.
+  ## 
+  ## Requesting a maximum size to be smaller than the minimum size of
+  ## a surface is illegal and will result in an invalid_size error.
+  ## 
+  ## The width and height must be greater than or equal to zero. Using
+  ## strictly negative values for width or height will result in a
+  ## invalid_size error.
+  discard wl_proxy_marshal_flags(this.proxy.raw, 7, nil, 1, 0, width, height)
+
+proc set_min_size*(this: Xdg_toplevel; width: int32; height: int32) =
+  ## Set a minimum size for the window.
+  ## 
+  ## The client can specify a minimum size so that the compositor does
+  ## not try to configure the window below this size.
+  ## 
+  ## The width and height arguments are in window geometry coordinates.
+  ## See xdg_surface.set_window_geometry.
+  ## 
+  ## Values set in this way are double-buffered. They will get applied
+  ## on the next commit.
+  ## 
+  ## The compositor can use this information to allow or disallow
+  ## different states like maximize or fullscreen and draw accurate
+  ## animations.
+  ## 
+  ## Similarly, a tiling window manager may use this information to
+  ## place and resize client windows in a more effective way.
+  ## 
+  ## The client should not rely on the compositor to obey the minimum
+  ## size. The compositor may decide to ignore the values set by the
+  ## client and request a smaller size.
+  ## 
+  ## If never set, or a value of zero in the request, means that the
+  ## client has no expected minimum size in the given dimension.
+  ## As a result, a client wishing to reset the minimum size
+  ## to an unspecified state can use zero for width and height in the
+  ## request.
+  ## 
+  ## Requesting a minimum size to be larger than the maximum size of
+  ## a surface is illegal and will result in an invalid_size error.
+  ## 
+  ## The width and height must be greater than or equal to zero. Using
+  ## strictly negative values for width and height will result in a
+  ## invalid_size error.
+  discard wl_proxy_marshal_flags(this.proxy.raw, 8, nil, 1, 0, width, height)
+
+proc set_maximized*(this: Xdg_toplevel) =
+  ## Maximize the surface.
+  ## 
+  ## After requesting that the surface should be maximized, the compositor
+  ## will respond by emitting a configure event. Whether this configure
+  ## actually sets the window maximized is subject to compositor policies.
+  ## The client must then update its content, drawing in the configured
+  ## state. The client must also acknowledge the configure when committing
+  ## the new content (see ack_configure).
+  ## 
+  ## It is up to the compositor to decide how and where to maximize the
+  ## surface, for example which output and what region of the screen should
+  ## be used.
+  ## 
+  ## If the surface was already maximized, the compositor will still emit
+  ## a configure event with the "maximized" state.
+  ## 
+  ## If the surface is in a fullscreen state, this request has no direct
+  ## effect. It may alter the state the surface is returned to when
+  ## unmaximized unless overridden by the compositor.
+  discard wl_proxy_marshal_flags(this.proxy.raw, 9, nil, 1, 0)
+
+proc unset_maximized*(this: Xdg_toplevel) =
+  ## Unmaximize the surface.
+  ## 
+  ## After requesting that the surface should be unmaximized, the compositor
+  ## will respond by emitting a configure event. Whether this actually
+  ## un-maximizes the window is subject to compositor policies.
+  ## If available and applicable, the compositor will include the window
+  ## geometry dimensions the window had prior to being maximized in the
+  ## configure event. The client must then update its content, drawing it in
+  ## the configured state. The client must also acknowledge the configure
+  ## when committing the new content (see ack_configure).
+  ## 
+  ## It is up to the compositor to position the surface after it was
+  ## unmaximized; usually the position the surface had before maximizing, if
+  ## applicable.
+  ## 
+  ## If the surface was already not maximized, the compositor will still
+  ## emit a configure event without the "maximized" state.
+  ## 
+  ## If the surface is in a fullscreen state, this request has no direct
+  ## effect. It may alter the state the surface is returned to when
+  ## unmaximized unless overridden by the compositor.
+  discard wl_proxy_marshal_flags(this.proxy.raw, 10, nil, 1, 0)
+
+proc set_fullscreen*(this: Xdg_toplevel; output: Wl_output) =
+  ## Make the surface fullscreen.
+  ## 
+  ## After requesting that the surface should be fullscreened, the
+  ## compositor will respond by emitting a configure event. Whether the
+  ## client is actually put into a fullscreen state is subject to compositor
+  ## policies. The client must also acknowledge the configure when
+  ## committing the new content (see ack_configure).
+  ## 
+  ## The output passed by the request indicates the client's preference as
+  ## to which display it should be set fullscreen on. If this value is NULL,
+  ## it's up to the compositor to choose which display will be used to map
+  ## this surface.
+  ## 
+  ## If the surface doesn't cover the whole output, the compositor will
+  ## position the surface in the center of the output and compensate with
+  ## with border fill covering the rest of the output. The content of the
+  ## border fill is undefined, but should be assumed to be in some way that
+  ## attempts to blend into the surrounding area (e.g. solid black).
+  ## 
+  ## If the fullscreened surface is not opaque, the compositor must make
+  ## sure that other screen content not part of the same surface tree (made
+  ## up of subsurfaces, popups or similarly coupled surfaces) are not
+  ## visible below the fullscreened surface.
+  discard wl_proxy_marshal_flags(this.proxy.raw, 11, nil, 1, 0, output)
+
+proc unset_fullscreen*(this: Xdg_toplevel) =
+  ## Make the surface no longer fullscreen.
+  ## 
+  ## After requesting that the surface should be unfullscreened, the
+  ## compositor will respond by emitting a configure event.
+  ## Whether this actually removes the fullscreen state of the client is
+  ## subject to compositor policies.
+  ## 
+  ## Making a surface unfullscreen sets states for the surface based on the following:
+  ## * the state(s) it may have had before becoming fullscreen
+  ## * any state(s) decided by the compositor
+  ## * any state(s) requested by the client while the surface was fullscreen
+  ## 
+  ## The compositor may include the previous window geometry dimensions in
+  ## the configure event, if applicable.
+  ## 
+  ## The client must also acknowledge the configure when committing the new
+  ## content (see ack_configure).
+  discard wl_proxy_marshal_flags(this.proxy.raw, 12, nil, 1, 0)
+
+proc set_minimized*(this: Xdg_toplevel) =
+  ## Request that the compositor minimize your surface. There is no
+  ## way to know if the surface is currently minimized, nor is there
+  ## any way to unset minimization on this surface.
+  ## 
+  ## If you are looking to throttle redrawing when minimized, please
+  ## instead use the wl_surface.frame event for this, as this will
+  ## also work with live previews on windows in Alt-Tab, Expose or
+  ## similar compositor features.
+  discard wl_proxy_marshal_flags(this.proxy.raw, 13, nil, 1, 0)
+
+proc destroy*(this: Xdg_popup) =
+  ## This destroys the popup. Explicitly destroying the xdg_popup
+  ## object will also dismiss the popup, and unmap the surface.
+  ## 
+  ## If this xdg_popup is not the "topmost" popup, the
+  ## xdg_wm_base.not_the_topmost_popup protocol error will be sent.
+  destroyCallbacks(this.proxy)
+  discard wl_proxy_marshal_flags(this.proxy.raw, 0, nil, 1, 1)
+
+proc grab*(this: Xdg_popup; seat: Wl_seat; serial: uint32) =
+  ## This request makes the created popup take an explicit grab. An explicit
+  ## grab will be dismissed when the user dismisses the popup, or when the
+  ## client destroys the xdg_popup. This can be done by the user clicking
+  ## outside the surface, using the keyboard, or even locking the screen
+  ## through closing the lid or a timeout.
+  ## 
+  ## If the compositor denies the grab, the popup will be immediately
+  ## dismissed.
+  ## 
+  ## This request must be used in response to some sort of user action like a
+  ## button press, key press, or touch down event. The serial number of the
+  ## event should be passed as 'serial'.
+  ## 
+  ## The parent of a grabbing popup must either be an xdg_toplevel surface or
+  ## another xdg_popup with an explicit grab. If the parent is another
+  ## xdg_popup it means that the popups are nested, with this popup now being
+  ## the topmost popup.
+  ## 
+  ## Nested popups must be destroyed in the reverse order they were created
+  ## in, e.g. the only popup you are allowed to destroy at all times is the
+  ## topmost one.
+  ## 
+  ## When compositors choose to dismiss a popup, they may dismiss every
+  ## nested grabbing popup as well. When a compositor dismisses popups, it
+  ## will follow the same dismissing order as required from the client.
+  ## 
+  ## If the topmost grabbing popup is destroyed, the grab will be returned to
+  ## the parent of the popup, if that parent previously had an explicit grab.
+  ## 
+  ## If the parent is a grabbing popup which has already been dismissed, this
+  ## popup will be immediately dismissed. If the parent is a popup that did
+  ## not take an explicit grab, an error will be raised.
+  ## 
+  ## During a popup grab, the client owning the grab will receive pointer
+  ## and touch events for all their surfaces as normal (similar to an
+  ## "owner-events" grab in X11 parlance), while the top most grabbing popup
+  ## will always have keyboard focus.
+  discard wl_proxy_marshal_flags(this.proxy.raw, 1, nil, 1, 0, seat, serial)
+
+proc reposition*(this: Xdg_popup; positioner: Xdg_positioner; token: uint32) =
+  ## Reposition an already-mapped popup. The popup will be placed given the
+  ## details in the passed xdg_positioner object, and a
+  ## xdg_popup.repositioned followed by xdg_popup.configure and
+  ## xdg_surface.configure will be emitted in response. Any parameters set
+  ## by the previous positioner will be discarded.
+  ## 
+  ## The passed token will be sent in the corresponding
+  ## xdg_popup.repositioned event. The new popup position will not take
+  ## effect until the corresponding configure event is acknowledged by the
+  ## client. See xdg_popup.repositioned for details. The token itself is
+  ## opaque, and has no other special meaning.
+  ## 
+  ## If multiple reposition requests are sent, the compositor may skip all
+  ## but the last one.
+  ## 
+  ## If the popup is repositioned in response to a configure event for its
+  ## parent, the client should send an xdg_positioner.set_parent_configure
+  ## and possibly an xdg_positioner.set_parent_size request to allow the
+  ## compositor to properly constrain the popup.
+  ## 
+  ## If the popup is repositioned together with a parent that is being
+  ## resized, but not in response to a configure event, the client should
+  ## send an xdg_positioner.set_parent_size request.
+  discard wl_proxy_marshal_flags(this.proxy.raw, 2, nil, 1, 0, positioner, token)
+
 proc destroy*(this: Xdg_toplevel_icon_manager_v1) =
   ## Destroy the toplevel icon manager.
   ## This does not destroy objects created with the manager.
@@ -5394,96 +5452,23 @@ proc add_buffer*(this: Xdg_toplevel_icon_v1; buffer: Wl_buffer; scale: int32) =
   ## via 'set_icon', a 'immutable' error must be raised.
   discard wl_proxy_marshal_flags(this.proxy.raw, 2, nil, 1, 0, buffer, scale)
 
-proc destroy*(this: Zxdg_decoration_manager_v1) =
-  ## Destroy the decoration manager. This doesn't destroy objects created
-  ## with the manager.
-  destroyCallbacks(this.proxy)
-  discard wl_proxy_marshal_flags(this.proxy.raw, 0, nil, 1, 1)
-
-proc get_toplevel_decoration*(this: Zxdg_decoration_manager_v1;
-                              toplevel: Xdg_toplevel): Zxdg_toplevel_decoration_v1 =
-  ## Create a new decoration object associated with the given toplevel.
+template onPreferred_scale*(this: Wp_fractional_scale_v1; body) =
+  ## Notification of a new preferred scale for this surface that the
+  ## compositor suggests that the client should use.
   ## 
-  ## Creating an xdg_toplevel_decoration from an xdg_toplevel which has a
-  ## buffer attached or committed is a client error, and any attempts by a
-  ## client to attach or manipulate a buffer prior to the first
-  ## xdg_toplevel_decoration.configure event must also be treated as
-  ## errors.
-  let interfaces = cast[ptr ptr WaylandInterfaces](this.proxy.raw.impl)
-  result = wl_proxy_marshal_flags(this.proxy.raw, 1, addr(
-      interfaces[].`iface Zxdg_toplevel_decoration_v1`), 1, 0, nil, toplevel).construct(
-      interfaces[], Zxdg_toplevel_decoration_v1,
-      `Zxdg_toplevel_decoration_v1 / dispatch`,
-      `Zxdg_toplevel_decoration_v1 / Callbacks`)
-
-proc destroy*(this: Zxdg_toplevel_decoration_v1) =
-  ## Switch back to a mode without any server-side decorations at the next
-  ## commit.
-  destroyCallbacks(this.proxy)
-  discard wl_proxy_marshal_flags(this.proxy.raw, 0, nil, 1, 1)
-
-proc set_mode*(this: Zxdg_toplevel_decoration_v1;
-               mode: `Zxdg_toplevel_decoration_v1 / Mode`) =
-  ## Set the toplevel surface decoration mode. This informs the compositor
-  ## that the client prefers the provided decoration mode.
-  ## 
-  ## After requesting a decoration mode, the compositor will respond by
-  ## emitting an xdg_surface.configure event. The client should then update
-  ## its content, drawing it without decorations if the received mode is
-  ## server-side decorations. The client must also acknowledge the configure
-  ## when committing the new content (see xdg_surface.ack_configure).
-  ## 
-  ## The compositor can decide not to use the client's mode and enforce a
-  ## different mode instead.
-  ## 
-  ## Clients whose decoration mode depend on the xdg_toplevel state may send
-  ## a set_mode request in response to an xdg_surface.configure event and wait
-  ## for the next xdg_surface.configure event to prevent unwanted state.
-  ## Such clients are responsible for preventing configure loops and must
-  ## make sure not to send multiple successive set_mode requests with the
-  ## same decoration mode.
-  discard wl_proxy_marshal_flags(this.proxy.raw, 1, nil, 1, 0, mode)
-
-proc unset_mode*(this: Zxdg_toplevel_decoration_v1) =
-  ## Unset the toplevel surface decoration mode. This informs the compositor
-  ## that the client doesn't prefer a particular decoration mode.
-  ## 
-  ## This request has the same semantics as set_mode.
-  discard wl_proxy_marshal_flags(this.proxy.raw, 2, nil, 1, 0)
-
-template onConfigure*(this: Zwlr_layer_surface_v1; body) =
-  ## The configure event asks the client to resize its surface.
-  ## 
-  ## Clients should arrange their surface for the new states, and then send
-  ## an ack_configure request with the serial sent in this configure event at
-  ## some point before committing the new surface.
-  ## 
-  ## The client is free to dismiss all but the last configure event it
-  ## received.
-  ## 
-  ## The width and height arguments specify the size of the window in
-  ## surface-local coordinates.
-  ## 
-  ## The size is a hint, in the sense that the client is free to ignore it if
-  ## it doesn't resize, pick a smaller size (to satisfy aspect ratio or
-  ## resize in steps of NxM pixels). If the client picks a smaller size and
-  ## is anchored to two opposite anchors (e.g. 'top' and 'bottom'), the
-  ## surface will be centered on this axis.
-  ## 
-  ## If the width or height arguments are zero, it means the client should
-  ## decide its own window dimension.
-  cast[ptr `Zwlr_layer_surface_v1 / Callbacks`](this.proxy.raw.impl).configure = proc (
-      serial {.inject.}: uint32; width {.inject.}: uint32;
-      height {.inject.}: uint32) =
+  ## The sent scale is the numerator of a fraction with a denominator of 120.
+  cast[ptr `Wp_fractional_scale_v1 / Callbacks`](this.proxy.raw.impl).preferred_scale = proc (
+      scale {.inject.}: uint32) =
     body
 
-template onClosed*(this: Zwlr_layer_surface_v1; body) =
-  ## The closed event is sent by the compositor when the surface will no
-  ## longer be shown. The output may have been destroyed or the user may
-  ## have asked for it to be removed. Further changes to the surface will be
-  ## ignored. The client should destroy the resource after receiving this
-  ## event, and create a new surface if they so choose.
-  cast[ptr `Zwlr_layer_surface_v1 / Callbacks`](this.proxy.raw.impl).closed = proc () =
+template onAuto_hidden_panel_hidden*(this: Org_kde_plasma_surface; body) =
+  ## An auto-hiding panel got hidden by the compositor.
+  cast[ptr `Org_kde_plasma_surface / Callbacks`](this.proxy.raw.impl).auto_hidden_panel_hidden = proc () =
+    body
+
+template onAuto_hidden_panel_shown*(this: Org_kde_plasma_surface; body) =
+  ## An auto-hiding panel got shown by the compositor.
+  cast[ptr `Org_kde_plasma_surface / Callbacks`](this.proxy.raw.impl).auto_hidden_panel_shown = proc () =
     body
 
 template onTablet_added*(this: Zwp_tablet_seat_v2; body) =
@@ -6163,191 +6148,6 @@ template onFrame*(this: Zwp_tablet_pad_dial_v2; body) =
   ## delta, frame, etc.
   cast[ptr `Zwp_tablet_pad_dial_v2 / Callbacks`](this.proxy.raw.impl).frame = proc (
       time {.inject.}: uint32) =
-    body
-
-template onPreferred_scale*(this: Wp_fractional_scale_v1; body) =
-  ## Notification of a new preferred scale for this surface that the
-  ## compositor suggests that the client should use.
-  ## 
-  ## The sent scale is the numerator of a fraction with a denominator of 120.
-  cast[ptr `Wp_fractional_scale_v1 / Callbacks`](this.proxy.raw.impl).preferred_scale = proc (
-      scale {.inject.}: uint32) =
-    body
-
-template onAuto_hidden_panel_hidden*(this: Org_kde_plasma_surface; body) =
-  ## An auto-hiding panel got hidden by the compositor.
-  cast[ptr `Org_kde_plasma_surface / Callbacks`](this.proxy.raw.impl).auto_hidden_panel_hidden = proc () =
-    body
-
-template onAuto_hidden_panel_shown*(this: Org_kde_plasma_surface; body) =
-  ## An auto-hiding panel got shown by the compositor.
-  cast[ptr `Org_kde_plasma_surface / Callbacks`](this.proxy.raw.impl).auto_hidden_panel_shown = proc () =
-    body
-
-template onPing*(this: Xdg_wm_base; body) =
-  ## The ping event asks the client if it's still alive. Pass the
-  ## serial specified in the event back to the compositor by sending
-  ## a "pong" request back with the specified serial. See xdg_wm_base.pong.
-  ## 
-  ## Compositors can use this to determine if the client is still
-  ## alive. It's unspecified what will happen if the client doesn't
-  ## respond to the ping request, or in what timeframe. Clients should
-  ## try to respond in a reasonable amount of time. The “unresponsive”
-  ## error is provided for compositors that wish to disconnect unresponsive
-  ## clients.
-  ## 
-  ## A compositor is free to ping in any way it wants, but a client must
-  ## always respond to any xdg_wm_base object it created.
-  cast[ptr `Xdg_wm_base / Callbacks`](this.proxy.raw.impl).ping = proc (
-      serial {.inject.}: uint32) =
-    body
-
-template onConfigure*(this: Xdg_surface; body) =
-  ## The configure event marks the end of a configure sequence. A configure
-  ## sequence is a set of one or more events configuring the state of the
-  ## xdg_surface, including the final xdg_surface.configure event.
-  ## 
-  ## Where applicable, xdg_surface surface roles will during a configure
-  ## sequence extend this event as a latched state sent as events before the
-  ## xdg_surface.configure event. Such events should be considered to make up
-  ## a set of atomically applied configuration states, where the
-  ## xdg_surface.configure commits the accumulated state.
-  ## 
-  ## Clients should arrange their surface for the new states, and then send
-  ## an ack_configure request with the serial sent in this configure event at
-  ## some point before committing the new surface.
-  ## 
-  ## If the client receives multiple configure events before it can respond
-  ## to one, it is free to discard all but the last event it received.
-  cast[ptr `Xdg_surface / Callbacks`](this.proxy.raw.impl).configure = proc (
-      serial {.inject.}: uint32) =
-    body
-
-template onConfigure*(this: Xdg_toplevel; body) =
-  ## This configure event asks the client to resize its toplevel surface or
-  ## to change its state. The configured state should not be applied
-  ## immediately. See xdg_surface.configure for details.
-  ## 
-  ## The width and height arguments specify a hint to the window
-  ## about how its surface should be resized in window geometry
-  ## coordinates. See set_window_geometry.
-  ## 
-  ## If the width or height arguments are zero, it means the client
-  ## should decide its own window dimension. This may happen when the
-  ## compositor needs to configure the state of the surface but doesn't
-  ## have any information about any previous or expected dimension.
-  ## 
-  ## The states listed in the event specify how the width/height
-  ## arguments should be interpreted, and possibly how it should be
-  ## drawn.
-  ## 
-  ## Clients must send an ack_configure in response to this event. See
-  ## xdg_surface.configure and xdg_surface.ack_configure for details.
-  cast[ptr `Xdg_toplevel / Callbacks`](this.proxy.raw.impl).configure = proc (
-      width {.inject.}: int32; height {.inject.}: int32;
-      states {.inject.}: Wl_array) =
-    body
-
-template onClose*(this: Xdg_toplevel; body) =
-  ## The close event is sent by the compositor when the user
-  ## wants the surface to be closed. This should be equivalent to
-  ## the user clicking the close button in client-side decorations,
-  ## if your application has any.
-  ## 
-  ## This is only a request that the user intends to close the
-  ## window. The client may choose to ignore this request, or show
-  ## a dialog to ask the user to save their data, etc.
-  cast[ptr `Xdg_toplevel / Callbacks`](this.proxy.raw.impl).close = proc () =
-    body
-
-template onConfigure_bounds*(this: Xdg_toplevel; body) =
-  ## The configure_bounds event may be sent prior to a xdg_toplevel.configure
-  ## event to communicate the bounds a window geometry size is recommended
-  ## to constrain to.
-  ## 
-  ## The passed width and height are in surface coordinate space. If width
-  ## and height are 0, it means bounds is unknown and equivalent to as if no
-  ## configure_bounds event was ever sent for this surface.
-  ## 
-  ## The bounds can for example correspond to the size of a monitor excluding
-  ## any panels or other shell components, so that a surface isn't created in
-  ## a way that it cannot fit.
-  ## 
-  ## The bounds may change at any point, and in such a case, a new
-  ## xdg_toplevel.configure_bounds will be sent, followed by
-  ## xdg_toplevel.configure and xdg_surface.configure.
-  cast[ptr `Xdg_toplevel / Callbacks`](this.proxy.raw.impl).configure_bounds = proc (
-      width {.inject.}: int32; height {.inject.}: int32) =
-    body
-
-template onWm_capabilities*(this: Xdg_toplevel; body) =
-  ## This event advertises the capabilities supported by the compositor. If
-  ## a capability isn't supported, clients should hide or disable the UI
-  ## elements that expose this functionality. For instance, if the
-  ## compositor doesn't advertise support for minimized toplevels, a button
-  ## triggering the set_minimized request should not be displayed.
-  ## 
-  ## The compositor will ignore requests it doesn't support. For instance,
-  ## a compositor which doesn't advertise support for minimized will ignore
-  ## set_minimized requests.
-  ## 
-  ## Compositors must send this event once before the first
-  ## xdg_surface.configure event. When the capabilities change, compositors
-  ## must send this event again and then send an xdg_surface.configure
-  ## event.
-  ## 
-  ## The configured state should not be applied immediately. See
-  ## xdg_surface.configure for details.
-  ## 
-  ## The capabilities are sent as an array of 32-bit unsigned integers in
-  ## native endianness.
-  cast[ptr `Xdg_toplevel / Callbacks`](this.proxy.raw.impl).wm_capabilities = proc (
-      capabilities {.inject.}: Wl_array) =
-    body
-
-template onConfigure*(this: Xdg_popup; body) =
-  ## This event asks the popup surface to configure itself given the
-  ## configuration. The configured state should not be applied immediately.
-  ## See xdg_surface.configure for details.
-  ## 
-  ## The x and y arguments represent the position the popup was placed at
-  ## given the xdg_positioner rule, relative to the upper left corner of the
-  ## window geometry of the parent surface.
-  ## 
-  ## For version 2 or older, the configure event for an xdg_popup is only
-  ## ever sent once for the initial configuration. Starting with version 3,
-  ## it may be sent again if the popup is setup with an xdg_positioner with
-  ## set_reactive requested, or in response to xdg_popup.reposition requests.
-  cast[ptr `Xdg_popup / Callbacks`](this.proxy.raw.impl).configure = proc (
-      x {.inject.}: int32; y {.inject.}: int32; width {.inject.}: int32;
-      height {.inject.}: int32) =
-    body
-
-template onPopup_done*(this: Xdg_popup; body) =
-  ## The popup_done event is sent out when a popup is dismissed by the
-  ## compositor. The client should destroy the xdg_popup object at this
-  ## point.
-  cast[ptr `Xdg_popup / Callbacks`](this.proxy.raw.impl).popup_done = proc () =
-    body
-
-template onRepositioned*(this: Xdg_popup; body) =
-  ## The repositioned event is sent as part of a popup configuration
-  ## sequence, together with xdg_popup.configure and lastly
-  ## xdg_surface.configure to notify the completion of a reposition request.
-  ## 
-  ## The repositioned event is to notify about the completion of a
-  ## xdg_popup.reposition request. The token argument is the token passed
-  ## in the xdg_popup.reposition request.
-  ## 
-  ## Immediately after this event is emitted, xdg_popup.configure and
-  ## xdg_surface.configure will be sent with the updated size and position,
-  ## as well as a new configure serial.
-  ## 
-  ## The client should optionally update the content of the popup, but must
-  ## acknowledge the new popup configuration for the new position to take
-  ## effect. See xdg_surface.ack_configure for details.
-  cast[ptr `Xdg_popup / Callbacks`](this.proxy.raw.impl).repositioned = proc (
-      token {.inject.}: uint32) =
     body
 
 template onError*(this: Wl_display; body) =
@@ -7392,6 +7192,219 @@ template onDescription*(this: Wl_output; body) =
       description {.inject.}: cstring) =
     body
 
+template onConfigure*(this: Zwlr_layer_surface_v1; body) =
+  ## The configure event asks the client to resize its surface.
+  ## 
+  ## Clients should arrange their surface for the new states, and then send
+  ## an ack_configure request with the serial sent in this configure event at
+  ## some point before committing the new surface.
+  ## 
+  ## The client is free to dismiss all but the last configure event it
+  ## received.
+  ## 
+  ## The width and height arguments specify the size of the window in
+  ## surface-local coordinates.
+  ## 
+  ## The size is a hint, in the sense that the client is free to ignore it if
+  ## it doesn't resize, pick a smaller size (to satisfy aspect ratio or
+  ## resize in steps of NxM pixels). If the client picks a smaller size and
+  ## is anchored to two opposite anchors (e.g. 'top' and 'bottom'), the
+  ## surface will be centered on this axis.
+  ## 
+  ## If the width or height arguments are zero, it means the client should
+  ## decide its own window dimension.
+  cast[ptr `Zwlr_layer_surface_v1 / Callbacks`](this.proxy.raw.impl).configure = proc (
+      serial {.inject.}: uint32; width {.inject.}: uint32;
+      height {.inject.}: uint32) =
+    body
+
+template onClosed*(this: Zwlr_layer_surface_v1; body) =
+  ## The closed event is sent by the compositor when the surface will no
+  ## longer be shown. The output may have been destroyed or the user may
+  ## have asked for it to be removed. Further changes to the surface will be
+  ## ignored. The client should destroy the resource after receiving this
+  ## event, and create a new surface if they so choose.
+  cast[ptr `Zwlr_layer_surface_v1 / Callbacks`](this.proxy.raw.impl).closed = proc () =
+    body
+
+template onConfigure*(this: Zxdg_toplevel_decoration_v1; body) =
+  ## The configure event configures the effective decoration mode. The
+  ## configured state should not be applied immediately. Clients must send an
+  ## ack_configure in response to this event. See xdg_surface.configure and
+  ## xdg_surface.ack_configure for details.
+  ## 
+  ## A configure event can be sent at any time. The specified mode must be
+  ## obeyed by the client.
+  cast[ptr `Zxdg_toplevel_decoration_v1 / Callbacks`](this.proxy.raw.impl).configure = proc (
+      mode {.inject.}: `Zxdg_toplevel_decoration_v1 / Mode`) =
+    body
+
+template onPing*(this: Xdg_wm_base; body) =
+  ## The ping event asks the client if it's still alive. Pass the
+  ## serial specified in the event back to the compositor by sending
+  ## a "pong" request back with the specified serial. See xdg_wm_base.pong.
+  ## 
+  ## Compositors can use this to determine if the client is still
+  ## alive. It's unspecified what will happen if the client doesn't
+  ## respond to the ping request, or in what timeframe. Clients should
+  ## try to respond in a reasonable amount of time. The “unresponsive”
+  ## error is provided for compositors that wish to disconnect unresponsive
+  ## clients.
+  ## 
+  ## A compositor is free to ping in any way it wants, but a client must
+  ## always respond to any xdg_wm_base object it created.
+  cast[ptr `Xdg_wm_base / Callbacks`](this.proxy.raw.impl).ping = proc (
+      serial {.inject.}: uint32) =
+    body
+
+template onConfigure*(this: Xdg_surface; body) =
+  ## The configure event marks the end of a configure sequence. A configure
+  ## sequence is a set of one or more events configuring the state of the
+  ## xdg_surface, including the final xdg_surface.configure event.
+  ## 
+  ## Where applicable, xdg_surface surface roles will during a configure
+  ## sequence extend this event as a latched state sent as events before the
+  ## xdg_surface.configure event. Such events should be considered to make up
+  ## a set of atomically applied configuration states, where the
+  ## xdg_surface.configure commits the accumulated state.
+  ## 
+  ## Clients should arrange their surface for the new states, and then send
+  ## an ack_configure request with the serial sent in this configure event at
+  ## some point before committing the new surface.
+  ## 
+  ## If the client receives multiple configure events before it can respond
+  ## to one, it is free to discard all but the last event it received.
+  cast[ptr `Xdg_surface / Callbacks`](this.proxy.raw.impl).configure = proc (
+      serial {.inject.}: uint32) =
+    body
+
+template onConfigure*(this: Xdg_toplevel; body) =
+  ## This configure event asks the client to resize its toplevel surface or
+  ## to change its state. The configured state should not be applied
+  ## immediately. See xdg_surface.configure for details.
+  ## 
+  ## The width and height arguments specify a hint to the window
+  ## about how its surface should be resized in window geometry
+  ## coordinates. See set_window_geometry.
+  ## 
+  ## If the width or height arguments are zero, it means the client
+  ## should decide its own window dimension. This may happen when the
+  ## compositor needs to configure the state of the surface but doesn't
+  ## have any information about any previous or expected dimension.
+  ## 
+  ## The states listed in the event specify how the width/height
+  ## arguments should be interpreted, and possibly how it should be
+  ## drawn.
+  ## 
+  ## Clients must send an ack_configure in response to this event. See
+  ## xdg_surface.configure and xdg_surface.ack_configure for details.
+  cast[ptr `Xdg_toplevel / Callbacks`](this.proxy.raw.impl).configure = proc (
+      width {.inject.}: int32; height {.inject.}: int32;
+      states {.inject.}: Wl_array) =
+    body
+
+template onClose*(this: Xdg_toplevel; body) =
+  ## The close event is sent by the compositor when the user
+  ## wants the surface to be closed. This should be equivalent to
+  ## the user clicking the close button in client-side decorations,
+  ## if your application has any.
+  ## 
+  ## This is only a request that the user intends to close the
+  ## window. The client may choose to ignore this request, or show
+  ## a dialog to ask the user to save their data, etc.
+  cast[ptr `Xdg_toplevel / Callbacks`](this.proxy.raw.impl).close = proc () =
+    body
+
+template onConfigure_bounds*(this: Xdg_toplevel; body) =
+  ## The configure_bounds event may be sent prior to a xdg_toplevel.configure
+  ## event to communicate the bounds a window geometry size is recommended
+  ## to constrain to.
+  ## 
+  ## The passed width and height are in surface coordinate space. If width
+  ## and height are 0, it means bounds is unknown and equivalent to as if no
+  ## configure_bounds event was ever sent for this surface.
+  ## 
+  ## The bounds can for example correspond to the size of a monitor excluding
+  ## any panels or other shell components, so that a surface isn't created in
+  ## a way that it cannot fit.
+  ## 
+  ## The bounds may change at any point, and in such a case, a new
+  ## xdg_toplevel.configure_bounds will be sent, followed by
+  ## xdg_toplevel.configure and xdg_surface.configure.
+  cast[ptr `Xdg_toplevel / Callbacks`](this.proxy.raw.impl).configure_bounds = proc (
+      width {.inject.}: int32; height {.inject.}: int32) =
+    body
+
+template onWm_capabilities*(this: Xdg_toplevel; body) =
+  ## This event advertises the capabilities supported by the compositor. If
+  ## a capability isn't supported, clients should hide or disable the UI
+  ## elements that expose this functionality. For instance, if the
+  ## compositor doesn't advertise support for minimized toplevels, a button
+  ## triggering the set_minimized request should not be displayed.
+  ## 
+  ## The compositor will ignore requests it doesn't support. For instance,
+  ## a compositor which doesn't advertise support for minimized will ignore
+  ## set_minimized requests.
+  ## 
+  ## Compositors must send this event once before the first
+  ## xdg_surface.configure event. When the capabilities change, compositors
+  ## must send this event again and then send an xdg_surface.configure
+  ## event.
+  ## 
+  ## The configured state should not be applied immediately. See
+  ## xdg_surface.configure for details.
+  ## 
+  ## The capabilities are sent as an array of 32-bit unsigned integers in
+  ## native endianness.
+  cast[ptr `Xdg_toplevel / Callbacks`](this.proxy.raw.impl).wm_capabilities = proc (
+      capabilities {.inject.}: Wl_array) =
+    body
+
+template onConfigure*(this: Xdg_popup; body) =
+  ## This event asks the popup surface to configure itself given the
+  ## configuration. The configured state should not be applied immediately.
+  ## See xdg_surface.configure for details.
+  ## 
+  ## The x and y arguments represent the position the popup was placed at
+  ## given the xdg_positioner rule, relative to the upper left corner of the
+  ## window geometry of the parent surface.
+  ## 
+  ## For version 2 or older, the configure event for an xdg_popup is only
+  ## ever sent once for the initial configuration. Starting with version 3,
+  ## it may be sent again if the popup is setup with an xdg_positioner with
+  ## set_reactive requested, or in response to xdg_popup.reposition requests.
+  cast[ptr `Xdg_popup / Callbacks`](this.proxy.raw.impl).configure = proc (
+      x {.inject.}: int32; y {.inject.}: int32; width {.inject.}: int32;
+      height {.inject.}: int32) =
+    body
+
+template onPopup_done*(this: Xdg_popup; body) =
+  ## The popup_done event is sent out when a popup is dismissed by the
+  ## compositor. The client should destroy the xdg_popup object at this
+  ## point.
+  cast[ptr `Xdg_popup / Callbacks`](this.proxy.raw.impl).popup_done = proc () =
+    body
+
+template onRepositioned*(this: Xdg_popup; body) =
+  ## The repositioned event is sent as part of a popup configuration
+  ## sequence, together with xdg_popup.configure and lastly
+  ## xdg_surface.configure to notify the completion of a reposition request.
+  ## 
+  ## The repositioned event is to notify about the completion of a
+  ## xdg_popup.reposition request. The token argument is the token passed
+  ## in the xdg_popup.reposition request.
+  ## 
+  ## Immediately after this event is emitted, xdg_popup.configure and
+  ## xdg_surface.configure will be sent with the updated size and position,
+  ## as well as a new configure serial.
+  ## 
+  ## The client should optionally update the content of the popup, but must
+  ## acknowledge the new popup configuration for the new position to take
+  ## effect. See xdg_surface.ack_configure for details.
+  cast[ptr `Xdg_popup / Callbacks`](this.proxy.raw.impl).repositioned = proc (
+      token {.inject.}: uint32) =
+    body
+
 template onIcon_size*(this: Xdg_toplevel_icon_manager_v1; body) =
   ## This event indicates an icon size the compositor prefers to be
   ## available if the client has scalable icons and can render to any size.
@@ -7414,29 +7427,29 @@ template onDone*(this: Xdg_toplevel_icon_manager_v1; body) =
   cast[ptr `Xdg_toplevel_icon_manager_v1 / Callbacks`](this.proxy.raw.impl).done = proc () =
     body
 
-template onConfigure*(this: Zxdg_toplevel_decoration_v1; body) =
-  ## The configure event configures the effective decoration mode. The
-  ## configured state should not be applied immediately. Clients must send an
-  ## ack_configure in response to this event. See xdg_surface.configure and
-  ## xdg_surface.ack_configure for details.
-  ## 
-  ## A configure event can be sent at any time. The specified mode must be
-  ## obeyed by the client.
-  cast[ptr `Zxdg_toplevel_decoration_v1 / Callbacks`](this.proxy.raw.impl).configure = proc (
-      mode {.inject.}: `Zxdg_toplevel_decoration_v1 / Mode`) =
-    body
+template dispatch*(t: typedesc[Wp_cursor_shape_manager_v1]): untyped =
+  `Wp_cursor_shape_manager_v1 / dispatch`
 
-template dispatch*(t: typedesc[Zwlr_layer_shell_v1]): untyped =
-  `Zwlr_layer_shell_v1 / dispatch`
+template dispatch*(t: typedesc[Wp_cursor_shape_device_v1]): untyped =
+  `Wp_cursor_shape_device_v1 / dispatch`
 
-template dispatch*(t: typedesc[Zwlr_layer_surface_v1]): untyped =
-  `Zwlr_layer_surface_v1 / dispatch`
+template dispatch*(t: typedesc[Wp_fractional_scale_manager_v1]): untyped =
+  `Wp_fractional_scale_manager_v1 / dispatch`
+
+template dispatch*(t: typedesc[Wp_fractional_scale_v1]): untyped =
+  `Wp_fractional_scale_v1 / dispatch`
 
 template dispatch*(t: typedesc[Zwp_idle_inhibit_manager_v1]): untyped =
   `Zwp_idle_inhibit_manager_v1 / dispatch`
 
 template dispatch*(t: typedesc[Zwp_idle_inhibitor_v1]): untyped =
   `Zwp_idle_inhibitor_v1 / dispatch`
+
+template dispatch*(t: typedesc[Org_kde_plasma_shell]): untyped =
+  `Org_kde_plasma_shell / dispatch`
+
+template dispatch*(t: typedesc[Org_kde_plasma_surface]): untyped =
+  `Org_kde_plasma_surface / dispatch`
 
 template dispatch*(t: typedesc[Zwp_tablet_manager_v2]): untyped =
   `Zwp_tablet_manager_v2 / dispatch`
@@ -7465,44 +7478,11 @@ template dispatch*(t: typedesc[Zwp_tablet_pad_v2]): untyped =
 template dispatch*(t: typedesc[Zwp_tablet_pad_dial_v2]): untyped =
   `Zwp_tablet_pad_dial_v2 / dispatch`
 
-template dispatch*(t: typedesc[Wp_fractional_scale_manager_v1]): untyped =
-  `Wp_fractional_scale_manager_v1 / dispatch`
-
-template dispatch*(t: typedesc[Wp_fractional_scale_v1]): untyped =
-  `Wp_fractional_scale_v1 / dispatch`
-
-template dispatch*(t: typedesc[Org_kde_plasma_shell]): untyped =
-  `Org_kde_plasma_shell / dispatch`
-
-template dispatch*(t: typedesc[Org_kde_plasma_surface]): untyped =
-  `Org_kde_plasma_surface / dispatch`
-
 template dispatch*(t: typedesc[Wp_viewporter]): untyped =
   `Wp_viewporter / dispatch`
 
 template dispatch*(t: typedesc[Wp_viewport]): untyped =
   `Wp_viewport / dispatch`
-
-template dispatch*(t: typedesc[Wp_cursor_shape_manager_v1]): untyped =
-  `Wp_cursor_shape_manager_v1 / dispatch`
-
-template dispatch*(t: typedesc[Wp_cursor_shape_device_v1]): untyped =
-  `Wp_cursor_shape_device_v1 / dispatch`
-
-template dispatch*(t: typedesc[Xdg_wm_base]): untyped =
-  `Xdg_wm_base / dispatch`
-
-template dispatch*(t: typedesc[Xdg_positioner]): untyped =
-  `Xdg_positioner / dispatch`
-
-template dispatch*(t: typedesc[Xdg_surface]): untyped =
-  `Xdg_surface / dispatch`
-
-template dispatch*(t: typedesc[Xdg_toplevel]): untyped =
-  `Xdg_toplevel / dispatch`
-
-template dispatch*(t: typedesc[Xdg_popup]): untyped =
-  `Xdg_popup / dispatch`
 
 template dispatch*(t: typedesc[Wl_display]): untyped =
   `Wl_display / dispatch`
@@ -7570,11 +7550,11 @@ template dispatch*(t: typedesc[Wl_subcompositor]): untyped =
 template dispatch*(t: typedesc[Wl_subsurface]): untyped =
   `Wl_subsurface / dispatch`
 
-template dispatch*(t: typedesc[Xdg_toplevel_icon_manager_v1]): untyped =
-  `Xdg_toplevel_icon_manager_v1 / dispatch`
+template dispatch*(t: typedesc[Zwlr_layer_shell_v1]): untyped =
+  `Zwlr_layer_shell_v1 / dispatch`
 
-template dispatch*(t: typedesc[Xdg_toplevel_icon_v1]): untyped =
-  `Xdg_toplevel_icon_v1 / dispatch`
+template dispatch*(t: typedesc[Zwlr_layer_surface_v1]): untyped =
+  `Zwlr_layer_surface_v1 / dispatch`
 
 template dispatch*(t: typedesc[Zxdg_decoration_manager_v1]): untyped =
   `Zxdg_decoration_manager_v1 / dispatch`
@@ -7582,17 +7562,50 @@ template dispatch*(t: typedesc[Zxdg_decoration_manager_v1]): untyped =
 template dispatch*(t: typedesc[Zxdg_toplevel_decoration_v1]): untyped =
   `Zxdg_toplevel_decoration_v1 / dispatch`
 
-template Callbacks*(t: typedesc[Zwlr_layer_shell_v1]): untyped =
-  `Zwlr_layer_shell_v1 / Callbacks`
+template dispatch*(t: typedesc[Xdg_wm_base]): untyped =
+  `Xdg_wm_base / dispatch`
 
-template Callbacks*(t: typedesc[Zwlr_layer_surface_v1]): untyped =
-  `Zwlr_layer_surface_v1 / Callbacks`
+template dispatch*(t: typedesc[Xdg_positioner]): untyped =
+  `Xdg_positioner / dispatch`
+
+template dispatch*(t: typedesc[Xdg_surface]): untyped =
+  `Xdg_surface / dispatch`
+
+template dispatch*(t: typedesc[Xdg_toplevel]): untyped =
+  `Xdg_toplevel / dispatch`
+
+template dispatch*(t: typedesc[Xdg_popup]): untyped =
+  `Xdg_popup / dispatch`
+
+template dispatch*(t: typedesc[Xdg_toplevel_icon_manager_v1]): untyped =
+  `Xdg_toplevel_icon_manager_v1 / dispatch`
+
+template dispatch*(t: typedesc[Xdg_toplevel_icon_v1]): untyped =
+  `Xdg_toplevel_icon_v1 / dispatch`
+
+template Callbacks*(t: typedesc[Wp_cursor_shape_manager_v1]): untyped =
+  `Wp_cursor_shape_manager_v1 / Callbacks`
+
+template Callbacks*(t: typedesc[Wp_cursor_shape_device_v1]): untyped =
+  `Wp_cursor_shape_device_v1 / Callbacks`
+
+template Callbacks*(t: typedesc[Wp_fractional_scale_manager_v1]): untyped =
+  `Wp_fractional_scale_manager_v1 / Callbacks`
+
+template Callbacks*(t: typedesc[Wp_fractional_scale_v1]): untyped =
+  `Wp_fractional_scale_v1 / Callbacks`
 
 template Callbacks*(t: typedesc[Zwp_idle_inhibit_manager_v1]): untyped =
   `Zwp_idle_inhibit_manager_v1 / Callbacks`
 
 template Callbacks*(t: typedesc[Zwp_idle_inhibitor_v1]): untyped =
   `Zwp_idle_inhibitor_v1 / Callbacks`
+
+template Callbacks*(t: typedesc[Org_kde_plasma_shell]): untyped =
+  `Org_kde_plasma_shell / Callbacks`
+
+template Callbacks*(t: typedesc[Org_kde_plasma_surface]): untyped =
+  `Org_kde_plasma_surface / Callbacks`
 
 template Callbacks*(t: typedesc[Zwp_tablet_manager_v2]): untyped =
   `Zwp_tablet_manager_v2 / Callbacks`
@@ -7621,44 +7634,11 @@ template Callbacks*(t: typedesc[Zwp_tablet_pad_v2]): untyped =
 template Callbacks*(t: typedesc[Zwp_tablet_pad_dial_v2]): untyped =
   `Zwp_tablet_pad_dial_v2 / Callbacks`
 
-template Callbacks*(t: typedesc[Wp_fractional_scale_manager_v1]): untyped =
-  `Wp_fractional_scale_manager_v1 / Callbacks`
-
-template Callbacks*(t: typedesc[Wp_fractional_scale_v1]): untyped =
-  `Wp_fractional_scale_v1 / Callbacks`
-
-template Callbacks*(t: typedesc[Org_kde_plasma_shell]): untyped =
-  `Org_kde_plasma_shell / Callbacks`
-
-template Callbacks*(t: typedesc[Org_kde_plasma_surface]): untyped =
-  `Org_kde_plasma_surface / Callbacks`
-
 template Callbacks*(t: typedesc[Wp_viewporter]): untyped =
   `Wp_viewporter / Callbacks`
 
 template Callbacks*(t: typedesc[Wp_viewport]): untyped =
   `Wp_viewport / Callbacks`
-
-template Callbacks*(t: typedesc[Wp_cursor_shape_manager_v1]): untyped =
-  `Wp_cursor_shape_manager_v1 / Callbacks`
-
-template Callbacks*(t: typedesc[Wp_cursor_shape_device_v1]): untyped =
-  `Wp_cursor_shape_device_v1 / Callbacks`
-
-template Callbacks*(t: typedesc[Xdg_wm_base]): untyped =
-  `Xdg_wm_base / Callbacks`
-
-template Callbacks*(t: typedesc[Xdg_positioner]): untyped =
-  `Xdg_positioner / Callbacks`
-
-template Callbacks*(t: typedesc[Xdg_surface]): untyped =
-  `Xdg_surface / Callbacks`
-
-template Callbacks*(t: typedesc[Xdg_toplevel]): untyped =
-  `Xdg_toplevel / Callbacks`
-
-template Callbacks*(t: typedesc[Xdg_popup]): untyped =
-  `Xdg_popup / Callbacks`
 
 template Callbacks*(t: typedesc[Wl_display]): untyped =
   `Wl_display / Callbacks`
@@ -7726,14 +7706,35 @@ template Callbacks*(t: typedesc[Wl_subcompositor]): untyped =
 template Callbacks*(t: typedesc[Wl_subsurface]): untyped =
   `Wl_subsurface / Callbacks`
 
-template Callbacks*(t: typedesc[Xdg_toplevel_icon_manager_v1]): untyped =
-  `Xdg_toplevel_icon_manager_v1 / Callbacks`
+template Callbacks*(t: typedesc[Zwlr_layer_shell_v1]): untyped =
+  `Zwlr_layer_shell_v1 / Callbacks`
 
-template Callbacks*(t: typedesc[Xdg_toplevel_icon_v1]): untyped =
-  `Xdg_toplevel_icon_v1 / Callbacks`
+template Callbacks*(t: typedesc[Zwlr_layer_surface_v1]): untyped =
+  `Zwlr_layer_surface_v1 / Callbacks`
 
 template Callbacks*(t: typedesc[Zxdg_decoration_manager_v1]): untyped =
   `Zxdg_decoration_manager_v1 / Callbacks`
 
 template Callbacks*(t: typedesc[Zxdg_toplevel_decoration_v1]): untyped =
   `Zxdg_toplevel_decoration_v1 / Callbacks`
+
+template Callbacks*(t: typedesc[Xdg_wm_base]): untyped =
+  `Xdg_wm_base / Callbacks`
+
+template Callbacks*(t: typedesc[Xdg_positioner]): untyped =
+  `Xdg_positioner / Callbacks`
+
+template Callbacks*(t: typedesc[Xdg_surface]): untyped =
+  `Xdg_surface / Callbacks`
+
+template Callbacks*(t: typedesc[Xdg_toplevel]): untyped =
+  `Xdg_toplevel / Callbacks`
+
+template Callbacks*(t: typedesc[Xdg_popup]): untyped =
+  `Xdg_popup / Callbacks`
+
+template Callbacks*(t: typedesc[Xdg_toplevel_icon_manager_v1]): untyped =
+  `Xdg_toplevel_icon_manager_v1 / Callbacks`
+
+template Callbacks*(t: typedesc[Xdg_toplevel_icon_v1]): untyped =
+  `Xdg_toplevel_icon_v1 / Callbacks`
