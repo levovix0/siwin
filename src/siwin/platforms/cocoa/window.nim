@@ -1346,9 +1346,23 @@ proc init =
               modifiers: modifiers,
             )
 
-          # Let key events handle deletion keys directly; routing them through
-          # NSTextInputClient commands can suppress subsequent key presses.
-          let shouldRouteToInputContext = key notin [Key.backspace, Key.del]
+          # Let key events handle navigation/editing control keys directly;
+          # routing them through NSTextInputClient can suppress following key presses.
+          let shouldRouteToInputContext = key notin {
+            Key.backspace,
+            Key.del,
+            Key.left,
+            Key.right,
+            Key.up,
+            Key.down,
+            Key.home,
+            Key.End,
+            Key.pageUp,
+            Key.pageDown,
+            Key.tab,
+            Key.enter,
+            Key.escape,
+          }
           if window.eventsHandler.onTextInput != nil and shouldRouteToInputContext:
             var handledByInputContext = false
             let inputContext = cast[NSView](self).inputContext
