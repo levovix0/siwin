@@ -1,4 +1,4 @@
-import std/[importutils, tables, times, os, unicode, uri, sequtils, strutils, strformat]
+import std/[importutils, tables, times, os, unicode, uri, sequtils, strutils, strformat, math]
 import pkg/[vmath]
 from pkg/darwin/quartz_core/calayer import CALayer
 from pkg/darwin/quartz_core/cametal_layer import CAMetalLayer
@@ -818,6 +818,74 @@ method `pos=`*(window: WindowCocoa, v: IVec2) =
     true
   )
 
+proc contentPos*(window: WindowCocoa): IVec2 =
+  result = window.m_pos
+  if window == nil or window.handle == nil:
+    return
+
+  let frame = window.handle.frame
+  let contentRect = window.handle.contentRectForFrameRect(frame)
+  let leftInset = contentRect.origin.x - frame.origin.x
+  let topInset =
+    frame.size.height -
+    ((contentRect.origin.y - frame.origin.y) + contentRect.size.height)
+  result = ivec2(
+    window.m_pos.x + leftInset.int32,
+    window.m_pos.y + topInset.int32,
+  )
+
+proc toPoints(distance: int32, scale: float32): int32 =
+  if scale <= 0'f32:
+    return distance
+  round(distance.float64 / scale.float64).int32
+
+proc toPoints(size: IVec2, scale: float32): IVec2 =
+  ivec2(
+    max(1'i32, toPoints(size.x, scale)),
+    max(1'i32, toPoints(size.y, scale)),
+  )
+
+proc setContentSizeInPoints(window: WindowCocoa, size: IVec2) =
+  let frame = window.handle.frame
+  let contentRect = window.handle.contentRectForFrameRect(frame)
+  let borderW = frame.size.width - contentRect.size.width
+  let borderH = frame.size.height - contentRect.size.height
+  window.handle.setFrame(
+    NSMakeRect(
+      frame.origin.x,
+      frame.origin.y,
+      size.x.float64 + borderW,
+      size.y.float64 + borderH
+    ),
+    true
+  )
+
+proc applyPopupPlacement(window: WindowCocoa, placement: PopupPlacement) =
+  window.m_popupPlacement = placement
+
+  if not window.m_isPopup:
+    return
+
+  let parent = window.parentWindow
+  if parent == nil:
+    return
+
+  let popupSize = placement.popupSize()
+  let parentScale = max(1'f32, parent.uiScale)
+  let popupSizePoints = popupSize.toPoints(parentScale)
+  if window.m_size != popupSize:
+    window.m_size = popupSize
+    if window of WindowCocoaSoftwareRendering:
+      window.WindowCocoaSoftwareRendering.resizeSoftwarePixelBuffer(popupSize)
+  window.setContentSizeInPoints(popupSizePoints)
+
+  let parentContentPos =
+    if parent of WindowCocoa:
+      parent.WindowCocoa.contentPos()
+    else:
+      parent.pos
+  window.pos = parentContentPos + placement.popupRelativePos().toPoints(parentScale)
+
 method `fullscreen=`*(window: WindowCocoa, v: bool) =
   if window.m_fullscreen == v:
     return
@@ -886,6 +954,12 @@ method `maxSize=`*(window: WindowCocoa, v: IVec2) =
   else:
     window.m_maxSize = v
     window.handle.setMaxSize(NSMakeSize(v.x.float64, v.y.float64))
+
+method `placement=`*(window: WindowCocoa, v: PopupPlacement) =
+  window.applyPopupPlacement(v)
+
+method reposition*(window: WindowCocoa, v: PopupPlacement) =
+  window.placement = v
 
 method `icon=`*(window: WindowCocoa, _: nil.typeof) =
   if NSApp == nil:
@@ -1660,7 +1734,7 @@ proc newPopupWindowCocoa*(
     transparent = transparent,
   )
   result.initPopupState(parent, placement, grab)
-  result.pos = parent.pos + placement.popupRelativePos()
+  result.placement = placement
   # Interactive popups need to accept focus to receive full mouse/key input.
   result.canBecomeKeyWindow = true
   result.canBecomeMainWindow = false
