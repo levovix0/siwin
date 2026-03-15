@@ -1,3 +1,4 @@
+import std/[strformat]
 import vmath
 import siwin
 import siwin/colorutils
@@ -70,6 +71,33 @@ proc closeButtonRect(size: IVec2): tuple[x, y, w, h: int32] =
     h: CloseButtonSize,
   )
 
+proc sizeToString(size: IVec2): string =
+  fmt"({size.x}, {size.y})"
+
+proc posToString(pos: Vec2): string =
+  fmt"({pos.x:.1f}, {pos.y:.1f})"
+
+proc rectToString(rect: tuple[x, y, w, h: int32]): string =
+  fmt"(x={rect.x}, y={rect.y}, w={rect.w}, h={rect.h})"
+
+proc logPopupCloseButton(window: Window, reason: string) =
+  let size = window.size
+  let closeRect = closeButtonRect(size)
+  echo fmt"[popup_demo] {reason}: popupSize={sizeToString(size)} closeButton={rectToString(closeRect)}"
+
+proc logPopupPointer(
+    kind: string,
+    window: Window,
+    pos: Vec2,
+    button: MouseButton,
+    pressed = false,
+    double = false,
+) =
+  let closeRect = closeButtonRect(window.size)
+  let insideClose =
+    insideRect(pos, closeRect.x, closeRect.y, closeRect.w, closeRect.h)
+  echo fmt"[popup_demo] {kind}: button={$button} pressed={pressed} double={double} pos={posToString(pos)} closeButton={rectToString(closeRect)} insideClose={insideClose}"
+
 proc popupPlacement(size: IVec2): PopupPlacement =
   let buttonRect = popupButtonRect(size)
   PopupPlacement(
@@ -91,6 +119,7 @@ proc applyPopupDragRegions(window: Window) =
   let titleWidth = max(1'i32, size.x - CloseButtonSize - CloseButtonMargin * 2)
   window.setTitleRegion(vec2(0, 0), vec2(titleWidth.float32, TitleBarHeight.float32))
   window.setBorderWidth(ResizeBorderWidth, 0, ResizeCornerWidth)
+  window.logPopupCloseButton("applyPopupDragRegions")
 
 proc drawMainWindow(state: var MainDemoState, size: IVec2, popupOpen: bool) =
   state.rgbaBuffer.ensureBuffer(size)
@@ -180,14 +209,14 @@ var
   popup: PopupWindow
 
 proc popupIsOpen(): bool =
-  popup != nil and popup.opened
+  popup != nil
 
 proc updatePopupPlacement() =
-  if popupIsOpen():
+  if popup != nil and popup.opened:
     popup.reposition(window.size.popupPlacement())
 
 proc closePopup() =
-  if popupIsOpen():
+  if popup != nil and popup.opened:
     popup.close()
 
 proc installPopupHandlers() =
@@ -216,7 +245,35 @@ proc installPopupHandlers() =
         popupState.hoverClose = newHover
         redraw e.window
     ,
+    onMouseButton: proc(e: MouseButtonEvent) =
+      if e.button == MouseButton.left:
+        logPopupPointer(
+          "onMouseButton",
+          e.window,
+          e.window.mouse.pos,
+          e.button,
+          pressed = e.pressed,
+        )
+      if e.button == MouseButton.left and e.pressed:
+        let closeRect = closeButtonRect(e.window.size)
+        if insideRect(
+          e.window.mouse.pos,
+          closeRect.x,
+          closeRect.y,
+          closeRect.w,
+          closeRect.h,
+        ):
+          e.window.close()
+    ,
     onClick: proc(e: ClickEvent) =
+      if e.button == MouseButton.left:
+        logPopupPointer(
+          "onClick",
+          e.window,
+          e.pos,
+          e.button,
+          double = e.double,
+        )
       let closeRect = closeButtonRect(e.window.size)
       if e.button == MouseButton.left and
           insideRect(e.pos, closeRect.x, closeRect.y, closeRect.w, closeRect.h):
@@ -234,13 +291,14 @@ proc installPopupHandlers() =
   )
 
 proc openPopup() =
-  if popupIsOpen():
+  if popup != nil:
     return
 
   popup = globals.newPopupWindow(window, window.size.popupPlacement(), grab = true)
   popupState.hoverClose = false
   popup.applyPopupDragRegions()
   installPopupHandlers()
+  popup.logPopupCloseButton("openPopup")
   popup.firstStep(makeVisible = true)
   redraw popup
   redraw window
@@ -285,12 +343,12 @@ window.eventsHandler = WindowEventsHandler(
     closePopup(),
   onTick: proc(e: TickEvent) =
     redraw e.window
-    if popupIsOpen():
+    if popup != nil and popup.opened:
       redraw popup
   ,
   onKey: proc(e: KeyEvent) =
     if e.pressed and not e.generated and e.key == Key.escape:
-      if popupIsOpen():
+      if popup != nil:
         closePopup()
       else:
         close e.window
@@ -298,8 +356,8 @@ window.eventsHandler = WindowEventsHandler(
 )
 
 window.firstStep(makeVisible = true)
-while window.opened or popupIsOpen():
+while window.opened or popup != nil:
   if window.opened:
     window.step()
-  if popupIsOpen():
+  if popup != nil:
     popup.step()

@@ -1,4 +1,4 @@
-import std/[importutils, tables, times, os, unicode, uri, sequtils, strutils]
+import std/[importutils, tables, times, os, unicode, uri, sequtils, strutils, strformat]
 import pkg/[vmath]
 from pkg/darwin/quartz_core/calayer import CALayer
 from pkg/darwin/quartz_core/cametal_layer import CAMetalLayer
@@ -18,6 +18,8 @@ template autoreleasepool(body: untyped) =
     body
   finally:
     pool.release()
+
+proc isFlipped(v: NSView): bool {.objc: "isFlipped".}
 
 type
   ScreenCocoa* = ref object of Screen
@@ -774,6 +776,7 @@ method close*(window: WindowCocoa) =
   if window.m_closed:
     return
   `=destroy` window[]
+  window.eventsHandler.pushEvent onClose, CloseEvent(window: window)
 
 method `size=`*(window: WindowCocoa, v: IVec2) =
   if v.x <= 0 or v.y <= 0:
@@ -1076,13 +1079,32 @@ proc init =
 
     let
       bounds = contentView.bounds
-      backingBounds = contentView.convertRectToBacking(bounds)
-      backingPointRect = contentView.convertRectToBacking(NSMakeRect(location.x, location.y, 0, 0))
+      boundsW = max(1e-6, bounds.size.width)
+      boundsH = max(1e-6, bounds.size.height)
+      y =
+        if contentView.isFlipped():
+          location.y.float32
+        else:
+          (bounds.size.height - location.y).float32
+      scaleX = window.m_size.x.float32 / boundsW.float32
+      scaleY = window.m_size.y.float32 / boundsH.float32
 
     vec2(
-      backingPointRect.origin.x.float32,
-      (backingBounds.size.height - backingPointRect.origin.y).float32
+      location.x.float32 * scaleX,
+      y * scaleY
     )
+
+  proc logPopupMouseButton(
+      window: WindowCocoa,
+      phase: string,
+      button: MouseButton,
+      pressed: bool,
+      location: NsPoint,
+      pos: Vec2,
+  ) =
+    if not window.m_isPopup or button != MouseButton.left:
+      return
+    echo fmt"[siwin/cocoa popup] {phase}: button={$button} pressed={pressed} raw=({location.x:.1f}, {location.y:.1f}) pos=({pos.x:.1f}, {pos.y:.1f}) size=({window.m_size.x}, {window.m_size.y})"
 
   proc updateMousePos(window: WindowCocoa, location: NsPoint, kind: MouseMoveKind) =
     window.mouse.pos = scaledMousePos(window, location)
@@ -1090,6 +1112,7 @@ proc init =
 
   proc handleMouseButton(window: WindowCocoa, button: MouseButton, pressed: bool, location: NsPoint) =
     window.mouse.pos = scaledMousePos(window, location)
+    window.logPopupMouseButton("mouseButton", button, pressed, location, window.mouse.pos)
     if pressed:
       window.mouse.pressed.incl button
       window.clicking.incl button
@@ -1098,6 +1121,13 @@ proc init =
 
       window.mouse.pressed.excl button
       if button in window.clicking:
+        window.logPopupMouseButton(
+          "clickDispatch",
+          button,
+          pressed,
+          location,
+          window.mouse.pos,
+        )
         window.eventsHandler.pushEvent onClick, ClickEvent(
           window: window, button: button, pos: window.mouse.pos,
           double: (nows - window.lastClickTime[button]).inMilliseconds < 200
@@ -1631,7 +1661,8 @@ proc newPopupWindowCocoa*(
   )
   result.initPopupState(parent, placement, grab)
   result.pos = parent.pos + placement.popupRelativePos()
-  result.canBecomeKeyWindow = false
+  # Interactive popups need to accept focus to receive full mouse/key input.
+  result.canBecomeKeyWindow = true
   result.canBecomeMainWindow = false
 
 
