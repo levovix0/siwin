@@ -122,28 +122,6 @@ type
     rejected
     accepted
 
-  PopupAnchor* {.siwin_enum.} = enum
-    paTopLeft
-    paTop
-    paTopRight
-    paLeft
-    paCenter
-    paRight
-    paBottomLeft
-    paBottom
-    paBottomRight
-
-  PopupGravity* {.siwin_enum.} = enum
-    pgTopLeft
-    pgTop
-    pgTopRight
-    pgLeft
-    pgCenter
-    pgRight
-    pgBottomLeft
-    pgBottom
-    pgBottomRight
-
   PopupConstraintAdjustment* {.siwin_enum.} = enum
     pcaSlideX
     pcaSlideY
@@ -161,8 +139,8 @@ type
     anchorRectPos*: IVec2
     anchorRectSize*: IVec2
     size*: IVec2
-    anchor*: PopupAnchor
-    gravity*: PopupGravity
+    anchor*: Edge
+    gravity*: Edge
     offset*: IVec2
     constraintAdjustment*: set[PopupConstraintAdjustment]
     reactive*: bool
@@ -332,29 +310,16 @@ func popupSize*(placement: PopupPlacement): IVec2 =
   else:
     ivec2(1, 1)
 
-func popupAnchorOffset*(anchor: PopupAnchor, size: IVec2): IVec2 =
+func popupAnchorOffset*(anchor: Edge, size: IVec2): IVec2 =
   case anchor
-  of PopupAnchor.paTopLeft: ivec2(0, 0)
-  of PopupAnchor.paTop: ivec2(size.x div 2, 0)
-  of PopupAnchor.paTopRight: ivec2(size.x, 0)
-  of PopupAnchor.paLeft: ivec2(0, size.y div 2)
-  of PopupAnchor.paCenter: ivec2(size.x div 2, size.y div 2)
-  of PopupAnchor.paRight: ivec2(size.x, size.y div 2)
-  of PopupAnchor.paBottomLeft: ivec2(0, size.y)
-  of PopupAnchor.paBottom: ivec2(size.x div 2, size.y)
-  of PopupAnchor.paBottomRight: ivec2(size.x, size.y)
-
-func popupAnchorOffset*(anchor: PopupGravity, size: IVec2): IVec2 =
-  case anchor
-  of PopupGravity.pgTopLeft: ivec2(0, 0)
-  of PopupGravity.pgTop: ivec2(size.x div 2, 0)
-  of PopupGravity.pgTopRight: ivec2(size.x, 0)
-  of PopupGravity.pgLeft: ivec2(0, size.y div 2)
-  of PopupGravity.pgCenter: ivec2(size.x div 2, size.y div 2)
-  of PopupGravity.pgRight: ivec2(size.x, size.y div 2)
-  of PopupGravity.pgBottomLeft: ivec2(0, size.y)
-  of PopupGravity.pgBottom: ivec2(size.x div 2, size.y)
-  of PopupGravity.pgBottomRight: ivec2(size.x, size.y)
+  of Edge.topLeft: ivec2(0, 0)
+  of Edge.top: ivec2(size.x div 2, 0)
+  of Edge.topRight: ivec2(size.x, 0)
+  of Edge.left: ivec2(0, size.y div 2)
+  of Edge.right: ivec2(size.x, size.y div 2)
+  of Edge.bottomLeft: ivec2(0, size.y)
+  of Edge.bottom: ivec2(size.x div 2, size.y)
+  of Edge.bottomRight: ivec2(size.x, size.y)
 
 func popupRelativePos*(placement: PopupPlacement): IVec2 =
   let anchorPoint = placement.anchorRectPos + placement.anchor.popupAnchorOffset(placement.anchorRectSize)
