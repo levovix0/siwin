@@ -794,3 +794,20 @@ proc newSoftwareRenderingWindowWinapi*(
   result.initWindow(size, screen, fullscreen, frameless, transparent)
   result.title = title
   if not resizable: result.resizable = false
+
+proc newPopupWindowWinapi*(
+    parent: WindowWinapi, placement: PopupPlacement, transparent = false, grab = true
+): WindowWinapiSoftwareRendering =
+  if parent == nil:
+    raise ValueError.newException("Popup windows require a parent window")
+  result = newSoftwareRenderingWindowWinapi(
+    size = placement.popupSize(),
+    title = "",
+    screen = defaultScreenWinapi(),
+    resizable = false,
+    fullscreen = false,
+    frameless = true,
+    transparent = transparent,
+  )
+  result.initPopupState(parent, placement, grab)
+  result.pos = parent.pos + placement.popupRelativePos()

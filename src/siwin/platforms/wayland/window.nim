@@ -16,6 +16,7 @@ type
 
   WindowWaylandKind* {.pure.} = enum
     XdgSurface
+    PopupSurface
     LayerSurface
   
   WindowWayland* = ref WindowWaylandObj
@@ -636,6 +637,8 @@ proc resize(window: WindowWayland, size: IVec2) =
       window.toplevelSetMaxSize(window.m_size.x, window.m_size.y)
 
     window.eventsHandler.onResize.pushEvent ResizeEvent(window: window, size: window.size)
+  of WindowWaylandKind.PopupSurface:
+    window.eventsHandler.onResize.pushEvent ResizeEvent(window: window, size: window.size)
 
   of WindowWaylandKind.LayerSurface:
     window.layerShellSurface.set_size(window.m_size.x.uint32, window.m_size.y.uint32)
@@ -681,6 +684,7 @@ proc setFrameless(window: WindowWayland, v: bool) =
 
 
 method `fullscreen=`*(window: WindowWayland, v: bool) =
+  if window.kind != WindowWaylandKind.XdgSurface: return
   if window.m_fullscreen == v: return
   window.m_fullscreen = v
   window.toplevelSetFullscreen(v)
@@ -689,6 +693,7 @@ method `fullscreen=`*(window: WindowWayland, v: bool) =
 method `frameless=`*(window: WindowWayland, v: bool) =
   if window.m_frameless == v: return
   window.m_frameless = v
+  if window.kind != WindowWaylandKind.XdgSurface: return
   if window.m_fullscreen: return  # no system decorations needed for fullscreen windows
   window.setFrameless(v)
 
@@ -827,6 +832,7 @@ method swapBuffers(window: WindowWaylandSoftwareRendering) =
 
 
 method `maximized=`*(window: WindowWayland, v: bool) =
+  if window.kind != WindowWaylandKind.XdgSurface: return
   if window.m_maximized == v: return
   if window.fullscreen:
     window.fullscreen = false
@@ -1018,7 +1024,7 @@ proc initSeatEvents*(globals: SiwinGlobalsWayland) =
         globals.associatedWindows_queueRemove_insteadOf_removingInstantly = false
         globals.removeQueuedAssociatedWindows()
 
-      for window in globals.associatedWindows.values:
+      for window in globals.associatedWindows.values.toSeq():
         let window = window.WindowWayland
         if (
           (window.mouse.pressed.len == 0) and
@@ -1049,7 +1055,7 @@ proc initSeatEvents*(globals: SiwinGlobalsWayland) =
         globals.associatedWindows_queueRemove_insteadOf_removingInstantly = false
         globals.removeQueuedAssociatedWindows()
       
-      for window in globals.associatedWindows.values:
+      for window in globals.associatedWindows.values.toSeq():
         let window = window.WindowWayland
         if (
           (state != `WlPointer / Button_state`.released or button notin window.mouse.pressed) and
@@ -1493,6 +1499,24 @@ proc setupWindow(window: WindowWayland, fullscreen, frameless, transparent: bool
       if window.globals.plasmaShell != nil:
         window.plasmaSurface = window.globals.plasmaShell.get_surface(window.surface)
 
+  of PopupSurface:
+    window.xdgSurface = window.globals.xdgWmBase.get_xdg_surface(window.surface)
+    window.xdgToplevel = window.xdgSurface.get_toplevel
+
+    window.xdgSurface.onConfigure:
+      window.xdgSurface.ack_configure(serial)
+      redraw window
+
+    window.setupOpaqueRegion(size, transparent)
+    window.m_frameless = true
+
+    window.xdgToplevel.onClose:
+      window.notifyPopupDone(PopupDismissReason.pdrCompositorDismissed)
+      window.m_closed = true
+
+    window.xdgToplevel.onConfigure:
+      window.resize(ivec2(width, height))
+
   of LayerSurface:
     window.layerShellSurface = window.globals.layerShell.get_layer_surface(
       window.surface,
@@ -1878,5 +1902,29 @@ proc newSoftwareRenderingWindowWayland*(
   result.initSoftwareRenderingWindow(size, screen, fullscreen, frameless, transparent, (if class == "": title else: class))
   result.title = title
   if not resizable: result.resizable = false
+
+proc newPopupWindowWayland*(
+    globals: SiwinGlobalsWayland,
+    parent: WindowWayland,
+    placement: PopupPlacement,
+    transparent = false,
+    grab = true,
+): WindowWaylandSoftwareRendering =
+  if parent == nil:
+    raise ValueError.newException("Popup windows require a parent window")
+  new result
+  result.globals = globals
+  result.kind = WindowWaylandKind.PopupSurface
+  result.initSoftwareRenderingWindow(
+    placement.popupSize(),
+    globals.defaultScreenWayland(),
+    fullscreen = false,
+    frameless = true,
+    transparent = transparent,
+    class = "",
+  )
+  result.initPopupState(parent, placement, grab)
+  result.pos = parent.pos + placement.popupRelativePos()
+  result.visible = true
 
 export Layer, LayerEdge, LayerInteractivityMode

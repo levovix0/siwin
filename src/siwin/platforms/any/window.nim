@@ -122,6 +122,51 @@ type
     rejected
     accepted
 
+  PopupAnchor* {.siwin_enum.} = enum
+    paTopLeft
+    paTop
+    paTopRight
+    paLeft
+    paCenter
+    paRight
+    paBottomLeft
+    paBottom
+    paBottomRight
+
+  PopupGravity* {.siwin_enum.} = enum
+    pgTopLeft
+    pgTop
+    pgTopRight
+    pgLeft
+    pgCenter
+    pgRight
+    pgBottomLeft
+    pgBottom
+    pgBottomRight
+
+  PopupConstraintAdjustment* {.siwin_enum.} = enum
+    pcaSlideX
+    pcaSlideY
+    pcaFlipX
+    pcaFlipY
+    pcaResizeX
+    pcaResizeY
+
+  PopupDismissReason* {.siwin_enum.} = enum
+    pdrClientClosed
+    pdrCompositorDismissed
+    pdrParentClosed
+
+  PopupPlacement* = object
+    anchorRectPos*: IVec2
+    anchorRectSize*: IVec2
+    size*: IVec2
+    anchor*: PopupAnchor
+    gravity*: PopupGravity
+    offset*: IVec2
+    constraintAdjustment*: set[PopupConstraintAdjustment]
+    reactive*: bool
+
 
   AnyWindowEvent* = object of RootObj
     window*: Window
@@ -191,6 +236,9 @@ type
     value*: bool
     kind*: StateBoolChangedEventKind
     isExternal*: bool  ## changed by user via compositor (server-side change)
+
+  PopupEvent* = object of AnyWindowEvent
+    reason*: PopupDismissReason
   
 
   DropEvent* = object of AnyWindowEvent
@@ -219,6 +267,8 @@ type
       ## binary state of focus/fullscreen/maximized/frameless changed
       ## fullscreen and maximized changes are sent before ResizeEvent
 
+    onPopupDone*:      proc(e: PopupEvent)  ## popup was dismissed or explicitly closed
+
     onDrop*:         proc(e: DropEvent)  ## drag&drop clipboard content is beeng pasted to this window
 
 
@@ -240,6 +290,11 @@ type
     m_frameless: bool
     m_cursor: Cursor
     m_separateTouch: bool
+    m_isPopup: bool
+    m_popupGrab: bool
+    m_popupDismissed: bool
+    m_popupParent: Window
+    m_popupPlacement: PopupPlacement
     
     m_size: IVec2
     m_pos: IVec2
@@ -267,6 +322,44 @@ method height*(screen: Screen): int32 {.base.} = discard
 
 proc size*(screen: Screen): IVec2 = ivec2(screen.width, screen.height)
 
+type PopupWindow* = Window
+
+func popupSize*(placement: PopupPlacement): IVec2 =
+  if placement.size.x > 0 and placement.size.y > 0:
+    placement.size
+  elif placement.anchorRectSize.x > 0 and placement.anchorRectSize.y > 0:
+    placement.anchorRectSize
+  else:
+    ivec2(1, 1)
+
+func popupAnchorOffset*(anchor: PopupAnchor, size: IVec2): IVec2 =
+  case anchor
+  of PopupAnchor.paTopLeft: ivec2(0, 0)
+  of PopupAnchor.paTop: ivec2(size.x div 2, 0)
+  of PopupAnchor.paTopRight: ivec2(size.x, 0)
+  of PopupAnchor.paLeft: ivec2(0, size.y div 2)
+  of PopupAnchor.paCenter: ivec2(size.x div 2, size.y div 2)
+  of PopupAnchor.paRight: ivec2(size.x, size.y div 2)
+  of PopupAnchor.paBottomLeft: ivec2(0, size.y)
+  of PopupAnchor.paBottom: ivec2(size.x div 2, size.y)
+  of PopupAnchor.paBottomRight: ivec2(size.x, size.y)
+
+func popupAnchorOffset*(anchor: PopupGravity, size: IVec2): IVec2 =
+  case anchor
+  of PopupGravity.pgTopLeft: ivec2(0, 0)
+  of PopupGravity.pgTop: ivec2(size.x div 2, 0)
+  of PopupGravity.pgTopRight: ivec2(size.x, 0)
+  of PopupGravity.pgLeft: ivec2(0, size.y div 2)
+  of PopupGravity.pgCenter: ivec2(size.x div 2, size.y div 2)
+  of PopupGravity.pgRight: ivec2(size.x, size.y div 2)
+  of PopupGravity.pgBottomLeft: ivec2(0, size.y)
+  of PopupGravity.pgBottom: ivec2(size.x div 2, size.y)
+  of PopupGravity.pgBottomRight: ivec2(size.x, size.y)
+
+func popupRelativePos*(placement: PopupPlacement): IVec2 =
+  let anchorPoint = placement.anchorRectPos + placement.anchor.popupAnchorOffset(placement.anchorRectSize)
+  anchorPoint - placement.gravity.popupAnchorOffset(placement.popupSize()) + placement.offset
+
 
 proc closed*(window: Window): bool = window.m_closed
 proc opened*(window: Window): bool = not window.closed
@@ -280,6 +373,8 @@ proc frameless*(window: Window): bool = window.m_frameless
 proc cursor*(window: Window): Cursor = window.m_cursor
 proc separateTouch*(window: Window): bool = window.m_separateTouch
   ## enable/disable handling touch events separately from mouse events
+proc isPopup*(window: Window): bool = window.m_isPopup
+proc popupGrab*(window: Window): bool = window.m_popupGrab
 
 method reportedSize*(window: Window): IVec2 {.base.} = window.m_size
   ## Size reported to API users/events (backing pixels on HiDPI platforms).
@@ -295,6 +390,24 @@ proc minSize*(window: Window): IVec2 = window.m_minSize
 proc maxSize*(window: Window): IVec2 = window.m_maxSize
 
 proc focused*(window: Window): bool = window.m_focused
+method parentWindow*(window: Window): Window {.base.} = window.m_popupParent
+method placement*(window: Window): PopupPlacement {.base.} = window.m_popupPlacement
+proc popupOpen*(window: Window): bool = window.opened and window.visible
+
+proc initPopupState*(window, parent: Window, placement: PopupPlacement, grab: bool) =
+  window.m_isPopup = true
+  window.m_popupGrab = grab
+  window.m_popupDismissed = false
+  window.m_popupParent = parent
+  window.m_popupPlacement = placement
+  window.m_size = placement.popupSize()
+
+proc notifyPopupDone*(window: Window, reason: PopupDismissReason) =
+  if not window.m_isPopup or window.m_popupDismissed:
+    return
+  window.m_popupDismissed = true
+  if window.eventsHandler.onPopupDone != nil:
+    window.eventsHandler.onPopupDone(PopupEvent(window: window, reason: reason))
 
 method uiScale*(window: Window): float32 {.base.} = 1'f32
   ## UI scale factor (device pixels per logical point).
@@ -315,6 +428,12 @@ method `cursor=`*(window: Window, v: Cursor) {.base.} = discard
 
 method `separateTouch=`*(window: Window, v: bool) {.base.} = discard
   ## enable/disable handling touch events separately from mouse events
+
+method `placement=`*(window: Window, v: PopupPlacement) {.base.} =
+  window.m_popupPlacement = v
+
+method reposition*(window: Window, v: PopupPlacement) {.base.} =
+  window.placement = v
 
 
 method `size=`*(window: Window, v: IVec2) {.base.} = discard

@@ -1615,6 +1615,25 @@ proc newSoftwareRenderingWindowCocoa*(
   result.title = title
   if not resizable: result.resizable = false
 
+proc newPopupWindowCocoa*(
+    parent: WindowCocoa, placement: PopupPlacement, transparent = false, grab = true
+): WindowCocoaSoftwareRendering =
+  if parent == nil:
+    raise ValueError.newException("Popup windows require a parent window")
+  result = newSoftwareRenderingWindowCocoa(
+    size = placement.popupSize(),
+    title = "",
+    screen = defaultScreenCocoa(),
+    resizable = false,
+    fullscreen = false,
+    frameless = true,
+    transparent = transparent,
+  )
+  result.initPopupState(parent, placement, grab)
+  result.pos = parent.pos + placement.popupRelativePos()
+  result.canBecomeKeyWindow = false
+  result.canBecomeMainWindow = false
+
 
 proc newOpenglWindowCocoa*(
   size = ivec2(1280, 720),

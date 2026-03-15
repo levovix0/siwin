@@ -1525,5 +1525,28 @@ proc newSoftwareRenderingWindowX11*(
   result.title = title
   if not resizable: result.resizable = false
 
+proc newPopupWindowX11*(
+    globals: SiwinGlobalsX11,
+    parent: WindowX11,
+    placement: PopupPlacement,
+    transparent = false,
+    grab = true,
+): WindowX11SoftwareRendering =
+  if parent == nil:
+    raise ValueError.newException("Popup windows require a parent window")
+  result = newSoftwareRenderingWindowX11(
+    globals = globals,
+    size = placement.popupSize(),
+    title = "",
+    screen = globals.defaultScreenX11(),
+    resizable = false,
+    fullscreen = false,
+    frameless = true,
+    transparent = transparent,
+    class = "",
+  )
+  result.initPopupState(parent, placement, grab)
+  result.pos = parent.pos + placement.popupRelativePos()
+
 proc setSoftwarePresentEnabled*(window: WindowX11SoftwareRendering, enabled: bool) =
   window.softwarePresentEnabled = enabled
