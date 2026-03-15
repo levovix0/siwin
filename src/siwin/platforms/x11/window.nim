@@ -303,6 +303,22 @@ proc geometry(globals: SiwinGlobalsX11, xwin: x.Window): tuple[root: x.Window; p
   discard globals.display.XGetGeometry(xwin, root.addr, x.addr, y.addr, w.addr, h.addr, borderW.addr, depth.addr)
   (root, ivec2(x.int32, y.int32), ivec2(w.int32, h.int32), borderW.int, depth.int)
 
+proc absolutePos(globals: SiwinGlobalsX11, xwin: x.Window): IVec2 =
+  let geom = globals.geometry(xwin)
+  var
+    child: x.Window
+    rootX, rootY: cint
+  discard globals.display.XTranslateCoordinates(
+    xwin,
+    geom.root,
+    0,
+    0,
+    rootX.addr,
+    rootY.addr,
+    child.addr,
+  )
+  ivec2(rootX.int32, rootY.int32)
+
 proc asXImage(globals: SiwinGlobalsX11, data: pointer, size: IVec2, transparent = false): XImage = XImage(
   width: cint size.x,
   height: cint size.y,
@@ -568,7 +584,22 @@ method `size=`*(window: WindowX11, v: IVec2) =
 
 method `pos=`*(window: WindowX11, v: IVec2) =
   if window.m_fullscreen: return
+  window.m_pos = v
   discard window.globals.display.XMoveWindow(window.handle, v.x.cint, v.y.cint)
+
+method reposition*(window: WindowX11, v: PopupPlacement) =
+  procCall window.Window.reposition(v)
+  if not window.isPopup:
+    return
+
+  let parent = window.parentWindow().WindowX11
+  if parent == nil:
+    return
+
+  let targetSize = v.popupSize()
+  if window.m_size != targetSize:
+    window.size = targetSize
+  window.pos = parent.pos + v.popupRelativePos()
 
 
 proc setX11Cursor(window: WindowX11, v: Cursor) =
@@ -1023,7 +1054,7 @@ method firstStep*(window: WindowX11, makeVisible = true) =
   if makeVisible:
     window.visible = true
 
-  window.m_pos = window.globals.geometry(window.handle).pos
+  window.m_pos = window.globals.absolutePos(window.handle)
   window.mouse.pos = (window.globals.cursor().pos - window.m_pos).vec2
   
   if window of WindowX11SoftwareRendering:
@@ -1191,8 +1222,9 @@ method step*(window: WindowX11) =
           window.WindowX11SoftwareRendering.resizePixelBuffer(window.m_size)
         window.eventsHandler.onResize.pushEvent ResizeEvent(window: window, size: window.m_size, initial: false)
 
-      if ev.xconfigure.x.int != window.m_pos.x or ev.xconfigure.y.int != window.m_pos.y:
-        window.m_pos = ivec2(ev.xconfigure.x.int32, ev.xconfigure.y.int32)
+      let absolutePos = window.globals.absolutePos(window.handle)
+      if absolutePos != window.m_pos:
+        window.m_pos = absolutePos
         window.mouse.pos = (window.globals.cursor().pos - window.m_pos).vec2
         window.eventsHandler.onWindowMove.pushEvent WindowMoveEvent(window: window, pos: window.m_pos)
       
@@ -1546,6 +1578,7 @@ proc newPopupWindowX11*(
     class = "",
   )
   result.initPopupState(parent, placement, grab)
+  discard globals.display.XSetTransientForHint(result.handle, parent.handle)
   result.pos = parent.pos + placement.popupRelativePos()
 
 proc setSoftwarePresentEnabled*(window: WindowX11SoftwareRendering, enabled: bool) =
