@@ -1577,8 +1577,16 @@ proc newPopupWindowX11*(
     transparent = transparent,
     class = "",
   )
+  var attrs = XSetWindowAttributes(
+    override_redirect: 1,
+    save_under: 1,
+  )
+  discard globals.display.XChangeWindowAttributes(
+    result.handle,
+    CWOverrideRedirect or CWSaveUnder,
+    attrs.addr,
+  )
   result.initPopupState(parent, placement, grab)
-  discard globals.display.XSetTransientForHint(result.handle, parent.handle)
   result.pos = parent.pos + placement.popupRelativePos()
 
 proc setSoftwarePresentEnabled*(window: WindowX11SoftwareRendering, enabled: bool) =
