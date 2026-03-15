@@ -25,6 +25,7 @@ type
     surface: Wl_surface
     xdgSurface: Xdg_surface
     xdgToplevel: Xdg_toplevel
+    xdgPopup: Xdg_popup
 
     serverDecoration: Zxdg_toplevel_decoration_v1
       # will be nil if compositor doesn't support this protocol
@@ -61,6 +62,7 @@ type
     lastKeyRepeatedTime: Time
     bufferScaleFactor: int32
     fractionalScaleFactor: float32
+    popupRepositionToken: uint32
     viewport: Wp_viewport
     fractionalScaleObj: Wp_fractional_scale_v1
     toplevelIcon: Xdg_toplevel_icon_v1
@@ -319,6 +321,7 @@ method release(window: WindowWayland) {.base, raises: [].} =
     clearToplevelIconResources(window)
     destroy window.idleInhibitor, destroy
     destroy window.layerShellSurface, destroy
+    destroy window.xdgPopup, destroy
     destroy window.fractionalScaleObj, destroy
     destroy window.viewport, destroy
     destroy window.plasmaSurface, destroy
@@ -622,6 +625,69 @@ proc setupOpaqueRegion(window: WindowWayland, size: IVec2, transparent: bool) =
     window.surface.set_opaque_region(opaqueRegion)
     destroy opaqueRegion
 
+proc toXdgPositionerAnchor(edge: Edge): `Xdg_positioner / Anchor` =
+  case edge
+  of Edge.topLeft: `Xdg_positioner / Anchor`.top_left
+  of Edge.top: `Xdg_positioner / Anchor`.top
+  of Edge.topRight: `Xdg_positioner / Anchor`.top_right
+  of Edge.left: `Xdg_positioner / Anchor`.left
+  of Edge.right: `Xdg_positioner / Anchor`.right
+  of Edge.bottomLeft: `Xdg_positioner / Anchor`.bottom_left
+  of Edge.bottom: `Xdg_positioner / Anchor`.bottom
+  of Edge.bottomRight: `Xdg_positioner / Anchor`.bottom_right
+
+proc toXdgPositionerGravity(edge: Edge): `Xdg_positioner / Gravity` =
+  case edge
+  of Edge.topLeft: `Xdg_positioner / Gravity`.top_left
+  of Edge.top: `Xdg_positioner / Gravity`.top
+  of Edge.topRight: `Xdg_positioner / Gravity`.top_right
+  of Edge.left: `Xdg_positioner / Gravity`.left
+  of Edge.right: `Xdg_positioner / Gravity`.right
+  of Edge.bottomLeft: `Xdg_positioner / Gravity`.bottom_left
+  of Edge.bottom: `Xdg_positioner / Gravity`.bottom
+  of Edge.bottomRight: `Xdg_positioner / Gravity`.bottom_right
+
+proc toXdgConstraintAdjustment(
+  adjustments: set[PopupConstraintAdjustment]
+): uint32 =
+  for adjustment in adjustments:
+    result = result or (
+      case adjustment
+      of PopupConstraintAdjustment.pcaSlideX:
+        `Xdg_positioner / Constraint_adjustment`.slide_x.uint32
+      of PopupConstraintAdjustment.pcaSlideY:
+        `Xdg_positioner / Constraint_adjustment`.slide_y.uint32
+      of PopupConstraintAdjustment.pcaFlipX:
+        `Xdg_positioner / Constraint_adjustment`.flip_x.uint32
+      of PopupConstraintAdjustment.pcaFlipY:
+        `Xdg_positioner / Constraint_adjustment`.flip_y.uint32
+      of PopupConstraintAdjustment.pcaResizeX:
+        `Xdg_positioner / Constraint_adjustment`.resize_x.uint32
+      of PopupConstraintAdjustment.pcaResizeY:
+        `Xdg_positioner / Constraint_adjustment`.resize_y.uint32
+    )
+
+proc createPopupPositioner(window: WindowWayland): Xdg_positioner =
+  let placement = window.m_popupPlacement
+  let popupSize = placement.popupSize()
+  result = window.globals.xdgWmBase.create_positioner()
+  result.set_size(popupSize.x, popupSize.y)
+  result.set_anchor_rect(
+    placement.anchorRectPos.x,
+    placement.anchorRectPos.y,
+    max(1'i32, placement.anchorRectSize.x),
+    max(1'i32, placement.anchorRectSize.y),
+  )
+  result.set_anchor(placement.anchor.toXdgPositionerAnchor())
+  result.set_gravity(placement.gravity.toXdgPositionerGravity())
+  result.set_constraint_adjustment(placement.constraintAdjustment.toXdgConstraintAdjustment())
+  result.set_offset(placement.offset.x, placement.offset.y)
+  if placement.reactive:
+    result.set_reactive()
+  let parent = window.parentWindow().WindowWayland
+  if parent != nil:
+    result.set_parent_size(parent.m_size.x, parent.m_size.y)
+
 
 proc resize(window: WindowWayland, size: IVec2) =
   if size.x <= 0 or size.y <= 0:
@@ -638,6 +704,8 @@ proc resize(window: WindowWayland, size: IVec2) =
 
     window.eventsHandler.onResize.pushEvent ResizeEvent(window: window, size: window.size)
   of WindowWaylandKind.PopupSurface:
+    if window.xdgSurface != nil:
+      window.xdgSurface.set_window_geometry(0, 0, window.m_size.x, window.m_size.y)
     window.eventsHandler.onResize.pushEvent ResizeEvent(window: window, size: window.size)
 
   of WindowWaylandKind.LayerSurface:
@@ -732,6 +800,18 @@ method `pos=`*(window: WindowWayland, v: IVec2) =
 method `cursor=`*(window: WindowWayland, v: Cursor) =
   if v.kind == builtin and window.m_cursor.kind == builtin and v.builtin == window.m_cursor.builtin: return
   ## todo
+
+method reposition*(window: WindowWayland, v: PopupPlacement) =
+  procCall window.Window.reposition(v)
+  if window.kind != WindowWaylandKind.PopupSurface or window.xdgPopup == nil:
+    return
+
+  let positioner = window.createPopupPositioner()
+  defer: destroy positioner
+
+  inc window.popupRepositionToken
+  window.xdgPopup.reposition(positioner, window.popupRepositionToken)
+  redraw window
 
 proc applyToplevelIcon(window: WindowWayland, icon: Xdg_toplevel_icon_v1) =
   let manager = window.globals.xdgToplevelIconManager
@@ -1500,8 +1580,16 @@ proc setupWindow(window: WindowWayland, fullscreen, frameless, transparent: bool
         window.plasmaSurface = window.globals.plasmaShell.get_surface(window.surface)
 
   of PopupSurface:
+    let parent = window.parentWindow().WindowWayland
+    if parent == nil:
+      raise ValueError.newException("Wayland popup windows require a parent window")
+    if parent.xdgSurface == nil:
+      raise ValueError.newException("Wayland popup parent must expose an xdg_surface")
+
     window.xdgSurface = window.globals.xdgWmBase.get_xdg_surface(window.surface)
-    window.xdgToplevel = window.xdgSurface.get_toplevel
+    let positioner = window.createPopupPositioner()
+    window.xdgPopup = window.xdgSurface.get_popup(parent.xdgSurface, positioner)
+    destroy positioner
 
     window.xdgSurface.onConfigure:
       window.xdgSurface.ack_configure(serial)
@@ -1510,11 +1598,15 @@ proc setupWindow(window: WindowWayland, fullscreen, frameless, transparent: bool
     window.setupOpaqueRegion(size, transparent)
     window.m_frameless = true
 
-    window.xdgToplevel.onClose:
+    if window.m_popupGrab and window.globals.seat != nil and window.globals.lastSeatEventSerial != 0:
+      window.xdgPopup.grab(window.globals.seat, window.globals.lastSeatEventSerial)
+
+    window.xdgPopup.onPopup_done:
       window.notifyPopupDone(PopupDismissReason.pdrCompositorDismissed)
       window.m_closed = true
 
-    window.xdgToplevel.onConfigure:
+    window.xdgPopup.onConfigure:
+      window.m_pos = parent.pos + ivec2(x, y)
       window.resize(ivec2(width, height))
 
   of LayerSurface:
@@ -1915,15 +2007,21 @@ proc newPopupWindowWayland*(
   new result
   result.globals = globals
   result.kind = WindowWaylandKind.PopupSurface
-  result.initSoftwareRenderingWindow(
-    placement.popupSize(),
-    globals.defaultScreenWayland(),
+  result.basicInitWindow(placement.popupSize(), globals.defaultScreenWayland())
+  result.initPopupState(parent, placement, grab)
+  result.setupWindow(
     fullscreen = false,
     frameless = true,
     transparent = transparent,
+    size = placement.popupSize(),
     class = "",
   )
-  result.initPopupState(parent, placement, grab)
+  result.buffer = result.globals.create(
+    result.globals.shm,
+    result.bufferSize(placement.popupSize()),
+    (if transparent: argb8888 else: xrgb8888),
+    bufferCount = 2,
+  )
   result.pos = parent.pos + placement.popupRelativePos()
   result.visible = true
 
