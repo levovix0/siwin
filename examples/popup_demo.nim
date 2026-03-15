@@ -341,11 +341,6 @@ window.eventsHandler = WindowEventsHandler(
   ,
   onClose: proc(e: CloseEvent) =
     closePopup(),
-  onTick: proc(e: TickEvent) =
-    redraw e.window
-    if popup != nil and popup.opened:
-      redraw popup
-  ,
   onKey: proc(e: KeyEvent) =
     if e.pressed and not e.generated and e.key == Key.escape:
       if popup != nil:
