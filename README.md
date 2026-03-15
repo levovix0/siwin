@@ -287,6 +287,8 @@ run window, WindowEventsHandler(
 )
 ```
 
+For a complete example with a custom title region, resize borders and a software-rendered close button, see [`examples/frameless_demo.nim`](examples/frameless_demo.nim).
+
 <h2 align="center">all methods and events</h2>
 
 see [siwin/platforms/any/window](https://github.com/levovix0/siwin/blob/master/src/siwin/platforms/any/window.nim)

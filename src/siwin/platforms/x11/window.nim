@@ -386,6 +386,13 @@ proc `=destroy`(x: WindowX11SoftwareRenderingObj) {.siwin_destructor.} =
 proc pushEvent[T](event: proc(e: T), args: T) =
   if event != nil: event(args)
 
+proc popupWindowPos(window: WindowX11; placement: PopupPlacement): IVec2 =
+  let parent = window.parentWindow()
+  if parent == nil:
+    placement.popupRelativePos()
+  else:
+    parent.pos + placement.popupRelativePos()
+
 proc resizePixelBuffer(window: WindowX11SoftwareRendering, size: IVec2) =
   window.pixels = window.pixels.realloc(size.x * size.y * Color32bit.sizeof)
 
@@ -499,6 +506,21 @@ proc initSoftwareRenderingWindow(
   window.gc.gc = window.globals.display.XCreateGC(window.handle, GCForeground or GCBackground, window.gc.gcv.addr)
 
 
+proc initPopupWindow(
+  window: WindowX11SoftwareRendering,
+  parent: WindowX11,
+  placement: PopupPlacement,
+  transparent: bool,
+  grab: bool,
+) =
+  let screen = parent.globals.screenX11(parent.screen.int32)
+  window.initPopupState(parent, placement, grab)
+  window.initSoftwareRenderingWindow(placement.popupSize(), screen, false, true, transparent, "")
+  discard window.globals.display.XSetTransientForHint(window.handle, parent.handle)
+  window.m_resizable = false
+  window.pos = window.popupWindowPos(placement)
+
+
 method `title=`*(window: WindowX11, v: string) =
   discard window.globals.display.XChangeProperty(
     window.handle, window.globals.atoms.netWmName, window.globals.atoms.utf8String, 8,
@@ -509,6 +531,11 @@ method `title=`*(window: WindowX11, v: string) =
     PropModeReplace, cast[PCUchar]((if v.len != 0: v[0].addr else: nil)), v.len.cint
   )
   window.globals.display.Xutf8SetWMProperties(window.handle, v, v, nil, 0, nil, nil, nil)
+
+
+method close*(window: WindowX11) =
+  window.notifyPopupDone(PopupDismissReason.pdrClientClosed)
+  procCall window.Window.close()
 
 
 method `fullscreen=`*(window: WindowX11, v: bool) =
@@ -561,14 +588,36 @@ method `frameless=`*(window: WindowX11, v: bool) =
 
 
 method `size=`*(window: WindowX11, v: IVec2) =
+  if window.isPopup:
+    var placement = window.placement
+    placement.size = v
+    window.placement = placement
+    return
   if window.fullscreen:
     window.fullscreen = false
   
   discard window.globals.display.XResizeWindow(window.handle, v.x.cuint, v.y.cuint)
 
 method `pos=`*(window: WindowX11, v: IVec2) =
+  if window.isPopup:
+    return
   if window.m_fullscreen: return
   discard window.globals.display.XMoveWindow(window.handle, v.x.cint, v.y.cint)
+
+
+method `placement=`*(window: WindowX11, v: PopupPlacement) =
+  window.m_popupPlacement = v
+  let size = v.popupSize()
+  window.m_size = size
+  if window.handle != 0:
+    discard window.globals.display.XResizeWindow(window.handle, size.x.cuint, size.y.cuint)
+    let pos = window.popupWindowPos(v)
+    window.m_pos = pos
+    discard window.globals.display.XMoveWindow(window.handle, pos.x.cint, pos.y.cint)
+
+
+method reposition*(window: WindowX11, v: PopupPlacement) =
+  window.placement = v
 
 
 proc setX11Cursor(window: WindowX11, v: Cursor) =
@@ -1524,6 +1573,22 @@ proc newSoftwareRenderingWindowX11*(
   )
   result.title = title
   if not resizable: result.resizable = false
+
+
+proc newPopupWindowX11*(
+  globals: SiwinGlobalsX11,
+  parent: WindowX11,
+  placement: PopupPlacement,
+  transparent = false,
+  grab = true,
+): WindowX11SoftwareRendering =
+  if parent == nil:
+    raise ValueError.newException("Popup windows require a parent window")
+
+  new result
+  result.softwarePresentEnabled = true
+  result.globals = globals
+  result.initPopupWindow(parent, placement, transparent, grab)
 
 proc setSoftwarePresentEnabled*(window: WindowX11SoftwareRendering, enabled: bool) =
   window.softwarePresentEnabled = enabled
