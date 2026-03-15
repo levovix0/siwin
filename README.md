@@ -190,6 +190,30 @@ run siwinGlobals.newSoftwareRenderingWindow(title="pixie example"), WindowEvents
 )
 ```
 
+<h2 align="center">popup windows</h2>
+
+This api adds popup windows. On Wayland these are required to do popups, but on other platforms these will just be frameless windows.
+
+```nim
+import siwin, vmath
+
+let globals = newSiwinGlobals()
+let parent = globals.newSoftwareRenderingWindow()
+
+let placement = PopupPlacement(
+  anchorRectPos: ivec2(100, 100),
+  anchorRectSize: ivec2(120, 40),
+  size: ivec2(320, 220),
+  anchor: Edge.bottomLeft,
+  gravity: Edge.topLeft,
+  offset: ivec2(0, 8),
+  constraintAdjustment: {PopupConstraintAdjustment.pcaSlideX, PopupConstraintAdjustment.pcaFlipY},
+  reactive: true,
+)
+
+let popup = globals.newPopupWindow(parent, placement)
+```
+
 <h2 align="center">clipboard</h2>
 
 ```nim
