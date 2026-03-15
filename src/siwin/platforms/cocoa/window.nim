@@ -818,10 +818,24 @@ method `pos=`*(window: WindowCocoa, v: IVec2) =
     true
   )
 
-proc contentPos*(window: WindowCocoa): IVec2 =
-  result = window.m_pos
+proc framePos*(window: WindowCocoa): IVec2 =
   if window == nil or window.handle == nil:
-    return
+    return window.m_pos
+
+  let frame = window.handle.frame
+  let screen = window.handle.screen
+  result = window.m_pos
+  if screen != nil:
+    let screenFrame = screen.frame
+    result = vec2(
+      frame.origin.x,
+      screenFrame.size.height - frame.origin.y - frame.size.height - 1
+    ).ivec2
+
+proc contentPos*(window: WindowCocoa): IVec2 =
+  let framePos = window.framePos()
+  if window == nil or window.handle == nil:
+    return framePos
 
   let frame = window.handle.frame
   let contentRect = window.handle.contentRectForFrameRect(frame)
@@ -830,9 +844,14 @@ proc contentPos*(window: WindowCocoa): IVec2 =
     frame.size.height -
     ((contentRect.origin.y - frame.origin.y) + contentRect.size.height)
   result = ivec2(
-    window.m_pos.x + leftInset.int32,
-    window.m_pos.y + topInset.int32,
+    framePos.x + leftInset.int32,
+    framePos.y + topInset.int32,
   )
+
+proc syncPosFromHandle(window: WindowCocoa) =
+  if window == nil or window.handle == nil:
+    return
+  window.m_pos = window.framePos()
 
 proc toPoints(distance: int32, scale: float32): int32 =
   if scale <= 0'f32:
@@ -1249,13 +1268,7 @@ proc init =
       addMethod "windowDidMove:", proc(self: Id, cmd: Sel, notification: NsNotification): Id {.cdecl.} =
         getWindow(self)
         autoreleasepool:
-          let
-            windowFrame = window.handle.frame
-            screenFrame = window.handle.screen.frame
-          window.m_pos = vec2(
-            windowFrame.origin.x,
-            screenFrame.size.height - windowFrame.origin.y - windowFrame.size.height - 1
-          ).ivec2
+          window.syncPosFromHandle()
         window.eventsHandler.pushEvent onWindowMove, WindowMoveEvent(window: window, pos: window.m_pos)
 
       addMethod "canBecomeKeyWindow", proc(self: Id, cmd: Sel): bool {.cdecl.} =
@@ -1641,6 +1654,7 @@ method firstStep*(window: WindowCocoa, makeVisible = true) =
         if event == nil:
           break
         NSApp.sendEvent(event)
+    window.syncPosFromHandle()
     # Ensure all visible windows are present in the initial z-order. Without
     # this, some macOS setups only show the most recently shown window until
     # the user cycles windows manually.

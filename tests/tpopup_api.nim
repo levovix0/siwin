@@ -44,6 +44,19 @@ suite "siwin popup api":
     check placement.popupRelativePos() == ivec2(8, -9)
 
   when defined(macosx):
+    test "cocoa firstStep syncs initial window position":
+      let globals = newSiwinGlobals(Platform.cocoa)
+      let parent = globals.newSoftwareRenderingWindow(
+        size = ivec2(300, 200),
+        title = "popup parent initial pos",
+      )
+      parent.firstStep(makeVisible = true)
+      parent.step()
+
+      check parent.pos == parent.WindowCocoa.framePos()
+
+      close parent
+
     test "cocoa popup placement uses parent content position":
       let globals = newSiwinGlobals(Platform.cocoa)
       let parent = globals.newSoftwareRenderingWindow(
