@@ -400,6 +400,23 @@ proc toLogicalLength(window: WindowWayland; backing: float32): float32 {.inline.
 proc toLogicalLength(window: WindowWayland; backing: int32): int32 {.inline.} =
   max(1'i32, (window.toLogicalLength(backing.float32) + 0.5'f32).int32)
 
+proc toLogicalCoord(window: WindowWayland; backing: int32): int32 {.inline.} =
+  if window == nil:
+    backing
+  else:
+    round(window.toLogicalLength(backing.float32)).int32
+
+proc toLogicalSize(window: WindowWayland; backing: int32): int32 {.inline.} =
+  if backing <= 0:
+    backing
+  elif window == nil:
+    backing
+  else:
+    max(1'i32, round(window.toLogicalLength(backing.float32)).int32)
+
+proc toLogicalSize(window: WindowWayland; backing: IVec2): IVec2 {.inline.} =
+  ivec2(window.toLogicalSize(backing.x), window.toLogicalSize(backing.y))
+
 proc reportedPointerPos(window: WindowWayland, surfaceX, surfaceY: float32): Vec2 {.inline.} =
   let scale = window.effectiveUiScale()
   if scale <= 1'f32:
@@ -669,22 +686,25 @@ proc toXdgConstraintAdjustment(
 
 proc createPopupPositioner(window: WindowWayland): Xdg_positioner =
   let placement = window.m_popupPlacement
-  let popupSize = placement.popupSize()
+  let parent = window.parentWindow().WindowWayland
+  let popupSize = parent.toLogicalSize(placement.popupSize())
   result = window.globals.xdgWmBase.create_positioner()
   result.set_size(popupSize.x, popupSize.y)
   result.set_anchor_rect(
-    placement.anchorRectPos.x,
-    placement.anchorRectPos.y,
-    max(1'i32, placement.anchorRectSize.x),
-    max(1'i32, placement.anchorRectSize.y),
+    parent.toLogicalCoord(placement.anchorRectPos.x),
+    parent.toLogicalCoord(placement.anchorRectPos.y),
+    max(1'i32, parent.toLogicalSize(placement.anchorRectSize.x)),
+    max(1'i32, parent.toLogicalSize(placement.anchorRectSize.y)),
   )
   result.set_anchor(placement.anchor.toXdgPositionerAnchor())
   result.set_gravity(placement.gravity.toXdgPositionerGravity())
   result.set_constraint_adjustment(placement.constraintAdjustment.toXdgConstraintAdjustment())
-  result.set_offset(placement.offset.x, placement.offset.y)
+  result.set_offset(
+    parent.toLogicalCoord(placement.offset.x),
+    parent.toLogicalCoord(placement.offset.y),
+  )
   if placement.reactive:
     result.set_reactive()
-  let parent = window.parentWindow().WindowWayland
   if parent != nil:
     result.set_parent_size(parent.m_size.x, parent.m_size.y)
 
@@ -2004,21 +2024,23 @@ proc newPopupWindowWayland*(
 ): WindowWaylandSoftwareRendering =
   if parent == nil:
     raise ValueError.newException("Popup windows require a parent window")
+  let logicalPopupSize = parent.toLogicalSize(placement.popupSize())
   new result
   result.globals = globals
   result.kind = WindowWaylandKind.PopupSurface
-  result.basicInitWindow(placement.popupSize(), globals.defaultScreenWayland())
+  result.basicInitWindow(logicalPopupSize, globals.defaultScreenWayland())
   result.initPopupState(parent, placement, grab)
+  result.m_size = logicalPopupSize
   result.setupWindow(
     fullscreen = false,
     frameless = true,
     transparent = transparent,
-    size = placement.popupSize(),
+    size = logicalPopupSize,
     class = "",
   )
   result.buffer = result.globals.create(
     result.globals.shm,
-    result.bufferSize(placement.popupSize()),
+    result.bufferSize(logicalPopupSize),
     (if transparent: argb8888 else: xrgb8888),
     bufferCount = 2,
   )
