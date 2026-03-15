@@ -105,7 +105,7 @@ proc popupPlacement(size: IVec2): PopupPlacement =
     anchorRectSize: ivec2(buttonRect.w, buttonRect.h),
     size: PopupSize,
     anchor: Edge.bottomLeft,
-    gravity: Edge.bottomLeft,
+    gravity: Edge.topLeft,
     offset: ivec2(0, 14),
     constraintAdjustment: {
       PopupConstraintAdjustment.pcaSlideX, PopupConstraintAdjustment.pcaFlipY,

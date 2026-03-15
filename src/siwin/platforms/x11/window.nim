@@ -405,6 +405,81 @@ proc pushEvent[T](event: proc(e: T), args: T) =
 proc resizePixelBuffer(window: WindowX11SoftwareRendering, size: IVec2) =
   window.pixels = window.pixels.realloc(size.x * size.y * Color32bit.sizeof)
 
+proc flipPopupEdgeX(edge: Edge): Edge =
+  case edge
+  of Edge.topLeft: Edge.topRight
+  of Edge.topRight: Edge.topLeft
+  of Edge.left: Edge.right
+  of Edge.right: Edge.left
+  of Edge.bottomLeft: Edge.bottomRight
+  of Edge.bottomRight: Edge.bottomLeft
+  else: edge
+
+proc flipPopupEdgeY(edge: Edge): Edge =
+  case edge
+  of Edge.topLeft: Edge.bottomLeft
+  of Edge.top: Edge.bottom
+  of Edge.topRight: Edge.bottomRight
+  of Edge.bottomLeft: Edge.topLeft
+  of Edge.bottom: Edge.top
+  of Edge.bottomRight: Edge.topRight
+  else: edge
+
+proc popupOverflowX(posX, width, boundsWidth: int32): int32 {.inline.} =
+  max(0'i32, -posX) + max(0'i32, posX + width - boundsWidth)
+
+proc popupOverflowY(posY, height, boundsHeight: int32): int32 {.inline.} =
+  max(0'i32, -posY) + max(0'i32, posY + height - boundsHeight)
+
+proc resolvePopupRect(parentPos, screenSize: IVec2, placement: PopupPlacement): tuple[pos, size: IVec2] =
+  proc popupRectFor(placement: PopupPlacement): tuple[pos, size: IVec2] =
+    (parentPos + placement.popupRelativePos(), placement.popupSize())
+
+  var resolvedPlacement = placement
+  result = popupRectFor(resolvedPlacement)
+
+  if PopupConstraintAdjustment.pcaFlipX in placement.constraintAdjustment:
+    var flipped = resolvedPlacement
+    flipped.anchor = flipped.anchor.flipPopupEdgeX()
+    flipped.gravity = flipped.gravity.flipPopupEdgeX()
+    let flippedRect = popupRectFor(flipped)
+    if popupOverflowX(flippedRect.pos.x, flippedRect.size.x, screenSize.x) <
+        popupOverflowX(result.pos.x, result.size.x, screenSize.x):
+      resolvedPlacement = flipped
+      result = flippedRect
+
+  if PopupConstraintAdjustment.pcaFlipY in placement.constraintAdjustment:
+    var flipped = resolvedPlacement
+    flipped.anchor = flipped.anchor.flipPopupEdgeY()
+    flipped.gravity = flipped.gravity.flipPopupEdgeY()
+    let flippedRect = popupRectFor(flipped)
+    if popupOverflowY(flippedRect.pos.y, flippedRect.size.y, screenSize.y) <
+        popupOverflowY(result.pos.y, result.size.y, screenSize.y):
+      resolvedPlacement = flipped
+      result = flippedRect
+
+  if PopupConstraintAdjustment.pcaSlideX in placement.constraintAdjustment:
+    result.pos.x = clamp(result.pos.x, 0'i32, max(0'i32, screenSize.x - result.size.x))
+
+  if PopupConstraintAdjustment.pcaSlideY in placement.constraintAdjustment:
+    result.pos.y = clamp(result.pos.y, 0'i32, max(0'i32, screenSize.y - result.size.y))
+
+  if PopupConstraintAdjustment.pcaResizeX in placement.constraintAdjustment:
+    if result.pos.x < 0:
+      result.size.x += result.pos.x
+      result.pos.x = 0
+    if result.pos.x + result.size.x > screenSize.x:
+      result.size.x = max(1'i32, screenSize.x - result.pos.x)
+    result.size.x = max(1'i32, result.size.x)
+
+  if PopupConstraintAdjustment.pcaResizeY in placement.constraintAdjustment:
+    if result.pos.y < 0:
+      result.size.y += result.pos.y
+      result.pos.y = 0
+    if result.pos.y + result.size.y > screenSize.y:
+      result.size.y = max(1'i32, screenSize.y - result.pos.y)
+    result.size.y = max(1'i32, result.size.y)
+
 
 proc basicInitWindow(window: WindowX11; size: IVec2; screen: ScreenX11) =
   window.screen = screen.id
@@ -596,10 +671,14 @@ method reposition*(window: WindowX11, v: PopupPlacement) =
   if parent == nil:
     return
 
-  let targetSize = v.popupSize()
-  if window.m_size != targetSize:
-    window.size = targetSize
-  window.pos = parent.pos + v.popupRelativePos()
+  let rect = resolvePopupRect(
+    parent.globals.absolutePos(parent.handle),
+    parent.globals.screenX11(parent.screen.int32).size,
+    v,
+  )
+  if window.m_size != rect.size:
+    window.size = rect.size
+  window.pos = rect.pos
 
 
 proc setX11Cursor(window: WindowX11, v: Cursor) =
@@ -1566,28 +1645,57 @@ proc newPopupWindowX11*(
 ): WindowX11SoftwareRendering =
   if parent == nil:
     raise ValueError.newException("Popup windows require a parent window")
-  result = newSoftwareRenderingWindowX11(
-    globals = globals,
-    size = placement.popupSize(),
-    title = "",
-    screen = globals.defaultScreenX11(),
-    resizable = false,
-    fullscreen = false,
-    frameless = true,
-    transparent = transparent,
-    class = "",
-  )
-  var attrs = XSetWindowAttributes(
-    override_redirect: 1,
-    save_under: 1,
-  )
-  discard globals.display.XChangeWindowAttributes(
-    result.handle,
-    CWOverrideRedirect or CWSaveUnder,
-    attrs.addr,
-  )
+  new result
+  result.softwarePresentEnabled = true
+  result.globals = globals
+  let screen = globals.defaultScreenX11()
+  result.basicInitWindow(placement.popupSize(), screen)
+
+  if transparent:
+    result.m_transparent = true
+    let root = globals.display.DefaultRootWindow
+
+    var vi: XVisualInfo
+    discard globals.display.XMatchVisualInfo(screen.id, 32, TrueColor, vi.addr)
+
+    let cmap = globals.display.XCreateColormap(root, vi.visual, AllocNone)
+    var swa = XSetWindowAttributes(
+      colormap: cmap,
+      override_redirect: 1,
+      save_under: 1,
+    )
+
+    result.handle = globals.display.XCreateWindow(
+      root, 0, 0, placement.popupSize().x.cuint, placement.popupSize().y.cuint, 0,
+      vi.depth, InputOutput, vi.visual,
+      CwColormap or CWOverrideRedirect or CWSaveUnder,
+      swa.addr
+    )
+  else:
+    var swa = XSetWindowAttributes(
+      override_redirect: 1,
+      save_under: 1,
+      background_pixel: globals.display.BlackPixel(screen.id),
+      border_pixel: 0,
+    )
+    result.handle = globals.display.XCreateWindow(
+      globals.display.DefaultRootWindow, 0, 0, placement.popupSize().x.cuint, placement.popupSize().y.cuint, 0,
+      CopyFromParent, InputOutput, nil,
+      CWOverrideRedirect or CWSaveUnder or CWBackPixel or CWBorderPixel,
+      swa.addr
+    )
+
+  result.setupWindow(fullscreen = false, frameless = true, class = "")
+  result.gc.gc = globals.display.XCreateGC(result.handle, GCForeground or GCBackground, result.gc.gcv.addr)
   result.initPopupState(parent, placement, grab)
-  result.pos = parent.pos + placement.popupRelativePos()
+  let rect = resolvePopupRect(
+    globals.absolutePos(parent.handle),
+    globals.screenX11(parent.screen.int32).size,
+    placement,
+  )
+  if result.m_size != rect.size:
+    result.m_size = rect.size
+  result.pos = rect.pos
 
 proc setSoftwarePresentEnabled*(window: WindowX11SoftwareRendering, enabled: bool) =
   window.softwarePresentEnabled = enabled
