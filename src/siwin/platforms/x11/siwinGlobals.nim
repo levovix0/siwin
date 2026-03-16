@@ -17,7 +17,7 @@ type
     atoms*: tuple[
       frameless, wmDeleteWindow, utf8String, netWmName, netWmIconName,
       netWmState, netWmStateFullscreen, netWmStateMaximizedHorz, netWmStateMaximizedVert, netWmStateHidden, netWmMoveResize,
-      netWmSyncRequest, netWmSyncRequestCounter,
+      netWmSyncRequest, netWmSyncRequestCounter, netFrameExtents,
       clipboard, siwin_clipboardTargetProperty, targets, text, primary,
       xDndAware, xDndEnter, xDndTypeList, xDndSelection, xDndPosition, xDndLeave, xDndDrop, xDndFinished, xDndStatus, xDndActionCopy, xDndActionPrivate
       : Atom
@@ -56,6 +56,7 @@ proc newX11Globals*: SiwinGlobalsX11 {.raises: [OsError].} =
   result.atoms.netWmMoveResize = result.display.XInternAtom("_NET_WM_MOVERESIZE", 0)
   result.atoms.netWmSyncRequest = result.display.XInternAtom("_NET_WM_SYNC_REQUEST", 0)
   result.atoms.netWmSyncRequestCounter = result.display.XInternAtom("_NET_WM_SYNC_REQUEST_COUNTER", 0)
+  result.atoms.netFrameExtents = result.display.XInternAtom("_NET_FRAME_EXTENTS", 0)
   result.atoms.clipboard = result.display.XInternAtom("CLIPBOARD", 0)
   result.atoms.siwin_clipboardTargetProperty = result.display.XInternAtom("siwin_clipboardTargetProperty", 0)
   result.atoms.targets = result.display.XInternAtom("TARGETS", 0)

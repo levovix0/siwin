@@ -85,6 +85,10 @@ proc logPopupCloseButton(window: Window, reason: string) =
   let closeRect = closeButtonRect(size)
   echo fmt"[popup_demo] {reason}: popupSize={sizeToString(size)} closeButton={rectToString(closeRect)}"
 
+proc logPopupPlacementState(reason: string, parent, popup: Window, placement: PopupPlacement) =
+  let expectedPos = parent.pos + placement.popupRelativePos()
+  echo fmt"[popup_demo] {reason}: parentPos={sizeToString(parent.pos)} popupPos={sizeToString(popup.pos)} expectedPos={sizeToString(expectedPos)} relativePos={sizeToString(placement.popupRelativePos())} popupSize={sizeToString(popup.size)}"
+
 proc logPopupPointer(
     kind: string,
     window: Window,
@@ -213,7 +217,9 @@ proc popupIsOpen(): bool =
 
 proc updatePopupPlacement() =
   if popup != nil and popup.opened:
-    popup.reposition(window.size.popupPlacement())
+    let placement = window.size.popupPlacement()
+    popup.reposition(placement)
+    logPopupPlacementState("updatePopupPlacement", window, popup, placement)
 
 proc closePopup() =
   if popup != nil and popup.opened:
@@ -294,11 +300,13 @@ proc openPopup() =
   if popup != nil:
     return
 
-  popup = globals.newPopupWindow(window, window.size.popupPlacement(), grab = true)
+  let placement = window.size.popupPlacement()
+  popup = globals.newPopupWindow(window, placement, grab = true)
   popupState.hoverClose = false
   popup.applyPopupDragRegions()
   installPopupHandlers()
   popup.logPopupCloseButton("openPopup")
+  logPopupPlacementState("openPopup", window, popup, placement)
   popup.firstStep(makeVisible = true)
   redraw popup
   redraw window

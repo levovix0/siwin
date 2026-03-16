@@ -99,3 +99,45 @@ suite "siwin popup api":
 
       close popup
       close parent
+
+  when defined(linux) or defined(bsd):
+    test "popup window position matches relative placement in unconstrained case":
+      let globals = newSiwinGlobals()
+      let parent = globals.newSoftwareRenderingWindow(
+        size = ivec2(300, 200),
+        title = "popup parent",
+      )
+      parent.firstStep(makeVisible = false)
+      parent.step()
+
+      let placement = PopupPlacement(
+        anchorRectPos: ivec2(40, 48),
+        anchorRectSize: ivec2(96, 32),
+        size: ivec2(140, 110),
+        anchor: bottomLeft,
+        gravity: topLeft,
+        offset: ivec2(0, 14),
+      )
+      let popup = globals.newPopupWindow(parent, placement, grab = true)
+      popup.firstStep(makeVisible = false)
+      popup.step()
+
+      check popup.pos == parent.pos + placement.popupRelativePos()
+      check popup.size == placement.popupSize()
+
+      let updatedPlacement = PopupPlacement(
+        anchorRectPos: ivec2(120, 76),
+        anchorRectSize: ivec2(84, 28),
+        size: ivec2(120, 96),
+        anchor: topRight,
+        gravity: bottomRight,
+        offset: ivec2(-6, -8),
+      )
+      popup.reposition(updatedPlacement)
+      popup.step()
+
+      check popup.pos == parent.pos + updatedPlacement.popupRelativePos()
+      check popup.size == updatedPlacement.popupSize()
+
+      close popup
+      close parent

@@ -6,6 +6,7 @@ import pkg/[vmath, chroma]
 import pkg/x11/xlib except Screen
 import pkg/x11/x except Window, Cursor, Time
 import pkg/x11/[xutil, xatom, cursorfont, keysym]
+import pkg/x11/xinerama
 import ../../[colorutils, siwindefs]
 import ../any/[window, clipboards]
 import ../any/[windowUtils]
@@ -319,6 +320,27 @@ proc absolutePos(globals: SiwinGlobalsX11, xwin: x.Window): IVec2 =
   )
   ivec2(rootX.int32, rootY.int32)
 
+proc popupConstraintBounds(globals: SiwinGlobalsX11, anchorPos: IVec2): tuple[pos, size: IVec2] =
+  result = (ivec2(0, 0), globals.geometry(globals.display.DefaultRootWindow).size)
+
+  if globals.display.XineramaIsActive() == 0:
+    return
+
+  var screenCount: cint
+  let screens = globals.display.XineramaQueryScreens(screenCount.addr)
+  if screens == nil or screenCount <= 0:
+    return
+  defer:
+    discard XFree(screens)
+
+  for i in 0 ..< screenCount:
+    let screen = cast[ptr UncheckedArray[XineramaScreenInfo]](screens)[i]
+    let pos = ivec2(screen.x_org.int32, screen.y_org.int32)
+    let size = ivec2(screen.width.int32, screen.height.int32)
+    if anchorPos.x >= pos.x and anchorPos.x < pos.x + size.x and
+        anchorPos.y >= pos.y and anchorPos.y < pos.y + size.y:
+      return (pos, size)
+
 proc asXImage(globals: SiwinGlobalsX11, data: pointer, size: IVec2, transparent = false): XImage = XImage(
   width: cint size.x,
   height: cint size.y,
@@ -431,7 +453,7 @@ proc popupOverflowX(posX, width, boundsWidth: int32): int32 {.inline.} =
 proc popupOverflowY(posY, height, boundsHeight: int32): int32 {.inline.} =
   max(0'i32, -posY) + max(0'i32, posY + height - boundsHeight)
 
-proc resolvePopupRect(parentPos, screenSize: IVec2, placement: PopupPlacement): tuple[pos, size: IVec2] =
+proc resolvePopupRect(parentPos, boundsPos, boundsSize: IVec2, placement: PopupPlacement): tuple[pos, size: IVec2] =
   proc popupRectFor(placement: PopupPlacement): tuple[pos, size: IVec2] =
     (parentPos + placement.popupRelativePos(), placement.popupSize())
 
@@ -443,8 +465,8 @@ proc resolvePopupRect(parentPos, screenSize: IVec2, placement: PopupPlacement): 
     flipped.anchor = flipped.anchor.flipPopupEdgeX()
     flipped.gravity = flipped.gravity.flipPopupEdgeX()
     let flippedRect = popupRectFor(flipped)
-    if popupOverflowX(flippedRect.pos.x, flippedRect.size.x, screenSize.x) <
-        popupOverflowX(result.pos.x, result.size.x, screenSize.x):
+    if popupOverflowX(flippedRect.pos.x - boundsPos.x, flippedRect.size.x, boundsSize.x) <
+        popupOverflowX(result.pos.x - boundsPos.x, result.size.x, boundsSize.x):
       resolvedPlacement = flipped
       result = flippedRect
 
@@ -453,31 +475,31 @@ proc resolvePopupRect(parentPos, screenSize: IVec2, placement: PopupPlacement): 
     flipped.anchor = flipped.anchor.flipPopupEdgeY()
     flipped.gravity = flipped.gravity.flipPopupEdgeY()
     let flippedRect = popupRectFor(flipped)
-    if popupOverflowY(flippedRect.pos.y, flippedRect.size.y, screenSize.y) <
-        popupOverflowY(result.pos.y, result.size.y, screenSize.y):
+    if popupOverflowY(flippedRect.pos.y - boundsPos.y, flippedRect.size.y, boundsSize.y) <
+        popupOverflowY(result.pos.y - boundsPos.y, result.size.y, boundsSize.y):
       resolvedPlacement = flipped
       result = flippedRect
 
   if PopupConstraintAdjustment.pcaSlideX in placement.constraintAdjustment:
-    result.pos.x = clamp(result.pos.x, 0'i32, max(0'i32, screenSize.x - result.size.x))
+    result.pos.x = clamp(result.pos.x, boundsPos.x, max(boundsPos.x, boundsPos.x + boundsSize.x - result.size.x))
 
   if PopupConstraintAdjustment.pcaSlideY in placement.constraintAdjustment:
-    result.pos.y = clamp(result.pos.y, 0'i32, max(0'i32, screenSize.y - result.size.y))
+    result.pos.y = clamp(result.pos.y, boundsPos.y, max(boundsPos.y, boundsPos.y + boundsSize.y - result.size.y))
 
   if PopupConstraintAdjustment.pcaResizeX in placement.constraintAdjustment:
-    if result.pos.x < 0:
-      result.size.x += result.pos.x
-      result.pos.x = 0
-    if result.pos.x + result.size.x > screenSize.x:
-      result.size.x = max(1'i32, screenSize.x - result.pos.x)
+    if result.pos.x < boundsPos.x:
+      result.size.x -= boundsPos.x - result.pos.x
+      result.pos.x = boundsPos.x
+    if result.pos.x + result.size.x > boundsPos.x + boundsSize.x:
+      result.size.x = max(1'i32, boundsPos.x + boundsSize.x - result.pos.x)
     result.size.x = max(1'i32, result.size.x)
 
   if PopupConstraintAdjustment.pcaResizeY in placement.constraintAdjustment:
-    if result.pos.y < 0:
-      result.size.y += result.pos.y
-      result.pos.y = 0
-    if result.pos.y + result.size.y > screenSize.y:
-      result.size.y = max(1'i32, screenSize.y - result.pos.y)
+    if result.pos.y < boundsPos.y:
+      result.size.y -= boundsPos.y - result.pos.y
+      result.pos.y = boundsPos.y
+    if result.pos.y + result.size.y > boundsPos.y + boundsSize.y:
+      result.size.y = max(1'i32, boundsPos.y + boundsSize.y - result.pos.y)
     result.size.y = max(1'i32, result.size.y)
 
 
@@ -671,9 +693,12 @@ method reposition*(window: WindowX11, v: PopupPlacement) =
   if parent == nil:
     return
 
+  let parentPos = parent.globals.absolutePos(parent.handle)
+  let bounds = parent.globals.popupConstraintBounds(parentPos + v.anchorRectPos)
   let rect = resolvePopupRect(
-    parent.globals.absolutePos(parent.handle),
-    parent.globals.screenX11(parent.screen.int32).size,
+    parentPos,
+    bounds.pos,
+    bounds.size,
     v,
   )
   if window.m_size != rect.size:
@@ -1688,9 +1713,12 @@ proc newPopupWindowX11*(
   result.setupWindow(fullscreen = false, frameless = true, class = "")
   result.gc.gc = globals.display.XCreateGC(result.handle, GCForeground or GCBackground, result.gc.gcv.addr)
   result.initPopupState(parent, placement, grab)
+  let parentPos = globals.absolutePos(parent.handle)
+  let bounds = globals.popupConstraintBounds(parentPos + placement.anchorRectPos)
   let rect = resolvePopupRect(
-    globals.absolutePos(parent.handle),
-    globals.screenX11(parent.screen.int32).size,
+    parentPos,
+    bounds.pos,
+    bounds.size,
     placement,
   )
   if result.m_size != rect.size:
