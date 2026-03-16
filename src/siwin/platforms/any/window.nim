@@ -325,6 +325,81 @@ func popupRelativePos*(placement: PopupPlacement): IVec2 =
   let anchorPoint = placement.anchorRectPos + placement.anchor.popupAnchorOffset(placement.anchorRectSize)
   anchorPoint - placement.gravity.popupAnchorOffset(placement.popupSize()) + placement.offset
 
+proc flipPopupEdgeX*(edge: Edge): Edge =
+  case edge
+  of Edge.topLeft: Edge.topRight
+  of Edge.topRight: Edge.topLeft
+  of Edge.left: Edge.right
+  of Edge.right: Edge.left
+  of Edge.bottomLeft: Edge.bottomRight
+  of Edge.bottomRight: Edge.bottomLeft
+  else: edge
+
+proc flipPopupEdgeY*(edge: Edge): Edge =
+  case edge
+  of Edge.topLeft: Edge.bottomLeft
+  of Edge.top: Edge.bottom
+  of Edge.topRight: Edge.bottomRight
+  of Edge.bottomLeft: Edge.topLeft
+  of Edge.bottom: Edge.top
+  of Edge.bottomRight: Edge.topRight
+  else: edge
+
+proc popupOverflowX*(posX, width, boundsWidth: int32): int32 {.inline.} =
+  max(0'i32, -posX) + max(0'i32, posX + width - boundsWidth)
+
+proc popupOverflowY*(posY, height, boundsHeight: int32): int32 {.inline.} =
+  max(0'i32, -posY) + max(0'i32, posY + height - boundsHeight)
+
+proc resolvePopupRect*(parentPos, boundsPos, boundsSize: IVec2, placement: PopupPlacement): tuple[pos, size: IVec2] =
+  proc popupRectFor(placement: PopupPlacement): tuple[pos, size: IVec2] =
+    (parentPos + placement.popupRelativePos(), placement.popupSize())
+
+  var resolvedPlacement = placement
+  result = popupRectFor(resolvedPlacement)
+
+  if PopupConstraintAdjustment.pcaFlipX in placement.constraintAdjustment:
+    var flipped = resolvedPlacement
+    flipped.anchor = flipped.anchor.flipPopupEdgeX()
+    flipped.gravity = flipped.gravity.flipPopupEdgeX()
+    let flippedRect = popupRectFor(flipped)
+    if popupOverflowX(flippedRect.pos.x - boundsPos.x, flippedRect.size.x, boundsSize.x) <
+        popupOverflowX(result.pos.x - boundsPos.x, result.size.x, boundsSize.x):
+      resolvedPlacement = flipped
+      result = flippedRect
+
+  if PopupConstraintAdjustment.pcaFlipY in placement.constraintAdjustment:
+    var flipped = resolvedPlacement
+    flipped.anchor = flipped.anchor.flipPopupEdgeY()
+    flipped.gravity = flipped.gravity.flipPopupEdgeY()
+    let flippedRect = popupRectFor(flipped)
+    if popupOverflowY(flippedRect.pos.y - boundsPos.y, flippedRect.size.y, boundsSize.y) <
+        popupOverflowY(result.pos.y - boundsPos.y, result.size.y, boundsSize.y):
+      resolvedPlacement = flipped
+      result = flippedRect
+
+  if PopupConstraintAdjustment.pcaSlideX in placement.constraintAdjustment:
+    result.pos.x = clamp(result.pos.x, boundsPos.x, max(boundsPos.x, boundsPos.x + boundsSize.x - result.size.x))
+
+  if PopupConstraintAdjustment.pcaSlideY in placement.constraintAdjustment:
+    result.pos.y = clamp(result.pos.y, boundsPos.y, max(boundsPos.y, boundsPos.y + boundsSize.y - result.size.y))
+
+  if PopupConstraintAdjustment.pcaResizeX in placement.constraintAdjustment:
+    if result.pos.x < boundsPos.x:
+      result.size.x -= boundsPos.x - result.pos.x
+      result.pos.x = boundsPos.x
+    if result.pos.x + result.size.x > boundsPos.x + boundsSize.x:
+      result.size.x = max(1'i32, boundsPos.x + boundsSize.x - result.pos.x)
+    result.size.x = max(1'i32, result.size.x)
+
+  if PopupConstraintAdjustment.pcaResizeY in placement.constraintAdjustment:
+    if result.pos.y < boundsPos.y:
+      result.size.y -= boundsPos.y - result.pos.y
+      result.pos.y = boundsPos.y
+    if result.pos.y + result.size.y > boundsPos.y + boundsSize.y:
+      result.size.y = max(1'i32, boundsPos.y + boundsSize.y - result.pos.y)
+    result.size.y = max(1'i32, result.size.y)
+
 
 proc closed*(window: Window): bool = window.m_closed
 proc opened*(window: Window): bool = not window.closed

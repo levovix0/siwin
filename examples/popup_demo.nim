@@ -1,4 +1,4 @@
-import std/[strformat]
+import std/[strformat, math]
 import vmath
 import siwin
 import siwin/colorutils
@@ -54,6 +54,12 @@ proc fillRect(
     let row = py * size.x
     for px in x0 ..< x1:
       rgbaBuffer[row + px] = color
+
+proc px(scale: float32, value: int32): int32 =
+  round(value.float64 * scale.float64).int32
+
+proc pf(scale: float32, value: float32): float32 =
+  (value.float64 * scale.float64).float32
 
 proc popupButtonRect(size: IVec2): tuple[x, y, w, h: int32] =
   (
@@ -111,11 +117,8 @@ proc popupPlacement(size: IVec2): PopupPlacement =
     anchor: Edge.bottomLeft,
     gravity: Edge.topLeft,
     offset: ivec2(0, 14),
-    constraintAdjustment: {
-      PopupConstraintAdjustment.pcaSlideX, PopupConstraintAdjustment.pcaFlipY,
-      PopupConstraintAdjustment.pcaResizeY,
-    },
-    reactive: true,
+    constraintAdjustment: {},
+    reactive: false,
   )
 
 proc applyPopupDragRegions(window: Window) =
@@ -229,6 +232,8 @@ proc installPopupHandlers() =
   popup.eventsHandler = WindowEventsHandler(
     onResize: proc(e: ResizeEvent) =
       e.window.applyPopupDragRegions()
+      if popup != nil:
+        logPopupPlacementState("popup.onResize", window, e.window, e.window.placement)
       redraw e.window
     ,
     onRender: proc(e: RenderEvent) =

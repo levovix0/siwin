@@ -63,6 +63,7 @@ type
     bufferScaleFactor: int32
     fractionalScaleFactor: float32
     popupRepositionToken: uint32
+    releasing: bool
     viewport: Wp_viewport
     fractionalScaleObj: Wp_fractional_scale_v1
     toplevelIcon: Xdg_toplevel_icon_v1
@@ -310,6 +311,10 @@ method release(window: WindowWayland) {.base, raises: [].} =
     if x != typeof(x).default:
       f x
       x = typeof(x).default
+
+  if window == nil or window.releasing:
+    return
+  window.releasing = true
 
   if window.surface != nil:
     if window.globals.associatedWindows_queueRemove_insteadOf_removingInstantly:
