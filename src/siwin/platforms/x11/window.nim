@@ -1,12 +1,11 @@
 when not (compiles do: import pkg/x11/xutil):
   {.error: "x11 library not installed, required to cross compile to linux\n please run `nimble install x11`".}
 
-import std/[times, importutils, strformat, sequtils, os, options, tables, uri, strutils]
+import std/[times, importutils, strformat, sequtils, os, options, tables, uri, strutils, dynlib]
 import pkg/[vmath, chroma]
 import pkg/x11/xlib except Screen
 import pkg/x11/x except Window, Cursor, Time
 import pkg/x11/[xutil, xatom, cursorfont, keysym]
-import pkg/x11/xinerama
 import ../../[colorutils, siwindefs]
 import ../any/[window, clipboards]
 import ../any/[windowUtils]
@@ -88,11 +87,45 @@ type
     pixels: pointer
     softwarePresentEnabled*: bool
 
+  PXineramaScreenInfo = ptr XineramaScreenInfo
+  XineramaScreenInfo = object
+    screen_number: cint
+    x_org: int16
+    y_org: int16
+    width: int16
+    height: int16
+
+  XineramaIsActiveProc = proc(dpy: PDisplay): XBool {.cdecl.}
+  XineramaQueryScreensProc = proc(dpy: PDisplay, number: Pcint): PXineramaScreenInfo {.cdecl.}
+
+var
+  xineramaLib: LibHandle
+  xineramaLoadAttempted = false
+  xineramaIsActiveProc: XineramaIsActiveProc
+  xineramaQueryScreensProc: XineramaQueryScreensProc
+
 proc nativeDisplayHandle*(window: WindowX11): pointer =
   cast[pointer](window.globals.display)
 
 proc nativeWindowHandle*(window: WindowX11): uint64 =
   cast[uint64](window.handle)
+
+proc xineramaAvailable(): bool =
+  if xineramaLoadAttempted:
+    return xineramaLib != nil and xineramaIsActiveProc != nil and xineramaQueryScreensProc != nil
+
+  xineramaLoadAttempted = true
+  for libname in ["libXinerama.so.1", "libXinerama.so"]:
+    xineramaLib = loadLib(libname)
+    if xineramaLib != nil:
+      break
+
+  if xineramaLib == nil:
+    return false
+
+  xineramaIsActiveProc = cast[XineramaIsActiveProc](symAddr(xineramaLib, "XineramaIsActive"))
+  xineramaQueryScreensProc = cast[XineramaQueryScreensProc](symAddr(xineramaLib, "XineramaQueryScreens"))
+  xineramaIsActiveProc != nil and xineramaQueryScreensProc != nil
 
 
 const libXExt* =
@@ -323,11 +356,14 @@ proc absolutePos(globals: SiwinGlobalsX11, xwin: x.Window): IVec2 =
 proc popupConstraintBounds(globals: SiwinGlobalsX11, anchorPos: IVec2): tuple[pos, size: IVec2] =
   result = (ivec2(0, 0), globals.geometry(globals.display.DefaultRootWindow).size)
 
-  if globals.display.XineramaIsActive() == 0:
+  if not xineramaAvailable():
+    return
+
+  if xineramaIsActiveProc(globals.display) == 0:
     return
 
   var screenCount: cint
-  let screens = globals.display.XineramaQueryScreens(screenCount.addr)
+  let screens = xineramaQueryScreensProc(globals.display, screenCount.addr)
   if screens == nil or screenCount <= 0:
     return
   defer:

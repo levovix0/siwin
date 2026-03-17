@@ -82,6 +82,7 @@ type
   WindowWaylandSoftwareRenderingObj* = object of WindowWayland
     buffer: SharedBuffer
     oldBuffer: SharedBuffer
+    softwarePresentEnabled*: bool
 
 
 proc waylandKeyToKey(keycode: uint32): Key =
@@ -931,6 +932,8 @@ method pixelBuffer*(window: WindowWaylandSoftwareRendering): PixelBuffer =
 
 method swapBuffers(window: WindowWaylandSoftwareRendering) =
   if window.m_closed:
+    return
+  if not window.softwarePresentEnabled:
     return
 
   if window.buffer == nil:
@@ -2027,6 +2030,7 @@ proc newSoftwareRenderingWindowWayland*(
 ): WindowWaylandSoftwareRendering =
   new result
   result.globals = globals
+  result.softwarePresentEnabled = true
   result.initSoftwareRenderingWindow(size, screen, fullscreen, frameless, transparent, (if class == "": title else: class))
   result.title = title
   if not resizable: result.resizable = false
@@ -2043,6 +2047,7 @@ proc newPopupWindowWayland*(
   let logicalPopupSize = parent.toLogicalSize(placement.popupSize())
   new result
   result.globals = globals
+  result.softwarePresentEnabled = true
   result.kind = WindowWaylandKind.PopupSurface
   result.basicInitWindow(logicalPopupSize, globals.defaultScreenWayland())
   result.initPopupState(parent, placement, grab)
@@ -2062,5 +2067,8 @@ proc newPopupWindowWayland*(
   )
   result.pos = parent.pos + placement.popupRelativePos()
   result.visible = true
+
+proc setSoftwarePresentEnabled*(window: WindowWaylandSoftwareRendering, enabled: bool) =
+  window.softwarePresentEnabled = enabled
 
 export Layer, LayerEdge, LayerInteractivityMode
