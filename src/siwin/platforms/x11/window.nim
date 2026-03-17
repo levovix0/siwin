@@ -1,7 +1,7 @@
 when not (compiles do: import pkg/x11/xutil):
   {.error: "x11 library not installed, required to cross compile to linux\n please run `nimble install x11`".}
 
-import std/[times, importutils, strformat, sequtils, os, options, tables, uri, strutils]
+import std/[times, importutils, strformat, sequtils, os, options, tables, uri, strutils, dynlib]
 import pkg/[vmath, chroma]
 import pkg/x11/xlib except Screen
 import pkg/x11/x except Window, Cursor, Time
@@ -87,11 +87,45 @@ type
     pixels: pointer
     softwarePresentEnabled*: bool
 
+  PXineramaScreenInfo = ptr XineramaScreenInfo
+  XineramaScreenInfo = object
+    screen_number: cint
+    x_org: int16
+    y_org: int16
+    width: int16
+    height: int16
+
+  XineramaIsActiveProc = proc(dpy: PDisplay): XBool {.cdecl.}
+  XineramaQueryScreensProc = proc(dpy: PDisplay, number: Pcint): PXineramaScreenInfo {.cdecl.}
+
+var
+  xineramaLib: LibHandle
+  xineramaLoadAttempted = false
+  xineramaIsActiveProc: XineramaIsActiveProc
+  xineramaQueryScreensProc: XineramaQueryScreensProc
+
 proc nativeDisplayHandle*(window: WindowX11): pointer =
   cast[pointer](window.globals.display)
 
 proc nativeWindowHandle*(window: WindowX11): uint64 =
   cast[uint64](window.handle)
+
+proc xineramaAvailable(): bool =
+  if xineramaLoadAttempted:
+    return xineramaLib != nil and xineramaIsActiveProc != nil and xineramaQueryScreensProc != nil
+
+  xineramaLoadAttempted = true
+  for libname in ["libXinerama.so.1", "libXinerama.so"]:
+    xineramaLib = loadLib(libname)
+    if xineramaLib != nil:
+      break
+
+  if xineramaLib == nil:
+    return false
+
+  xineramaIsActiveProc = cast[XineramaIsActiveProc](symAddr(xineramaLib, "XineramaIsActive"))
+  xineramaQueryScreensProc = cast[XineramaQueryScreensProc](symAddr(xineramaLib, "XineramaQueryScreens"))
+  xineramaIsActiveProc != nil and xineramaQueryScreensProc != nil
 
 
 const libXExt* =
@@ -303,6 +337,46 @@ proc geometry(globals: SiwinGlobalsX11, xwin: x.Window): tuple[root: x.Window; p
   discard globals.display.XGetGeometry(xwin, root.addr, x.addr, y.addr, w.addr, h.addr, borderW.addr, depth.addr)
   (root, ivec2(x.int32, y.int32), ivec2(w.int32, h.int32), borderW.int, depth.int)
 
+proc absolutePos(globals: SiwinGlobalsX11, xwin: x.Window): IVec2 =
+  let geom = globals.geometry(xwin)
+  var
+    child: x.Window
+    rootX, rootY: cint
+  discard globals.display.XTranslateCoordinates(
+    xwin,
+    geom.root,
+    0,
+    0,
+    rootX.addr,
+    rootY.addr,
+    child.addr,
+  )
+  ivec2(rootX.int32, rootY.int32)
+
+proc popupConstraintBounds(globals: SiwinGlobalsX11, anchorPos: IVec2): tuple[pos, size: IVec2] =
+  result = (ivec2(0, 0), globals.geometry(globals.display.DefaultRootWindow).size)
+
+  if not xineramaAvailable():
+    return
+
+  if xineramaIsActiveProc(globals.display) == 0:
+    return
+
+  var screenCount: cint
+  let screens = xineramaQueryScreensProc(globals.display, screenCount.addr)
+  if screens == nil or screenCount <= 0:
+    return
+  defer:
+    discard XFree(screens)
+
+  for i in 0 ..< screenCount:
+    let screen = cast[ptr UncheckedArray[XineramaScreenInfo]](screens)[i]
+    let pos = ivec2(screen.x_org.int32, screen.y_org.int32)
+    let size = ivec2(screen.width.int32, screen.height.int32)
+    if anchorPos.x >= pos.x and anchorPos.x < pos.x + size.x and
+        anchorPos.y >= pos.y and anchorPos.y < pos.y + size.y:
+      return (pos, size)
+
 proc asXImage(globals: SiwinGlobalsX11, data: pointer, size: IVec2, transparent = false): XImage = XImage(
   width: cint size.x,
   height: cint size.y,
@@ -388,7 +462,6 @@ proc pushEvent[T](event: proc(e: T), args: T) =
 
 proc resizePixelBuffer(window: WindowX11SoftwareRendering, size: IVec2) =
   window.pixels = window.pixels.realloc(size.x * size.y * Color32bit.sizeof)
-
 
 proc basicInitWindow(window: WindowX11; size: IVec2; screen: ScreenX11) =
   window.screen = screen.id
@@ -568,7 +641,29 @@ method `size=`*(window: WindowX11, v: IVec2) =
 
 method `pos=`*(window: WindowX11, v: IVec2) =
   if window.m_fullscreen: return
+  window.m_pos = v
   discard window.globals.display.XMoveWindow(window.handle, v.x.cint, v.y.cint)
+
+method reposition*(window: WindowX11, v: PopupPlacement) =
+  procCall window.Window.reposition(v)
+  if not window.isPopup:
+    return
+
+  let parent = window.parentWindow().WindowX11
+  if parent == nil:
+    return
+
+  let parentPos = parent.globals.absolutePos(parent.handle)
+  let bounds = parent.globals.popupConstraintBounds(parentPos + v.anchorRectPos)
+  let rect = resolvePopupRect(
+    parentPos,
+    bounds.pos,
+    bounds.size,
+    v,
+  )
+  if window.m_size != rect.size:
+    window.size = rect.size
+  window.pos = rect.pos
 
 
 proc setX11Cursor(window: WindowX11, v: Cursor) =
@@ -1023,7 +1118,7 @@ method firstStep*(window: WindowX11, makeVisible = true) =
   if makeVisible:
     window.visible = true
 
-  window.m_pos = window.globals.geometry(window.handle).pos
+  window.m_pos = window.globals.absolutePos(window.handle)
   window.mouse.pos = (window.globals.cursor().pos - window.m_pos).vec2
   
   if window of WindowX11SoftwareRendering:
@@ -1191,8 +1286,9 @@ method step*(window: WindowX11) =
           window.WindowX11SoftwareRendering.resizePixelBuffer(window.m_size)
         window.eventsHandler.onResize.pushEvent ResizeEvent(window: window, size: window.m_size, initial: false)
 
-      if ev.xconfigure.x.int != window.m_pos.x or ev.xconfigure.y.int != window.m_pos.y:
-        window.m_pos = ivec2(ev.xconfigure.x.int32, ev.xconfigure.y.int32)
+      let absolutePos = window.globals.absolutePos(window.handle)
+      if absolutePos != window.m_pos:
+        window.m_pos = absolutePos
         window.mouse.pos = (window.globals.cursor().pos - window.m_pos).vec2
         window.eventsHandler.onWindowMove.pushEvent WindowMoveEvent(window: window, pos: window.m_pos)
       
@@ -1524,6 +1620,70 @@ proc newSoftwareRenderingWindowX11*(
   )
   result.title = title
   if not resizable: result.resizable = false
+
+proc newPopupWindowX11*(
+    globals: SiwinGlobalsX11,
+    parent: WindowX11,
+    placement: PopupPlacement,
+    transparent = false,
+    grab = true,
+): WindowX11SoftwareRendering =
+  if parent == nil:
+    raise ValueError.newException("Popup windows require a parent window")
+  new result
+  result.softwarePresentEnabled = true
+  result.globals = globals
+  let screen = globals.defaultScreenX11()
+  result.basicInitWindow(placement.popupSize(), screen)
+
+  if transparent:
+    result.m_transparent = true
+    let root = globals.display.DefaultRootWindow
+
+    var vi: XVisualInfo
+    discard globals.display.XMatchVisualInfo(screen.id, 32, TrueColor, vi.addr)
+
+    let cmap = globals.display.XCreateColormap(root, vi.visual, AllocNone)
+    var swa = XSetWindowAttributes(
+      colormap: cmap,
+      override_redirect: 1,
+      save_under: 1,
+    )
+
+    result.handle = globals.display.XCreateWindow(
+      root, 0, 0, placement.popupSize().x.cuint, placement.popupSize().y.cuint, 0,
+      vi.depth, InputOutput, vi.visual,
+      CwColormap or CWOverrideRedirect or CWSaveUnder,
+      swa.addr
+    )
+  else:
+    var swa = XSetWindowAttributes(
+      override_redirect: 1,
+      save_under: 1,
+      background_pixel: globals.display.BlackPixel(screen.id),
+      border_pixel: 0,
+    )
+    result.handle = globals.display.XCreateWindow(
+      globals.display.DefaultRootWindow, 0, 0, placement.popupSize().x.cuint, placement.popupSize().y.cuint, 0,
+      CopyFromParent, InputOutput, nil,
+      CWOverrideRedirect or CWSaveUnder or CWBackPixel or CWBorderPixel,
+      swa.addr
+    )
+
+  result.setupWindow(fullscreen = false, frameless = true, class = "")
+  result.gc.gc = globals.display.XCreateGC(result.handle, GCForeground or GCBackground, result.gc.gcv.addr)
+  result.initPopupState(parent, placement, grab)
+  let parentPos = globals.absolutePos(parent.handle)
+  let bounds = globals.popupConstraintBounds(parentPos + placement.anchorRectPos)
+  let rect = resolvePopupRect(
+    parentPos,
+    bounds.pos,
+    bounds.size,
+    placement,
+  )
+  if result.m_size != rect.size:
+    result.m_size = rect.size
+  result.pos = rect.pos
 
 proc setSoftwarePresentEnabled*(window: WindowX11SoftwareRendering, enabled: bool) =
   window.softwarePresentEnabled = enabled

@@ -1,4 +1,4 @@
-import std/[importutils, tables, times, os, unicode, uri, sequtils, strutils]
+import std/[importutils, tables, times, os, unicode, uri, sequtils, strutils, strformat, math]
 import pkg/[vmath]
 from pkg/darwin/quartz_core/calayer import CALayer
 from pkg/darwin/quartz_core/cametal_layer import CAMetalLayer
@@ -18,6 +18,8 @@ template autoreleasepool(body: untyped) =
     body
   finally:
     pool.release()
+
+proc isFlipped(v: NSView): bool {.objc: "isFlipped".}
 
 type
   ScreenCocoa* = ref object of Screen
@@ -774,6 +776,7 @@ method close*(window: WindowCocoa) =
   if window.m_closed:
     return
   `=destroy` window[]
+  window.eventsHandler.pushEvent onClose, CloseEvent(window: window)
 
 method `size=`*(window: WindowCocoa, v: IVec2) =
   if v.x <= 0 or v.y <= 0:
@@ -814,6 +817,93 @@ method `pos=`*(window: WindowCocoa, v: IVec2) =
     NSMakeRect(v.x.float64, y, frame.size.width, frame.size.height),
     true
   )
+
+proc framePos*(window: WindowCocoa): IVec2 =
+  if window == nil or window.handle == nil:
+    return window.m_pos
+
+  let frame = window.handle.frame
+  let screen = window.handle.screen
+  result = window.m_pos
+  if screen != nil:
+    let screenFrame = screen.frame
+    result = vec2(
+      frame.origin.x,
+      screenFrame.size.height - frame.origin.y - frame.size.height - 1
+    ).ivec2
+
+proc contentPos*(window: WindowCocoa): IVec2 =
+  let framePos = window.framePos()
+  if window == nil or window.handle == nil:
+    return framePos
+
+  let frame = window.handle.frame
+  let contentRect = window.handle.contentRectForFrameRect(frame)
+  let leftInset = contentRect.origin.x - frame.origin.x
+  let topInset =
+    frame.size.height -
+    ((contentRect.origin.y - frame.origin.y) + contentRect.size.height)
+  result = ivec2(
+    framePos.x + leftInset.int32,
+    framePos.y + topInset.int32,
+  )
+
+proc syncPosFromHandle(window: WindowCocoa) =
+  if window == nil or window.handle == nil:
+    return
+  window.m_pos = window.framePos()
+
+proc toPoints(distance: int32, scale: float32): int32 =
+  if scale <= 0'f32:
+    return distance
+  round(distance.float64 / scale.float64).int32
+
+proc toPoints(size: IVec2, scale: float32): IVec2 =
+  ivec2(
+    max(1'i32, toPoints(size.x, scale)),
+    max(1'i32, toPoints(size.y, scale)),
+  )
+
+proc setContentSizeInPoints(window: WindowCocoa, size: IVec2) =
+  let frame = window.handle.frame
+  let contentRect = window.handle.contentRectForFrameRect(frame)
+  let borderW = frame.size.width - contentRect.size.width
+  let borderH = frame.size.height - contentRect.size.height
+  window.handle.setFrame(
+    NSMakeRect(
+      frame.origin.x,
+      frame.origin.y,
+      size.x.float64 + borderW,
+      size.y.float64 + borderH
+    ),
+    true
+  )
+
+proc applyPopupPlacement(window: WindowCocoa, placement: PopupPlacement) =
+  window.m_popupPlacement = placement
+
+  if not window.m_isPopup:
+    return
+
+  let parent = window.parentWindow
+  if parent == nil:
+    return
+
+  let popupSize = placement.popupSize()
+  let parentScale = max(1'f32, parent.uiScale)
+  let popupSizePoints = popupSize.toPoints(parentScale)
+  if window.m_size != popupSize:
+    window.m_size = popupSize
+    if window of WindowCocoaSoftwareRendering:
+      window.WindowCocoaSoftwareRendering.resizeSoftwarePixelBuffer(popupSize)
+  window.setContentSizeInPoints(popupSizePoints)
+
+  let parentContentPos =
+    if parent of WindowCocoa:
+      parent.WindowCocoa.contentPos()
+    else:
+      parent.pos
+  window.pos = parentContentPos + placement.popupRelativePos().toPoints(parentScale)
 
 method `fullscreen=`*(window: WindowCocoa, v: bool) =
   if window.m_fullscreen == v:
@@ -883,6 +973,12 @@ method `maxSize=`*(window: WindowCocoa, v: IVec2) =
   else:
     window.m_maxSize = v
     window.handle.setMaxSize(NSMakeSize(v.x.float64, v.y.float64))
+
+method `placement=`*(window: WindowCocoa, v: PopupPlacement) =
+  window.applyPopupPlacement(v)
+
+method reposition*(window: WindowCocoa, v: PopupPlacement) =
+  window.placement = v
 
 method `icon=`*(window: WindowCocoa, _: nil.typeof) =
   if NSApp == nil:
@@ -1076,13 +1172,32 @@ proc init =
 
     let
       bounds = contentView.bounds
-      backingBounds = contentView.convertRectToBacking(bounds)
-      backingPointRect = contentView.convertRectToBacking(NSMakeRect(location.x, location.y, 0, 0))
+      boundsW = max(1e-6, bounds.size.width)
+      boundsH = max(1e-6, bounds.size.height)
+      y =
+        if contentView.isFlipped():
+          location.y.float32
+        else:
+          (bounds.size.height - location.y).float32
+      scaleX = window.m_size.x.float32 / boundsW.float32
+      scaleY = window.m_size.y.float32 / boundsH.float32
 
     vec2(
-      backingPointRect.origin.x.float32,
-      (backingBounds.size.height - backingPointRect.origin.y).float32
+      location.x.float32 * scaleX,
+      y * scaleY
     )
+
+  proc logPopupMouseButton(
+      window: WindowCocoa,
+      phase: string,
+      button: MouseButton,
+      pressed: bool,
+      location: NsPoint,
+      pos: Vec2,
+  ) =
+    if not window.m_isPopup or button != MouseButton.left:
+      return
+    echo fmt"[siwin/cocoa popup] {phase}: button={$button} pressed={pressed} raw=({location.x:.1f}, {location.y:.1f}) pos=({pos.x:.1f}, {pos.y:.1f}) size=({window.m_size.x}, {window.m_size.y})"
 
   proc updateMousePos(window: WindowCocoa, location: NsPoint, kind: MouseMoveKind) =
     window.mouse.pos = scaledMousePos(window, location)
@@ -1090,6 +1205,7 @@ proc init =
 
   proc handleMouseButton(window: WindowCocoa, button: MouseButton, pressed: bool, location: NsPoint) =
     window.mouse.pos = scaledMousePos(window, location)
+    window.logPopupMouseButton("mouseButton", button, pressed, location, window.mouse.pos)
     if pressed:
       window.mouse.pressed.incl button
       window.clicking.incl button
@@ -1098,6 +1214,13 @@ proc init =
 
       window.mouse.pressed.excl button
       if button in window.clicking:
+        window.logPopupMouseButton(
+          "clickDispatch",
+          button,
+          pressed,
+          location,
+          window.mouse.pos,
+        )
         window.eventsHandler.pushEvent onClick, ClickEvent(
           window: window, button: button, pos: window.mouse.pos,
           double: (nows - window.lastClickTime[button]).inMilliseconds < 200
@@ -1145,13 +1268,7 @@ proc init =
       addMethod "windowDidMove:", proc(self: Id, cmd: Sel, notification: NsNotification): Id {.cdecl.} =
         getWindow(self)
         autoreleasepool:
-          let
-            windowFrame = window.handle.frame
-            screenFrame = window.handle.screen.frame
-          window.m_pos = vec2(
-            windowFrame.origin.x,
-            screenFrame.size.height - windowFrame.origin.y - windowFrame.size.height - 1
-          ).ivec2
+          window.syncPosFromHandle()
         window.eventsHandler.pushEvent onWindowMove, WindowMoveEvent(window: window, pos: window.m_pos)
 
       addMethod "canBecomeKeyWindow", proc(self: Id, cmd: Sel): bool {.cdecl.} =
@@ -1537,6 +1654,7 @@ method firstStep*(window: WindowCocoa, makeVisible = true) =
         if event == nil:
           break
         NSApp.sendEvent(event)
+    window.syncPosFromHandle()
     # Ensure all visible windows are present in the initial z-order. Without
     # this, some macOS setups only show the most recently shown window until
     # the user cycles windows manually.
@@ -1614,6 +1732,26 @@ proc newSoftwareRenderingWindowCocoa*(
   result.initWindowCocoaSoftwareRendering(size, screen, fullscreen, frameless, transparent)
   result.title = title
   if not resizable: result.resizable = false
+
+proc newPopupWindowCocoa*(
+    parent: WindowCocoa, placement: PopupPlacement, transparent = false, grab = true
+): WindowCocoaSoftwareRendering =
+  if parent == nil:
+    raise ValueError.newException("Popup windows require a parent window")
+  result = newSoftwareRenderingWindowCocoa(
+    size = placement.popupSize(),
+    title = "",
+    screen = defaultScreenCocoa(),
+    resizable = false,
+    fullscreen = false,
+    frameless = true,
+    transparent = transparent,
+  )
+  result.initPopupState(parent, placement, grab)
+  result.placement = placement
+  # Interactive popups need to accept focus to receive full mouse/key input.
+  result.canBecomeKeyWindow = true
+  result.canBecomeMainWindow = false
 
 
 proc newOpenglWindowCocoa*(

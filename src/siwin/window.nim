@@ -119,6 +119,27 @@ when not siwin_use_lib:
         resizable, fullscreen, frameless, transparent
       )
 
+  proc newPopupWindow*(
+      globals: SiwinGlobals,
+      parent: Window,
+      placement: PopupPlacement,
+      transparent = false,
+      grab = true,
+  ): PopupWindow =
+    when defined(android):
+      raise SiwinPlatformSupportDefect.newException("Popup windows are not supported on Android")
+    elif defined(linux) or defined(bsd):
+      if globals of SiwinGlobalsX11:
+        result = globals.SiwinGlobalsX11.newPopupWindowX11(parent.WindowX11, placement, transparent, grab)
+      elif globals of SiwinGlobalsWayland:
+        result = globals.SiwinGlobalsWayland.newPopupWindowWayland(parent.WindowWayland, placement, transparent, grab)
+      else:
+        raise SiwinPlatformSupportDefect.newException("Unsupported platform")
+    elif defined(windows):
+      result = newPopupWindowWinapi(parent.WindowWinapi, placement, transparent, grab)
+    elif defined(macosx):
+      result = newPopupWindowCocoa(parent.WindowCocoa, placement, transparent, grab)
+
 
 when defined(android):
   proc loadExtensions*() =
