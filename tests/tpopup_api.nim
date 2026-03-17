@@ -37,8 +37,11 @@ proc stepUntil(window: Window, predicate: proc(): bool, maxSteps = 32) =
 type PopupProbeResult = object
   platform: string
   relPos: IVec2
-  logicalSize: IVec2
+  reportedSize: IVec2
   uiScale: float32
+
+proc maxAbsComponent(v: IVec2): int32 =
+  max(abs(v.x), abs(v.y))
 
 proc parseIvec2(value: string): IVec2 =
   let parts = value.split(',')
@@ -60,8 +63,8 @@ proc parsePopupProbeResult(output: string): PopupProbeResult =
         result.platform = kv[1]
       of "relPos":
         result.relPos = parseIvec2(kv[1])
-      of "logicalSize":
-        result.logicalSize = parseIvec2(kv[1])
+      of "reportedSize":
+        result.reportedSize = parseIvec2(kv[1])
       of "uiScale":
         result.uiScale = parseFloat(kv[1]).float32
       else:
@@ -112,7 +115,7 @@ proc runPopupProbe(platform: Platform) =
 
   var
     lastRelPos = ivec2(low(int32), low(int32))
-    lastLogicalSize = ivec2(low(int32), low(int32))
+    lastReportedSize = ivec2(low(int32), low(int32))
     stableSteps = 0
 
   for _ in 0 ..< 180:
@@ -120,19 +123,19 @@ proc runPopupProbe(platform: Platform) =
     popup.step()
 
     let relPos = popup.pos - parent.pos
-    let logicalSize = popup.size.toPoints(popup.uiScale)
-    if relPos == lastRelPos and logicalSize == lastLogicalSize:
+    let reportedSize = popup.size
+    if relPos == lastRelPos and reportedSize == lastReportedSize:
       inc stableSteps
     else:
       stableSteps = 0
       lastRelPos = relPos
-      lastLogicalSize = logicalSize
+      lastReportedSize = reportedSize
 
     if stableSteps >= 8:
       break
 
   echo "POPUP_RESULT platform=", $platform, " relPos=", lastRelPos.x, ",", lastRelPos.y,
-    " logicalSize=", lastLogicalSize.x, ",", lastLogicalSize.y,
+    " reportedSize=", lastReportedSize.x, ",", lastReportedSize.y,
     " uiScale=", popup.uiScale
 
   close popup
@@ -253,8 +256,8 @@ suite "siwin popup api":
 
       let waylandResult = parsePopupProbeResult(wayland.output)
       let x11Result = parsePopupProbeResult(x11.output)
-      check waylandResult.relPos == x11Result.relPos
-      check waylandResult.logicalSize == x11Result.logicalSize
+      check maxAbsComponent(waylandResult.relPos - x11Result.relPos) <= 1
+      check maxAbsComponent(waylandResult.reportedSize - x11Result.reportedSize) <= 1
 
     test "x11 popup window position matches relative placement in unconstrained case":
       if Platform.x11 notin availablePlatforms():

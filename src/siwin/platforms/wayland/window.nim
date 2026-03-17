@@ -395,6 +395,16 @@ proc bufferSize(window: WindowWayland, logicalSize: IVec2): IVec2 {.inline.} =
   let scale = window.effectiveUiScale()
   ivec2(scaledBufferLength(logicalSize.x, scale), scaledBufferLength(logicalSize.y, scale))
 
+proc reportedCoord(window: WindowWayland; logical: int32): int32 {.inline.} =
+  let scale = window.effectiveUiScale()
+  if scale <= 1'f32:
+    logical
+  else:
+    round(logical.float32 * scale).int32
+
+proc reportedPos(window: WindowWayland; logicalPos: IVec2): IVec2 {.inline.} =
+  ivec2(window.reportedCoord(logicalPos.x), window.reportedCoord(logicalPos.y))
+
 proc toLogicalLength(window: WindowWayland; backing: float32): float32 {.inline.} =
   let scale = window.effectiveUiScale()
   if scale <= 1'f32:
@@ -659,7 +669,8 @@ proc toXdgPositionerAnchor(edge: Edge): `Xdg_positioner / Anchor` =
   of Edge.bottomRight: `Xdg_positioner / Anchor`.bottom_right
 
 proc toXdgPositionerGravity(edge: Edge): `Xdg_positioner / Gravity` =
-  case edge
+  let xdgEdge = edge.flipPopupEdgeX().flipPopupEdgeY()
+  case xdgEdge
   of Edge.topLeft: `Xdg_positioner / Gravity`.top_left
   of Edge.top: `Xdg_positioner / Gravity`.top
   of Edge.topRight: `Xdg_positioner / Gravity`.top_right
@@ -1631,7 +1642,7 @@ proc setupWindow(window: WindowWayland, fullscreen, frameless, transparent: bool
       window.m_closed = true
 
     window.xdgPopup.onConfigure:
-      window.m_pos = parent.pos + ivec2(x, y)
+      window.m_pos = parent.pos + window.reportedPos(ivec2(x, y))
       window.resize(ivec2(width, height))
 
   of LayerSurface:
