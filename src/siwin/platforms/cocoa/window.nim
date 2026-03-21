@@ -1343,8 +1343,6 @@ proc init =
   
           cast[NSView](self).addTrackingArea(window.trackingArea)
   
-          callSuper(cast[NSObject](self), cmd)
-  
         addMethod "draggingEntered:", proc(
           self: Id, cmd: Sel, sender: NSDraggingInfo
         ): NSDragOperation {.cdecl.} =
