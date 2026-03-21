@@ -985,7 +985,7 @@ method `icon=`*(window: WindowCocoa, _: nil.typeof) =
     discard NSApplication.sharedApplication()
   if NSApp == nil:
     return
-  NSApplication.setApplicationIconImage(cast[NSImage](nil))
+  NSApp.setApplicationIconImage(cast[NSImage](nil))
 
 method `icon=`*(window: WindowCocoa, v: PixelBuffer) =
   if v.size.x * v.size.y == 0:
@@ -1017,7 +1017,7 @@ method `icon=`*(window: WindowCocoa, v: PixelBuffer) =
     copyMem(rep.bitmapData, buffer.data, buffer.size.x * buffer.size.y * 4)
     let img = NSImage.alloc().initWithSize(NSMakeSize(buffer.size.x.float64, buffer.size.y.float64))
     img.addRepresentation(cast[NSImageRep](rep))
-    NSApplication.setApplicationIconImage(img)
+    NSApp.setApplicationIconImage(img)
     rep.release()
     img.release()
 
