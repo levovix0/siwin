@@ -30,6 +30,7 @@ type
   WindowCocoaObj* = object of Window
     handle: NsWindow
     trackingArea: NSTrackingArea
+    updatingTrackingAreas: bool
     markedText: NSString
     lastClickTime: array[MouseButton, Time]
     lastDragStatus: DragStatus
@@ -1328,6 +1329,12 @@ proc init =
   
         addMethod "updateTrackingAreas", proc(self: Id, cmd: Sel): Id {.cdecl.} =
           getWindow(self)
+
+          if window.updatingTrackingAreas:
+            return
+          window.updatingTrackingAreas = true
+          defer:
+            window.updatingTrackingAreas = false
   
           if window.trackingArea != nil:
             cast[NSView](self).removeTrackingArea(window.trackingArea)
@@ -1342,6 +1349,8 @@ proc init =
           )
   
           cast[NSView](self).addTrackingArea(window.trackingArea)
+
+          callSuper(void, cast[NSObject](self), cmd)
   
         addMethod "draggingEntered:", proc(
           self: Id, cmd: Sel, sender: NSDraggingInfo
