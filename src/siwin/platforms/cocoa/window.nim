@@ -1331,6 +1331,9 @@ proc init =
           getWindow(self)
 
           # AppKit may re-enter updateTrackingAreas while handling super; guard recursion.
+          # TODO(macOS): Move to a winit-style approach where we create one tracking area
+          # with NSTrackingInVisibleRect during view setup and avoid this override entirely.
+          # That should remove this re-entrancy hazard and reduce tracking-area churn.
           if window.updatingTrackingAreas:
             return
           window.updatingTrackingAreas = true
