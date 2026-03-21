@@ -1330,6 +1330,7 @@ proc init =
         addMethod "updateTrackingAreas", proc(self: Id, cmd: Sel): Id {.cdecl.} =
           getWindow(self)
 
+          # AppKit may re-enter updateTrackingAreas while handling super; guard recursion.
           if window.updatingTrackingAreas:
             return
           window.updatingTrackingAreas = true
