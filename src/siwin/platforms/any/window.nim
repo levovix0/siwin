@@ -266,6 +266,7 @@ type
     
     m_transparent: bool
     m_frameless: bool
+    m_customTitlebar: bool
     m_cursor: Cursor
     m_separateTouch: bool
     m_isPopup: bool
@@ -430,6 +431,7 @@ proc minSize*(window: Window): IVec2 = window.m_minSize
 proc maxSize*(window: Window): IVec2 = window.m_maxSize
 
 proc focused*(window: Window): bool = window.m_focused
+proc customTitlebar*(window: Window): bool = window.m_customTitlebar
 method parentWindow*(window: Window): Window {.base.} = window.m_popupParent
 method placement*(window: Window): PopupPlacement {.base.} = window.m_popupPlacement
 proc popupOpen*(window: Window): bool = window.opened and window.visible
@@ -486,6 +488,13 @@ method `pos=`*(window: Window, v: IVec2) {.base.} = discard
 
 method `title=`*(window: Window, v: string) {.base.} = discard
   ## set window title
+
+method `customTitlebar=`*(window: Window, v: bool) {.base.} =
+  ## enable/disable custom titlebar integration when backend supports it.
+  window.m_customTitlebar = v
+
+method supportsCustomTitlebar*(window: Window): bool {.base.} = false
+  ## reports whether this backend currently applies customTitlebar behavior.
 
 method `fullscreen=`*(window: Window, v: bool) {.base.} = discard
   ## fullscreen/unfullscreen window
