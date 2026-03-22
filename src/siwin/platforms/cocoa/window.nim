@@ -30,6 +30,7 @@ type
   WindowCocoaObj* = object of Window
     handle: NsWindow
     trackingArea: NSTrackingArea
+    updatingTrackingAreas: bool
     markedText: NSString
     lastClickTime: array[MouseButton, Time]
     lastDragStatus: DragStatus
@@ -985,7 +986,7 @@ method `icon=`*(window: WindowCocoa, _: nil.typeof) =
     discard NSApplication.sharedApplication()
   if NSApp == nil:
     return
-  NSApplication.setApplicationIconImage(cast[NSImage](nil))
+  NSApp.setApplicationIconImage(cast[NSImage](nil))
 
 method `icon=`*(window: WindowCocoa, v: PixelBuffer) =
   if v.size.x * v.size.y == 0:
@@ -1017,7 +1018,7 @@ method `icon=`*(window: WindowCocoa, v: PixelBuffer) =
     copyMem(rep.bitmapData, buffer.data, buffer.size.x * buffer.size.y * 4)
     let img = NSImage.alloc().initWithSize(NSMakeSize(buffer.size.x.float64, buffer.size.y.float64))
     img.addRepresentation(cast[NSImageRep](rep))
-    NSApplication.setApplicationIconImage(img)
+    NSApp.setApplicationIconImage(img)
     rep.release()
     img.release()
 
@@ -1328,6 +1329,16 @@ proc init =
   
         addMethod "updateTrackingAreas", proc(self: Id, cmd: Sel): Id {.cdecl.} =
           getWindow(self)
+
+          # AppKit may re-enter updateTrackingAreas while handling super; guard recursion.
+          # TODO(macOS): Move to a winit-style approach where we create one tracking area
+          # with NSTrackingInVisibleRect during view setup and avoid this override entirely.
+          # That should remove this re-entrancy hazard and reduce tracking-area churn.
+          if window.updatingTrackingAreas:
+            return
+          window.updatingTrackingAreas = true
+          defer:
+            window.updatingTrackingAreas = false
   
           if window.trackingArea != nil:
             cast[NSView](self).removeTrackingArea(window.trackingArea)
@@ -1342,8 +1353,8 @@ proc init =
           )
   
           cast[NSView](self).addTrackingArea(window.trackingArea)
-  
-          callSuper(cast[NSObject](self), cmd)
+
+          callSuper(void, cast[NSObject](self), cmd)
   
         addMethod "draggingEntered:", proc(
           self: Id, cmd: Sel, sender: NSDraggingInfo
