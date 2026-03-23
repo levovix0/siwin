@@ -60,6 +60,32 @@ var
   windows: seq[WindowCocoa]
 proc init
 
+proc currentStyleMask(window: WindowCocoa): NSWindowStyleMask =
+  result =
+    if window.m_frameless:
+      if window.m_resizable:
+        NSWindowStyleMaskMiniaturizable or NSWindowStyleMaskResizable or NSWindowStyleMaskBorderless
+      else:
+        NSWindowStyleMaskMiniaturizable or NSWindowStyleMaskBorderless
+    else:
+      if window.m_resizable:
+        NSWindowStyleMaskMiniaturizable or NSWindowStyleMaskResizable or NSWindowStyleMaskTitled or NSWindowStyleMaskClosable
+      else:
+        NSWindowStyleMaskMiniaturizable or NSWindowStyleMaskTitled or NSWindowStyleMaskClosable
+  if window.m_customTitlebar and not window.m_frameless:
+    result = result or NSWindowStyleMaskFullSizeContentView
+
+proc applyCustomTitlebarState(window: WindowCocoa) =
+  if window.handle == nil:
+    return
+  window.handle.setTitlebarAppearsTransparent(window.m_customTitlebar)
+  window.handle.setTitleVisibility(
+    if window.m_customTitlebar:
+      NSWindowTitleHidden
+    else:
+      NSWindowTitleVisible
+  )
+
 
 proc `=destroy`(window: WindowCocoaObj) {.siwin_destructor.} =
   if window.addr[].m_closed:
@@ -547,10 +573,12 @@ proc initWindowCocoa(
   init()
 
   window.m_size = size
+  window.m_resizable = true
   window.m_frameless = frameless
   window.m_transparent = transparent
   window.m_canBecomeKeyWindow = true
   window.m_canBecomeMainWindow = true
+  window.m_customTitlebar = false
 
   var x = 0.0
   var y = 0.0
@@ -561,13 +589,11 @@ proc initWindowCocoa(
 
   window.handle = cast[NSWindow](windowClass.alloc()).initWithContentRect(
     NsMakeRect(x, y, size.x.float64, size.y.float64),
-    (
-      if frameless: NSWindowStyleMaskMiniaturizable or NSWindowStyleMaskResizable or NSWindowStyleMaskBorderless
-      else: NSWindowStyleMaskMiniaturizable or NSWindowStyleMaskResizable or NSWindowStyleMaskTitled or NSWindowStyleMaskClosable
-    ),
+    window.currentStyleMask(),
     NsBackingStoreBuffered,
     false
   )
+  window.applyCustomTitlebarState()
   windows.add window
 
   window.m_clipboard = ClipboardCocoa(
@@ -714,14 +740,7 @@ proc initWindowCocoaMetal*(
 method `frameless=`*(window: WindowCocoa, v: bool) =
   if window.m_frameless == v: return
   window.m_frameless = v
-  window.handle.setStyleMask(
-    if v:
-      if window.m_resizable: NSWindowStyleMaskMiniaturizable or NSWindowStyleMaskResizable or NSWindowStyleMaskBorderless
-      else: NSWindowStyleMaskMiniaturizable or NSWindowStyleMaskBorderless
-    else:
-      if window.m_resizable: NSWindowStyleMaskMiniaturizable or NSWindowStyleMaskResizable or NSWindowStyleMaskTitled or NSWindowStyleMaskClosable
-      else: NSWindowStyleMaskMiniaturizable or NSWindowStyleMaskTitled or NSWindowStyleMaskClosable
-  )
+  window.handle.setStyleMask(window.currentStyleMask())
 
 
 method `title=`*(window: WindowCocoa, title: string) =
@@ -950,14 +969,17 @@ method `resizable=`*(window: WindowCocoa, v: bool) =
   if window.m_resizable == v:
     return
   window.m_resizable = v
-  window.handle.setStyleMask(
-    if window.m_frameless:
-      if v: NSWindowStyleMaskMiniaturizable or NSWindowStyleMaskResizable or NSWindowStyleMaskBorderless
-      else: NSWindowStyleMaskMiniaturizable or NSWindowStyleMaskBorderless
-    else:
-      if v: NSWindowStyleMaskMiniaturizable or NSWindowStyleMaskResizable or NSWindowStyleMaskTitled or NSWindowStyleMaskClosable
-      else: NSWindowStyleMaskMiniaturizable or NSWindowStyleMaskTitled or NSWindowStyleMaskClosable
-  )
+  window.handle.setStyleMask(window.currentStyleMask())
+
+method `customTitlebar=`*(window: WindowCocoa, v: bool) =
+  if window.customTitlebar == v:
+    return
+  procCall window.Window.`customTitlebar=`(v)
+  window.handle.setStyleMask(window.currentStyleMask())
+  window.applyCustomTitlebarState()
+
+method supportsCustomTitlebar*(window: WindowCocoa): bool =
+  true
 
 method `minSize=`*(window: WindowCocoa, v: IVec2) =
   if v.x <= 0 or v.y <= 0:
