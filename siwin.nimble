@@ -23,7 +23,7 @@ when defined(android):
   requires "https://github.com/yglukhov/android"
 
 when defined(macosx):
-  requires "darwin >= 0.2.3"
+  requires "darwin >= 0.2.4"
 
 feature "dev":
   requires "opengl"
