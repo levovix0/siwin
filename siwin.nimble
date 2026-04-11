@@ -12,7 +12,7 @@ requires "vmath >= 1.1.4"
 #       ask a userprogrammer to install specific platform dependencies if cross compiling.
 when defined(linux) or defined(bsd):
   requires "x11 >= 1.1"
-  requires "https://github.com/planetis-m/vulkan#b223dc9"
+  requires "https://github.com/planetis-m/vulkan >= 1.3.295"
   #requires "https://github.com/DanielBelmes/vulkan"
 
 when defined(windows):
