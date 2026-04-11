@@ -122,6 +122,29 @@ type
     rejected
     accepted
 
+  PopupConstraintAdjustment* {.siwin_enum.} = enum
+    pcaSlideX
+    pcaSlideY
+    pcaFlipX
+    pcaFlipY
+    pcaResizeX
+    pcaResizeY
+
+  PopupDismissReason* {.siwin_enum.} = enum
+    pdrClientClosed
+    pdrCompositorDismissed
+    pdrParentClosed
+
+  PopupPlacement* = object
+    anchorRectPos*: IVec2
+    anchorRectSize*: IVec2
+    size*: IVec2
+    anchor*: Edge
+    gravity*: Edge
+    offset*: IVec2
+    constraintAdjustment*: set[PopupConstraintAdjustment]
+    reactive*: bool
+
 
   AnyWindowEvent* = object of RootObj
     window*: Window
@@ -191,6 +214,9 @@ type
     value*: bool
     kind*: StateBoolChangedEventKind
     isExternal*: bool  ## changed by user via compositor (server-side change)
+
+  PopupEvent* = object of AnyWindowEvent
+    reason*: PopupDismissReason
   
 
   DropEvent* = object of AnyWindowEvent
@@ -219,6 +245,8 @@ type
       ## binary state of focus/fullscreen/maximized/frameless changed
       ## fullscreen and maximized changes are sent before ResizeEvent
 
+    onPopupDone*:      proc(e: PopupEvent)  ## popup was dismissed or explicitly closed
+
     onDrop*:         proc(e: DropEvent)  ## drag&drop clipboard content is beeng pasted to this window
 
 
@@ -238,8 +266,14 @@ type
     
     m_transparent: bool
     m_frameless: bool
+    m_customTitlebar: bool
     m_cursor: Cursor
     m_separateTouch: bool
+    m_isPopup: bool
+    m_popupGrab: bool
+    m_popupDismissed: bool
+    m_popupParent: Window
+    m_popupPlacement: PopupPlacement
     
     m_size: IVec2
     m_pos: IVec2
@@ -267,6 +301,106 @@ method height*(screen: Screen): int32 {.base.} = discard
 
 proc size*(screen: Screen): IVec2 = ivec2(screen.width, screen.height)
 
+type PopupWindow* = Window
+
+func popupSize*(placement: PopupPlacement): IVec2 =
+  if placement.size.x > 0 and placement.size.y > 0:
+    placement.size
+  elif placement.anchorRectSize.x > 0 and placement.anchorRectSize.y > 0:
+    placement.anchorRectSize
+  else:
+    ivec2(1, 1)
+
+func popupAnchorOffset*(anchor: Edge, size: IVec2): IVec2 =
+  case anchor
+  of Edge.topLeft: ivec2(0, 0)
+  of Edge.top: ivec2(size.x div 2, 0)
+  of Edge.topRight: ivec2(size.x, 0)
+  of Edge.left: ivec2(0, size.y div 2)
+  of Edge.right: ivec2(size.x, size.y div 2)
+  of Edge.bottomLeft: ivec2(0, size.y)
+  of Edge.bottom: ivec2(size.x div 2, size.y)
+  of Edge.bottomRight: ivec2(size.x, size.y)
+
+func popupRelativePos*(placement: PopupPlacement): IVec2 =
+  let anchorPoint = placement.anchorRectPos + placement.anchor.popupAnchorOffset(placement.anchorRectSize)
+  anchorPoint - placement.gravity.popupAnchorOffset(placement.popupSize()) + placement.offset
+
+proc flipPopupEdgeX*(edge: Edge): Edge =
+  case edge
+  of Edge.topLeft: Edge.topRight
+  of Edge.topRight: Edge.topLeft
+  of Edge.left: Edge.right
+  of Edge.right: Edge.left
+  of Edge.bottomLeft: Edge.bottomRight
+  of Edge.bottomRight: Edge.bottomLeft
+  else: edge
+
+proc flipPopupEdgeY*(edge: Edge): Edge =
+  case edge
+  of Edge.topLeft: Edge.bottomLeft
+  of Edge.top: Edge.bottom
+  of Edge.topRight: Edge.bottomRight
+  of Edge.bottomLeft: Edge.topLeft
+  of Edge.bottom: Edge.top
+  of Edge.bottomRight: Edge.topRight
+  else: edge
+
+proc popupOverflowX*(posX, width, boundsWidth: int32): int32 {.inline.} =
+  max(0'i32, -posX) + max(0'i32, posX + width - boundsWidth)
+
+proc popupOverflowY*(posY, height, boundsHeight: int32): int32 {.inline.} =
+  max(0'i32, -posY) + max(0'i32, posY + height - boundsHeight)
+
+proc resolvePopupRect*(parentPos, boundsPos, boundsSize: IVec2, placement: PopupPlacement): tuple[pos, size: IVec2] =
+  proc popupRectFor(placement: PopupPlacement): tuple[pos, size: IVec2] =
+    (parentPos + placement.popupRelativePos(), placement.popupSize())
+
+  var resolvedPlacement = placement
+  result = popupRectFor(resolvedPlacement)
+
+  if PopupConstraintAdjustment.pcaFlipX in placement.constraintAdjustment:
+    var flipped = resolvedPlacement
+    flipped.anchor = flipped.anchor.flipPopupEdgeX()
+    flipped.gravity = flipped.gravity.flipPopupEdgeX()
+    let flippedRect = popupRectFor(flipped)
+    if popupOverflowX(flippedRect.pos.x - boundsPos.x, flippedRect.size.x, boundsSize.x) <
+        popupOverflowX(result.pos.x - boundsPos.x, result.size.x, boundsSize.x):
+      resolvedPlacement = flipped
+      result = flippedRect
+
+  if PopupConstraintAdjustment.pcaFlipY in placement.constraintAdjustment:
+    var flipped = resolvedPlacement
+    flipped.anchor = flipped.anchor.flipPopupEdgeY()
+    flipped.gravity = flipped.gravity.flipPopupEdgeY()
+    let flippedRect = popupRectFor(flipped)
+    if popupOverflowY(flippedRect.pos.y - boundsPos.y, flippedRect.size.y, boundsSize.y) <
+        popupOverflowY(result.pos.y - boundsPos.y, result.size.y, boundsSize.y):
+      resolvedPlacement = flipped
+      result = flippedRect
+
+  if PopupConstraintAdjustment.pcaSlideX in placement.constraintAdjustment:
+    result.pos.x = clamp(result.pos.x, boundsPos.x, max(boundsPos.x, boundsPos.x + boundsSize.x - result.size.x))
+
+  if PopupConstraintAdjustment.pcaSlideY in placement.constraintAdjustment:
+    result.pos.y = clamp(result.pos.y, boundsPos.y, max(boundsPos.y, boundsPos.y + boundsSize.y - result.size.y))
+
+  if PopupConstraintAdjustment.pcaResizeX in placement.constraintAdjustment:
+    if result.pos.x < boundsPos.x:
+      result.size.x -= boundsPos.x - result.pos.x
+      result.pos.x = boundsPos.x
+    if result.pos.x + result.size.x > boundsPos.x + boundsSize.x:
+      result.size.x = max(1'i32, boundsPos.x + boundsSize.x - result.pos.x)
+    result.size.x = max(1'i32, result.size.x)
+
+  if PopupConstraintAdjustment.pcaResizeY in placement.constraintAdjustment:
+    if result.pos.y < boundsPos.y:
+      result.size.y -= boundsPos.y - result.pos.y
+      result.pos.y = boundsPos.y
+    if result.pos.y + result.size.y > boundsPos.y + boundsSize.y:
+      result.size.y = max(1'i32, boundsPos.y + boundsSize.y - result.pos.y)
+    result.size.y = max(1'i32, result.size.y)
+
 
 proc closed*(window: Window): bool = window.m_closed
 proc opened*(window: Window): bool = not window.closed
@@ -280,6 +414,8 @@ proc frameless*(window: Window): bool = window.m_frameless
 proc cursor*(window: Window): Cursor = window.m_cursor
 proc separateTouch*(window: Window): bool = window.m_separateTouch
   ## enable/disable handling touch events separately from mouse events
+proc isPopup*(window: Window): bool = window.m_isPopup
+proc popupGrab*(window: Window): bool = window.m_popupGrab
 
 method reportedSize*(window: Window): IVec2 {.base.} = window.m_size
   ## Size reported to API users/events (backing pixels on HiDPI platforms).
@@ -295,6 +431,25 @@ proc minSize*(window: Window): IVec2 = window.m_minSize
 proc maxSize*(window: Window): IVec2 = window.m_maxSize
 
 proc focused*(window: Window): bool = window.m_focused
+proc customTitlebar*(window: Window): bool = window.m_customTitlebar
+method parentWindow*(window: Window): Window {.base.} = window.m_popupParent
+method placement*(window: Window): PopupPlacement {.base.} = window.m_popupPlacement
+proc popupOpen*(window: Window): bool = window.opened and window.visible
+
+proc initPopupState*(window, parent: Window, placement: PopupPlacement, grab: bool) =
+  window.m_isPopup = true
+  window.m_popupGrab = grab
+  window.m_popupDismissed = false
+  window.m_popupParent = parent
+  window.m_popupPlacement = placement
+  window.m_size = placement.popupSize()
+
+proc notifyPopupDone*(window: Window, reason: PopupDismissReason) =
+  if not window.m_isPopup or window.m_popupDismissed:
+    return
+  window.m_popupDismissed = true
+  if window.eventsHandler.onPopupDone != nil:
+    window.eventsHandler.onPopupDone(PopupEvent(window: window, reason: reason))
 
 method uiScale*(window: Window): float32 {.base.} = 1'f32
   ## UI scale factor (device pixels per logical point).
@@ -316,6 +471,12 @@ method `cursor=`*(window: Window, v: Cursor) {.base.} = discard
 method `separateTouch=`*(window: Window, v: bool) {.base.} = discard
   ## enable/disable handling touch events separately from mouse events
 
+method `placement=`*(window: Window, v: PopupPlacement) {.base.} =
+  window.m_popupPlacement = v
+
+method reposition*(window: Window, v: PopupPlacement) {.base.} =
+  window.placement = v
+
 
 method `size=`*(window: Window, v: IVec2) {.base.} = discard
   ## resize window
@@ -327,6 +488,13 @@ method `pos=`*(window: Window, v: IVec2) {.base.} = discard
 
 method `title=`*(window: Window, v: string) {.base.} = discard
   ## set window title
+
+method `customTitlebar=`*(window: Window, v: bool) {.base.} =
+  ## enable/disable custom titlebar integration when backend supports it.
+  window.m_customTitlebar = v
+
+method supportsCustomTitlebar*(window: Window): bool {.base.} = false
+  ## reports whether this backend currently applies customTitlebar behavior.
 
 method `fullscreen=`*(window: Window, v: bool) {.base.} = discard
   ## fullscreen/unfullscreen window
