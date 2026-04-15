@@ -1,4 +1,4 @@
-version       = "1.0.0"
+version       = "1.0.1"
 author        = "levovix0"
 description   = "Cross-platform window creation and event handling library"
 license       = "MIT"
@@ -21,7 +21,7 @@ when defined(android):
   requires "https://github.com/yglukhov/android"
 
 when defined(macosx):
-  requires "darwin >= 0.2.4"
+  requires "darwin#30d16cf0983124057a57553a0f1f9fd5df525f84"
 
 feature "dev":
   requires "opengl"
