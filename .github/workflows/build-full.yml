@@ -73,13 +73,11 @@ jobs:
     - name: Install Tools
       if: runner.os != 'Windows'
       run: |
-        # nimble install "https://github.com/nim-lang/atlas@#head"
         nimble install "https://github.com/nim-lang/nimble@#head"
 
     - name: Install Tools (Windows)
       if: runner.os == 'Windows'
       run: |
-        # nimble install "https://github.com/nim-lang/atlas@#head"
         nimble install --passNim:--cc:vcc "https://github.com/nim-lang/nimble@#head"
 
     - name: Tool Versions
