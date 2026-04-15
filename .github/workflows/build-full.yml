@@ -83,21 +83,21 @@ jobs:
       if: runner.os == 'Linux'
       run: |
         # sync deps
-        nimble install -y -d
+        nimble install -y -d --feature:dev
         nimble installTestDeps
 
     - name: Install Deps
       if: runner.os == 'macOS'
       run: |
         # sync deps
-        nimble install -y -d
+        nimble install -y -d --feature:dev
         nimble installTestDeps
 
     - name: Install Deps
       if: runner.os == 'Windows'
       run: |
         # sync deps
-        nimble install -y -d
+        nimble install -y -d --feature:dev
         nimble installTestDeps
 
     - name: Build Tests
