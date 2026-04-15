@@ -1050,7 +1050,7 @@ method content*(
   clipboard: ClipboardCocoa, kind: ClipboardContentKind, mimeType: string
 ): ClipboardContent =
   autoreleasepool:
-    let pasteboard = NSPasteboard.withName(NSPasteboardNameGeneral)
+    let pasteboard = NSPasteboard.generalPasteboard()
     clipboard.refreshClipboardAvailability(pasteboard)
     let targetType = bestMimeType(clipboard.availableMimeTypes, kind, mimeType)
     if targetType.len == 0:
@@ -1070,7 +1070,7 @@ method content*(
 
 method `content=`*(clipboard: ClipboardCocoa, content: ClipboardConvertableContent) =
   autoreleasepool:
-    let pasteboard = NSPasteboard.withName(NSPasteboardNameGeneral)
+    let pasteboard = NSPasteboard.generalPasteboard()
     if pasteboard == nil:
       return
 
@@ -1101,7 +1101,7 @@ method `content=`*(clipboard: ClipboardCocoa, content: ClipboardConvertableConte
         continue
 
       let data = stringToNSData(serialized)
-      discard item.setDataForType(data, @targetType)
+      discard item.setData(data, @targetType)
       availableKinds.incl converted.kind
       if converted.kind != ClipboardContentKind.other:
         availableKinds.incl ClipboardContentKind.other
@@ -1110,8 +1110,8 @@ method `content=`*(clipboard: ClipboardCocoa, content: ClipboardConvertableConte
     if availableMimeTypes.len == 0:
       return
 
-    pasteboard.clearContents()
-    pasteboard.writeObjects(arrayWithObjects[NSPasteboardItem](item))
+    discard pasteboard.clearContents()
+    discard pasteboard.writeObjects(arrayWithObjects[NSPasteboardItem](item))
     clipboard.availableKinds = availableKinds
     clipboard.availableMimeTypes = availableMimeTypes
 
