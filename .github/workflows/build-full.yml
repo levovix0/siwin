@@ -50,8 +50,7 @@ jobs:
       if: runner.os != 'Windows'
       run: |
         curl -fsSL https://codeberg.org/janAkali/grabnim/raw/branch/master/misc/install.sh | sh
-        echo "$HOME/.nimble/bin" >> $GITHUB_PATH
-        echo "$HOME/.local/share/grabnim/current/bin" >> $GITHUB_PATH
+        echo "PATH=$HOME/.nimble/bin:$HOME/.local/share/grabnim/current/bin:$PATH" >> $GITHUB_ENV
 
     - name: Install Nim
       if: runner.os != 'Windows'
@@ -65,6 +64,11 @@ jobs:
       with:
         nim-version: ${{ matrix.nimversion }}
 
+    - name: Add Nimble Bin To PATH
+      if: runner.os == 'Windows'
+      run: |
+        echo "PATH=$HOME/.nimble/bin:$PATH" >> $GITHUB_ENV
+
     - name: Install Tools
       run: |
         # nimble install "https://github.com/nim-lang/atlas@#head"
@@ -76,6 +80,8 @@ jobs:
         nim -v
         echo "Nimble:: "
         nimble -v
+        echo "Nimble::path "
+        which `nimble`
         echo "Atlas:: "
         atlas -v
 
