@@ -9,6 +9,8 @@ on:
 jobs:
   tests:
     runs-on: ${{ matrix.os }}
+    env:
+      NIMBLE_BIN: nimble
     defaults:
       run:
         shell: bash
@@ -65,28 +67,27 @@ jobs:
       with:
         nim-version: ${{ matrix.nimversion }}
 
-    - name: Add Nimble Bin To PATH
-      if: runner.os == 'Windows'
-      run: |
-        echo "$HOME/.nimble/bin" >> $GITHUB_PATH
-
     - name: Install Tools
       if: runner.os != 'Windows'
       run: |
         nimble install "https://github.com/nim-lang/nimble@#head"
 
-    - name: Install Tools (Windows)
+    - name: Build Nimble (Windows)
       if: runner.os == 'Windows'
       run: |
-        nimble install --passNim:--cc:vcc "https://github.com/nim-lang/nimble@#head"
+        git clone --depth 1 https://github.com/nim-lang/nimble "$RUNNER_TEMP/nimble-head"
+        cd "$RUNNER_TEMP/nimble-head"
+        git submodule update --init
+        nim c --cc:vcc -d:release -o:"$HOME/.nimble/bin/nimble-head.exe" src/nimble.nim
+        echo "NIMBLE_BIN=$HOME/.nimble/bin/nimble-head.exe" >> $GITHUB_ENV
 
     - name: Tool Versions
       run: |
         echo "Nim:: "
         nim -v
         echo "Nimble:: "
-        nimble -v
-        echo "Nimble::path " $(which nimble)
+        "$NIMBLE_BIN" -v
+        echo "Nimble::path $NIMBLE_BIN"
         echo "Atlas:: "
         atlas -v
 
@@ -102,7 +103,7 @@ jobs:
       env:
         NIMFLAGS: ${{ runner.os == 'Windows' && '--cc:vcc' || '' }}
       run: |
-        nimble install -y -d --features:dev
+        "$NIMBLE_BIN" install -y -d --features:dev
 
     - name: Build Tests
       if: runner.os == 'Linux'
@@ -115,7 +116,7 @@ jobs:
         VK_ICD_FILENAMES: "/usr/share/vulkan/icd.d/lvp_icd.x86_64.json"
         VK_DRIVER_FILES: "/usr/share/vulkan/icd.d/lvp_icd.x86_64.json"
       run: |
-        xvfb-run -a -s "-screen 0 1280x1024x24" nimble --features:dev test
+        xvfb-run -a -s "-screen 0 1280x1024x24" "$NIMBLE_BIN" --features:dev test
 
     # - name: Build Tests (Vulkan Compile Check)
     #   if: runner.os == 'Linux'
@@ -127,21 +128,21 @@ jobs:
     - name: Build Tests
       if: runner.os == 'macOS'
       run: |
-        nimble --features:dev test
+        "$NIMBLE_BIN" --features:dev test
 
     - name: Build Tests
       if: runner.os == 'Windows'
       env:
         NIMFLAGS: "--cc:vcc -d:siwin.vulkan=off"
       run: |
-        nimble --features:dev test
+        "$NIMBLE_BIN" --features:dev test
 
     - name: Build Tests (Vulkan Run Check)
       if: runner.os == 'Windows'
       env:
         NIMFLAGS: "--cc:vcc -d:siwin.vulkan=on"
       run: |
-        nimble test
+        "$NIMBLE_BIN" test
 
     - name: Upload Test Output (on failure)
       if: failure()
