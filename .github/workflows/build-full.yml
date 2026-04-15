@@ -79,7 +79,9 @@ jobs:
     - name: Cache packages
       uses: actions/cache@v3
       with:
-        path: deps/
+        path: |
+          deps/
+          ~/.nimble/
         key: ${{ runner.os }}-${{ hashFiles('siwin.nimble') }}
 
     - name: Install Deps
