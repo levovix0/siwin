@@ -81,8 +81,7 @@ jobs:
         nim -v
         echo "Nimble:: "
         nimble -v
-        echo "Nimble::path "
-        which `nimble`
+        echo "Nimble::path " $(which nimble)
         echo "Atlas:: "
         atlas -v
 
