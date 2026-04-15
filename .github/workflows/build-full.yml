@@ -111,14 +111,14 @@ jobs:
     - name: Build Tests
       if: runner.os == 'macOS'
       run: |
-        nimble test
+        nimble --feature:dev test
 
     - name: Build Tests
       if: runner.os == 'Windows'
       env:
         NIMFLAGS: "-d:siwin.vulkan=off"
       run: |
-        nimble test
+        nimble --feature:dev test
 
     - name: Build Tests (Vulkan Run Check)
       if: runner.os == 'Windows'
