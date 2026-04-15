@@ -65,25 +65,19 @@ jobs:
       with:
         nim-version: ${{ matrix.nimversion }}
 
-    - name: Install GCC (Windows)
-      if: runner.os == 'Windows'
-      id: msys2
-      uses: msys2/setup-msys2@v2
-      with:
-        msystem: UCRT64
-        update: true
-        install: >-
-          mingw-w64-ucrt-x86_64-gcc
-
     - name: Add Nimble Bin To PATH
       if: runner.os == 'Windows'
       run: |
-        echo "PATH=$HOME/.nimble/bin:${{ steps.msys2.outputs.msys2-location }}/ucrt64/bin:$PATH" >> $GITHUB_ENV
+        echo "$HOME/.nimble/bin" >> $GITHUB_PATH
 
     - name: Install Tools
       run: |
         # nimble install "https://github.com/nim-lang/atlas@#head"
-        nimble install "https://github.com/nim-lang/nimble"
+        if [ "$RUNNER_OS" = "Windows" ]; then
+          nimble install --nim:"nim --cc:vcc" "https://github.com/nim-lang/nimble@#head"
+        else
+          nimble install "https://github.com/nim-lang/nimble@#head"
+        fi
 
     - name: Tool Versions
       run: |
