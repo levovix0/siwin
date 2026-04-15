@@ -71,13 +71,16 @@ jobs:
         echo "$HOME/.nimble/bin" >> $GITHUB_PATH
 
     - name: Install Tools
+      if: runner.os != 'Windows'
       run: |
         # nimble install "https://github.com/nim-lang/atlas@#head"
-        if [ "$RUNNER_OS" = "Windows" ]; then
-          nimble install --nim:"nim --cc:vcc" "https://github.com/nim-lang/nimble@#head"
-        else
-          nimble install "https://github.com/nim-lang/nimble@#head"
-        fi
+        nimble install "https://github.com/nim-lang/nimble@#head"
+
+    - name: Install Tools (Windows)
+      if: runner.os == 'Windows'
+      run: |
+        # nimble install "https://github.com/nim-lang/atlas@#head"
+        nimble install --passNim:--cc:vcc "https://github.com/nim-lang/nimble@#head"
 
     - name: Tool Versions
       run: |
@@ -98,6 +101,8 @@ jobs:
         key: ${{ runner.os }}-${{ hashFiles('siwin.nimble') }}
 
     - name: Install Deps
+      env:
+        NIMFLAGS: ${{ runner.os == 'Windows' && '--cc:vcc' || '' }}
       run: |
         nimble install -y -d --features:dev
 
@@ -129,14 +134,14 @@ jobs:
     - name: Build Tests
       if: runner.os == 'Windows'
       env:
-        NIMFLAGS: "-d:siwin.vulkan=off"
+        NIMFLAGS: "--cc:vcc -d:siwin.vulkan=off"
       run: |
         nimble --features:dev test
 
     - name: Build Tests (Vulkan Run Check)
       if: runner.os == 'Windows'
       env:
-        NIMFLAGS: "-d:siwin.vulkan=on"
+        NIMFLAGS: "--cc:vcc -d:siwin.vulkan=on"
       run: |
         nimble test
 
