@@ -65,12 +65,15 @@ jobs:
       with:
         nim-version: ${{ matrix.nimversion }}
 
-    - name: Install Atlas
+    - name: Install Tools
       run: |
-        nimble install 'https://github.com/nim-lang/atlas@#head'
+        # nimble install 'https://github.com/nim-lang/atlas@#head'
+        nimble install 'https://github.com/nim-lang/nimble'
         echo "Nim:: "
         nim -v
         echo "Nimble:: "
+        nimble -v
+        echo "Atlas:: "
         atlas -v
 
     - name: Cache packages
