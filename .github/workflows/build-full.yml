@@ -9,10 +9,13 @@ on:
 jobs:
   tests:
     runs-on: ${{ matrix.os }}
+    env:
+      NIMBLE_BIN: nimble
     defaults:
       run:
         shell: bash
     strategy:
+      fail-fast: false
       matrix:
         nimversion:
           - '2.2.8'
@@ -50,8 +53,7 @@ jobs:
       if: runner.os != 'Windows'
       run: |
         curl -fsSL https://codeberg.org/janAkali/grabnim/raw/branch/master/misc/install.sh | sh
-        echo "$HOME/.local/share/grabnim/current/bin" >> $GITHUB_PATH
-        echo "$HOME/.nimble/bin" >> $GITHUB_PATH
+        echo "PATH=$HOME/.nimble/bin:$HOME/.local/share/grabnim/current/bin:$PATH" >> $GITHUB_ENV
 
     - name: Install Nim
       if: runner.os != 'Windows'
@@ -65,40 +67,43 @@ jobs:
       with:
         nim-version: ${{ matrix.nimversion }}
 
-    - name: Install Atlas
+    - name: Install Tools
+      if: runner.os != 'Windows'
       run: |
-        nimble install 'https://github.com/nim-lang/atlas@#head'
+        nimble install "https://github.com/nim-lang/nimble@#head"
+
+    - name: Build Nimble (Windows)
+      if: runner.os == 'Windows'
+      run: |
+        git clone --depth 1 https://github.com/nim-lang/nimble "$RUNNER_TEMP/nimble-head"
+        cd "$RUNNER_TEMP/nimble-head"
+        git submodule update --init
+        nim c --cc:vcc -d:release -o:"$HOME/.nimble/bin/nimble-head.exe" src/nimble.nim
+        echo "NIMBLE_BIN=$HOME/.nimble/bin/nimble-head.exe" >> $GITHUB_ENV
+
+    - name: Tool Versions
+      run: |
         echo "Nim:: "
         nim -v
         echo "Nimble:: "
+        "$NIMBLE_BIN" -v
+        echo "Nimble::path $NIMBLE_BIN"
+        echo "Atlas:: "
         atlas -v
 
     - name: Cache packages
       uses: actions/cache@v3
       with:
-        path: deps/
+        path: |
+          deps/
+          ~/.nimble/
         key: ${{ runner.os }}-${{ hashFiles('siwin.nimble') }}
 
     - name: Install Deps
-      if: runner.os == 'Linux'
+      env:
+        NIMFLAGS: ${{ runner.os == 'Windows' && '--cc:vcc' || '' }}
       run: |
-        # sync deps
-        nimble install -y -d --feature:dev
-        nimble installTestDeps
-
-    - name: Install Deps
-      if: runner.os == 'macOS'
-      run: |
-        # sync deps
-        nimble install -y -d --feature:dev
-        nimble installTestDeps
-
-    - name: Install Deps
-      if: runner.os == 'Windows'
-      run: |
-        # sync deps
-        nimble install -y -d --feature:dev
-        nimble installTestDeps
+        "$NIMBLE_BIN" install -y -d --features:dev
 
     - name: Build Tests
       if: runner.os == 'Linux'
@@ -111,7 +116,7 @@ jobs:
         VK_ICD_FILENAMES: "/usr/share/vulkan/icd.d/lvp_icd.x86_64.json"
         VK_DRIVER_FILES: "/usr/share/vulkan/icd.d/lvp_icd.x86_64.json"
       run: |
-        xvfb-run -a -s "-screen 0 1280x1024x24" nimble test
+        xvfb-run -a -s "-screen 0 1280x1024x24" "$NIMBLE_BIN" --features:dev test
 
     # - name: Build Tests (Vulkan Compile Check)
     #   if: runner.os == 'Linux'
@@ -123,21 +128,21 @@ jobs:
     - name: Build Tests
       if: runner.os == 'macOS'
       run: |
-        nimble test
+        "$NIMBLE_BIN" --features:dev test
 
     - name: Build Tests
       if: runner.os == 'Windows'
       env:
-        NIMFLAGS: "-d:siwin.vulkan=off"
+        NIMFLAGS: "--cc:vcc -d:siwin.vulkan=off"
       run: |
-        nimble test
+        "$NIMBLE_BIN" --features:dev test
 
     - name: Build Tests (Vulkan Run Check)
       if: runner.os == 'Windows'
       env:
-        NIMFLAGS: "-d:siwin.vulkan=on"
+        NIMFLAGS: "--cc:vcc -d:siwin.vulkan=on"
       run: |
-        nimble test
+        "$NIMBLE_BIN" test
 
     - name: Upload Test Output (on failure)
       if: failure()
