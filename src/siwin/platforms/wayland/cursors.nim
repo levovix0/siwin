@@ -12,7 +12,7 @@ type
     delay: uint32  # in milliseconds
     pixels: seq[uint32]  # argb
 
-  CursorWayland* = object
+  CursorWayland* = ref object
     hotspot*: IVec2
     surface*: Wl_surface
     animated*: bool
@@ -48,7 +48,7 @@ proc parseXCursor*(data: string, filename: string): seq[CursorImage] =
       delay: delay,
     )
     result[^1].pixels.setLen w.int * h.int
-    copyMem(result[^1].pixels[0].addr, data[i + 36].addr, w.int * h.int)
+    copyMem(result[^1].pixels[0].addr, data[i + 36].addr, w.int * h.int * 4)
 
 
 proc findCurrentCursorThemeDirectory*(): string =
@@ -57,13 +57,14 @@ proc findCurrentCursorThemeDirectory*(): string =
   let themeName = getEnv("XCURSOR_THEME", "Adwaita")
   
   if dirExists("/usr/share/icons/" & themeName & "/cursors"):
-    return "/usr/share/icons/" & themeName
+    return "/usr/share/icons/" & themeName & "/cursors"
   
   if dirExists(getHomeDir() / (".local/share/icons/" & themeName & "/cursors")):
     return getHomeDir() / (".local/share/icons/" & themeName & "/cursors")
 
 
 proc loadBuiltinCursor*(globals: SiwinGlobalsWayland, kind: BuiltinCursor): CursorWayland =
+  new result
   if kind == BuiltinCursor.hided:
     result.surface = globals.compositor.create_surface()
     return
@@ -93,13 +94,30 @@ proc loadBuiltinCursor*(globals: SiwinGlobalsWayland, kind: BuiltinCursor): Curs
         of BuiltinCursor.hided: "default"
     
     var (name, fallback) = cursorName(kind)
-    var cursorPath = cursorDir / name & ".png"
+    var cursorPath = cursorDir / name
     
     while not fileExists(cursorPath) and fallback != BuiltinCursor.arrow:
       (name, fallback) = cursorName(fallback)
-      cursorPath = cursorDir / name & ".png"
-    
-    if not fileExists(cursorPath):
-      return globals.loadBuiltinCursor(BuiltinCursor.hided)
+      cursorPath = cursorDir / name
 
+    var cursors: seq[CursorImage]
+    
+    if fileExists(cursorPath):
+      cursors = parseXCursor(readfile(cursorPath), cursorPath)
+      
     result.surface = globals.compositor.create_surface()
+
+    var buffer: SharedBuffer
+    if cursors.len == 0:
+      buffer = create(globals, globals.shm, ivec2(24, 24), argb8888)
+      type CursorBuffer = array[0..575, array[4, uint8]]
+      let pixel = cast[ptr CursorBuffer](buffer.dataAddr)
+      for i in 0..23:
+        for j in 0..23:
+          if abs(i - j) < 4 or (i < 16 and j < 4) or (j < 16 and i < 4):
+            pixel[i * 24 + j] = [128'u8, 128, 128, 128]
+    else:
+      buffer = create(globals, globals.shm, cursors[0].size, argb8888)
+      copyMem(buffer.dataAddr, cursors[0].pixels[0].addr, cursors[0].size.x * cursors[0].size.y * 4)
+    result.surface.attach(buffer.buffer, 0, 0)
+    commit result.surface

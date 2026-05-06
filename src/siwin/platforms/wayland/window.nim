@@ -4,7 +4,7 @@ import pkg/[vmath]
 import ../../[colorutils, siwindefs]
 import ../any/[window {.all.}, clipboards]
 import ../any/[windowUtils]
-import ./[libwayland, protocol, siwinGlobals, sharedBuffer, bitfields, xkb, libdecor]
+import ./[libwayland, protocol, siwinGlobals, sharedBuffer, bitfields, xkb, libdecor, cursors]
 
 {.experimental: "overloadableEnums".}
 
@@ -1097,6 +1097,8 @@ method `visible=`*(window: WindowWayland, v: bool) =
   window.m_visible = v
   ## todo
 
+var cursor: Wp_cursor_shape_device_v1
+var cursor_surface: CursorWayland
 
 proc initSeatEvents*(globals: SiwinGlobalsWayland) =
   if globals.seatEventsInitialized: return
@@ -1106,6 +1108,8 @@ proc initSeatEvents*(globals: SiwinGlobalsWayland) =
 
   if `WlSeat / Capability`.`pointer` in globals.seatCapabilities:
     globals.seat_pointer = globals.seat.get_pointer
+
+    cursor_surface = globals.loadBuiltinCursor(arrow)
 
     globals.seat_pointer.onEnter:
       if surface == nil: return
@@ -1117,6 +1121,13 @@ proc initSeatEvents*(globals: SiwinGlobalsWayland) =
       window.enterSerial = serial
       globals.lastSeatEventSerial = serial
       window.mouse.pos = window.reportedPointerPos(surface_x, surface_y)
+
+      if globals.cursorShapeManager != nil:
+        if cursor == nil:
+          cursor = globals.cursorShapeManager.get_pointer(globals.seat_pointer)
+        cursor.set_shape(serial, default)
+      else:
+        globals.seat_pointer.set_cursor(globals.lastSeatEventSerial, cursor_surface.surface, cursor_surface.hotspot.x, cursor_surface.hotspot.y)
 
       replicateWindowTitleAndBorderBehaviour(window, window.mouse.pos)
 
