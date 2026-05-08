@@ -31,6 +31,7 @@ type
     plasmaShell*: Org_kde_plasma_shell
     layerShell*: Zwlr_layer_shell_v1
     idleInhibitManager*: Zwp_idle_inhibit_manager_v1
+    cursorShapeManager*: Wp_cursor_shape_manager_v1
     
     shmFormats*: seq[`WlShm / Format`]
     seatCapabilities*: Bitfield[`WlSeat / Capability`]
@@ -141,6 +142,9 @@ proc initRegistryCallbacks(globals: SiwinGlobalsWayland) =
 
   addRegistry Zwp_tablet_manager_v2:
     globals.tabletManager = binded
+
+  addRegistry Wp_cursor_shape_manager_v1:
+    globals.cursorShapeManager = binded 
 
 
 proc isWaylandAvailable*: bool =

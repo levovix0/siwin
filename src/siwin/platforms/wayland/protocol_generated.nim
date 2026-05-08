@@ -20,13 +20,20 @@ type
     interfaces*: ptr ptr WaylandInterfaces
     destroy*: proc (cb: pointer) {.cdecl, raises: [].}
   Wp_cursor_shape_device_v1* = object
-    ## This interface advertises the list of supported cursor shapes for a
-    ## device, and allows clients to set the cursor shape.
+    ## This interface allows clients to set the cursor shape.
     proxy*: Wl_proxy
   `Wp_cursor_shape_device_v1 / Shape`* {.size: 4.} = enum ## This enum describes cursor shapes.
                                                            ## 
                                                            ## The names are taken from the CSS W3C specification:
                                                            ## https://w3c.github.io/csswg-drafts/css-ui/#cursor
+                                                           ## with a few additions.
+                                                           ## 
+                                                           ## Note that there are some groups of cursor shapes that are related:
+                                                           ## The first group is drag-and-drop cursors which are used to indicate
+                                                           ## the selected action during dnd operations. The second group is resize
+                                                           ## cursors which are used to indicate resizing and moving possibilities
+                                                           ## on window borders. It is recommended that the shapes in these groups
+                                                           ## should use visually compatible images and metaphors.
     default = 1, context_menu = 2, help = 3, pointer = 4, progress = 5,
     wait = 6, cell = 7, crosshair = 8, text = 9, vertical_text = 10, alias = 11,
     copy = 12, move = 13, no_drop = 14, not_allowed = 15, grab = 16,
@@ -34,7 +41,7 @@ type
     s_resize = 22, se_resize = 23, sw_resize = 24, w_resize = 25,
     ew_resize = 26, ns_resize = 27, nesw_resize = 28, nwse_resize = 29,
     col_resize = 30, row_resize = 31, all_scroll = 32, zoom_in = 33,
-    zoom_out = 34
+    zoom_out = 34, dnd_ask = 35, all_resize = 36
   `Wp_cursor_shape_device_v1 / Error`* {.size: 4.} = enum
     invalid_shape = 1
   `Wp_cursor_shape_device_v1 / Callbacks`* = object
@@ -1377,7 +1384,7 @@ type
     `iface Xdg_toplevel_icon_v1`*: WlInterface
 proc initInterfaces*(interfaces: var WaylandInterfaces) =
   interfaces.`iface Wp_cursor_shape_manager_v1` = newWlInterface(
-      "wp_cursor_shape_manager_v1", 1, [newWlMessage(
+      "wp_cursor_shape_manager_v1", 2, [newWlMessage(
       "wp_cursor_shape_manager_v1.destroy", "1", []), newWlMessage(
       "wp_cursor_shape_manager_v1.get_pointer", "1no", [
       addr(interfaces.`iface Wp_cursor_shape_device_v1`),
@@ -1386,7 +1393,7 @@ proc initInterfaces*(interfaces: var WaylandInterfaces) =
       addr(interfaces.`iface Wp_cursor_shape_device_v1`),
       addr(interfaces.`iface Zwp_tablet_tool_v2`)])], [])
   interfaces.`iface Wp_cursor_shape_device_v1` = newWlInterface(
-      "wp_cursor_shape_device_v1", 1, [newWlMessage(
+      "wp_cursor_shape_device_v1", 2, [newWlMessage(
       "wp_cursor_shape_device_v1.destroy", "1", []), newWlMessage(
       "wp_cursor_shape_device_v1.set_shape", "1uu",
       [(ptr WlInterface) nil, (ptr WlInterface) nil])], [])
@@ -2982,6 +2989,9 @@ proc destroy*(this: Wp_cursor_shape_manager_v1) =
 
 proc get_pointer*(this: Wp_cursor_shape_manager_v1; pointer: Wl_pointer): Wp_cursor_shape_device_v1 =
   ## Obtain a wp_cursor_shape_device_v1 for a wl_pointer object.
+  ## 
+  ## When the pointer capability is removed from the wl_seat, the
+  ## wp_cursor_shape_device_v1 object becomes inert.
   let interfaces = cast[ptr ptr WaylandInterfaces](this.proxy.raw.impl)
   result = wl_proxy_marshal_flags(this.proxy.raw, 1, addr(
       interfaces[].`iface Wp_cursor_shape_device_v1`), 1, 0, nil, pointer).construct(
@@ -2992,6 +3002,9 @@ proc get_pointer*(this: Wp_cursor_shape_manager_v1; pointer: Wl_pointer): Wp_cur
 proc get_tablet_tool_v2*(this: Wp_cursor_shape_manager_v1;
                          tablet_tool: Zwp_tablet_tool_v2): Wp_cursor_shape_device_v1 =
   ## Obtain a wp_cursor_shape_device_v1 for a zwp_tablet_tool_v2 object.
+  ## 
+  ## When the zwp_tablet_tool_v2 is removed, the wp_cursor_shape_device_v1
+  ## object becomes inert.
   let interfaces = cast[ptr ptr WaylandInterfaces](this.proxy.raw.impl)
   result = wl_proxy_marshal_flags(this.proxy.raw, 2, addr(
       interfaces[].`iface Wp_cursor_shape_device_v1`), 1, 0, nil, tablet_tool).construct(
