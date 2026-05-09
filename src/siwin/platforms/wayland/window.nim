@@ -1226,11 +1226,11 @@ proc initSeatEvents*(globals: SiwinGlobalsWayland) =
 
       if axis == `WlPointer / Axis`.vertical_scroll:
         if window.opened: window.eventsHandler.onScroll.pushEvent ScrollEvent(
-          window: window, delta: -value / kde_default_mousewheel_scroll_length, deltaX: 0
+          window: window, delta: value / kde_default_mousewheel_scroll_length, deltaX: 0
         )
       elif axis == `WlPointer / Axis`.horizontal_scroll:
         if window.opened: window.eventsHandler.onScroll.pushEvent ScrollEvent(
-          window: window, delta: 0, deltaX: -value / kde_default_mousewheel_scroll_length
+          window: window, delta: 0, deltaX: value / kde_default_mousewheel_scroll_length
         )
       else:
         return
@@ -1321,7 +1321,7 @@ proc initSeatEvents*(globals: SiwinGlobalsWayland) =
 
       var text = waylandKeyToString(key)
       if ModifierKey.control in window.keyboard.modifiers: text = ""
-      if text.len == 1 and text[0] < 32.char: text = ""
+      if text.len == 1 and (text[0] < 32.char or text[0] == 127.char): text = ""
 
       if pressed and text != "":
         if window.opened: window.eventsHandler.onTextInput.pushEvent TextInputEvent(
