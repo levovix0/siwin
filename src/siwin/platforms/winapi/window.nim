@@ -736,7 +736,7 @@ proc poolEvent(window: WindowWinapi, message: Uint, wParam: WParam, lParam: LPar
     if window.eventsHandler.onTextInput == nil: return 1  # no need to handle
     if (window.keyboard.pressed * {lcontrol, rcontrol, lalt, ralt}).len == 0:
       let s = %$[wParam.WChar]
-      if s.len > 0 and s notin ["\u001B"]:
+      if s.len > 0 and s notin ["\u001B"] and not(s.len == 1 and s[0] < 32.char):
         window.eventsHandler.pushEvent onTextInput, TextInputEvent(window: window, text: s)
 
   of WmSetCursor:
