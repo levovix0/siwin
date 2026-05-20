@@ -1468,7 +1468,8 @@ proc initDataDeviceManagerEvents*(globals: SiwinGlobalsWayland) =
     globals.current_selection_data_offer = globals.unindentified_data_offer
     var offered_mime_types = globals.unindentified_data_offer_mimeTypes
     
-    globals.unindentified_data_offer.proxy.raw = nil
+    if globals.unindentified_data_offer != nil:
+      globals.unindentified_data_offer.proxy.raw = nil
     globals.unindentified_data_offer_mimeTypes = @[]
   
     globals.initClipboardsIfNeeded()
@@ -1883,6 +1884,7 @@ method content*(
 
 
 method `content=`*(clipboard: ClipboardWayland, content: ClipboardConvertableContent) =
+  clipboard.globals.initDataDeviceManagerEvents()
   clipboard.userContent = content
 
   if clipboard.dataSource != nil:
@@ -1922,9 +1924,10 @@ method `content=`*(clipboard: ClipboardWayland, content: ClipboardConvertableCon
       discard close fd
 
   else:
-    clipboard.dataSource.proxy.raw = nil
+    if clipboard.dataSource != nil:
+      clipboard.dataSource.proxy.raw = nil
 
-  if clipboard == clipboard.globals.primaryClipboard.CLipboardWayland:
+  if clipboard == clipboard.globals.primaryClipboard.CLipboardWayland and clipboard.globals.dataDevice != nil:
     clipboard.globals.dataDevice.set_selection(clipboard.dataSource, clipboard.globals.lastSeatEventSerial)
   
   discard wl_display_roundtrip clipboard.globals.display
