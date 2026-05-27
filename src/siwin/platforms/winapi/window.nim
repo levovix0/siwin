@@ -29,7 +29,6 @@ type
     hdc: Hdc
     wcursor: HCursor
     restoreSize, restorePos: IVec2
-    mouseOutWin: bool = true
 
   WindowWinapiSoftwareRendering* = ref object of WindowWinapi
     buffer: Buffer
@@ -669,7 +668,6 @@ proc poolEvent(window: WindowWinapi, message: Uint, wParam: WParam, lParam: LPar
     window.clicking = {}
     window.eventsHandler.pushEvent onMouseMove, MouseMoveEvent(window: window, pos: window.mouse.pos, kind: MouseMoveKind.leave)
     window.handle.trackMouseEvent(TmeHover)
-    window.mouseOutWin = true
 
   of WmMouseHover:
     window.mouse.pos = vec2(lParam.GetX_LParam.float32, lParam.GetY_LParam.float32)
