@@ -631,7 +631,7 @@ proc poolEvent(window: WindowWinapi, message: Uint, wParam: WParam, lParam: LPar
     else: MouseButton.left
 
   result = 0
-
+  
   case message
   of WmPaint:
     let rect = window.handle.clientRect
@@ -659,6 +659,9 @@ proc poolEvent(window: WindowWinapi, message: Uint, wParam: WParam, lParam: LPar
     window.mouse.pos = vec2(lParam.GetX_LParam.float32, lParam.GetY_LParam.float32)
     window.clicking = {}
     window.eventsHandler.pushEvent onMouseMove, MouseMoveEvent(window: window, pos: window.mouse.pos, kind: MouseMoveKind.move)
+    window.handle.trackMouseEvent(TmeLeave)
+    window.handle.trackMouseEvent(TmeHover)
+
 
   of WmMouseLeave:
     window.mouse.pos = vec2(lParam.GetX_LParam.float32, lParam.GetY_LParam.float32)
@@ -671,7 +674,7 @@ proc poolEvent(window: WindowWinapi, message: Uint, wParam: WParam, lParam: LPar
     window.clicking = {}
     window.eventsHandler.pushEvent onMouseMove, MouseMoveEvent(window: window, pos: window.mouse.pos, kind: MouseMoveKind.enter)
     window.handle.trackMouseEvent(TmeLeave)
-
+  
   of WmMouseWheel:
     let delta = if wParam.GetWheelDeltaWParam > 0: -1.0 else: 1.0
     window.eventsHandler.pushEvent onScroll, ScrollEvent(window: window, delta: delta)
