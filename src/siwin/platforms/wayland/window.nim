@@ -1501,6 +1501,71 @@ proc initDataDeviceManagerEvents*(globals: SiwinGlobalsWayland) =
       availableMimeTypes: globals.primaryClipboard.availableMimeTypes,
     )
 
+  globals.data_device.onEnter:
+    if globals.current_dnd_data_offer != nil:
+      destroy globals.current_dnd_data_offer
+
+    globals.current_dnd_data_offer = globals.unindentified_data_offer
+    globals.current_dnd_data_offer_mimeTypes = globals.unindentified_data_offer_mimeTypes
+
+    if globals.unindentified_data_offer != nil:
+      globals.unindentified_data_offer.proxy.raw = nil
+    globals.unindentified_data_offer_mimeTypes = @[]
+
+    globals.current_dnd_surface_id = surface.proxy.raw.id
+
+    globals.initClipboardsIfNeeded()
+    globals.dragndropClipboard.availableKinds = {}
+    globals.dragndropClipboard.availableMimeTypes = @[]
+
+    for mimeType in globals.current_dnd_data_offer_mimeTypes:
+      if mimeType in ["text/plain", "text/plain;charset=utf-8", "UTF8_STRING", "STRING", "TEXT"]:
+        globals.dragndropClipboard.availableKinds.incl ClipboardContentKind.text
+      if mimeType in ["text/uri-list"]:
+        globals.dragndropClipboard.availableKinds.incl ClipboardContentKind.files
+      if mimeType notin globals.dragndropClipboard.availableMimeTypes:
+        globals.dragndropClipboard.availableMimeTypes.add mimeType
+
+    if globals.current_dnd_data_offer != nil:
+      let preferredMime =
+        if "text/plain;charset=utf-8" in globals.current_dnd_data_offer_mimeTypes: "text/plain;charset=utf-8"
+        elif "text/uri-list" in globals.current_dnd_data_offer_mimeTypes: "text/uri-list"
+        elif globals.current_dnd_data_offer_mimeTypes.len > 0: globals.current_dnd_data_offer_mimeTypes[0]
+        else: ""
+      if preferredMime != "":
+        globals.current_dnd_data_offer.accept(serial, preferredMime.cstring)
+      globals.current_dnd_data_offer.set_actions(
+        `Wl_data_device_manager / Dnd_action`.copy,
+        `Wl_data_device_manager / Dnd_action`.copy
+      )
+
+  globals.data_device.onLeave:
+    if globals.current_dnd_data_offer != nil:
+      destroy globals.current_dnd_data_offer
+      globals.current_dnd_data_offer.proxy.raw = nil
+    globals.current_dnd_data_offer_mimeTypes = @[]
+    globals.current_dnd_surface_id = 0
+
+  globals.data_device.onMotion:
+    if globals.current_dnd_data_offer != nil and globals.current_dnd_data_offer_mimeTypes.len > 0:
+      let preferredMime =
+        if "text/plain;charset=utf-8" in globals.current_dnd_data_offer_mimeTypes: "text/plain;charset=utf-8"
+        elif "text/uri-list" in globals.current_dnd_data_offer_mimeTypes: "text/uri-list"
+        else: globals.current_dnd_data_offer_mimeTypes[0]
+      globals.current_dnd_data_offer.accept(0, preferredMime.cstring)
+
+  globals.data_device.onDrop:
+    let targetWindow = globals.associatedWindows.getOrDefault(globals.current_dnd_surface_id)
+    if targetWindow != nil and targetWindow.opened:
+      targetWindow.eventsHandler.onDrop.pushEvent DropEvent(window: targetWindow)
+
+    if globals.current_dnd_data_offer != nil:
+      globals.current_dnd_data_offer.finish()
+      destroy globals.current_dnd_data_offer
+      globals.current_dnd_data_offer.proxy.raw = nil
+    globals.current_dnd_data_offer_mimeTypes = @[]
+    globals.current_dnd_surface_id = 0
+
   discard wl_display_roundtrip globals.display
 
 
@@ -1881,6 +1946,53 @@ method content*(
     discard close fds[0]
 
     return constructClipboardContent(data, kind, mimeType)
+
+
+method content*(
+  clipboard: ClipboardWaylandDnd, kind: ClipboardContentKind, mimeType: string = "text/plain"
+): ClipboardContent =
+  var mimeType =
+    case kind
+    of ClipboardContentKind.text:
+      if "text/plain;charset=utf-8" in clipboard.availableMimeTypes: "text/plain;charset=utf-8"
+      elif "UTF8_STRING" in clipboard.availableMimeTypes: "UTF8_STRING"
+      elif "STRING" in clipboard.availableMimeTypes: "STRING"
+      elif "TEXT" in clipboard.availableMimeTypes: "TEXT"
+      else: "text/plain"
+
+    of ClipboardContentKind.files:
+      "text/uri-list"
+
+    of ClipboardContentKind.other:
+      mimeType
+
+  if mimeType notin clipboard.availableMimeTypes:
+    return constructClipboardContent("", kind, mimeType)
+
+  if clipboard.globals.current_dnd_data_offer == nil:
+    return constructClipboardContent("", kind, mimeType)
+
+  var fds: array[2, FileHandle]
+  if pipe(fds) < 0:
+    raiseOSError(osLastError())
+
+  clipboard.globals.current_dnd_data_offer.receive(mimeType.cstring, fds[1])
+  discard close fds[1]
+
+  wl_display_flush clipboard.globals.display
+
+  var data: string
+  var cbuffer: array[1024, char]
+
+  while true:
+    let c = read(fds[0], cbuffer[0].addr, cbuffer.len)
+    if c <= 0: break
+    for i in 0..<c.int:
+      data.add cbuffer[i]
+
+  discard close fds[0]
+
+  return constructClipboardContent(data, kind, mimeType)
 
 
 method `content=`*(clipboard: ClipboardWayland, content: ClipboardConvertableContent) =

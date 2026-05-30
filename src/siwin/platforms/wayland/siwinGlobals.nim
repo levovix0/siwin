@@ -46,6 +46,10 @@ type
     unindentified_data_offer_mimeTypes*: seq[string]
     current_selection_data_offer*: Wl_data_offer
 
+    current_dnd_data_offer*: Wl_data_offer
+    current_dnd_data_offer_mimeTypes*: seq[string]
+    current_dnd_surface_id*: uint32
+
     associatedWindows*: Table[uint32, Window]  # surface proxy id -> window
     associatedWindows_queueRemove_insteadOf_removingInstantly* = false
     associatedWindows_removeQueue*: seq[uint32]
