@@ -55,6 +55,7 @@ type
     associatedWindows_removeQueue*: seq[uint32]
 
     seat_pointer_currentWindow*: Window
+    seat_pointer_lastAxisSource*: `Wl_pointer / Axis_source`
     seat_keyboard_currentWindow*: Window
     # seat_touch_currentWindow*: Window
 

@@ -1218,19 +1218,29 @@ proc initSeatEvents*(globals: SiwinGlobalsWayland) =
         if window.opened: window.eventsHandler.onMouseButton.pushEvent MouseButtonEvent(window: window, button: button, pressed: state == `WlPointer / Button_state`.pressed, generated: false)
 
 
+    globals.seat_pointer.onAxis_source:
+      globals.seat_pointer_lastAxisSource = axis_source
+
     globals.seat_pointer.onAxis:
       if globals.seat_pointer_currentWindow == nil: return
       let window = globals.seat_pointer_currentWindow.WindowWayland
 
       const kde_default_mousewheel_scroll_length = 15
 
+      let device =
+        case globals.seat_pointer_lastAxisSource
+        of `Wl_pointer / Axis_source`.wheel, `Wl_pointer / Axis_source`.wheel_tilt:
+          ScrollDeviceKind.discrete
+        of `Wl_pointer / Axis_source`.finger, `Wl_pointer / Axis_source`.continuous:
+          ScrollDeviceKind.continuous
+
       if axis == `WlPointer / Axis`.vertical_scroll:
         if window.opened: window.eventsHandler.onScroll.pushEvent ScrollEvent(
-          window: window, delta: value / kde_default_mousewheel_scroll_length, deltaX: 0
+          window: window, delta: value / kde_default_mousewheel_scroll_length, deltaX: 0, device: device
         )
       elif axis == `WlPointer / Axis`.horizontal_scroll:
         if window.opened: window.eventsHandler.onScroll.pushEvent ScrollEvent(
-          window: window, delta: 0, deltaX: value / kde_default_mousewheel_scroll_length
+          window: window, delta: 0, deltaX: value / kde_default_mousewheel_scroll_length, device: device
         )
       else:
         return

@@ -171,9 +171,15 @@ type
     pressed*: bool
     generated*: bool  ## generated, for example, by releaseAllKeys when alt-tab. Means user don't actually do this action
   
+  ScrollDeviceKind* {.siwin_enum.} = enum
+    unknown     ## device not reported by the platform
+    discrete    ## mouse wheel
+    continuous  ## touchpad or touchscreen
+
   ScrollEvent* = object of AnyWindowEvent
     delta*: float
     deltaX*: float
+    device*: ScrollDeviceKind
   
   ClickEvent* = object of AnyWindowEvent
     button*: MouseButton
