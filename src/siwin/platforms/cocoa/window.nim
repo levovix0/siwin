@@ -1448,7 +1448,9 @@ proc init =
             deltaY *= 0.1
   
           if abs(deltaX) > 0 or abs(deltaY) > 0:
-            window.eventsHandler.pushEvent onScroll, ScrollEvent(window: window, delta: deltaY, deltaX: deltaX)
+            window.eventsHandler.pushEvent onScroll, ScrollEvent(
+              window: window, delta: deltaY, deltaX: -deltaX
+            )
   
         addMethod "mouseDown:", proc(self: Id, cmd: Sel, event: NsEvent): Id {.cdecl.} =
           getWindow(self)
