@@ -20,6 +20,36 @@ template autoreleasepool(body: untyped) =
     pool.release()
 
 proc isFlipped(v: NSView): bool {.objc: "isFlipped".}
+proc layer(v: NSView): CALayer {.objc: "layer".}
+proc removeFromSuperview(v: NSView) {.objc: "removeFromSuperview".}
+proc setOpaque(window: NSWindow, opaque: BOOL) {.objc: "setOpaque:".}
+proc clearColor(cls: typedesc[NSColor]): NSColor {.objc: "clearColor".}
+proc setOpaque(layer: CALayer, opaque: BOOL) {.objc: "setOpaque:".}
+
+type
+  NSVisualEffectView = ptr object of NSView
+
+  NSVisualEffectMaterial {.size: sizeof(NSInteger).} = enum
+    NSVisualEffectMaterialAppearanceBased = 0
+    NSVisualEffectMaterialLight = 1
+    NSVisualEffectMaterialDark = 2
+    NSVisualEffectMaterialTitlebar = 3
+    NSVisualEffectMaterialPopover = 6
+    NSVisualEffectMaterialSidebar = 7
+    NSVisualEffectMaterialHUDWindow = 13
+
+  NSVisualEffectBlendingMode {.size: sizeof(NSInteger).} = enum
+    NSVisualEffectBlendingModeBehindWindow = 0
+    NSVisualEffectBlendingModeWithinWindow = 1
+
+  NSVisualEffectState {.size: sizeof(NSInteger).} = enum
+    NSVisualEffectStateFollowsWindowActiveState = 0
+    NSVisualEffectStateActive = 1
+    NSVisualEffectStateInactive = 2
+
+proc setMaterial(view: NSVisualEffectView, material: NSVisualEffectMaterial) {.objc: "setMaterial:".}
+proc setBlendingMode(view: NSVisualEffectView, mode: NSVisualEffectBlendingMode) {.objc: "setBlendingMode:".}
+proc setState(view: NSVisualEffectView, state: NSVisualEffectState) {.objc: "setState:".}
 
 type
   ScreenCocoa* = ref object of Screen
@@ -46,7 +76,9 @@ type
     openglView: NSOpenGLView
 
   WindowCocoaMetal* = ref object of WindowCocoa
+    metalContentView: NSView
     metalView: NSView
+    backdropViews: seq[NSVisualEffectView]
 
   ClipboardCocoa* = ref object of Clipboard
 
@@ -86,6 +118,17 @@ proc applyCustomTitlebarState(window: WindowCocoa) =
       NSWindowTitleVisible
   )
 
+proc autoresizeWidthHeight(): NSAutoresizingMaskOptions =
+  cast[NSAutoresizingMaskOptions](
+    cast[uint](NSViewWidthSizable) or cast[uint](NSViewHeightSizable)
+  )
+
+proc applyTransparentState(window: WindowCocoa) =
+  if window.handle == nil or not window.m_transparent:
+    return
+  window.handle.setOpaque(false)
+  window.handle.setBackgroundColor(NSColor.clearColor())
+
 
 proc `=destroy`(window: WindowCocoaObj) {.siwin_destructor.} =
   if window.addr[].m_closed:
@@ -110,6 +153,89 @@ proc `=destroy`(window: WindowCocoaObj) {.siwin_destructor.} =
       close handle
     except:
       discard
+
+proc toCocoaMaterial(material: WindowBackdropMaterial): NSVisualEffectMaterial =
+  case material
+  of wbmLight:
+    NSVisualEffectMaterialLight
+  of wbmDark:
+    NSVisualEffectMaterialDark
+  of wbmTitlebar:
+    NSVisualEffectMaterialTitlebar
+  of wbmSidebar:
+    NSVisualEffectMaterialSidebar
+  of wbmHud:
+    NSVisualEffectMaterialHUDWindow
+  of wbmPopover:
+    NSVisualEffectMaterialPopover
+  of wbmDefault:
+    NSVisualEffectMaterialAppearanceBased
+
+proc clearBackdropViews(window: WindowCocoaMetal) =
+  for view in window.backdropViews:
+    if view != nil:
+      cast[NSView](view).removeFromSuperview()
+  window.backdropViews.setLen(0)
+
+proc regionFrame(window: WindowCocoaMetal, region: WindowVisualRegion): NSRect =
+  let
+    bounds = window.metalContentView.bounds
+    scale = max(1'f32, window.uiScale)
+    x = region.pos.x.float64 / scale.float64
+    y = region.pos.y.float64 / scale.float64
+    w = max(1'i32, region.size.x).float64 / scale.float64
+    h = max(1'i32, region.size.y).float64 / scale.float64
+
+  if window.metalContentView.isFlipped():
+    NSMakeRect(x, y, w, h)
+  else:
+    NSMakeRect(x, bounds.size.height - y - h, w, h)
+
+proc addBackdropView(window: WindowCocoaMetal, frame: NSRect, autoresize: bool) =
+  let visualEffectClass = getClass("NSVisualEffectView")
+  if visualEffectClass.isNil:
+    return
+
+  let effect = cast[NSVisualEffectView](cast[NSView](visualEffectClass.alloc()).initWithFrame(frame))
+  if effect == nil:
+    return
+
+  effect.setBlendingMode(NSVisualEffectBlendingModeBehindWindow)
+  effect.setState(NSVisualEffectStateFollowsWindowActiveState)
+  effect.setMaterial(window.m_backdrop.material.toCocoaMaterial())
+  if autoresize:
+    cast[NSView](effect).setAutoresizingMask(autoresizeWidthHeight())
+
+  window.metalContentView.addSubview(cast[NSView](effect))
+  window.backdropViews.add(effect)
+  effect.release()
+
+proc rebuildMetalSubviews(window: WindowCocoaMetal) =
+  if window.metalContentView == nil or window.metalView == nil:
+    return
+
+  window.metalView.removeFromSuperview()
+  window.clearBackdropViews()
+
+  if window.m_backdrop.kind != wbkNone:
+    if window.m_backdrop.regions.len == 0:
+      window.addBackdropView(window.metalContentView.bounds, autoresize = true)
+    else:
+      for region in window.m_backdrop.regions:
+        if region.size.x > 0 and region.size.y > 0:
+          window.addBackdropView(window.regionFrame(region), autoresize = false)
+
+  window.metalContentView.addSubview(window.metalView)
+  if window.m_focused:
+    discard window.handle.makeFirstResponder(window.metalView)
+
+proc applyBackdropState(window: WindowCocoaMetal) =
+  window.applyTransparentState()
+  if window.metalView != nil:
+    let metalLayer = window.metalView.layer()
+    if metalLayer != nil:
+      metalLayer.setOpaque(false)
+  window.rebuildMetalSubviews()
 
 
 proc findWindow(windows: seq[WindowCocoa], window: Id): WindowCocoa =
@@ -593,6 +719,7 @@ proc initWindowCocoa(
     NsBackingStoreBuffered,
     false
   )
+  window.applyTransparentState()
   window.applyCustomTitlebarState()
   windows.add window
 
@@ -720,16 +847,26 @@ proc initWindowCocoaMetal*(
   fullscreen, frameless, transparent: bool,
 ) =
   initWindowCocoa(window, size, screen, fullscreen, frameless, transparent)
-  window.metalView = cast[NSView](metalViewClass.alloc()).initWithFrame(
+  window.metalContentView = cast[NSView](metalViewClass.alloc()).initWithFrame(
     window.handle.contentView.frame
   )
+  window.metalContentView.setWantsLayer(true)
+  window.metalContentView.setAutoresizingMask(autoresizeWidthHeight())
+
+  window.metalView = cast[NSView](metalViewClass.alloc()).initWithFrame(
+    window.metalContentView.bounds
+  )
+  window.metalView.setAutoresizingMask(autoresizeWidthHeight())
   window.metalView.setWantsLayer(true)
   let metalLayer = CAMetalLayer.alloc().init()
+  if transparent:
+    cast[CALayer](metalLayer).setOpaque(false)
   window.metalView.setLayer(cast[CALayer](metalLayer))
   metalLayer.release()
+  window.metalContentView.addSubview(window.metalView)
 
   window.handle.setDelegate(cast[NSObject](window.handle))
-  window.handle.setContentView(window.metalView)
+  window.handle.setContentView(window.metalContentView)
   discard window.handle.makeFirstResponder(window.metalView)
   discard window.metalView.registerForDraggedTypes(
     arrayWithObjects[NSString](NSPasteboardTypeString, @"text/uri-list", @"public.file-url")
@@ -981,6 +1118,34 @@ method `customTitlebar=`*(window: WindowCocoa, v: bool) =
 method supportsCustomTitlebar*(window: WindowCocoa): bool =
   true
 
+method visualCapabilities*(window: WindowCocoaMetal): set[WindowVisualCapability] =
+  result = {wvcTransparentSurface}
+  if not getClass("NSVisualEffectView").isNil:
+    result.incl wvcBackdropBlur
+    result.incl wvcBackdropBlurRegion
+    result.incl wvcSystemMaterial
+
+method trySetBackdrop*(window: WindowCocoaMetal, config: WindowBackdropConfig): bool =
+  if config.kind == wbkNone:
+    window.m_backdrop = config
+    window.clearBackdropViews()
+    return true
+
+  if config.kind == wbkMaterial and wvcSystemMaterial notin window.visualCapabilities:
+    return false
+  if config.kind == wbkBlur and wvcBackdropBlur notin window.visualCapabilities:
+    return false
+  if config.regions.len > 0 and wvcBackdropBlurRegion notin window.visualCapabilities:
+    return false
+
+  window.m_transparent = true
+  window.m_backdrop = config
+  window.applyBackdropState()
+  true
+
+method clearBackdrop*(window: WindowCocoaMetal) =
+  discard window.trySetBackdrop(WindowBackdropConfig(kind: wbkNone))
+
 method `minSize=`*(window: WindowCocoa, v: IVec2) =
   if v.x <= 0 or v.y <= 0:
     window.m_minSize = ivec2()
@@ -1185,6 +1350,8 @@ proc init =
       window.m_size = size
       if window of WindowCocoaSoftwareRendering:
         window.WindowCocoaSoftwareRendering.resizeSoftwarePixelBuffer(size)
+      if window of WindowCocoaMetal:
+        window.WindowCocoaMetal.applyBackdropState()
       window.eventsHandler.pushEvent onResize, ResizeEvent(window: window, size: window.m_size)
       window.redrawRequested = true
   
@@ -1305,7 +1472,9 @@ proc init =
       addMethod "windowDidBecomeKey:", proc(self: Id, cmd: Sel, notification: NsNotification): Id {.cdecl.} =
         getWindow(self)
         let contentView = window.handle.contentView
-        if contentView != nil:
+        if window of WindowCocoaMetal and window.WindowCocoaMetal.metalView != nil:
+          discard window.handle.makeFirstResponder(window.WindowCocoaMetal.metalView)
+        elif contentView != nil:
           discard window.handle.makeFirstResponder(contentView)
         window.m_focused = true
         window.refreshModifiers()

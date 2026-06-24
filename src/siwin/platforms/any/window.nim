@@ -145,6 +145,39 @@ type
     constraintAdjustment*: set[PopupConstraintAdjustment]
     reactive*: bool
 
+  WindowVisualCapability* {.siwin_enum.} = enum
+    wvcTransparentSurface
+    wvcBackdropBlur
+    wvcBackdropBlurRegion
+    wvcSystemMaterial
+
+  WindowBackdropKind* {.siwin_enum.} = enum
+    wbkNone
+    wbkBlur
+    wbkMaterial
+
+  WindowBackdropMaterial* {.siwin_enum.} = enum
+    wbmDefault
+    wbmLight
+    wbmDark
+    wbmTitlebar
+    wbmSidebar
+    wbmHud
+    wbmPopover
+
+  WindowVisualRegion* = object
+    ## Window-local region in Siwin window coordinates.
+    pos*: IVec2
+    size*: IVec2
+
+  WindowBackdropConfig* = object
+    kind*: WindowBackdropKind
+    material*: WindowBackdropMaterial
+    regions*: seq[WindowVisualRegion] ## empty means the whole content area
+
+  WindowVisualEffectDefect* = object of Defect
+    ## raised by strict visual-effect APIs when a backend cannot apply the request
+
 
   AnyWindowEvent* = object of RootObj
     window*: Window
@@ -271,6 +304,7 @@ type
     m_closed: bool
     
     m_transparent: bool
+    m_backdrop: WindowBackdropConfig
     m_frameless: bool
     m_customTitlebar: bool
     m_cursor: Cursor
@@ -416,6 +450,7 @@ method close*(window: Window) {.base.} =
   window.m_closed = true
 
 proc transparent*(window: Window): bool = window.m_transparent
+proc backdrop*(window: Window): WindowBackdropConfig = window.m_backdrop
 proc frameless*(window: Window): bool = window.m_frameless
 proc cursor*(window: Window): Cursor = window.m_cursor
 proc separateTouch*(window: Window): bool = window.m_separateTouch
@@ -501,6 +536,28 @@ method `customTitlebar=`*(window: Window, v: bool) {.base.} =
 
 method supportsCustomTitlebar*(window: Window): bool {.base.} = false
   ## reports whether this backend currently applies customTitlebar behavior.
+
+method visualCapabilities*(window: Window): set[WindowVisualCapability] {.base.} =
+  ## reports which compositor/window visual effects this window can currently use.
+  {}
+
+proc supports*(window: Window, capability: WindowVisualCapability): bool =
+  capability in window.visualCapabilities()
+
+method trySetBackdrop*(window: Window, config: WindowBackdropConfig): bool {.base.} =
+  ## Try to apply a compositor/window-manager backdrop effect.
+  ## Returns false if the backend cannot apply the requested effect.
+  if config.kind == wbkNone:
+    window.m_backdrop = config
+    return true
+
+method clearBackdrop*(window: Window) {.base.} =
+  discard window.trySetBackdrop(WindowBackdropConfig(kind: wbkNone))
+
+proc setBackdrop*(window: Window, config: WindowBackdropConfig) =
+  ## Strict version of trySetBackdrop. Raises if the backend cannot apply it.
+  if not window.trySetBackdrop(config):
+    raise WindowVisualEffectDefect.newException("window backdrop effect is not supported by this backend or configuration")
 
 method `fullscreen=`*(window: Window, v: bool) {.base.} = discard
   ## fullscreen/unfullscreen window
