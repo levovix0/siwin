@@ -651,6 +651,9 @@ method `size=`*(window: WindowX11, v: IVec2) =
   if window.fullscreen:
     window.fullscreen = false
   
+  window.m_size = v
+  if window of WindowX11SoftwareRendering:
+    window.WindowX11SoftwareRendering.resizePixelBuffer(window.m_size)
   discard window.globals.display.XResizeWindow(window.handle, v.x.cuint, v.y.cuint)
 
 method `pos=`*(window: WindowX11, v: IVec2) =
@@ -815,6 +818,24 @@ method pixelBuffer*(window: WindowX11SoftwareRendering): PixelBuffer =
     size: window.m_size,
     format: (if window.transparent: PixelBufferFormat.bgrx_32bit else: PixelBufferFormat.bgru_32bit),
   )
+
+
+method uiScale*(window: WindowX11): float32 =
+  const defaultScreenDpi = 96.0'f32
+  if window.isNil or window.globals.isNil or window.globals.display.isNil:
+    return 1'f32
+
+  let xftDpi = window.globals.display.XGetDefault("Xft", "dpi")
+  if xftDpi.isNil:
+    return 1'f32
+
+  try:
+    let dpi = parseFloat($xftDpi).float32
+    if dpi > 0'f32:
+      return dpi / defaultScreenDpi
+  except ValueError:
+    discard
+  1'f32
 
 
 method endSwapBuffers(window: WindowX11SoftwareRendering) =
