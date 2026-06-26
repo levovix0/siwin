@@ -3,10 +3,12 @@ import std/math
 import std/[os, osproc, strutils]
 import std/strtabs
 import pkg/vmath
-import siwin/[window, platforms]
+import siwin/[window, windowOpengl, platforms]
 
 when defined(macosx):
   import siwin/platforms/cocoa/window
+when defined(linux) or defined(bsd):
+  import siwin/platforms/x11/windowOpengl as x11WindowOpengl
 
 proc toPoints(distance: int32, scale: float32): int32 =
   if scale <= 0'f32:
@@ -317,3 +319,42 @@ suite "siwin popup api":
 
       close popup
       close parent
+
+    test "x11 popup from opengl parent keeps opengl window type":
+      if Platform.x11 notin availablePlatforms():
+        skip()
+
+      block runX11OpenglPopup:
+        let globals = newSiwinGlobals(Platform.x11)
+        var
+          parent: Window
+          popup: Window
+        try:
+          parent = globals.newOpenglWindow(
+            size = ivec2(300, 200), title = "opengl popup parent"
+          )
+        except CatchableError:
+          skip()
+          break runX11OpenglPopup
+
+        try:
+          require parent of x11WindowOpengl.WindowX11Opengl
+          parent.firstStep(makeVisible = false)
+          parent.step()
+
+          let placement = PopupPlacement(
+            anchorRectPos: ivec2(40, 48),
+            anchorRectSize: ivec2(96, 32),
+            size: ivec2(140, 110),
+            anchor: bottomLeft,
+            gravity: topLeft,
+            offset: ivec2(0, 14),
+          )
+          popup = globals.newPopupWindow(parent, placement, grab = true)
+
+          check popup of x11WindowOpengl.WindowX11Opengl
+        finally:
+          if not popup.isNil:
+            close popup
+          if not parent.isNil:
+            close parent
