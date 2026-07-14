@@ -20,6 +20,41 @@ template autoreleasepool(body: untyped) =
     pool.release()
 
 proc isFlipped(v: NSView): bool {.objc: "isFlipped".}
+proc layer(v: NSView): CALayer {.objc: "layer".}
+proc removeFromSuperview(v: NSView) {.objc: "removeFromSuperview".}
+proc setOpaque(window: NSWindow, opaque: BOOL) {.objc: "setOpaque:".}
+proc clearColor(cls: typedesc[NSColor]): NSColor {.objc: "clearColor".}
+proc setOpaque(layer: CALayer, opaque: BOOL) {.objc: "setOpaque:".}
+proc inLiveResize(view: NSView): bool {.objc: "inLiveResize".}
+proc getRectsExposedDuringLiveResize(
+  view: NSView, rects: ptr NSRect, count: ptr NSInteger
+) {.objc: "getRectsExposedDuringLiveResize:count:".}
+proc setNeedsDisplayInRect(view: NSView, rect: NSRect) {.objc: "setNeedsDisplayInRect:".}
+
+type
+  NSVisualEffectView = ptr object of NSView
+
+  NSVisualEffectMaterial {.size: sizeof(NSInteger).} = enum
+    NSVisualEffectMaterialAppearanceBased = 0
+    NSVisualEffectMaterialLight = 1
+    NSVisualEffectMaterialDark = 2
+    NSVisualEffectMaterialTitlebar = 3
+    NSVisualEffectMaterialPopover = 6
+    NSVisualEffectMaterialSidebar = 7
+    NSVisualEffectMaterialHUDWindow = 13
+
+  NSVisualEffectBlendingMode {.size: sizeof(NSInteger).} = enum
+    NSVisualEffectBlendingModeBehindWindow = 0
+    NSVisualEffectBlendingModeWithinWindow = 1
+
+  NSVisualEffectState {.size: sizeof(NSInteger).} = enum
+    NSVisualEffectStateFollowsWindowActiveState = 0
+    NSVisualEffectStateActive = 1
+    NSVisualEffectStateInactive = 2
+
+proc setMaterial(view: NSVisualEffectView, material: NSVisualEffectMaterial) {.objc: "setMaterial:".}
+proc setBlendingMode(view: NSVisualEffectView, mode: NSVisualEffectBlendingMode) {.objc: "setBlendingMode:".}
+proc setState(view: NSVisualEffectView, state: NSVisualEffectState) {.objc: "setState:".}
 
 type
   ScreenCocoa* = ref object of Screen
@@ -1331,9 +1366,35 @@ proc init =
         true
 
 
-    template addSiwinViewClass(className, superName: string, viewClassRef: untyped) =
+    template addSiwinViewClass(className, superName: string, viewClassRef: untyped, supportsLiveResizePreservation: static bool = false) =
       addClass className, superName, viewClassRef:
         addProtocol "NSTextInputClient"
+
+        when supportsLiveResizePreservation:
+          addMethod "preservesContentDuringLiveResize", proc(
+            self: Id, cmd: Sel
+          ): bool {.cdecl.} =
+            getWindow(self)
+            window.m_preservesContentDuringLiveResize
+
+          addMethod "setFrameSize:", proc(
+            self: Id, cmd: Sel, size: NSSize
+          ): Id {.cdecl.} =
+            discard callSuper(cast[NSObject](self), cmd, size)
+            getWindow(self)
+            if not window.m_preservesContentDuringLiveResize:
+              return
+
+            let view = cast[NSView](self)
+            if not view.inLiveResize():
+              return
+
+            var
+              rects: array[4, NSRect]
+              count: NSInteger
+            view.getRectsExposedDuringLiveResize(rects[0].addr, count.addr)
+            for i in 0 ..< count:
+              view.setNeedsDisplayInRect(rects[i])
         
         addMethod "acceptsFirstResponder", proc(self: Id, cmd: Sel): bool {.cdecl.} =
           true
@@ -1666,7 +1727,7 @@ proc init =
               # self.NSView.addCursorRect(self.NSView.bounds, cursor)
 
     addSiwinViewClass("SiwinViewSoftware", "NSImageView", softwareViewClass)
-    addSiwinViewClass("SiwinViewOpenGL", "NSOpenGLView", openglViewClass)
+    addSiwinViewClass("SiwinViewOpenGL", "NSOpenGLView", openglViewClass, true)
     addSiwinViewClass("SiwinViewMetal", "NSView", metalViewClass)
 
     NSApp.setDelegate(cast[NSObject](appDelegateClass.new))
