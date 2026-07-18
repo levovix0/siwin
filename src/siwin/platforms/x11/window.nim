@@ -597,6 +597,57 @@ method close*(window: WindowX11) =
   window.m_closed = true
   window.pushCloseEvent()
 
+proc backdropBlurSupported(window: WindowX11): bool =
+  if window == nil or window.globals == nil or window.globals.display == nil:
+    return false
+  let supported = window.globals.property(
+    window.globals.display.DefaultRootWindow,
+    window.globals.atoms.netSupported,
+    Atom,
+  )
+  window.globals.atoms.kdeNetWmBlurBehindRegion in supported.data
+
+method visualCapabilities*(window: WindowX11): set[WindowVisualCapability] =
+  if window.backdropBlurSupported():
+    result.incl wvcBackdropBlur
+    result.incl wvcBackdropBlurRegion
+
+method trySetBackdrop*(window: WindowX11, config: WindowBackdropConfig): bool =
+  if config.kind == wbkNone:
+    discard window.globals.display.XDeleteProperty(
+      window.handle,
+      window.globals.atoms.kdeNetWmBlurBehindRegion,
+    )
+    discard window.globals.display.XFlush()
+    window.m_backdrop = WindowBackdropConfig(kind: wbkNone)
+    return true
+
+  if not window.transparent or config.kind != wbkBlur or
+      wvcBackdropBlur notin window.visualCapabilities:
+    return false
+
+  var data = newSeqOfCap[culong](config.regions.len * 4)
+  for region in config.regions:
+    if region.size.x <= 0 or region.size.y <= 0:
+      return false
+    data.add(culong(cast[uint32](region.pos.x)))
+    data.add(culong(cast[uint32](region.pos.y)))
+    data.add(culong(region.size.x))
+    data.add(culong(region.size.y))
+
+  discard window.globals.display.XChangeProperty(
+    window.handle,
+    window.globals.atoms.kdeNetWmBlurBehindRegion,
+    XaCardinal,
+    32,
+    PropModeReplace,
+    cast[PCUchar](if data.len == 0: nil else: data[0].addr),
+    data.len.cint,
+  )
+  discard window.globals.display.XFlush()
+  window.m_backdrop = config
+  true
+
 
 method `fullscreen=`*(window: WindowX11, v: bool) =
   var event = window.globals.newClientMessage(

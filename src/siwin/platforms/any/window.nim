@@ -146,10 +146,9 @@ type
     reactive*: bool
 
   WindowVisualCapability* {.siwin_enum.} = enum
-    wvcTransparentSurface
     wvcBackdropBlur
     wvcBackdropBlurRegion
-    wvcSystemMaterial
+    wvcBackdropMaterial
 
   WindowBackdropKind* {.siwin_enum.} = enum
     wbkNone
@@ -171,11 +170,14 @@ type
     size*: IVec2
 
   WindowBackdropConfig* = object
-    kind*: WindowBackdropKind
-    material*: WindowBackdropMaterial
     regions*: seq[WindowVisualRegion] ## empty means the whole content area
+    case kind*: WindowBackdropKind
+    of wbkMaterial:
+      material*: WindowBackdropMaterial
+    of wbkNone, wbkBlur:
+      discard
 
-  WindowVisualEffectDefect* = object of Defect
+  WindowVisualEffectError* = object of CatchableError
     ## raised by strict visual-effect APIs when a backend cannot apply the request
 
 
@@ -544,20 +546,37 @@ method visualCapabilities*(window: Window): set[WindowVisualCapability] {.base.}
 proc supports*(window: Window, capability: WindowVisualCapability): bool =
   capability in window.visualCapabilities()
 
+proc initWindowBackdrop*(
+  regions: openArray[WindowVisualRegion] = []
+): WindowBackdropConfig =
+  ## Configure ordinary background blur. An empty region list means the whole window.
+  WindowBackdropConfig(kind: wbkBlur, regions: @regions)
+
+proc initWindowBackdrop*(
+  material: WindowBackdropMaterial,
+  regions: openArray[WindowVisualRegion] = [],
+): WindowBackdropConfig =
+  ## Configure a platform material. This is currently supported on macOS.
+  WindowBackdropConfig(kind: wbkMaterial, material: material, regions: @regions)
+
 method trySetBackdrop*(window: Window, config: WindowBackdropConfig): bool {.base.} =
   ## Try to apply a compositor/window-manager backdrop effect.
   ## Returns false if the backend cannot apply the requested effect.
+  ## Non-empty effects require a window created with `transparent = true`.
   if config.kind == wbkNone:
-    window.m_backdrop = config
+    window.m_backdrop = WindowBackdropConfig(kind: wbkNone)
     return true
 
-method clearBackdrop*(window: Window) {.base.} =
+proc clearBackdrop*(window: Window) =
+  ## Disable the current backdrop effect.
   discard window.trySetBackdrop(WindowBackdropConfig(kind: wbkNone))
 
 proc setBackdrop*(window: Window, config: WindowBackdropConfig) =
   ## Strict version of trySetBackdrop. Raises if the backend cannot apply it.
   if not window.trySetBackdrop(config):
-    raise WindowVisualEffectDefect.newException("window backdrop effect is not supported by this backend or configuration")
+    raise WindowVisualEffectError.newException(
+      "window backdrop effect is not supported by this backend or configuration"
+    )
 
 method `fullscreen=`*(window: Window, v: bool) {.base.} = discard
   ## fullscreen/unfullscreen window

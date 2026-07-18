@@ -5,6 +5,10 @@ import ../../[siwindefs]
 import winim/inc/[windef, winbase, wingdi, winuser, dwmapi], winim/winstr
 export windef, winbase, wingdi, winuser, winstr, dwmapi
 
+proc rtlGetVersionSiwin*(versionInfo: ptr OSVERSIONINFOW): LONG {.
+  stdcall, dynlib: "ntdll", importc: "RtlGetVersion"
+.}
+
 type
   WglContext* = object
     raw*: HGlRc

@@ -32,6 +32,9 @@ type
 
     plasmaSurface: Org_kde_plasma_surface
       # will be nil if compositor doesn't support this protocol
+
+    blur: Org_kde_kwin_blur
+      # will be nil unless backdrop blur is active
     
     layerShellSurface: Zwlr_layer_surface_v1
       # will be nil if compositor doesn't support this protocol (eg. GNOME)
@@ -326,6 +329,7 @@ method release(window: WindowWayland) {.base, raises: [].} =
 
   try:
     clearToplevelIconResources(window)
+    destroy window.blur, release
     destroy window.idleInhibitor, destroy
     destroy window.layerShellSurface, destroy
     destroy window.xdgPopup, destroy
@@ -458,6 +462,51 @@ method close*(window: WindowWayland) =
   window.m_closed = true
   window.pushCloseEvent()
   release window
+
+method visualCapabilities*(window: WindowWayland): set[WindowVisualCapability] =
+  if window.globals != nil and window.globals.blurManager != nil:
+    result.incl wvcBackdropBlur
+    result.incl wvcBackdropBlurRegion
+
+proc clearWaylandBackdrop(window: WindowWayland) =
+  if window.blur != nil:
+    window.blur.release()
+    window.blur = typeof(window.blur).default
+  if window.globals != nil and window.globals.blurManager != nil and window.surface != nil:
+    window.globals.blurManager.unset(window.surface)
+
+method trySetBackdrop*(window: WindowWayland, config: WindowBackdropConfig): bool =
+  if config.kind == wbkNone:
+    window.clearWaylandBackdrop()
+    window.m_backdrop = WindowBackdropConfig(kind: wbkNone)
+    return true
+
+  if not window.transparent or config.kind != wbkBlur or
+      wvcBackdropBlur notin window.visualCapabilities:
+    return false
+  for region in config.regions:
+    if region.size.x <= 0 or region.size.y <= 0:
+      return false
+
+  window.clearWaylandBackdrop()
+  let
+    blur = window.globals.blurManager.create(window.surface)
+    blurRegion = window.globals.compositor.create_region()
+  for region in config.regions:
+    let
+      pos = ivec2(
+        window.toLogicalCoord(region.pos.x),
+        window.toLogicalCoord(region.pos.y),
+      )
+      size = window.toLogicalSize(region.size)
+    blurRegion.add(pos.x, pos.y, size.x, size.y)
+  blur.set_region(blurRegion)
+  blur.commit()
+  blurRegion.destroy()
+
+  window.blur = blur
+  window.m_backdrop = config
+  true
 
 
 proc initClipboardsIfNeeded(globals: SiwinGlobalsWayland) =
