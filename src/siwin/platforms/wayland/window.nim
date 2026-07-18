@@ -64,6 +64,7 @@ type
     fractionalScaleFactor: float32
     popupRepositionToken: uint32
     releasing: bool
+    closeEventSent: bool
     viewport: Wp_viewport
     fractionalScaleObj: Wp_fractional_scale_v1
     toplevelIcon: Xdg_toplevel_icon_v1
@@ -370,6 +371,12 @@ method release(window: WindowWaylandSoftwareRendering) =
 proc pushEvent[T](event: proc(e: T), args: T) =
   if event != nil: event(args)
 
+proc pushCloseEvent(window: WindowWayland) =
+  if window.closeEventSent:
+    return
+  window.closeEventSent = true
+  window.eventsHandler.onClose.pushEvent CloseEvent(window: window)
+
 proc hasFractionalScaling(window: WindowWayland): bool {.inline.} =
   window.fractionalScaleFactor > 0'f32 and window.viewport != typeof(window.viewport).default
 
@@ -449,7 +456,7 @@ method reportedSize*(window: WindowWayland): IVec2 =
 
 method close*(window: WindowWayland) =
   window.m_closed = true
-  window.eventsHandler.onClose.pushEvent CloseEvent(window: window)
+  window.pushCloseEvent()
   release window
 
 
@@ -2078,7 +2085,7 @@ method step*(window: WindowWayland) =
 
   template closeIfNeeded =
     if window.m_closed:
-      window.eventsHandler.onClose.pushEvent CloseEvent(window: window)
+      window.pushCloseEvent()
       release window
       return
 

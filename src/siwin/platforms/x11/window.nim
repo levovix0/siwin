@@ -78,6 +78,8 @@ type
     dragPositionTimestamp: x.Time
     lastDragStatus: DragStatus
     dragStatusSent: bool
+
+    closeEventSent: bool
     
     isBeengInteractivelyResizedOrMoved: bool
   
@@ -460,6 +462,12 @@ proc `=destroy`(x: WindowX11SoftwareRenderingObj) {.siwin_destructor.} =
 proc pushEvent[T](event: proc(e: T), args: T) =
   if event != nil: event(args)
 
+proc pushCloseEvent(window: WindowX11) =
+  if window.closeEventSent:
+    return
+  window.closeEventSent = true
+  window.eventsHandler.onClose.pushEvent CloseEvent(window: window)
+
 proc resizePixelBuffer(window: WindowX11SoftwareRendering, size: IVec2) =
   window.pixels = window.pixels.realloc(size.x * size.y * Color32bit.sizeof)
 
@@ -583,6 +591,12 @@ method `title=`*(window: WindowX11, v: string) =
   )
   window.globals.display.Xutf8SetWMProperties(window.handle, v, v, nil, 0, nil, nil, nil)
 
+method close*(window: WindowX11) =
+  if window.m_closed:
+    return
+  window.m_closed = true
+  window.pushCloseEvent()
+
 
 method `fullscreen=`*(window: WindowX11, v: bool) =
   var event = window.globals.newClientMessage(
@@ -637,6 +651,9 @@ method `size=`*(window: WindowX11, v: IVec2) =
   if window.fullscreen:
     window.fullscreen = false
   
+  window.m_size = v
+  if window of WindowX11SoftwareRendering:
+    window.WindowX11SoftwareRendering.resizePixelBuffer(window.m_size)
   discard window.globals.display.XResizeWindow(window.handle, v.x.cuint, v.y.cuint)
 
 method `pos=`*(window: WindowX11, v: IVec2) =
@@ -801,6 +818,24 @@ method pixelBuffer*(window: WindowX11SoftwareRendering): PixelBuffer =
     size: window.m_size,
     format: (if window.transparent: PixelBufferFormat.bgrx_32bit else: PixelBufferFormat.bgru_32bit),
   )
+
+
+method uiScale*(window: WindowX11): float32 =
+  const defaultScreenDpi = 96.0'f32
+  if window.isNil or window.globals.isNil or window.globals.display.isNil:
+    return 1'f32
+
+  let xftDpi = window.globals.display.XGetDefault("Xft", "dpi")
+  if xftDpi.isNil:
+    return 1'f32
+
+  try:
+    let dpi = parseFloat($xftDpi).float32
+    if dpi > 0'f32:
+      return dpi / defaultScreenDpi
+  except ValueError:
+    discard
+  1'f32
 
 
 method endSwapBuffers(window: WindowX11SoftwareRendering) =
@@ -1546,7 +1581,7 @@ method step*(window: WindowX11) =
 
   block nextEvent:
     template closeAndExit =
-      window.eventsHandler.onClose.pushEvent CloseEvent(window: window)
+      window.pushCloseEvent()
       return
     
     var

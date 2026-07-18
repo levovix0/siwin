@@ -29,7 +29,8 @@ proc `=destroy`(x: WindowX11OpenglObj) {.siwin_destructor.} =
 proc initOpenglWindow(
   window: WindowX11Opengl,
   size: IVec2, screen: ScreenX11,
-  fullscreen, frameless, transparent: bool, class: string
+  fullscreen, frameless, transparent: bool, class: string,
+  popupWindow = false
 ) =
   window.basicInitWindow size, screen
 
@@ -83,11 +84,18 @@ proc initOpenglWindow(
     discard window.globals.display.XMatchVisualInfo(window.screen, 24, TrueColor, vi.addr)
   
   let cmap = window.globals.display.XCreateColormap(root, vi.visual, AllocNone)
-  var swa = XSetWindowAttributes(colormap: cmap)
+  var swa = XSetWindowAttributes(
+    colormap: cmap,
+    override_redirect: if popupWindow: 1 else: 0,
+    save_under: if popupWindow: 1 else: 0
+  )
+  var valueMask = (CwColormap or CwEventMask or CwBorderPixel or CwBackPixel).culong
+  if popupWindow:
+    valueMask = valueMask or (CWOverrideRedirect or CWSaveUnder).culong
 
   window.handle = window.globals.display.XCreateWindow(
     root, 0, 0, size.x.cuint, size.y.cuint, 0, vi.depth, InputOutput, vi.visual,
-    CwColormap or CwEventMask or CwBorderPixel or CwBackPixel, swa.addr
+    valueMask, swa.addr
   )
 
   window.setupWindow fullscreen, frameless, class
@@ -148,3 +156,38 @@ proc newOpenglWindowX11*(
   result.title = title
   result.`vsync=`(vsync, silent=true)
   if not resizable: result.resizable = false
+
+proc newPopupWindowX11*(
+    globals: SiwinGlobalsX11,
+    parent: WindowX11Opengl,
+    placement: PopupPlacement,
+    transparent = false,
+    grab = true,
+): WindowX11Opengl =
+  if parent == nil:
+    raise ValueError.newException("Popup windows require a parent window")
+  new result
+  result.globals = globals
+  let screen = globals.defaultScreenX11()
+  result.initOpenglWindow(
+    placement.popupSize(),
+    screen,
+    fullscreen = false,
+    frameless = true,
+    transparent = transparent,
+    class = "",
+    popupWindow = true,
+  )
+  result.`vsync=`(parent.vsyncEnabled, silent = true)
+  result.initPopupState(parent, placement, grab)
+  let parentPos = globals.absolutePos(parent.handle)
+  let bounds = globals.popupConstraintBounds(parentPos + placement.anchorRectPos)
+  let rect = resolvePopupRect(
+    parentPos,
+    bounds.pos,
+    bounds.size,
+    placement,
+  )
+  if result.m_size != rect.size:
+    result.m_size = rect.size
+  result.pos = rect.pos

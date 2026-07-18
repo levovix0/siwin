@@ -12,6 +12,7 @@ when not siwin_use_lib:
   elif defined(linux) or defined(bsd):
     import ./platforms/x11/siwinGlobals as x11SiwinGlobals
     import ./platforms/x11/window as x11Window
+    import ./platforms/x11/windowOpengl as x11WindowOpengl
     import ./platforms/wayland/siwinGlobals as waylandSiwinGlobals
     import ./platforms/wayland/window as waylandWindow
 
@@ -130,7 +131,14 @@ when not siwin_use_lib:
       raise SiwinPlatformSupportDefect.newException("Popup windows are not supported on Android")
     elif defined(linux) or defined(bsd):
       if globals of SiwinGlobalsX11:
-        result = globals.SiwinGlobalsX11.newPopupWindowX11(parent.WindowX11, placement, transparent, grab)
+        if parent of WindowX11Opengl:
+          result = globals.SiwinGlobalsX11.newPopupWindowX11(
+            parent.WindowX11Opengl, placement, transparent, grab
+          )
+        else:
+          result = globals.SiwinGlobalsX11.newPopupWindowX11(
+            parent.WindowX11, placement, transparent, grab
+          )
       elif globals of SiwinGlobalsWayland:
         result = globals.SiwinGlobalsWayland.newPopupWindowWayland(parent.WindowWayland, placement, transparent, grab)
       else:

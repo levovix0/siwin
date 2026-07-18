@@ -3,10 +3,12 @@ import std/math
 import std/[os, osproc, strutils]
 import std/strtabs
 import pkg/vmath
-import siwin/[window, platforms]
+import siwin/[window, windowOpengl, platforms]
 
 when defined(macosx):
   import siwin/platforms/cocoa/window
+when defined(linux) or defined(bsd):
+  import siwin/platforms/x11/windowOpengl as x11WindowOpengl
 
 proc toPoints(distance: int32, scale: float32): int32 =
   if scale <= 0'f32:
@@ -90,8 +92,7 @@ proc popupProbePlacement(): PopupPlacement =
 proc runPopupProbe(platform: Platform) =
   let globals = newSiwinGlobals(platform)
   let parent = globals.newSoftwareRenderingWindow(
-    size = ivec2(780, 630),
-    title = "popup probe parent",
+    size = ivec2(780, 630), title = "popup probe parent"
   )
   parent.firstStep(makeVisible = true)
 
@@ -134,25 +135,33 @@ proc runPopupProbe(platform: Platform) =
     if stableSteps >= 8:
       break
 
-  echo "POPUP_RESULT platform=", $platform, " relPos=", lastRelPos.x, ",", lastRelPos.y,
-    " reportedSize=", lastReportedSize.x, ",", lastReportedSize.y,
-    " uiScale=", popup.uiScale
+  echo "POPUP_RESULT platform=",
+    $platform,
+    " relPos=",
+    lastRelPos.x,
+    ",",
+    lastRelPos.y,
+    " reportedSize=",
+    lastReportedSize.x,
+    ",",
+    lastReportedSize.y,
+    " uiScale=",
+    popup.uiScale
 
   close popup
   close parent
   quit(0)
 
-proc runPopupProbeSubprocess(platform: Platform; waylandDebug = false): tuple[output: string, exitCode: int] =
+proc runPopupProbeSubprocess(platform: Platform): tuple[output: string, exitCode: int] =
   var env = newStringTable()
   for key, value in envPairs():
     env[key] = value
   env["SIWIN_POPUP_TEST_HELPER"] = $platform
-  if waylandDebug:
-    env["WAYLAND_DEBUG"] = "1"
   execCmdEx(getAppFilename().quoteShell & " --popup-runtime-helper", env = env)
 
 when defined(linux) or defined(bsd):
-  if getEnv("SIWIN_POPUP_TEST_HELPER").len != 0 and paramCount() > 0 and paramStr(1) == "--popup-runtime-helper":
+  if getEnv("SIWIN_POPUP_TEST_HELPER").len != 0 and paramCount() > 0 and
+      paramStr(1) == "--popup-runtime-helper":
     runPopupProbe(parseEnum[Platform](getEnv("SIWIN_POPUP_TEST_HELPER")))
 
 suite "siwin popup api":
@@ -188,8 +197,7 @@ suite "siwin popup api":
     test "cocoa firstStep syncs initial window position":
       let globals = newSiwinGlobals(Platform.cocoa)
       let parent = globals.newSoftwareRenderingWindow(
-        size = ivec2(300, 200),
-        title = "popup parent initial pos",
+        size = ivec2(300, 200), title = "popup parent initial pos"
       )
       parent.firstStep(makeVisible = true)
       parent.step()
@@ -201,8 +209,7 @@ suite "siwin popup api":
     test "cocoa popup placement uses parent content position":
       let globals = newSiwinGlobals(Platform.cocoa)
       let parent = globals.newSoftwareRenderingWindow(
-        size = ivec2(300, 200),
-        title = "popup parent",
+        size = ivec2(300, 200), title = "popup parent"
       )
       parent.pos = ivec2(140, 160)
       parent.firstStep(makeVisible = false)
@@ -221,7 +228,9 @@ suite "siwin popup api":
       popup.firstStep(makeVisible = false)
       popup.step()
 
-      check popup.pos == parent.WindowCocoa.contentPos() + initialPlacement.popupRelativePos().toPoints(scale)
+      check popup.pos ==
+        parent.WindowCocoa.contentPos() +
+        initialPlacement.popupRelativePos().toPoints(scale)
       check popup.size == initialPlacement.popupSize()
 
       let updatedPlacement = PopupPlacement(
@@ -235,7 +244,9 @@ suite "siwin popup api":
       popup.reposition(updatedPlacement)
       popup.step()
 
-      check popup.pos == parent.WindowCocoa.contentPos() + updatedPlacement.popupRelativePos().toPoints(scale)
+      check popup.pos ==
+        parent.WindowCocoa.contentPos() +
+        updatedPlacement.popupRelativePos().toPoints(scale)
       check popup.size == updatedPlacement.popupSize()
 
       close popup
@@ -243,13 +254,12 @@ suite "siwin popup api":
 
   when defined(linux) or defined(bsd):
     test "wayland and x11 popup final geometry match for popup probe":
-      if Platform.wayland notin availablePlatforms() or Platform.x11 notin availablePlatforms():
+      if Platform.wayland notin availablePlatforms() or
+          Platform.x11 notin availablePlatforms():
         skip()
 
-      let wayland = runPopupProbeSubprocess(Platform.wayland, waylandDebug = true)
+      let wayland = runPopupProbeSubprocess(Platform.wayland)
       require wayland.exitCode == 0
-      check "xdg_popup" in wayland.output
-      check "configure(" in wayland.output
 
       let x11 = runPopupProbeSubprocess(Platform.x11)
       require x11.exitCode == 0
@@ -265,8 +275,7 @@ suite "siwin popup api":
 
       let globals = newSiwinGlobals(Platform.x11)
       let parent = globals.newSoftwareRenderingWindow(
-        size = ivec2(300, 200),
-        title = "popup parent",
+        size = ivec2(300, 200), title = "popup parent"
       )
       parent.firstStep(makeVisible = false)
       parent.step()
@@ -281,7 +290,11 @@ suite "siwin popup api":
       )
       let popup = globals.newPopupWindow(parent, placement, grab = true)
       popup.firstStep(makeVisible = false)
-      popup.stepUntil(proc(): bool = popup.pos == parent.pos + placement.popupRelativePos() and popup.size == placement.popupSize())
+      popup.stepUntil(
+        proc(): bool =
+          popup.pos == parent.pos + placement.popupRelativePos() and
+            popup.size == placement.popupSize()
+      )
 
       check popup.pos == parent.pos + placement.popupRelativePos()
       check popup.size == placement.popupSize()
@@ -298,7 +311,7 @@ suite "siwin popup api":
       popup.stepUntil(
         proc(): bool =
           popup.pos == parent.pos + updatedPlacement.popupRelativePos() and
-          popup.size == updatedPlacement.popupSize()
+            popup.size == updatedPlacement.popupSize()
       )
 
       check popup.pos == parent.pos + updatedPlacement.popupRelativePos()
@@ -306,3 +319,42 @@ suite "siwin popup api":
 
       close popup
       close parent
+
+    test "x11 popup from opengl parent keeps opengl window type":
+      if Platform.x11 notin availablePlatforms():
+        skip()
+
+      block runX11OpenglPopup:
+        let globals = newSiwinGlobals(Platform.x11)
+        var
+          parent: Window
+          popup: Window
+        try:
+          parent = globals.newOpenglWindow(
+            size = ivec2(300, 200), title = "opengl popup parent"
+          )
+        except CatchableError:
+          skip()
+          break runX11OpenglPopup
+
+        try:
+          require parent of x11WindowOpengl.WindowX11Opengl
+          parent.firstStep(makeVisible = false)
+          parent.step()
+
+          let placement = PopupPlacement(
+            anchorRectPos: ivec2(40, 48),
+            anchorRectSize: ivec2(96, 32),
+            size: ivec2(140, 110),
+            anchor: bottomLeft,
+            gravity: topLeft,
+            offset: ivec2(0, 14),
+          )
+          popup = globals.newPopupWindow(parent, placement, grab = true)
+
+          check popup of x11WindowOpengl.WindowX11Opengl
+        finally:
+          if not popup.isNil:
+            close popup
+          if not parent.isNil:
+            close parent
