@@ -16,8 +16,10 @@ type
     wmForFramelessKind*: WmForFramelessKind
     atoms*: tuple[
       frameless, wmDeleteWindow, utf8String, netWmName, netWmIconName,
-      netWmState, netWmStateFullscreen, netWmStateMaximizedHorz, netWmStateMaximizedVert, netWmStateHidden, netWmMoveResize,
+      netSupported, netWmState, netWmStateFullscreen, netWmStateMaximizedHorz,
+      netWmStateMaximizedVert, netWmStateHidden, netWmMoveResize,
       netWmSyncRequest, netWmSyncRequestCounter, netFrameExtents,
+      kdeNetWmBlurBehindRegion,
       clipboard, siwin_clipboardTargetProperty, targets, text, primary,
       xDndAware, xDndEnter, xDndTypeList, xDndSelection, xDndPosition, xDndLeave, xDndDrop, xDndFinished, xDndStatus, xDndActionCopy, xDndActionPrivate
       : Atom
@@ -48,6 +50,7 @@ proc newX11Globals*: SiwinGlobalsX11 {.raises: [OsError].} =
   result.atoms.utf8String = result.display.XInternAtom("UTF8_STRING", 0)
   result.atoms.netWmName = result.display.XInternAtom("_NET_WM_NAME", 0)
   result.atoms.netWmIconName = result.display.XInternAtom("_NET_WM_ICON_NAME", 0)
+  result.atoms.netSupported = result.display.XInternAtom("_NET_SUPPORTED", 0)
   result.atoms.netWmState = result.display.XInternAtom("_NET_WM_STATE", 0)
   result.atoms.netWmStateFullscreen = result.display.XInternAtom("_NET_WM_STATE_FULLSCREEN", 0)
   result.atoms.netWmStateMaximizedHorz = result.display.XInternAtom("_NET_WM_STATE_MAXIMIZED_HORZ", 0)
@@ -57,6 +60,9 @@ proc newX11Globals*: SiwinGlobalsX11 {.raises: [OsError].} =
   result.atoms.netWmSyncRequest = result.display.XInternAtom("_NET_WM_SYNC_REQUEST", 0)
   result.atoms.netWmSyncRequestCounter = result.display.XInternAtom("_NET_WM_SYNC_REQUEST_COUNTER", 0)
   result.atoms.netFrameExtents = result.display.XInternAtom("_NET_FRAME_EXTENTS", 0)
+  result.atoms.kdeNetWmBlurBehindRegion = result.display.XInternAtom(
+    "_KDE_NET_WM_BLUR_BEHIND_REGION", 0
+  )
   result.atoms.clipboard = result.display.XInternAtom("CLIPBOARD", 0)
   result.atoms.siwin_clipboardTargetProperty = result.display.XInternAtom("siwin_clipboardTargetProperty", 0)
   result.atoms.targets = result.display.XInternAtom("TARGETS", 0)
