@@ -77,8 +77,8 @@ jobs:
       run: |
         git clone --depth 1 https://github.com/nim-lang/nimble "$RUNNER_TEMP/nimble-head"
         cd "$RUNNER_TEMP/nimble-head"
-        git submodule update --init
-        nim c --cc:vcc -d:release -o:"$HOME/.nimble/bin/nimble-head.exe" src/nimble.nim
+        git submodule update --init --recursive
+        nim c --cc:gcc -d:release -o:"$HOME/.nimble/bin/nimble-head.exe" src/nimble.nim
         echo "NIMBLE_BIN=$HOME/.nimble/bin/nimble-head.exe" >> $GITHUB_ENV
 
     - name: Tool Versions

@@ -6,6 +6,16 @@ import
   libwayland
 
 type
+  Org_kde_kwin_blur_manager* = object
+    proxy*: Wl_proxy
+  `Org_kde_kwin_blur_manager / Callbacks`* = object
+    interfaces*: ptr ptr WaylandInterfaces
+    destroy*: proc (cb: pointer) {.cdecl, raises: [].}
+  Org_kde_kwin_blur* = object
+    proxy*: Wl_proxy
+  `Org_kde_kwin_blur / Callbacks`* = object
+    interfaces*: ptr ptr WaylandInterfaces
+    destroy*: proc (cb: pointer) {.cdecl, raises: [].}
   Wp_cursor_shape_manager_v1* = object
     ## This global offers an alternative, optional way to set cursor images. This
     ## new way uses enumerated cursors instead of a wl_surface like
@@ -1331,6 +1341,8 @@ type
     interfaces*: ptr ptr WaylandInterfaces
     destroy*: proc (cb: pointer) {.cdecl, raises: [].}
   WaylandInterfaces* = object
+    `iface Org_kde_kwin_blur_manager`*: WlInterface
+    `iface Org_kde_kwin_blur`*: WlInterface
     `iface Wp_cursor_shape_manager_v1`*: WlInterface
     `iface Wp_cursor_shape_device_v1`*: WlInterface
     `iface Wp_fractional_scale_manager_v1`*: WlInterface
@@ -1383,6 +1395,17 @@ type
     `iface Xdg_toplevel_icon_manager_v1`*: WlInterface
     `iface Xdg_toplevel_icon_v1`*: WlInterface
 proc initInterfaces*(interfaces: var WaylandInterfaces) =
+  interfaces.`iface Org_kde_kwin_blur_manager` = newWlInterface(
+      "org_kde_kwin_blur_manager", 1, [newWlMessage(
+      "org_kde_kwin_blur_manager.create", "1no", [
+      addr(interfaces.`iface Org_kde_kwin_blur`),
+      addr(interfaces.`iface Wl_surface`)]), newWlMessage(
+      "org_kde_kwin_blur_manager.unset", "1o",
+      [addr(interfaces.`iface Wl_surface`)])], [])
+  interfaces.`iface Org_kde_kwin_blur` = newWlInterface("org_kde_kwin_blur", 1, [
+      newWlMessage("org_kde_kwin_blur.commit", "1", []), newWlMessage(
+      "org_kde_kwin_blur.set_region", "1?o", [addr(interfaces.`iface Wl_region`)]),
+      newWlMessage("org_kde_kwin_blur.release", "1", [])], [])
   interfaces.`iface Wp_cursor_shape_manager_v1` = newWlInterface(
       "wp_cursor_shape_manager_v1", 2, [newWlMessage(
       "wp_cursor_shape_manager_v1.destroy", "1", []), newWlMessage(
@@ -1902,6 +1925,12 @@ proc initInterfaces*(interfaces: var WaylandInterfaces) =
       "xdg_toplevel_icon_v1.add_buffer", "1oi",
       [addr(interfaces.`iface Wl_buffer`), (ptr WlInterface) nil])], [])
 
+template ifaceName*(t: typedesc[Org_kde_kwin_blur_manager]): string =
+  "org_kde_kwin_blur_manager"
+
+template ifaceName*(t: typedesc[Org_kde_kwin_blur]): string =
+  "org_kde_kwin_blur"
+
 template ifaceName*(t: typedesc[Wp_cursor_shape_manager_v1]): string =
   "wp_cursor_shape_manager_v1"
 
@@ -2054,6 +2083,19 @@ template ifaceName*(t: typedesc[Xdg_toplevel_icon_manager_v1]): string =
 
 template ifaceName*(t: typedesc[Xdg_toplevel_icon_v1]): string =
   "xdg_toplevel_icon_v1"
+
+proc `Org_kde_kwin_blur_manager / dispatch`*(impl: pointer; obj: pointer;
+    opcode: uint32; msg: ptr WlMessage; args: pointer): int32 {.cdecl.} =
+  case opcode
+  else:
+    discard
+
+proc `Org_kde_kwin_blur / dispatch`*(impl: pointer; obj: pointer;
+                                     opcode: uint32; msg: ptr WlMessage;
+                                     args: pointer): int32 {.cdecl.} =
+  case opcode
+  else:
+    discard
 
 proc `Wp_cursor_shape_manager_v1 / dispatch`*(impl: pointer; obj: pointer;
     opcode: uint32; msg: ptr WlMessage; args: pointer): int32 {.cdecl.} =
@@ -2981,6 +3023,28 @@ proc `Xdg_toplevel_icon_v1 / dispatch`*(impl: pointer; obj: pointer;
   case opcode
   else:
     discard
+
+proc create*(this: Org_kde_kwin_blur_manager; surface: Wl_surface): Org_kde_kwin_blur =
+  let interfaces = cast[ptr ptr WaylandInterfaces](this.proxy.raw.impl)
+  result = wl_proxy_marshal_flags(this.proxy.raw, 0,
+                                  addr(interfaces[].`iface Org_kde_kwin_blur`),
+                                  1, 0, nil, surface).construct(interfaces[],
+      Org_kde_kwin_blur, `Org_kde_kwin_blur / dispatch`,
+      `Org_kde_kwin_blur / Callbacks`)
+
+proc unset*(this: Org_kde_kwin_blur_manager; surface: Wl_surface) =
+  discard wl_proxy_marshal_flags(this.proxy.raw, 1, nil, 1, 0, surface)
+
+proc commit*(this: Org_kde_kwin_blur) =
+  discard wl_proxy_marshal_flags(this.proxy.raw, 0, nil, 1, 0)
+
+proc set_region*(this: Org_kde_kwin_blur; region: Wl_region) =
+  discard wl_proxy_marshal_flags(this.proxy.raw, 1, nil, 1, 0, region)
+
+proc release*(this: Org_kde_kwin_blur) =
+  ## release the blur object
+  destroyCallbacks(this.proxy)
+  discard wl_proxy_marshal_flags(this.proxy.raw, 2, nil, 1, 1)
 
 proc destroy*(this: Wp_cursor_shape_manager_v1) =
   ## Destroy the cursor shape manager.
@@ -7440,6 +7504,12 @@ template onDone*(this: Xdg_toplevel_icon_manager_v1; body) =
   cast[ptr `Xdg_toplevel_icon_manager_v1 / Callbacks`](this.proxy.raw.impl).done = proc () =
     body
 
+template dispatch*(t: typedesc[Org_kde_kwin_blur_manager]): untyped =
+  `Org_kde_kwin_blur_manager / dispatch`
+
+template dispatch*(t: typedesc[Org_kde_kwin_blur]): untyped =
+  `Org_kde_kwin_blur / dispatch`
+
 template dispatch*(t: typedesc[Wp_cursor_shape_manager_v1]): untyped =
   `Wp_cursor_shape_manager_v1 / dispatch`
 
@@ -7595,6 +7665,12 @@ template dispatch*(t: typedesc[Xdg_toplevel_icon_manager_v1]): untyped =
 
 template dispatch*(t: typedesc[Xdg_toplevel_icon_v1]): untyped =
   `Xdg_toplevel_icon_v1 / dispatch`
+
+template Callbacks*(t: typedesc[Org_kde_kwin_blur_manager]): untyped =
+  `Org_kde_kwin_blur_manager / Callbacks`
+
+template Callbacks*(t: typedesc[Org_kde_kwin_blur]): untyped =
+  `Org_kde_kwin_blur / Callbacks`
 
 template Callbacks*(t: typedesc[Wp_cursor_shape_manager_v1]): untyped =
   `Wp_cursor_shape_manager_v1 / Callbacks`

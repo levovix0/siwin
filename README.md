@@ -311,6 +311,36 @@ run window, WindowEventsHandler(
 )
 ```
 
+<h2 align="center">transparent backdrop blur</h2>
+
+Backdrop blur uses the same API on macOS, Windows, Wayland, and X11. It is available on macOS,
+Windows 11 build 22621 or newer, and KDE compositors that advertise the KWin blur extension.
+Create the window with an alpha-capable surface so the effect can show through transparent pixels.
+
+```nim
+import siwin
+
+let window = newSoftwareRenderingWindow(transparent = true, frameless = true)
+
+if window.supports(wvcBackdropBlur):
+  discard window.trySetBackdrop(initWindowBackdrop()) # whole-window blur
+
+# Empty regions mean the whole window. Non-empty regions use Siwin window coordinates.
+# Regional blur is currently available on macOS and KDE only.
+# discard window.trySetBackdrop(initWindowBackdrop(regions))
+
+window.clearBackdrop()
+```
+
+macOS also supports system materials such as `wbmSidebar` and `wbmHud`:
+
+```nim
+if window.supports(wvcBackdropMaterial):
+  window.setBackdrop(initWindowBackdrop(wbmSidebar))
+```
+
+See [backdrop_blur_demo.nim](examples/backdrop_blur_demo.nim) for a runnable cross-platform example.
+
 <h2 align="center">all methods and events</h2>
 
 see [siwin/platforms/any/window](https://github.com/levovix0/siwin/blob/master/src/siwin/platforms/any/window.nim)

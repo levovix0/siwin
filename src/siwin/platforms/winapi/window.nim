@@ -197,6 +197,10 @@ proc windowProc(handle: HWnd, message: Uint, wParam: WParam, lParam: LParam): LR
 const
   wClassName = L"w"
   woClassName = L"o"
+  dwmwaSystemBackdropType = 38.DWord
+  dwmsbtNone = 1'i32
+  dwmsbtTransientWindow = 3'i32
+  windows11SystemBackdropBuild = 22621.DWord
 
 block winapiInit:
   var wcex = WndClassEx(
@@ -250,6 +254,40 @@ proc enableTransparency*(window: WindowWinapi) =
   window.handle.DwmEnableBlurBehindWindow(bb.addr)
 
   DeleteObject(region)
+
+proc systemBackdropSupported(): bool =
+  var version = OSVERSIONINFOW(dwOSVersionInfoSize: sizeof(OSVERSIONINFOW).DWord)
+  rtlGetVersionSiwin(version.addr) == 0 and
+    version.dwMajorVersion >= 10 and
+    version.dwBuildNumber >= windows11SystemBackdropBuild
+
+proc setSystemBackdrop(window: WindowWinapi, backdrop: int32): bool =
+  var value = backdrop
+  window.handle.DwmSetWindowAttribute(
+    dwmwaSystemBackdropType,
+    value.addr,
+    sizeof(value).DWord,
+  ) >= 0
+
+method visualCapabilities*(window: WindowWinapi): set[WindowVisualCapability] =
+  if systemBackdropSupported():
+    result.incl wvcBackdropBlur
+
+method trySetBackdrop*(window: WindowWinapi, config: WindowBackdropConfig): bool =
+  if config.kind == wbkNone:
+    if systemBackdropSupported():
+      discard window.setSystemBackdrop(dwmsbtNone)
+    window.m_backdrop = WindowBackdropConfig(kind: wbkNone)
+    return true
+
+  if not window.transparent or config.kind != wbkBlur or config.regions.len > 0 or
+      wvcBackdropBlur notin window.visualCapabilities:
+    return false
+  if not window.setSystemBackdrop(dwmsbtTransientWindow):
+    return false
+
+  window.m_backdrop = config
+  true
 
 
 proc initWindow(window: WindowWinapi; size: IVec2; screen: ScreenWinapi, fullscreen, frameless, transparent: bool, class = wClassName) =

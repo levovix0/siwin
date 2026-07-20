@@ -29,6 +29,7 @@ type
 
     serverDecorationManager*: Zxdg_decoration_manager_v1
     plasmaShell*: Org_kde_plasma_shell
+    blurManager*: Org_kde_kwin_blur_manager
     layerShell*: Zwlr_layer_shell_v1
     idleInhibitManager*: Zwp_idle_inhibit_manager_v1
     cursorShapeManager*: Wp_cursor_shape_manager_v1
@@ -126,6 +127,9 @@ proc initRegistryCallbacks(globals: SiwinGlobalsWayland) =
 
   addRegistry Org_kde_plasma_shell:
     globals.plasmaShell = binded
+
+  addRegistry Org_kde_kwin_blur_manager:
+    globals.blurManager = binded
 
   addRegistry Zwlr_layer_shell_v1:
     globals.layerShell = binded
