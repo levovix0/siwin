@@ -325,6 +325,7 @@ type
     m_minimized: bool
     m_visible: bool
     m_resizable: bool
+    m_preservesContentDuringLiveResize: bool
     m_minSize: IVec2
     m_maxSize: IVec2
 
@@ -470,6 +471,8 @@ proc maximized*(window: Window): bool = window.m_maximized
 proc minimized*(window: Window): bool = window.m_minimized
 proc visible*(window: Window): bool = window.m_visible
 proc resizable*(window: Window): bool = window.m_resizable
+proc preservesContentDuringLiveResize*(window: Window): bool =
+  window.m_preservesContentDuringLiveResize
 proc minSize*(window: Window): IVec2 = window.m_minSize
 proc maxSize*(window: Window): IVec2 = window.m_maxSize
 
@@ -593,6 +596,9 @@ method `visible=`*(window: Window, v: bool) {.base.} = discard
 
 method `resizable=`*(window: Window, v: bool) {.base.} = discard
   ## enable/disable resizing
+
+method `preservesContentDuringLiveResize=`*(window: Window, v: bool) {.base.} =
+  window.m_preservesContentDuringLiveResize = v
 
 method `minSize=`*(window: Window, v: IVec2) {.base.} = discard
   ## set minimum size
