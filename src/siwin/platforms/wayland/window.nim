@@ -63,6 +63,7 @@ type
     lastTextEntered: string
     lastPressedKeyTime: Time
     lastKeyRepeatedTime: Time
+    initialConfigureReceived: bool
     bufferScaleFactor: int32
     fractionalScaleFactor: float32
     popupRepositionToken: uint32
@@ -669,6 +670,7 @@ proc createLibdecorFrameIface(): LibdecorFrameInterface =
   LibdecorFrameInterface(
     configure: proc(frame: LibdecorFrame, cfg: LibdecorConfiguration, userData: pointer) {.cdecl.} =
       let win = cast[WindowWayland](userData)
+      win.initialConfigureReceived = true
       var w, h: cint
       if libdecor_configuration_get_content_size(cfg, frame, w.addr, h.addr):
         if w > 0 and h > 0:
@@ -1727,6 +1729,7 @@ proc setupWindow(window: WindowWayland, fullscreen, frameless, transparent: bool
       window.xdgToplevel = window.xdgSurface.get_toplevel
 
       window.xdgSurface.onConfigure:
+        window.initialConfigureReceived = true
         window.xdgSurface.ack_configure(serial)
         redraw window
 
@@ -1774,6 +1777,7 @@ proc setupWindow(window: WindowWayland, fullscreen, frameless, transparent: bool
     destroy positioner
 
     window.xdgSurface.onConfigure:
+      window.initialConfigureReceived = true
       window.xdgSurface.ack_configure(serial)
       redraw window
 
@@ -1802,6 +1806,7 @@ proc setupWindow(window: WindowWayland, fullscreen, frameless, transparent: bool
     window.redraw()
 
     window.layerShellSurface.onConfigure:
+      window.initialConfigureReceived = true
       window.layerShellSurface.ack_configure(serial)
       window.resize(ivec2(width.int32, height.int32))
 
@@ -2111,6 +2116,24 @@ method `content=`*(clipboard: ClipboardWayland, content: ClipboardConvertableCon
   discard wl_display_roundtrip clipboard.globals.display
 
 
+proc configureSurface*(window: WindowWayland) =
+  ## Commit the role setup and wait for the compositor's initial configure.
+  ##
+  ## An xdg_surface must acknowledge its initial configure before a renderer
+  ## attaches its first buffer. Vulkan renderers may create and present a
+  ## swapchain before the caller reaches `firstStep`, so Vulkan window setup
+  ## calls this before exposing the surface.
+  window.surface.commit()
+  while true:
+    if window.globals.libdecorCtx != nil:
+      discard libdecor_dispatch(window.globals.libdecorCtx, 0)
+    let eventCount = wl_display_roundtrip(window.globals.display)
+    if eventCount < 0:
+      raise newException(RoundtripFailed, "wl_display_roundtrip() returned " & $eventCount)
+    if window.initialConfigureReceived:
+      break
+
+
 method firstStep*(window: WindowWayland, makeVisible = true) =
   if makeVisible:
     window.visible = true
@@ -2118,10 +2141,7 @@ method firstStep*(window: WindowWayland, makeVisible = true) =
   # window.m_pos = window.handle.geometry.pos
   # window.mouse.pos = cursor().pos - window.m_pos
 
-  window.surface.commit()
-  if window.globals.libdecorCtx != nil:
-    discard libdecor_dispatch(window.globals.libdecorCtx, 0)
-  discard wl_display_roundtrip window.globals.display
+  window.configureSurface()
 
   if window.opened: window.eventsHandler.onResize.pushEvent ResizeEvent(window: window, size: window.size, initial: true)
   window.lastTickTime = getTime()

@@ -53,6 +53,7 @@ proc initVulkanWindow(
   window.basicInitWindow size, screen
   
   window.setupWindow fullscreen, frameless, transparent, size, class
+  window.configureSurface()
 
   # window.eglContext = newOpenglContext(window.surface.proxy.raw, size.x, size.y)
   # makeCurrent window.eglContext

@@ -30,7 +30,6 @@ feature "dev":
   requires "sdl2"
   requires "https://github.com/planetis-m/vulkan#b223dc9"
 
-
 when fileExists("src/siwin/build_utils/tasks.nim"):
   include "src/siwin/build_utils/tasks.nim"
 
