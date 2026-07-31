@@ -149,7 +149,7 @@ when not siwin_use_lib:
       result = newPopupWindowCocoa(parent.WindowCocoa, placement, transparent, grab)
 
   when defined(linux) or defined(bsd):
-    proc newLayerSurfaceWindow*(
+    proc newSoftwareRenderingLayerSurfaceWindow*(
         globals: SiwinGlobals,
         size = ivec2(1280, 32),
         title = "",
@@ -157,9 +157,16 @@ when not siwin_use_lib:
         config: waylandWindow.LayerSurfaceConfig,
         transparent = false,
     ): Window =
+      ## Creates a software-rendered window backed by a Wayland layer-shell surface.
+      ##
+      ## `config` controls the layer, anchors, margins, exclusive zone, keyboard
+      ## interactivity, and namespace. A `screen` value of `-1` selects the
+      ## default Wayland output.
+      ##
+      ## Raises `SiwinPlatformSupportDefect` when `globals` uses the X11 backend.
       if globals of SiwinGlobalsWayland:
         let waylandGlobals = globals.SiwinGlobalsWayland
-        result = waylandGlobals.newLayerSurfaceWindowWayland(
+        result = waylandGlobals.newSoftwareRenderingLayerSurfaceWindowWayland(
           size = size,
           title = title,
           screen =

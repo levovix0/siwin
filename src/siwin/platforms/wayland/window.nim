@@ -1955,7 +1955,7 @@ proc setMargins*(window: WindowWayland, margins: LayerSurfaceMargins) =
     raise newException(
       ValueError,
       "Attempt to set margins when layer shell surface hasn't been initialized." &
-      "\nHint: Construct this window with newLayerSurfaceWindowWayland()."
+      "\nHint: Construct this window as a Wayland layer surface."
     )
 
   window.layerShellSurface.set_margin(
@@ -2307,38 +2307,35 @@ proc newSoftwareRenderingWindowWayland*(
   result.title = title
   if not resizable: result.resizable = false
 
-proc newLayerSurfaceWindowWayland*(
-    globals: SiwinGlobalsWayland,
-    size = ivec2(1280, 32),
-    title = "",
-    screen: ScreenWayland,
-    config: LayerSurfaceConfig,
-    transparent = false,
-): WindowWaylandSoftwareRendering =
-  new result
-  result.globals = globals
-  result.softwarePresentEnabled = true
-  result.kind = WindowWaylandKind.LayerSurface
-  result.layer = Layer(config.layer.ord)
-  result.namespace = config.namespace
-  result.basicInitWindow(size, screen)
-  result.setupWindow(
+proc initLayerSurfaceWindow(
+  window: WindowWayland,
+  size: IVec2,
+  screen: ScreenWayland,
+  config: LayerSurfaceConfig,
+  transparent: bool,
+  class: string,
+) =
+  window.kind = WindowWaylandKind.LayerSurface
+  window.layer = Layer(config.layer.ord)
+  window.namespace = config.namespace
+  window.basicInitWindow(size, screen)
+  window.setupWindow(
     fullscreen = false,
     frameless = true,
     transparent = transparent,
     size = size,
-    class = title,
+    class = class,
   )
 
   var anchors: uint32
   for anchor in config.anchors:
     anchors = anchors or (1'u32 shl anchor.ord)
-  result.layerShellSurface.set_anchor(
+  window.layerShellSurface.set_anchor(
     cast[`Zwlr_layer_surface_v1/Anchor`](anchors)
   )
-  result.setMargins(config.margins)
-  result.setExclusiveZone(config.exclusiveZone)
-  result.setKeyboardInteractivity(
+  window.setMargins(config.margins)
+  window.setExclusiveZone(config.exclusiveZone)
+  window.setKeyboardInteractivity(
     LayerInteractivityMode(config.keyboardMode.ord)
   )
 
@@ -2347,7 +2344,31 @@ proc newLayerSurfaceWindowWayland*(
       if {lsaLeft, lsaRight} <= config.anchors: 0'u32 else: size.x.uint32
     requestedHeight =
       if {lsaTop, lsaBottom} <= config.anchors: 0'u32 else: size.y.uint32
-  result.layerShellSurface.set_size(requestedWidth, requestedHeight)
+  window.layerShellSurface.set_size(requestedWidth, requestedHeight)
+
+proc newSoftwareRenderingLayerSurfaceWindowWayland*(
+    globals: SiwinGlobalsWayland,
+    size = ivec2(1280, 32),
+    title = "",
+    screen: ScreenWayland,
+    config: LayerSurfaceConfig,
+    transparent = false,
+): WindowWaylandSoftwareRendering =
+  ## Creates a software-rendered window backed by a Wayland layer-shell surface.
+  ##
+  ## `config` controls the layer, anchors, margins, exclusive zone, keyboard
+  ## interactivity, and namespace. Anchoring to both horizontal or both vertical
+  ## edges lets the compositor determine that dimension; otherwise `size` is
+  ## requested. When `transparent` is enabled, the backing buffer includes an
+  ## alpha channel.
+  ##
+  ## Raises `WaylandExtensionNotFound` when a required Wayland extension is
+  ## unavailable.
+  new result
+  result.globals = globals
+  result.softwarePresentEnabled = true
+  expectExtension result.globals.shm
+  result.initLayerSurfaceWindow(size, screen, config, transparent, title)
   result.buffer = result.globals.create(
     result.globals.shm,
     result.bufferSize(size),

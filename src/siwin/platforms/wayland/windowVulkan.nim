@@ -45,21 +45,7 @@ method vulkanSurface*(window: WindowWaylandVulkan): pointer =
   window.vulkan_surface.raw
 
 
-proc initVulkanWindow(
-  window: WindowWaylandVulkan, vkInstance: pointer,
-  size: IVec2, screen: ScreenWayland,
-  fullscreen, frameless, transparent: bool, class: string
-) =
-  window.basicInitWindow size, screen
-  
-  window.setupWindow fullscreen, frameless, transparent, size, class
-  window.configureSurface()
-
-  # window.eglContext = newOpenglContext(window.surface.proxy.raw, size.x, size.y)
-  # makeCurrent window.eglContext
-
-  # commit window.surface
-
+proc initVulkanSurface(window: WindowWaylandVulkan, vkInstance: pointer) =
   window.vulkan_surface.instance = vkInstance
   var info = VkWaylandSurfaceCreateInfoKHR(
     sType: VK_STRUCTURE_TYPE_WAYLAND_SURFACE_CREATE_INFO_KHR,
@@ -71,6 +57,17 @@ proc initVulkanWindow(
   let res = vkCreateWaylandSurfaceKHR(vkInstance, info.addr, nil, window.vulkan_surface.raw.addr)
   if res != VK_SUCCESS:
     raise OSError.newException("Failed to create Vulkan surface, error: " & $res)
+
+
+proc initVulkanWindow(
+  window: WindowWaylandVulkan, vkInstance: pointer,
+  size: IVec2, screen: ScreenWayland,
+  fullscreen, frameless, transparent: bool, class: string
+) =
+  window.basicInitWindow size, screen
+  window.setupWindow fullscreen, frameless, transparent, size, class
+  window.configureSurface()
+  window.initVulkanSurface(vkInstance)
 
 
 proc newVulkanWindowWayland*(
@@ -91,3 +88,27 @@ proc newVulkanWindowWayland*(
   result.initVulkanWindow(vkInstance, size, screen, fullscreen, frameless, transparent, (if class == "": title else: class))
   result.title = title
   if not resizable: result.resizable = false
+
+proc newVulkanLayerSurfaceWindowWayland*(
+  globals: SiwinGlobalsWayland,
+  vkInstance: pointer,
+  size = ivec2(1280, 32),
+  title = "",
+  screen: ScreenWayland,
+  config: LayerSurfaceConfig,
+  transparent = false,
+): WindowWaylandVulkan =
+  ## Creates a Vulkan window backed by a Wayland layer-shell surface.
+  ##
+  ## `config` controls the layer-shell role. Anchoring to both horizontal or
+  ## both vertical edges lets the compositor determine that dimension;
+  ## otherwise `size` is requested.
+  ##
+  ## Raises `WaylandExtensionNotFound` when a required Wayland extension is
+  ## unavailable.
+  new result
+  result.globals = globals
+  result.initLayerSurfaceWindow(size, screen, config, transparent, title)
+  result.configureSurface()
+  result.initVulkanSurface(vkInstance)
+  result.title = title

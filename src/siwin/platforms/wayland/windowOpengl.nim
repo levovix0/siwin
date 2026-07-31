@@ -96,3 +96,33 @@ proc newOpenglWindowWayland*(
   result.title = title
   result.`vsync=`(vsync, silent=true)
   if not resizable: result.resizable = false
+
+proc newOpenglLayerSurfaceWindowWayland*(
+  globals: SiwinGlobalsWayland,
+  size = ivec2(1280, 32),
+  title = "",
+  screen: ScreenWayland,
+  config: LayerSurfaceConfig,
+  transparent = false,
+  vsync = true,
+): WindowWaylandOpengl =
+  ## Creates an OpenGL window backed by a Wayland layer-shell surface.
+  ##
+  ## `config` controls the layer-shell role. Anchoring to both horizontal or
+  ## both vertical edges lets the compositor determine that dimension;
+  ## otherwise `size` is requested.
+  ##
+  ## Raises `WaylandExtensionNotFound` when a required Wayland extension is
+  ## unavailable.
+  new result
+  result.globals = globals
+  initEgl(result.globals.display.raw)
+  result.initLayerSurfaceWindow(size, screen, config, transparent, title)
+
+  let scaledSize = result.bufferSize(size)
+  result.eglContext = newOpenglContext(
+    result.surface.proxy.raw, scaledSize.x, scaledSize.y
+  )
+  makeCurrent result.eglContext
+  result.title = title
+  result.`vsync=`(vsync, silent = true)
