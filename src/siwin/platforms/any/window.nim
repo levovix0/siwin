@@ -145,37 +145,6 @@ type
     constraintAdjustment*: set[PopupConstraintAdjustment]
     reactive*: bool
 
-  LayerSurfaceLayer* {.siwin_enum.} = enum
-    lslBackground
-    lslBottom
-    lslTop
-    lslOverlay
-
-  LayerSurfaceAnchor* {.siwin_enum.} = enum
-    lsaTop
-    lsaBottom
-    lsaLeft
-    lsaRight
-
-  LayerSurfaceKeyboardMode* {.siwin_enum.} = enum
-    lskNone
-    lskExclusive
-    lskOnDemand
-
-  LayerSurfaceMargins* = object
-    top*: int32
-    right*: int32
-    bottom*: int32
-    left*: int32
-
-  LayerSurfaceConfig* = object
-    layer*: LayerSurfaceLayer
-    anchors*: set[LayerSurfaceAnchor]
-    margins*: LayerSurfaceMargins
-    exclusiveZone*: int32
-    keyboardMode*: LayerSurfaceKeyboardMode
-    namespace*: string
-
   WindowVisualCapability* {.siwin_enum.} = enum
     wvcBackdropBlur
     wvcBackdropBlurRegion

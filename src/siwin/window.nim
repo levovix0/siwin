@@ -148,15 +148,15 @@ when not siwin_use_lib:
     elif defined(macosx):
       result = newPopupWindowCocoa(parent.WindowCocoa, placement, transparent, grab)
 
-  proc newLayerSurfaceWindow*(
-      globals: SiwinGlobals,
-      size = ivec2(1280, 32),
-      title = "",
-      screen: int32 = -1,
-      config: LayerSurfaceConfig,
-      transparent = false,
-  ): Window =
-    when defined(linux) or defined(bsd):
+  when defined(linux) or defined(bsd):
+    proc newLayerSurfaceWindow*(
+        globals: SiwinGlobals,
+        size = ivec2(1280, 32),
+        title = "",
+        screen: int32 = -1,
+        config: waylandWindow.LayerSurfaceConfig,
+        transparent = false,
+    ): Window =
       if globals of SiwinGlobalsWayland:
         let waylandGlobals = globals.SiwinGlobalsWayland
         result = waylandGlobals.newLayerSurfaceWindowWayland(
@@ -174,10 +174,6 @@ when not siwin_use_lib:
         raise SiwinPlatformSupportDefect.newException(
           "Layer-shell surfaces require the Wayland platform"
         )
-    else:
-      raise SiwinPlatformSupportDefect.newException(
-        "Layer-shell surfaces require Wayland"
-      )
 
 
 when defined(android):

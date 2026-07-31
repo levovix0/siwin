@@ -10,7 +10,43 @@ import ./[libwayland, protocol, siwinGlobals, sharedBuffer, bitfields, xkb, libd
 
 privateAccess Window
 
+when siwin_use_pure_enums:
+  {.pragma: siwin_enum, pure.}
+else:
+  {.pragma: siwin_enum.}
+
 type
+  LayerSurfaceLayer* {.siwin_enum.} = enum
+    lslBackground
+    lslBottom
+    lslTop
+    lslOverlay
+
+  LayerSurfaceAnchor* {.siwin_enum.} = enum
+    lsaTop
+    lsaBottom
+    lsaLeft
+    lsaRight
+
+  LayerSurfaceKeyboardMode* {.siwin_enum.} = enum
+    lskNone
+    lskExclusive
+    lskOnDemand
+
+  LayerSurfaceMargins* = object
+    top*: int32
+    right*: int32
+    bottom*: int32
+    left*: int32
+
+  LayerSurfaceConfig* = object
+    layer*: LayerSurfaceLayer
+    anchors*: set[LayerSurfaceAnchor]
+    margins*: LayerSurfaceMargins
+    exclusiveZone*: int32
+    keyboardMode*: LayerSurfaceKeyboardMode
+    namespace*: string
+
   ScreenWayland* = ref object of Screen
     id: cint
     output: Wl_output
