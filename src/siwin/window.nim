@@ -80,7 +80,7 @@ when not siwin_use_lib:
     frameless = false,
     transparent = false,
 
-    class = "", # window class (used in x11), equals to title if not specified
+    class = "", # X11 window class / Wayland app ID; defaults to title
   ): Window =
     when defined(android):
       newSoftwareRenderingWindowAndroid(
@@ -101,7 +101,8 @@ when not siwin_use_lib:
         result = globals.SiwinGlobalsWayland.newSoftwareRenderingWindowWayland(
           size, title,
           (if screen == -1: globals.SiwinGlobalsWayland.defaultScreenWayland() else: globals.SiwinGlobalsWayland.screenWayland(screen)),
-          resizable, fullscreen, frameless, transparent
+          resizable, fullscreen, frameless, transparent,
+          class = class
         )
       else:
         raise SiwinPlatformSupportDefect.newException("Unsupported platform")
@@ -147,6 +148,40 @@ when not siwin_use_lib:
       result = newPopupWindowWinapi(parent.WindowWinapi, placement, transparent, grab)
     elif defined(macosx):
       result = newPopupWindowCocoa(parent.WindowCocoa, placement, transparent, grab)
+
+  when defined(linux) or defined(bsd):
+    proc newSoftwareRenderingLayerSurfaceWindow*(
+        globals: SiwinGlobals,
+        size = ivec2(1280, 32),
+        title = "",
+        screen: int32 = -1,
+        config: waylandWindow.LayerSurfaceConfig,
+        transparent = false,
+    ): Window =
+      ## Creates a software-rendered window backed by a Wayland layer-shell surface.
+      ##
+      ## `config` controls the layer, anchors, margins, exclusive zone, keyboard
+      ## interactivity, and namespace. A `screen` value of `-1` selects the
+      ## default Wayland output.
+      ##
+      ## Raises `SiwinPlatformSupportDefect` when `globals` uses the X11 backend.
+      if globals of SiwinGlobalsWayland:
+        let waylandGlobals = globals.SiwinGlobalsWayland
+        result = waylandGlobals.newSoftwareRenderingLayerSurfaceWindowWayland(
+          size = size,
+          title = title,
+          screen =
+            if screen == -1:
+              waylandGlobals.defaultScreenWayland()
+            else:
+              waylandGlobals.screenWayland(screen),
+          config = config,
+          transparent = transparent,
+        )
+      else:
+        raise SiwinPlatformSupportDefect.newException(
+          "Layer-shell surfaces require the Wayland platform"
+        )
 
 
 when defined(android):
@@ -196,7 +231,7 @@ proc newSoftwareRenderingWindow*(
   frameless = false,
   transparent = false,
 
-  class = "", # window class (used in x11), equals to title if not specified
+  class = "", # X11 window class / Wayland app ID; defaults to title
 ): Window {.siwin_export_import.} =
   result = siwin_new_software_rendering_window(
     globals,
@@ -216,7 +251,7 @@ proc newSoftwareRenderingWindow*(
   frameless = false,
   transparent = false,
 
-  class = "", # window class (used in x11), equals to title if not specified
+  class = "", # X11 window class / Wayland app ID; defaults to title
   
   preferedPlatform: Platform = defaultPreferedPlatform(),
 ): Window =

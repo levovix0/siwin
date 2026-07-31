@@ -6,9 +6,14 @@ import ./[libwayland, protocol, bitfields, libdecor]
 type
   WaylandExtensionNotFound* = object of CatchableError
 
+  WaylandOutput* = object
+    registryName*: uint32
+    output*: Wl_output
+
   SiwinGlobalsWayland* = ref SiwinGlobalsWaylandObj
   SiwinGlobalsWaylandObj* = object of SiwinGlobals
     seatEventsInitialized*: bool
+    seatCapabilitiesChanged*: proc(globals: SiwinGlobalsWayland)
     dataDeviceManagerEventsInitialized*: bool
 
     display*: WlDisplay
@@ -26,6 +31,7 @@ type
     viewporter*: Wp_viewporter
     fractionalScaleManager*: Wp_fractional_scale_manager_v1
     xdgToplevelIconManager*: Xdg_toplevel_icon_manager_v1
+    outputs*: seq[WaylandOutput]
 
     serverDecorationManager*: Zxdg_decoration_manager_v1
     plasmaShell*: Org_kde_plasma_shell
@@ -118,6 +124,8 @@ proc initRegistryCallbacks(globals: SiwinGlobalsWayland) =
     globals.seatCapabilities = globals.seatCapabilities.typeof.default
     globals.seat.onCapabilities:
       globals.seatCapabilities = capabilities.asBitfield
+      if not globals.seatCapabilitiesChanged.isNil:
+        globals.seatCapabilitiesChanged(globals)
     
     discard wl_display_roundtrip globals.display
 
@@ -154,6 +162,9 @@ proc initRegistryCallbacks(globals: SiwinGlobalsWayland) =
 
   addRegistry Wp_cursor_shape_manager_v1:
     globals.cursorShapeManager = binded 
+
+  addRegistry Wl_output:
+    globals.outputs.add WaylandOutput(registryName: name, output: binded)
 
 
 proc isWaylandAvailable*: bool =
@@ -207,6 +218,12 @@ proc newWaylandGlobals*(): SiwinGlobalsWayland =
     for targetIface, callback in globals.registryCallbacks:
       if interfaceString == targetIface:
         callback(globals.registry, name, version)
+
+  globals.registry.onGlobal_remove:
+    for idx in countdown(globals.outputs.high, 0):
+      if globals.outputs[idx].registryName == name:
+        release globals.outputs[idx].output
+        globals.outputs.delete(idx)
 
 
 proc roundtrip*(globals: SiwinGlobalsWayland) =

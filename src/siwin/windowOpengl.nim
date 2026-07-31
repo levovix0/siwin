@@ -37,7 +37,7 @@ when not siwin_use_lib:
     transparent = false,
     vsync = true,
 
-    class = "", # window class (used in x11), equals to title if not specified
+    class = "", # X11 window class / Wayland app ID; defaults to title
   ): Window =
     when defined(android):
       newOpenglWindowAndroid(
@@ -58,7 +58,8 @@ when not siwin_use_lib:
         result = globals.SiwinGlobalsWayland.newOpenglWindowWayland(
           size, title,
           (if screen == -1: globals.SiwinGlobalsWayland.defaultScreenWayland() else: globals.SiwinGlobalsWayland.screenWayland(screen)),
-          resizable, fullscreen, frameless, transparent, vsync
+          resizable, fullscreen, frameless, transparent, vsync,
+          class = class
         )
       else:
         raise SiwinPlatformSupportDefect.newException("Unsupported platform")
@@ -76,6 +77,42 @@ when not siwin_use_lib:
         (if screen == -1: defaultScreenCocoa() else: screenCocoa(screen)),
         resizable, fullscreen, frameless, transparent, vsync
       )
+
+  when defined(linux) or defined(bsd):
+    proc newOpenglLayerSurfaceWindow*(
+      globals: SiwinGlobals,
+      size = ivec2(1280, 32),
+      title = "",
+      screen: int32 = -1,
+      config: waylandWindow.LayerSurfaceConfig,
+      transparent = false,
+      vsync = true,
+    ): Window =
+      ## Creates an OpenGL window backed by a Wayland layer-shell surface.
+      ##
+      ## `config` controls the layer, anchors, margins, exclusive zone, keyboard
+      ## interactivity, and namespace. A `screen` value of `-1` selects the
+      ## default Wayland output.
+      ##
+      ## Raises `SiwinPlatformSupportDefect` when `globals` uses the X11 backend.
+      if globals of SiwinGlobalsWayland:
+        let waylandGlobals = globals.SiwinGlobalsWayland
+        result = waylandGlobals.newOpenglLayerSurfaceWindowWayland(
+          size = size,
+          title = title,
+          screen =
+            if screen == -1:
+              waylandGlobals.defaultScreenWayland()
+            else:
+              waylandGlobals.screenWayland(screen),
+          config = config,
+          transparent = transparent,
+          vsync = vsync,
+        )
+      else:
+        raise SiwinPlatformSupportDefect.newException(
+          "Layer-shell surfaces require the Wayland platform"
+        )
 
 
 
@@ -105,7 +142,7 @@ proc newOpenglWindow*(
   transparent = false,
   vsync = true,
 
-  class = "", # window class (used in x11), equals to title if not specified
+  class = "", # X11 window class / Wayland app ID; defaults to title
 ): Window {.siwin_export_import.} =
   result = siwin_new_opengl_window(
     globals,
@@ -126,9 +163,8 @@ proc newOpenglWindow*(
   transparent = false,
   vsync = true,
 
-  class = "", # window class (used in x11), equals to title if not specified
+  class = "", # X11 window class / Wayland app ID; defaults to title
   
   preferedPlatform: Platform = defaultPreferedPlatform(),
 ): Window =
   newOpenglWindow(newSiwinGlobals(preferedPlatform), size, title, screen, fullscreen, resizable, frameless, transparent, vsync, class)
-

@@ -10,9 +10,46 @@ import ./[libwayland, protocol, siwinGlobals, sharedBuffer, bitfields, xkb, libd
 
 privateAccess Window
 
+when siwin_use_pure_enums:
+  {.pragma: siwin_enum, pure.}
+else:
+  {.pragma: siwin_enum.}
+
 type
+  LayerSurfaceLayer* {.siwin_enum.} = enum
+    lslBackground
+    lslBottom
+    lslTop
+    lslOverlay
+
+  LayerSurfaceAnchor* {.siwin_enum.} = enum
+    lsaTop
+    lsaBottom
+    lsaLeft
+    lsaRight
+
+  LayerSurfaceKeyboardMode* {.siwin_enum.} = enum
+    lskNone
+    lskExclusive
+    lskOnDemand
+
+  LayerSurfaceMargins* = object
+    top*: int32
+    right*: int32
+    bottom*: int32
+    left*: int32
+
+  LayerSurfaceConfig* = object
+    layer*: LayerSurfaceLayer
+    anchors*: set[LayerSurfaceAnchor]
+    margins*: LayerSurfaceMargins
+    exclusiveZone*: int32
+    keyboardMode*: LayerSurfaceKeyboardMode
+    namespace*: string
+
   ScreenWayland* = ref object of Screen
     id: cint
+    output: Wl_output
 
   WindowWaylandKind* {.pure.} = enum
     XdgSurface
@@ -22,6 +59,7 @@ type
   WindowWayland* = ref WindowWaylandObj
   WindowWaylandObj* = object of Window
     globals: SiwinGlobalsWayland
+    screen: ScreenWayland
     surface: Wl_surface
     xdgSurface: Xdg_surface
     xdgToplevel: Xdg_toplevel
@@ -248,16 +286,19 @@ proc refreshKeyboardModifiers(window: WindowWayland) =
 method swapBuffers(window: WindowWayland) {.base.} = discard
 
 proc screenCountWayland*(globals: SiwinGlobalsWayland): int32 =
-  ## todo
-  1
+  globals.outputs.len.int32
 
 proc screenWayland*(globals: SiwinGlobalsWayland, number: int32): ScreenWayland =
   new result
   if number notin 0..<globals.screenCountWayland(): raise IndexDefect.newException(&"screen {number} doesn't exist")
   result.id = number.cint
+  result.output = globals.outputs[number].output
 
 proc defaultScreenWayland*(globals: SiwinGlobalsWayland): ScreenWayland =
-  ScreenWayland(id: 0.cint)
+  if globals.outputs.len == 0:
+    ScreenWayland(id: -1.cint)
+  else:
+    ScreenWayland(id: 0.cint, output: globals.outputs[0].output)
 
 method number*(screen: ScreenWayland): int32 = screen.id
 
@@ -521,6 +562,7 @@ proc initClipboardsIfNeeded(globals: SiwinGlobalsWayland) =
 
 proc basicInitWindow(window: WindowWayland; size: IVec2; screen: ScreenWayland) =
   window.m_size = size
+  window.screen = screen
   window.m_focused = false
   window.m_resizable = true
   window.m_frameless = true
@@ -1159,12 +1201,15 @@ var cursor: Wp_cursor_shape_device_v1
 var cursor_surface: CursorWayland
 
 proc initSeatEvents*(globals: SiwinGlobalsWayland) =
-  if globals.seatEventsInitialized: return
-  globals.seatEventsInitialized = true
+  if not globals.seatEventsInitialized:
+    globals.seatEventsInitialized = true
+    globals.seatCapabilitiesChanged = proc(updatedGlobals: SiwinGlobalsWayland) =
+      updatedGlobals.initSeatEvents()
 
   if globals.seat == nil: return
 
-  if `WlSeat / Capability`.`pointer` in globals.seatCapabilities:
+  if `WlSeat / Capability`.`pointer` in globals.seatCapabilities and
+      globals.seat_pointer == nil:
     globals.seat_pointer = globals.seat.get_pointer
 
     cursor_surface = globals.loadBuiltinCursor(arrow)
@@ -1304,7 +1349,8 @@ proc initSeatEvents*(globals: SiwinGlobalsWayland) =
         return
 
 
-  if `WlSeat / Capability`.keyboard in globals.seatCapabilities:
+  if `WlSeat / Capability`.keyboard in globals.seatCapabilities and
+      globals.seat_keyboard == nil:
     globals.seat_keyboard = globals.seat.get_keyboard
     # Default repeat values; compositor-provided repeat_info overrides these.
     globals.seat_keyboard_repeatSettings = (rate: 25, delay: 600)
@@ -1411,7 +1457,7 @@ proc initSeatEvents*(globals: SiwinGlobalsWayland) =
         globals.seat_keyboard_repeatSettings = (rate: rate, delay: delay)
   
 
-  if globals.tabletManager != nil:
+  if globals.tabletManager != nil and globals.seat_tablet == nil:
     globals.seat_tablet = globals.tabletManager.get_tablet_seat(globals.seat)
     
     globals.seat_tablet.onTool_added:
@@ -1796,9 +1842,10 @@ proc setupWindow(window: WindowWayland, fullscreen, frameless, transparent: bool
       window.resize(ivec2(width, height))
 
   of LayerSurface:
+    expectExtension window.globals.layerShell
     window.layerShellSurface = window.globals.layerShell.get_layer_surface(
       window.surface,
-      Wl_output(proxy: Wl_proxy(raw: nil)),
+      window.screen.output,
       `Zwlr_layer_shell_v1/Layer`(window.layer.int),
       window.namespace.cstring
     )
@@ -1901,6 +1948,19 @@ proc setExclusiveZone*(window: WindowWayland, zone: int32) =
     )
 
   window.layerShellSurface.set_exclusive_zone(zone)
+
+
+proc setMargins*(window: WindowWayland, margins: LayerSurfaceMargins) =
+  if window.layerShellSurface == nil:
+    raise newException(
+      ValueError,
+      "Attempt to set margins when layer shell surface hasn't been initialized." &
+      "\nHint: Construct this window as a Wayland layer surface."
+    )
+
+  window.layerShellSurface.set_margin(
+    margins.top, margins.right, margins.bottom, margins.left
+  )
 
 
 proc constructClipboardContent*(
@@ -2238,7 +2298,7 @@ proc newSoftwareRenderingWindowWayland*(
   frameless = false,
   transparent = false,
 
-  class = "", # window class (used on linux), equals to title if not specified
+  class = "", # application ID; defaults to title
 ): WindowWaylandSoftwareRendering =
   new result
   result.globals = globals
@@ -2246,6 +2306,76 @@ proc newSoftwareRenderingWindowWayland*(
   result.initSoftwareRenderingWindow(size, screen, fullscreen, frameless, transparent, (if class == "": title else: class))
   result.title = title
   if not resizable: result.resizable = false
+
+proc initLayerSurfaceWindow(
+  window: WindowWayland,
+  size: IVec2,
+  screen: ScreenWayland,
+  config: LayerSurfaceConfig,
+  transparent: bool,
+  class: string,
+) =
+  window.kind = WindowWaylandKind.LayerSurface
+  window.layer = Layer(config.layer.ord)
+  window.namespace = config.namespace
+  window.basicInitWindow(size, screen)
+  window.setupWindow(
+    fullscreen = false,
+    frameless = true,
+    transparent = transparent,
+    size = size,
+    class = class,
+  )
+
+  var anchors: uint32
+  for anchor in config.anchors:
+    anchors = anchors or (1'u32 shl anchor.ord)
+  window.layerShellSurface.set_anchor(
+    cast[`Zwlr_layer_surface_v1/Anchor`](anchors)
+  )
+  window.setMargins(config.margins)
+  window.setExclusiveZone(config.exclusiveZone)
+  window.setKeyboardInteractivity(
+    LayerInteractivityMode(config.keyboardMode.ord)
+  )
+
+  let
+    requestedWidth =
+      if {lsaLeft, lsaRight} <= config.anchors: 0'u32 else: size.x.uint32
+    requestedHeight =
+      if {lsaTop, lsaBottom} <= config.anchors: 0'u32 else: size.y.uint32
+  window.layerShellSurface.set_size(requestedWidth, requestedHeight)
+
+proc newSoftwareRenderingLayerSurfaceWindowWayland*(
+    globals: SiwinGlobalsWayland,
+    size = ivec2(1280, 32),
+    title = "",
+    screen: ScreenWayland,
+    config: LayerSurfaceConfig,
+    transparent = false,
+): WindowWaylandSoftwareRendering =
+  ## Creates a software-rendered window backed by a Wayland layer-shell surface.
+  ##
+  ## `config` controls the layer, anchors, margins, exclusive zone, keyboard
+  ## interactivity, and namespace. Anchoring to both horizontal or both vertical
+  ## edges lets the compositor determine that dimension; otherwise `size` is
+  ## requested. When `transparent` is enabled, the backing buffer includes an
+  ## alpha channel.
+  ##
+  ## Raises `WaylandExtensionNotFound` when a required Wayland extension is
+  ## unavailable.
+  new result
+  result.globals = globals
+  result.softwarePresentEnabled = true
+  expectExtension result.globals.shm
+  result.initLayerSurfaceWindow(size, screen, config, transparent, title)
+  result.buffer = result.globals.create(
+    result.globals.shm,
+    result.bufferSize(size),
+    (if transparent: argb8888 else: xrgb8888),
+    bufferCount = 2,
+  )
+  result.title = title
 
 proc newPopupWindowWayland*(
     globals: SiwinGlobalsWayland,

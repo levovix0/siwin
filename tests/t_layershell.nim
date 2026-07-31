@@ -1,7 +1,23 @@
 
 import std/[unittest]
-import siwin, opengl, vmath
-import siwin/platforms/wayland/[siwinGlobals, window, windowOpengl]
+import siwin
+
+when defined(linux) or defined(bsd):
+  import opengl, vmath
+  import siwin/platforms/wayland/[siwinGlobals, window, windowOpengl]
+
+  static:
+    doAssert compiles(
+      block:
+        var globals: SiwinGlobals
+        let config = default(LayerSurfaceConfig)
+        discard globals.newSoftwareRenderingLayerSurfaceWindow(config = config)
+        discard globals.newOpenglLayerSurfaceWindow(config = config)
+        discard globals.newVulkanLayerSurfaceWindow(
+          vkInstance = nil,
+          config = config,
+        )
+    )
 
 test "wlr-layer-shell":
   when not defined(linux) and not defined(bsd):
@@ -14,17 +30,24 @@ test "wlr-layer-shell":
       try:
         let globals = newWaylandGlobals()
         roundtrip(globals)
-        let window = globals.newOpenglWindowWayland(
+        let config = LayerSurfaceConfig(
+          layer: LayerSurfaceLayer.lslOverlay,
+          anchors: {
+            LayerSurfaceAnchor.lsaTop,
+            LayerSurfaceAnchor.lsaBottom,
+            LayerSurfaceAnchor.lsaLeft,
+          },
+          exclusiveZone: 1,
+          keyboardMode: LayerSurfaceKeyboardMode.lskOnDemand,
+          namespace: "siwin-layer-shell-test",
+        )
+        let window = globals.newOpenglLayerSurfaceWindowWayland(
           size = ivec2(1000, 1000),
-          kind = WindowWaylandKind.LayerSurface,
-          layer = Layer.Overlay,
           screen = globals.defaultScreenWayland,
+          config = config,
         )
         loadExtensions()
 
-        window.setAnchor(@[LayerEdge.Top, LayerEdge.Bottom, LayerEdge.Left])
-        window.setKeyboardInteractivity(LayerInteractivityMode.OnDemand)
-        window.setExclusiveZone(1)
         window.run(
           WindowEventsHandler(
             onRender: proc(e: RenderEvent) =
