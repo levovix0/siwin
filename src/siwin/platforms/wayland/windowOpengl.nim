@@ -85,7 +85,7 @@ proc newOpenglWindowWayland*(
   layer = Layer.Overlay,
   namespace = "siwin",
 
-  class = "", # window class (used in x11), equals to title if not specified
+  class = "", # application ID; defaults to title
 ): WindowWaylandOpengl =
   new result
   result.globals = globals

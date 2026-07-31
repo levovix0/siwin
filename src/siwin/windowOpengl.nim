@@ -37,7 +37,7 @@ when not siwin_use_lib:
     transparent = false,
     vsync = true,
 
-    class = "", # window class (used in x11), equals to title if not specified
+    class = "", # X11 window class / Wayland app ID; defaults to title
   ): Window =
     when defined(android):
       newOpenglWindowAndroid(
@@ -58,7 +58,8 @@ when not siwin_use_lib:
         result = globals.SiwinGlobalsWayland.newOpenglWindowWayland(
           size, title,
           (if screen == -1: globals.SiwinGlobalsWayland.defaultScreenWayland() else: globals.SiwinGlobalsWayland.screenWayland(screen)),
-          resizable, fullscreen, frameless, transparent, vsync
+          resizable, fullscreen, frameless, transparent, vsync,
+          class = class
         )
       else:
         raise SiwinPlatformSupportDefect.newException("Unsupported platform")
@@ -141,7 +142,7 @@ proc newOpenglWindow*(
   transparent = false,
   vsync = true,
 
-  class = "", # window class (used in x11), equals to title if not specified
+  class = "", # X11 window class / Wayland app ID; defaults to title
 ): Window {.siwin_export_import.} =
   result = siwin_new_opengl_window(
     globals,
@@ -162,7 +163,7 @@ proc newOpenglWindow*(
   transparent = false,
   vsync = true,
 
-  class = "", # window class (used in x11), equals to title if not specified
+  class = "", # X11 window class / Wayland app ID; defaults to title
   
   preferedPlatform: Platform = defaultPreferedPlatform(),
 ): Window =

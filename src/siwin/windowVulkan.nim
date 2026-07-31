@@ -34,7 +34,7 @@ when not siwin_use_lib:
     frameless = false,
     transparent = false,
 
-    class = "", # window class (used in x11), equals to title if not specified
+    class = "", # X11 window class / Wayland app ID; defaults to title
   ): Window =
     when defined(android):
       # todo
@@ -58,7 +58,8 @@ when not siwin_use_lib:
           vkInstance,
           size, title,
           (if screen == -1: globals.SiwinGlobalsWayland.defaultScreenWayland() else: globals.SiwinGlobalsWayland.screenWayland(screen)),
-          resizable, fullscreen, frameless, transparent
+          resizable, fullscreen, frameless, transparent,
+          class = class
         )
       else:
         raise SiwinPlatformSupportDefect.newException("Unsupported platform")
@@ -135,7 +136,7 @@ proc newVulkanWindow*(
   frameless = false,
   transparent = false,
 
-  class = "", # window class (used in x11), equals to title if not specified
+  class = "", # X11 window class / Wayland app ID; defaults to title
 ): Window {.siwin_export_import.} =
   result = siwin_new_vulkan_window(
     globals, vkInstance,
@@ -156,7 +157,7 @@ proc newVulkanWindow*(
   frameless = false,
   transparent = false,
 
-  class = "", # window class (used in x11), equals to title if not specified
+  class = "", # X11 window class / Wayland app ID; defaults to title
   
   preferedPlatform: Platform = defaultPreferedPlatform(),
 ): Window =

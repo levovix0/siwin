@@ -2298,7 +2298,7 @@ proc newSoftwareRenderingWindowWayland*(
   frameless = false,
   transparent = false,
 
-  class = "", # window class (used on linux), equals to title if not specified
+  class = "", # application ID; defaults to title
 ): WindowWaylandSoftwareRendering =
   new result
   result.globals = globals

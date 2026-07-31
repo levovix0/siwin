@@ -80,7 +80,7 @@ when not siwin_use_lib:
     frameless = false,
     transparent = false,
 
-    class = "", # window class (used in x11), equals to title if not specified
+    class = "", # X11 window class / Wayland app ID; defaults to title
   ): Window =
     when defined(android):
       newSoftwareRenderingWindowAndroid(
@@ -101,7 +101,8 @@ when not siwin_use_lib:
         result = globals.SiwinGlobalsWayland.newSoftwareRenderingWindowWayland(
           size, title,
           (if screen == -1: globals.SiwinGlobalsWayland.defaultScreenWayland() else: globals.SiwinGlobalsWayland.screenWayland(screen)),
-          resizable, fullscreen, frameless, transparent
+          resizable, fullscreen, frameless, transparent,
+          class = class
         )
       else:
         raise SiwinPlatformSupportDefect.newException("Unsupported platform")
@@ -230,7 +231,7 @@ proc newSoftwareRenderingWindow*(
   frameless = false,
   transparent = false,
 
-  class = "", # window class (used in x11), equals to title if not specified
+  class = "", # X11 window class / Wayland app ID; defaults to title
 ): Window {.siwin_export_import.} =
   result = siwin_new_software_rendering_window(
     globals,
@@ -250,7 +251,7 @@ proc newSoftwareRenderingWindow*(
   frameless = false,
   transparent = false,
 
-  class = "", # window class (used in x11), equals to title if not specified
+  class = "", # X11 window class / Wayland app ID; defaults to title
   
   preferedPlatform: Platform = defaultPreferedPlatform(),
 ): Window =

@@ -81,7 +81,7 @@ proc newVulkanWindowWayland*(
   frameless = false,
   transparent = false,
 
-  class = "", # window class (used in x11), equals to title if not specified
+  class = "", # application ID; defaults to title
 ): WindowWaylandVulkan =
   new result
   result.globals = globals
