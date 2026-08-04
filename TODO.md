@@ -18,23 +18,37 @@ type
     eventActivity
     eventTimeout
 
+  EventLoopWaker* = object
+    ## Opaque, copyable capability containing only the state needed to wake
+    ## its owning event loop safely from another thread.
+
 proc pollEvents*(globals: SiwinGlobals): bool
 proc waitEvents*(globals: SiwinGlobals)
 proc waitEvents*(globals: SiwinGlobals, timeout: Duration): EventWaitResult
-proc wakeEventLoop*(globals: SiwinGlobals) {.gcsafe, raises: [].}
+
+proc eventLoopWaker*(globals: SiwinGlobals): EventLoopWaker
+proc wake*(waker: EventLoopWaker) {.gcsafe, raises: [].}
+proc wakeEventLoop*(globals: SiwinGlobals) {.gcsafe, raises: [].} =
+  globals.eventLoopWaker().wake()
 
 method serviceWindow*(window: Window)
 ```
 
 - [ ] Define `pollEvents` and `waitEvents` as application-thread-only operations that synchronously dispatch pending native callbacks for every window owned by the `SiwinGlobals` instance.
-- [ ] Define `wakeEventLoop` as thread-safe, data-free notification: producers must enqueue their work first and then wake the loop; wakeups may be coalesced.
+- [ ] Define `EventLoopWaker` as a narrow, opaque, copyable capability so worker threads do not need to retain or access the complete `SiwinGlobals` object.
+- [ ] Define `EventLoopWaker.wake` as thread-safe, data-free notification: producers must enqueue their work first and then wake the loop; wakeups may be coalesced.
+- [ ] Keep `wakeEventLoop(globals)` as a convenience wrapper around `globals.eventLoopWaker().wake()` for callers already on or otherwise holding the globals owner.
+- [ ] Define waker lifetime and shutdown semantics explicitly, including what happens when a copied waker outlives its `SiwinGlobals`; waking a stopped/destroyed loop must be harmless and must not access a closed OS handle.
+- [ ] Document the integration pattern for Sigils and similar queues: install one waker on the application-thread destination queue, enqueue each message before calling `wake`, then drain that queue after `waitEvents` returns.
+- [ ] Support animation scheduling either by having a timer/Sigils producer enqueue a tick and wake the loop, or by passing the next animation deadline to timed `waitEvents`; individual animations do not register with Siwin.
+- [ ] Keep arbitrary external FD/source registration outside this initial API; enqueue-plus-wake is sufficient for Sigils, renderer completions, image loading, and animation schedulers.
 - [ ] Make `serviceWindow` nonblocking and responsible only for per-window tick, redraw/render, buffer swap, and presentation work.
 - [ ] Preserve the existing source and C ABI: keep no-argument `Window.step()` and `siwin_window_step` behavior available as compatibility wrappers while embedders opt into `pollEvents`/`waitEvents` plus `serviceWindow`.
 - [ ] Do not add a wake callback to `WindowEventsHandler`, because wakeup is application-loop control rather than a window event and changing the handler layout could break ABI consumers.
-- [ ] Add corresponding additive C ABI functions: `siwin_poll_events`, `siwin_wait_events`, `siwin_wake_event_loop`, and `siwin_window_service`.
+- [ ] Add corresponding additive C ABI functions: `siwin_poll_events`, `siwin_wait_events`, `siwin_wake_event_loop`, and `siwin_window_service`; decide whether non-Nim consumers also need an independently retained opaque waker handle.
 - [ ] Update `run`/`runMultiple` or add event-driven variants that wait once and then service every window, while preserving the existing observable `onTick` behavior for compatibility.
 - [ ] Support an infinite idle wait, a monotonic timeout for scheduled work, and an immediate/nonblocking path when redraw or queued work remains.
-- [ ] Add tests for idle blocking, timeouts, cross-thread wakeups, wakeup coalescing/no lost wakes, multiple windows, redraw after wake, and existing `step()` compatibility.
+- [ ] Add tests for idle blocking, timeouts, copied cross-thread wakers, waker shutdown/lifetime safety, wakeup coalescing/no lost wakes, multiple windows, redraw after wake, and existing `step()` compatibility.
 
 ### Cocoa (macOS)
 
