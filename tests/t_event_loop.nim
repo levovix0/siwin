@@ -4,6 +4,9 @@ const eventLoopIntegrationSupported =
   else: false
 
 const delayedWakeMilliseconds = 500
+const serviceWindowNeedsVisibleSurface =
+  when defined(linux) or defined(bsd): true
+  else: false
 
 when eventLoopIntegrationSupported:
   import std/[assertions, atomics, monotimes, os, times]
@@ -139,7 +142,7 @@ when eventLoopIntegrationSupported:
         inc renders
       ,
     )
-    window.firstStep(makeVisible = true)
+    window.firstStep(makeVisible = serviceWindowNeedsVisibleSurface)
     window.redraw()
     window.serviceWindow()
 
