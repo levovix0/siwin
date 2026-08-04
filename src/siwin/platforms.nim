@@ -11,7 +11,7 @@ when not siwin_use_lib:
   when defined(windows):
     ##
   when defined(macosx):
-    ##
+    import ./platforms/cocoa/window as cocoaWindow
 
 const siwin_use_wayland* {.booldefine: "siwin.wayland".} = defined(linux) or defined(bsd)
 const siwin_use_x11* {.booldefine: "siwin.x11".} = defined(linux) or defined(bsd)
@@ -113,7 +113,7 @@ when not siwin_use_lib:
       result = SiwinGlobals()
     
     elif defined(macosx):
-      result = SiwinGlobals()
+      result = newCocoaGlobals()
     
     else:
       {.error.}

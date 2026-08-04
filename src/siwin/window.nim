@@ -1,5 +1,7 @@
 import vmath
 import ./[siwindefs]
+when siwin_build_lib:
+  import std/times
 import ./platforms
 import ./platforms/any/[window as anyWindow]
 
@@ -355,7 +357,17 @@ when siwin_build_lib:
   proc siwin_window_set_drag_status(window: Window, v: DragStatus) = window.dragStatus = v
   proc siwin_window_first_step(window: Window, makeVisible: cchar) = window.firstStep(makeVisible.bool)
   proc siwin_window_step(window: Window) = window.step()
+  proc siwin_window_service(window: Window) = window.serviceWindow()
   proc siwin_window_run(window: Window, makeVisible: cchar) = window.run(makeVisible.bool)
+
+  proc siwin_poll_events(globals: SiwinGlobals): cchar = globals.pollEvents().cchar
+  proc siwin_wait_events(globals: SiwinGlobals, timeoutMilliseconds: cint): cchar =
+    if timeoutMilliseconds < 0:
+      globals.waitEvents()
+      return 0.cchar
+    let timeout = initDuration(milliseconds = timeoutMilliseconds.int)
+    result = (if globals.waitEvents(timeout) == eventActivity: 0 else: 1).cchar
+  proc siwin_wake_event_loop(globals: SiwinGlobals) = globals.wakeEventLoop()
 
   proc siwin_window_set_event_handler(window: Window, eventHandler: ptr WindowEventsHandler) = window.eventsHandler = eventHandler[]
 

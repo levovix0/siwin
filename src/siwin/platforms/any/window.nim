@@ -1,4 +1,4 @@
-import std/[times, options, sequtils, tables]
+import std/[atomics, times, options, sequtils, tables]
 import pkg/[vmath]
 import ../../[siwindefs, colorutils]
 import ./[clipboards]
@@ -11,6 +11,25 @@ else:
 
 
 type
+  EventWaitResult* = enum
+    ## The event loop dispatched native activity, including a wake notification.
+    eventActivity
+    ## A timed wait reached its deadline without native activity.
+    eventTimeout
+
+  EventLoopWakeState = ref object
+    ## Shared by copies of an EventLoopWaker. Backends own the native handle.
+    alive: Atomic[bool]
+    pending: Atomic[bool]
+    wakeProc: proc() {.gcsafe, raises: [].}
+
+  EventLoopWaker* = object
+    ## A narrow, copyable capability for waking an event loop from another thread.
+    state: EventLoopWakeState
+
+  EventLoopUnsupportedDefect* = object of Defect
+    ## Raised on platforms whose global event loop is not implemented yet.
+
   MouseButton* {.siwin_enum.} = enum
     left right middle forward backward
 
@@ -105,11 +124,13 @@ type
     ## raised when trying to get pixel buffer from non-softwareRendering window
   
 
-  SiwinGlobals* = ref object of RootObj
+  SiwinGlobalsObj = object of RootObj
+    eventLoopState: EventLoopWakeState
+
+  SiwinGlobals* = ref SiwinGlobalsObj
   
 
   Screen* = ref object of RootObj
-
 
   MouseMoveKind* {.siwin_enum.} = enum
     move
@@ -336,6 +357,10 @@ type
     inputRegion, titleRegion: Option[tuple[pos, size: Vec2]]
     borderWidth: Option[tuple[innerWidth, outerWidrth, diagonalSize: float32]]
 
+
+proc `=destroy`(globals: SiwinGlobalsObj) {.siwin_destructor.} =
+  if globals.eventLoopState != nil:
+    globals.eventLoopState.alive.store(false)
 
 method number*(screen: Screen): int32 {.base.} = discard
 
@@ -700,6 +725,93 @@ method firstStep*(window: Window, makeVisible = true) {.base.} = discard
 method step*(window: Window) {.base.} = discard
   ## make window main loop step
   ## ! don't forget to call firstStep()
+
+method serviceWindow*(window: Window) {.base.} =
+  ## Run per-window tick, rendering, and presentation without waiting for input.
+  discard window
+  raise EventLoopUnsupportedDefect.newException(
+    "Nonblocking window service is not implemented on this platform",
+  )
+
+method pollEventsImpl(globals: SiwinGlobals): bool {.base.} =
+  discard globals
+  raise EventLoopUnsupportedDefect.newException(
+    "Global event-loop pumping is not implemented on this platform",
+  )
+
+method waitEventsImpl(
+  globals: SiwinGlobals, timeout: Duration,
+): EventWaitResult {.base.} =
+  discard globals
+  discard timeout
+  raise EventLoopUnsupportedDefect.newException(
+    "Global event-loop waiting is not implemented on this platform",
+  )
+
+proc eventLoopWaker*(globals: SiwinGlobals): EventLoopWaker =
+  ## Returns a thread-safe capability that remains harmless after loop shutdown.
+  if globals.eventLoopState == nil:
+    globals.eventLoopState = EventLoopWakeState()
+    globals.eventLoopState.alive.store(true)
+  EventLoopWaker(state: globals.eventLoopState)
+
+proc installEventLoopWakeProc*(
+  globals: SiwinGlobals,
+  wakeProc: proc() {.gcsafe, raises: [].},
+) =
+  ## Install the backend notification primitive during globals initialization.
+  discard globals.eventLoopWaker()
+  globals.eventLoopState.wakeProc = wakeProc
+
+proc consumeEventLoopWake*(waker: EventLoopWaker): bool =
+  ## Clears this waker's coalesced notification after the backend consumes it.
+  ##
+  ## Platform event pumps call this on the application thread before returning
+  ## control to the application, so work enqueued by a racing producer is either
+  ## observed in the current drain or causes a later wake. Returns `false` when
+  ## `waker` has no state or its owning event loop is no longer alive.
+  if waker.state != nil and waker.state.alive.load():
+    waker.state.pending.store(false)
+    result = true
+
+proc consumeEventLoopWake*(globals: SiwinGlobals) =
+  ## Clears the pending notification for `globals`, if it has a waker.
+  ##
+  ## This is a backend event-pump hook. Applications normally call
+  ## `pollEvents` or `waitEvents`, which consume wake notifications themselves.
+  if globals.eventLoopState != nil:
+    discard EventLoopWaker(state: globals.eventLoopState).consumeEventLoopWake()
+
+proc wake*(waker: EventLoopWaker) {.gcsafe, raises: [].} =
+  ## Notify the owning event loop after enqueuing application work.
+  let state = waker.state
+  if state == nil or not state.alive.load():
+    return
+
+  if not state.pending.exchange(true) and state.wakeProc != nil:
+    # The backend is selected when the waker is created. A backend may coalesce
+    # repeated notifications while this sentinel is pending.
+    state.wakeProc()
+
+proc wakeEventLoop*(globals: SiwinGlobals) {.gcsafe, raises: [].} =
+  ## Wakes the event loop owned by `globals` from any thread.
+  ##
+  ## Enqueue application work before calling this procedure. The notification
+  ## carries no data and repeated calls may be coalesced. Prefer copying an
+  ## `EventLoopWaker` when a worker should not retain the complete globals owner.
+  globals.eventLoopWaker().wake()
+
+proc pollEvents*(globals: SiwinGlobals): bool =
+  ## Dispatch all immediately available native events on the application thread.
+  globals.pollEventsImpl()
+
+proc waitEvents*(globals: SiwinGlobals) =
+  ## On the application thread, wait for native input or a waker notification.
+  discard globals.waitEventsImpl(high(Duration))
+
+proc waitEvents*(globals: SiwinGlobals, timeout: Duration): EventWaitResult =
+  ## On the application thread, wait up to `timeout` for input or a notification.
+  globals.waitEventsImpl(timeout)
 
 
 proc run*(window: sink Window, makeVisible = true) =

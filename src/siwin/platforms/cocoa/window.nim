@@ -57,6 +57,8 @@ proc setBlendingMode(view: NSVisualEffectView, mode: NSVisualEffectBlendingMode)
 proc setState(view: NSVisualEffectView, state: NSVisualEffectState) {.objc: "setState:".}
 
 type
+  SiwinGlobalsCocoa* = ref object of SiwinGlobals
+
   ScreenCocoa* = ref object of Screen
     id: int32
     handle: NSScreen
@@ -95,7 +97,58 @@ var
   initialized: bool
   appDelegateClass, windowClass, softwareViewClass, openglViewClass, metalViewClass: ObjcClass
   windows: seq[WindowCocoa]
+  cocoaWakeWakers: seq[EventLoopWaker]
+  legacyCocoaGlobals: SiwinGlobalsCocoa
 proc init
+
+const
+  wakeEventSubtype = 0x5349'i16 # "SI"
+  wakeEventMarker = 0x534957494E57414B'i64 # "SIWINWAK"
+
+proc isWakeEvent(event: NSEvent): bool =
+  event.kind == NSApplicationDefined and
+    event.subtype == wakeEventSubtype and
+    event.data1 == wakeEventMarker.NSInteger
+
+proc postWakeEvent() {.gcsafe, raises: [].} =
+  if not initialized or NSApp == nil:
+    return
+
+  try:
+    autoreleasepool:
+      let event = NSEvent.applicationEventWithType(
+        NSApplicationDefined,
+        NSMakePoint(0, 0),
+        0,
+        0,
+        0,
+        nil,
+        wakeEventSubtype,
+        wakeEventMarker.NSInteger,
+        0,
+      )
+      if event != nil:
+        NSApp.postEvent(event, false)
+  except:
+    discard
+
+proc newCocoaGlobals*(): SiwinGlobalsCocoa =
+  init()
+  result = SiwinGlobalsCocoa()
+  result.installEventLoopWakeProc(postWakeEvent)
+  cocoaWakeWakers.add(result.eventLoopWaker())
+
+proc legacyGlobals(): SiwinGlobalsCocoa =
+  if legacyCocoaGlobals == nil:
+    legacyCocoaGlobals = newCocoaGlobals()
+  legacyCocoaGlobals
+
+proc consumeCocoaWake() =
+  var activeWakers = newSeqOfCap[EventLoopWaker](cocoaWakeWakers.len)
+  for waker in cocoaWakeWakers:
+    if waker.consumeEventLoopWake():
+      activeWakers.add(waker)
+  cocoaWakeWakers = move(activeWakers)
 
 proc currentStyleMask(window: WindowCocoa): NSWindowStyleMask =
   result =
@@ -1920,6 +1973,66 @@ proc init =
     NSApp.finishLaunching()
 
 
+proc sendCocoaEvent(event: NSEvent): bool =
+  if event.isWakeEvent():
+    consumeCocoaWake()
+  else:
+    NSApp.sendEvent(event)
+  true
+
+proc drainCocoaEvents(globals: SiwinGlobalsCocoa, mode: NSRunLoopMode): bool =
+  while true:
+    let event = NSApp.nextEventMatchingMask(
+      NSEventMaskAny,
+      NSDate.distantPast,
+      mode,
+      true,
+    )
+    if event == nil:
+      return
+    result = sendCocoaEvent(event) or result
+
+proc drainCocoaEvents(globals: SiwinGlobalsCocoa): bool =
+  let trackingMode = cast[NSRunLoopMode](@"NSEventTrackingRunLoopMode")
+  let modalMode = cast[NSRunLoopMode](@"NSModalPanelRunLoopMode")
+  result = globals.drainCocoaEvents(NSDefaultRunLoopMode)
+  result = globals.drainCocoaEvents(trackingMode) or result
+  result = globals.drainCocoaEvents(modalMode) or result
+
+method pollEventsImpl(globals: SiwinGlobalsCocoa): bool =
+  autoreleasepool:
+    result = globals.drainCocoaEvents()
+
+method waitEventsImpl(
+  globals: SiwinGlobalsCocoa, timeout: Duration,
+): EventWaitResult =
+  autoreleasepool:
+    if globals.drainCocoaEvents():
+      return eventActivity
+
+    let untilDate =
+      if timeout == Duration.high:
+        NSDate.distantFuture
+      elif timeout.inNanoseconds <= 0:
+        NSDate.distantPast
+      else:
+        NSDate.withTimeIntervalSinceNow(
+          timeout.inNanoseconds.float64 / 1_000_000_000.0,
+        )
+    let event = NSApp.nextEventMatchingMask(
+      NSEventMaskAny,
+      untilDate,
+      NSDefaultRunLoopMode,
+      true,
+    )
+    if event != nil:
+      discard sendCocoaEvent(event)
+      discard globals.drainCocoaEvents()
+      return eventActivity
+    if globals.drainCocoaEvents():
+      return eventActivity
+  eventTimeout
+
 method firstStep*(window: WindowCocoa, makeVisible = true) =
   if makeVisible:
     window.visible = true
@@ -1935,7 +2048,10 @@ method firstStep*(window: WindowCocoa, makeVisible = true) =
         )
         if event == nil:
           break
-        NSApp.sendEvent(event)
+        if event.isWakeEvent():
+          consumeCocoaWake()
+        else:
+          NSApp.sendEvent(event)
     window.syncPosFromHandle()
     # Ensure all visible windows are present in the initial z-order. Without
     # this, some macOS setups only show the most recently shown window until
@@ -1947,35 +2063,7 @@ method firstStep*(window: WindowCocoa, makeVisible = true) =
       window.handle.makeKeyAndOrderFront(cast[ID](nil))
 
 
-method step*(window: WindowCocoa) =
-  proc pumpEvents(mode: NSRunLoopMode, firstUntilDate: NSDate): bool =
-    var first = true
-    while true:
-      let event = NSApp.nextEventMatchingMask(
-        NSEventMaskAny,
-        (if first: firstUntilDate else: NSDate.distantPast),
-        mode,
-        true
-      )
-      if event == nil:
-        break
-      first = false
-      result = true
-      NSApp.sendEvent(event)
-
-  let
-    defaultMode = NSDefaultRunLoopMode
-    trackingMode = cast[NSRunLoopMode](@"NSEventTrackingRunLoopMode")
-    modalMode = cast[NSRunLoopMode](@"NSModalPanelRunLoopMode")
-
-  autoreleasepool:
-    # Wait briefly for regular events, then drain all immediate events including
-    # tracking/live-resize and modal-panel modes.
-    discard pumpEvents(defaultMode, NSDate.withTimeIntervalSinceNow(0.001))
-    discard pumpEvents(defaultMode, NSDate.distantPast)
-    discard pumpEvents(trackingMode, NSDate.distantPast)
-    discard pumpEvents(modalMode, NSDate.distantPast)
-
+method serviceWindow*(window: WindowCocoa) =
   window.refreshModifiers()
 
   window.eventsHandler.pushEvent onTick, TickEvent(window: window)  # todo: lastTickTime
@@ -1990,6 +2078,12 @@ method step*(window: WindowCocoa) =
       window.WindowCocoaSoftwareRendering.presentSoftwarePixelBuffer()
     elif window of WindowCocoaOpengl:
       window.WindowCocoaOpengl.swapBuffers()
+
+method step*(window: WindowCocoa) =
+  ## Compatibility path: retain the old short global wait followed by one window tick.
+  let globals = legacyGlobals()
+  discard globals.waitEvents(initDuration(milliseconds = 1))
+  window.serviceWindow()
 
 method pixelBuffer*(window: WindowCocoaSoftwareRendering): PixelBuffer =
   if window.softwareRep == nil:
