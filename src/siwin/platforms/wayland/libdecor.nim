@@ -59,6 +59,7 @@ if libdecorHandle == nil:
 siwin_loadDynlibIfExists libdecorHandle:
   proc libdecor_new*(display: pointer, iface: ptr LibdecorInterface): LibdecorContext
   proc libdecor_unref*(context: LibdecorContext)
+  proc libdecor_get_fd*(context: LibdecorContext): cint
   proc libdecor_dispatch*(context: LibdecorContext, timeout: cint): cint
 
   proc libdecor_decorate*(context: LibdecorContext, surface: pointer,

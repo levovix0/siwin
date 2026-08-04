@@ -371,6 +371,12 @@ proc `=destroy`(globals: SiwinGlobalsObj) {.siwin_destructor.} =
   if globals.eventLoopState != nil:
     globals.eventLoopState.alive.store(false)
 
+proc shutdownEventLoopWakeState*(globals: SiwinGlobals) {.raises: [].} =
+  ## Backend destructor hook for globals types that define a custom destructor.
+  if globals != nil and globals.eventLoopState != nil:
+    globals.eventLoopState.alive.store(false)
+    globals.eventLoopState = nil
+
 method number*(screen: Screen): int32 {.base.} = discard
 
 method width*(screen: Screen): int32 {.base.} = discard

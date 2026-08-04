@@ -10,7 +10,7 @@
 
 Move native event waiting out of per-window `step()` implementations so an application can block once for all windows and be awakened efficiently by native input or cross-thread work such as Sigils messages and renderer completions.
 
-Initial Nim API (implemented for Cocoa; the other platform backends remain below):
+Initial Nim API (implemented across the desktop backends listed below):
 
 ```nim
 type
@@ -42,7 +42,7 @@ method serviceWindow*(window: Window)
 - [ ] Document the integration pattern for Sigils and similar queues: install one waker on the application-thread destination queue, enqueue each message before calling `wake`, then drain that queue after `waitEvents` returns.
 - [ ] Support animation scheduling either by having a timer/Sigils producer enqueue a tick and wake the loop, or by passing the next animation deadline to timed `waitEvents`; individual animations do not register with Siwin.
 - [ ] Keep arbitrary external FD/source registration outside this initial API; enqueue-plus-wake is sufficient for Sigils, renderer completions, image loading, and animation schedulers.
-- [x] Make `serviceWindow` nonblocking and responsible only for per-window tick, redraw/render, buffer swap, and presentation work on Cocoa and Winapi.
+- [x] Make `serviceWindow` nonblocking and responsible only for per-window tick, redraw/render, buffer swap, and presentation work on Cocoa, Winapi, X11, and Wayland.
 - [x] Preserve the existing source and C ABI: keep no-argument `Window.step()` and `siwin_window_step` behavior available as compatibility wrappers while embedders opt into `pollEvents`/`waitEvents` plus `serviceWindow`.
 - [x] Do not add a wake callback to `WindowEventsHandler`, because wakeup is application-loop control rather than a window event and changing the handler layout could break ABI consumers.
 - [x] Add corresponding additive C ABI functions: `siwin_poll_events`, `siwin_wait_events`, `siwin_wake_event_loop`, and `siwin_window_service`.
@@ -62,22 +62,22 @@ method serviceWindow*(window: Window)
 
 ### X11
 
-- [ ] Wait with `poll()`/`ppoll()` on both `ConnectionNumber(display)` and an `eventfd` or self-pipe owned by `SiwinGlobalsX11`.
-- [ ] Implement `wakeEventLoop` by signaling only the wake FD; do not call Xlib from the producer thread or require `XInitThreads`.
-- [ ] Add a window registry to `SiwinGlobalsX11` mapping X11 window IDs to `WindowX11` objects.
-- [ ] Replace the current per-window `XCheckIfEvent` loops with global `XPending`/`XNextEvent` dispatch that routes each event through the registry while preserving key-repeat lookahead, clipboard, drag-and-drop, and sync-request behavior.
-- [ ] Drain/reset the wake FD without losing a wake that races with event dispatch.
-- [ ] Flush X11 output at the appropriate global/per-window boundaries without introducing a blocking `XNextEvent` call after the readiness check.
+- [x] Wait with `poll()` on both `ConnectionNumber(display)` and a self-pipe owned by `SiwinGlobalsX11`.
+- [x] Implement `wakeEventLoop` by signaling only the wake FD; do not call Xlib from the producer thread or require `XInitThreads`.
+- [x] Add a window registry to `SiwinGlobalsX11` mapping X11 window IDs to `WindowX11` objects.
+- [x] Replace the current per-window `XCheckIfEvent` loop with direct global `XPending`/`XNextEvent` dispatch that routes each event through the registry while preserving key-repeat lookahead, clipboard, drag-and-drop, and sync-request behavior.
+- [x] Drain/reset the wake FD without losing a wake that races with event dispatch.
+- [x] Flush X11 output at the appropriate global/per-window boundaries without introducing a blocking `XNextEvent` call after the readiness check.
 
 ### Wayland
 
-- [ ] Wait with `poll()`/`ppoll()` on `wl_display_get_fd()` and an `eventfd` or self-pipe owned by `SiwinGlobalsWayland`.
-- [ ] Add bindings for `wl_display_prepare_read`, `wl_display_read_events`, and `wl_display_cancel_read`.
-- [ ] Implement the required race-free sequence: dispatch pending events until `prepare_read` succeeds, flush, poll, call `read_events` when the display is readable or `cancel_read` when another source wakes the loop, then dispatch pending events.
-- [ ] Replace the per-window `wl_display_roundtrip()` in `WindowWayland.step` with the application-global event pump; retain roundtrips only where synchronous initialization/configuration genuinely requires them.
-- [ ] Continue routing callbacks through the existing `SiwinGlobalsWayland.associatedWindows` and Wayland proxy state.
-- [ ] Include keyboard-repeat deadlines in the next wait timeout so held keys continue repeating without idle polling.
-- [ ] Verify that libdecor dispatch and flushing are integrated with the same display wait without adding a second polling loop.
+- [x] Wait with `poll()` on `wl_display_get_fd()` and a self-pipe owned by `SiwinGlobalsWayland`.
+- [x] Add bindings for `wl_display_prepare_read`, `wl_display_read_events`, and `wl_display_cancel_read`.
+- [x] Implement the required race-free sequence: dispatch pending events until `prepare_read` succeeds, flush, poll, call `read_events` when the display is readable or `cancel_read` when another source wakes the loop, then dispatch pending events.
+- [x] Replace the per-window `wl_display_roundtrip()` in `WindowWayland.step` with the application-global event pump; retain roundtrips only where synchronous initialization/configuration genuinely requires them.
+- [x] Continue routing callbacks through the existing `SiwinGlobalsWayland.associatedWindows` and Wayland proxy state.
+- [x] Include keyboard-repeat deadlines in the next wait timeout so held keys continue repeating without idle polling.
+- [x] Verify that libdecor dispatch and flushing are integrated with the same display wait without adding a second polling loop.
 
 ### Windows (Winapi)
 

@@ -363,6 +363,10 @@ method release(window: WindowWayland) {.base, raises: [].} =
     return
   window.releasing = true
 
+  if window.globals != nil and window.globals.repeatWakeWindow == window:
+    window.globals.repeatWakeDeadline = times.Time.default
+    window.globals.repeatWakeWindow = nil
+
   if window.surface != nil:
     if window.globals.associatedWindows_queueRemove_insteadOf_removingInstantly:
       window.globals.associatedWindows_removeQueue.add window.surface.proxy.raw.id
@@ -2110,7 +2114,7 @@ method content*(
   clipboard.globals.current_dnd_data_offer.receive(mimeType.cstring, fds[1])
   discard close fds[1]
 
-  wl_display_flush clipboard.globals.display
+  discard wl_display_flush clipboard.globals.display
 
   var data: string
   var cbuffer: array[1024, char]
@@ -2208,9 +2212,8 @@ method firstStep*(window: WindowWayland, makeVisible = true) =
   redraw window
 
 
-method step*(window: WindowWayland) =
-  ## make window main loop step
-  ## ! don't forget to call firstStep()
+method serviceWindow*(window: WindowWayland) =
+  ## Run one nonblocking per-window tick and presentation pass.
 
   template closeIfNeeded =
     if window.m_closed:
@@ -2219,17 +2222,6 @@ method step*(window: WindowWayland) =
       return
 
   closeIfNeeded()
-
-  if window.globals.libdecorCtx != nil:
-    discard libdecor_dispatch(window.globals.libdecorCtx, 0)
-
-  let eventCount = wl_display_roundtrip(window.globals.display)
-  if eventCount < 0:
-    raise newException(RoundtripFailed, "wl_display_roundtrip() returned " & $eventCount)
-
-  closeIfNeeded()
-  if eventCount <= 2:  # seems like idle event count is 2
-    sleep(1)
 
   # repeat keys if needed
   if (
@@ -2271,6 +2263,14 @@ method step*(window: WindowWayland) =
           window: window, text: repeatedText, repeated: true
         )
 
+    window.globals.repeatWakeDeadline =
+      if nows < repeatStartTime: repeatStartTime
+      else: window.lastKeyRepeatedTime + interval
+    window.globals.repeatWakeWindow = window
+  elif window.globals.repeatWakeWindow == window:
+    window.globals.repeatWakeDeadline = times.Time.default
+    window.globals.repeatWakeWindow = nil
+
   let nows = getTime()
   if window.opened: window.eventsHandler.onTick.pushEvent TickEvent(window: window, deltaTime: nows - window.lastTickTime)
   closeIfNeeded()
@@ -2285,7 +2285,13 @@ method step*(window: WindowWayland) =
 
       window.swapBuffers()
 
-      wl_display_flush window.globals.display
+      discard wl_display_flush window.globals.display
+
+
+method step*(window: WindowWayland) =
+  let globals = window.globals
+  discard globals.waitEvents(initDuration(milliseconds = 1))
+  window.serviceWindow()
 
 
 proc newSoftwareRenderingWindowWayland*(

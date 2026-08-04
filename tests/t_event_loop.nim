@@ -1,6 +1,6 @@
 const eventLoopIntegrationSupported =
   # Add platforms here as their global event-loop backends are implemented.
-  when defined(macosx) or defined(windows): true
+  when defined(macosx) or defined(windows) or defined(linux) or defined(bsd): true
   else: false
 
 const delayedWakeMilliseconds = 500
@@ -139,7 +139,7 @@ when eventLoopIntegrationSupported:
         inc renders
       ,
     )
-    window.firstStep(makeVisible = false)
+    window.firstStep(makeVisible = true)
     window.redraw()
     window.serviceWindow()
 
