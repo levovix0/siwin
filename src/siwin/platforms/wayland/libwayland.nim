@@ -82,6 +82,9 @@ let
 var
   libwaylandclientHandle = loadLib("libwayland-client.so")
 
+if libwaylandclientHandle == nil:
+  libwaylandclientHandle = loadLib("libwayland-client.so.0")
+
 
 siwin_loadDynlibIfExists libwaylandclientHandle:
   proc wl_display_disconnect*(this: Wl_display)
