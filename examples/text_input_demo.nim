@@ -3,7 +3,7 @@ import pixie
 import siwin
 
 const
-  CursorBlinkMilliseconds = 500
+  CursorBlinkMilliseconds = 5_000
   PasteMaxChars = 64
   ScrollIdleMilliseconds = 150
   globalEventLoopSupported = defined(macosx)
