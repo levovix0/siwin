@@ -12,6 +12,27 @@ when eventLoopIntegrationSupported:
 
   import siwin
 
+  when defined(windows):
+    import siwin/platforms/winapi/winapi
+
+    # Nim's `cpuTime` uses Microsoft's wall-clock `clock()`. Query actual
+    # thread execution time so this assertion can distinguish waiting from spin.
+    func fileTimeTicks(value: FileTime): uint64 =
+      value.dwLowDateTime.uint64 or (value.dwHighDateTime.uint64 shl 32)
+
+    proc threadCpuTime(): float64 =
+      var creationTime, exitTime, kernelTime, userTime: FileTime
+      doAssert GetThreadTimes(
+        GetCurrentThread(),
+        creationTime.addr,
+        exitTime.addr,
+        kernelTime.addr,
+        userTime.addr,
+      ).bool
+      (kernelTime.fileTimeTicks + userTime.fileTimeTicks).float64 / 10_000_000.0
+  else:
+    proc threadCpuTime(): float64 = cpuTime()
+
   proc wakeFromWorker(waker: EventLoopWaker) {.thread.} =
     waker.wake()
 
@@ -59,7 +80,7 @@ when eventLoopIntegrationSupported:
     var worker: Thread[DelayedWakeRequest]
     let
       wallStarted = getMonoTime()
-      cpuStarted = cpuTime()
+      cpuStarted = threadCpuTime()
     createThread(
       worker,
       wakeAfterDelay,
@@ -81,7 +102,7 @@ when eventLoopIntegrationSupported:
     let
       wallSeconds = (getMonoTime() - wallStarted).inNanoseconds.float64 /
         1_000_000_000.0
-      cpuSeconds = cpuTime() - cpuStarted
+      cpuSeconds = threadCpuTime() - cpuStarted
 
     doAssert waitResult == eventActivity,
       "the delayed worker wake should interrupt the native wait"
