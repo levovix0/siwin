@@ -1,5 +1,12 @@
-when defined(macosx):
-  import std/[assertions, times]
+const eventLoopIntegrationSupported =
+  # Add platforms here as their global event-loop backends are implemented.
+  when defined(macosx): true
+  else: false
+
+const delayedWakeMilliseconds = 500
+
+when eventLoopIntegrationSupported:
+  import std/[assertions, atomics, monotimes, os, times]
 
   import pkg/vmath
 
@@ -8,7 +15,16 @@ when defined(macosx):
   proc wakeFromWorker(waker: EventLoopWaker) {.thread.} =
     waker.wake()
 
-  let globals = newSiwinGlobals(Platform.cocoa)
+  type DelayedWakeRequest = object
+    waker: EventLoopWaker
+    signaled: ptr Atomic[bool]
+
+  proc wakeAfterDelay(request: DelayedWakeRequest) {.thread.} =
+    sleep(delayedWakeMilliseconds)
+    request.signaled[].store(true)
+    request.waker.wake()
+
+  let globals = newSiwinGlobals()
 
   block poll_is_nonblocking:
     discard globals.pollEvents()
@@ -34,8 +50,49 @@ when defined(macosx):
     doAssert globals.waitEvents(initDuration(milliseconds = 50)) == eventActivity
     joinThread(worker)
 
+  block idle_wait_blocks_without_busy_spinning:
+    discard globals.pollEvents()
+
+    var signaled: Atomic[bool]
+    signaled.store(false)
+
+    var worker: Thread[DelayedWakeRequest]
+    let
+      wallStarted = getMonoTime()
+      cpuStarted = cpuTime()
+    createThread(
+      worker,
+      wakeAfterDelay,
+      DelayedWakeRequest(
+        waker: globals.eventLoopWaker(),
+        signaled: signaled.addr,
+      ),
+    )
+
+    var waitResult = eventTimeout
+    while not signaled.load():
+      waitResult = globals.waitEvents(initDuration(seconds = 3))
+      if waitResult == eventTimeout:
+        doAssert signaled.load(), "event wait timed out before the worker wake"
+
+    joinThread(worker)
+    discard globals.pollEvents()
+
+    let
+      wallSeconds = (getMonoTime() - wallStarted).inNanoseconds.float64 /
+        1_000_000_000.0
+      cpuSeconds = cpuTime() - cpuStarted
+
+    doAssert waitResult == eventActivity,
+      "the delayed worker wake should interrupt the native wait"
+    doAssert wallSeconds >= delayedWakeMilliseconds.float64 / 1_000.0 * 0.8,
+      "the event loop returned before the delayed wake: " & $wallSeconds & "s"
+    doAssert cpuSeconds < 0.2,
+      "the idle wait may be polling: " & $cpuSeconds & " CPU seconds over " &
+        $wallSeconds & " wall seconds"
+
   block copied_waker_is_harmless_after_shutdown:
-    var temporaryGlobals = newSiwinGlobals(Platform.cocoa)
+    var temporaryGlobals = newSiwinGlobals()
     let survivingWaker = temporaryGlobals.eventLoopWaker()
     temporaryGlobals = nil
     GC_fullCollect()

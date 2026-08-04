@@ -2,7 +2,9 @@ import std/[os, strutils, unicode, times]
 import pixie
 import siwin
 
-const PasteMaxChars = 64
+const
+  PasteMaxChars = 64
+  globalEventLoopSupported = defined(macosx)
 
 when defined(macosx):
   const CopyPasteHint = "Cmd+C/Cmd+V"
@@ -304,7 +306,7 @@ proc main() =
 
   updateWindowTitle(window, demo.currentText)
 
-  run window, WindowEventsHandler(
+  window.eventsHandler = WindowEventsHandler(
     onResize: proc(e: ResizeEvent) =
       demo.ensureImage(e.size.x, e.size.y)
       demo.uiScale = e.window.uiScale
@@ -407,5 +409,15 @@ proc main() =
 
       redraw e.window
   )
+
+  when globalEventLoopSupported:
+    let frameInterval = initDuration(milliseconds = 16)
+    window.firstStep()
+    while window.opened:
+      discard globals.waitEvents(frameInterval)
+      if window.opened:
+        window.serviceWindow()
+  else:
+    window.run()
 
 main()

@@ -2061,12 +2061,18 @@ method firstStep*(window: WindowCocoa, makeVisible = true) =
         w.handle.orderFront(cast[ID](nil))
     if window.canBecomeKeyWindow:
       window.handle.makeKeyAndOrderFront(cast[ID](nil))
+  window.lastTickTime = getTime()
 
 
 method serviceWindow*(window: WindowCocoa) =
   window.refreshModifiers()
 
-  window.eventsHandler.pushEvent onTick, TickEvent(window: window)  # todo: lastTickTime
+  let now = getTime()
+  window.eventsHandler.pushEvent onTick, TickEvent(
+    window: window,
+    deltaTime: now - window.lastTickTime,
+  )
+  window.lastTickTime = now
   
   if window.redrawRequested:
     window.redrawRequested = false
