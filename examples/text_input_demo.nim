@@ -3,7 +3,9 @@ import pixie
 import siwin
 
 const
+  CursorBlinkMilliseconds = 500
   PasteMaxChars = 64
+  ScrollIdleMilliseconds = 150
   globalEventLoopSupported = defined(macosx)
 
 when defined(macosx):
@@ -22,6 +24,8 @@ type
     cursorElapsedMs: float32
     scrollSpeedX: float32
     scrollSpeedY: float32
+    scrollElapsedMs: float32
+    scrollUpdated: bool
     modifiers: set[ModifierKey]
     mousePos: Vec2
     mouseInside: bool
@@ -109,6 +113,15 @@ proc formatClickPos(pos: Vec2, hasPos: bool): string =
 
 proc formatUiScale(scale: float32): string =
   formatFloat(scale, ffDecimal, 2)
+
+proc nextAnimationWait(state: TextInputDemoState): Duration =
+  let cursorWaitMs = max(1, CursorBlinkMilliseconds - state.cursorElapsedMs.int)
+  let waitMs =
+    if abs(state.scrollSpeedX) >= 0.05 or abs(state.scrollSpeedY) >= 0.05:
+      min(cursorWaitMs, max(1, ScrollIdleMilliseconds - state.scrollElapsedMs.int))
+    else:
+      cursorWaitMs
+  initDuration(milliseconds = waitMs)
 
 when defined(macosx):
   proc isCopyShortcut(key: Key, modifiers: set[ModifierKey]): bool =
@@ -327,6 +340,8 @@ proc main() =
     onScroll: proc(e: ScrollEvent) =
       demo.scrollSpeedX = e.deltaX.float32 * 60'f32
       demo.scrollSpeedY = e.delta.float32 * 60'f32
+      demo.scrollElapsedMs = 0
+      demo.scrollUpdated = true
       redraw e.window
     ,
     onMouseMove: proc(e: MouseMoveEvent) =
@@ -390,31 +405,34 @@ proc main() =
     ,
     onTick: proc(e: TickEvent) =
       demo.uiScale = e.window.uiScale
-      var dtMs = e.deltaTime.inMilliseconds.float32
-      if dtMs <= 0:
-        dtMs = 16
+      let dtMs = max(0'f32, e.deltaTime.inNanoseconds.float32 / 1_000_000'f32)
 
-      let decay = max(0'f32, 1'f32 - (dtMs / 1000'f32) * 8'f32)
-      demo.scrollSpeedX *= decay
-      demo.scrollSpeedY *= decay
-      if abs(demo.scrollSpeedX) < 0.05:
-        demo.scrollSpeedX = 0
-      if abs(demo.scrollSpeedY) < 0.05:
-        demo.scrollSpeedY = 0
+      var animationChanged = false
+      if demo.scrollUpdated:
+        demo.scrollUpdated = false
+      elif abs(demo.scrollSpeedX) >= 0.05 or abs(demo.scrollSpeedY) >= 0.05:
+        demo.scrollElapsedMs += dtMs
+        if demo.scrollElapsedMs >= ScrollIdleMilliseconds.float32:
+          demo.scrollSpeedX = 0
+          demo.scrollSpeedY = 0
+          demo.scrollElapsedMs = 0
+          animationChanged = true
 
       demo.cursorElapsedMs += dtMs
-      if demo.cursorElapsedMs >= 500:
+      if demo.cursorElapsedMs >= CursorBlinkMilliseconds.float32:
         demo.cursorElapsedMs = 0
         demo.cursorVisible = not demo.cursorVisible
+        animationChanged = true
 
-      redraw e.window
+      if animationChanged:
+        redraw e.window
   )
 
   when globalEventLoopSupported:
-    let frameInterval = initDuration(milliseconds = 16)
     window.firstStep()
+    window.serviceWindow()
     while window.opened:
-      discard globals.waitEvents(frameInterval)
+      discard globals.waitEvents(demo.nextAnimationWait())
       if window.opened:
         window.serviceWindow()
   else:
