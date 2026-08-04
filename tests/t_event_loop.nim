@@ -1,6 +1,6 @@
 const eventLoopIntegrationSupported =
   # Add platforms here as their global event-loop backends are implemented.
-  when defined(macosx): true
+  when defined(macosx) or defined(windows): true
   else: false
 
 const delayedWakeMilliseconds = 500

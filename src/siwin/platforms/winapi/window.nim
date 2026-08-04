@@ -10,6 +10,9 @@ privateAccess Window
 {.experimental: "overloadableEnums".}
 
 type
+  SiwinGlobalsWinapi* = ref object of SiwinGlobals
+    wakeEvent: Handle
+
   ScreenWinapi* = ref object of Screen
   
   Buffer = object
@@ -24,6 +27,7 @@ type
 
   WindowWinapi* = ref WindowWinapiObj
   WindowWinapiObj* = object of Window
+    globals: SiwinGlobalsWinapi
     handle: HWnd
     wicon: HIcon
     hdc: Hdc
@@ -32,6 +36,38 @@ type
 
   WindowWinapiSoftwareRendering* = ref object of WindowWinapi
     buffer: Buffer
+
+
+var legacyGlobals: SiwinGlobalsWinapi
+
+proc signalWinapiWake(data: pointer) {.gcsafe, raises: [].} =
+  let wakeEvent = cast[Handle](data)
+  if wakeEvent != 0:
+    {.cast(gcsafe).}:
+      discard SetEvent(wakeEvent)
+
+proc closeWinapiWake(data: pointer) {.gcsafe, raises: [].} =
+  let wakeEvent = cast[Handle](data)
+  if wakeEvent != 0:
+    {.cast(gcsafe).}:
+      discard CloseHandle(wakeEvent)
+
+proc newWinapiGlobals*(): SiwinGlobalsWinapi =
+  let wakeEvent = CreateEvent(nil, False, False, nil)
+  if wakeEvent == 0:
+    raiseOSError(osLastError())
+
+  result = SiwinGlobalsWinapi(wakeEvent: wakeEvent)
+  result.installOwnedEventLoopWakeProc(
+    signalWinapiWake,
+    cast[pointer](wakeEvent),
+    closeWinapiWake,
+  )
+
+proc getLegacyGlobals(): SiwinGlobalsWinapi =
+  if legacyGlobals == nil:
+    legacyGlobals = newWinapiGlobals()
+  legacyGlobals
 
 
 proc wkeyToKey(key: WParam): Key =
@@ -290,7 +326,15 @@ method trySetBackdrop*(window: WindowWinapi, config: WindowBackdropConfig): bool
   true
 
 
-proc initWindow(window: WindowWinapi; size: IVec2; screen: ScreenWinapi, fullscreen, frameless, transparent: bool, class = wClassName) =
+proc initWindow(
+  window: WindowWinapi,
+  size: IVec2,
+  screen: ScreenWinapi,
+  fullscreen, frameless, transparent: bool,
+  class = wClassName,
+  globals: SiwinGlobalsWinapi = nil,
+) =
+  window.globals = if globals == nil: getLegacyGlobals() else: globals
   window.handle = CreateWindow(
     class,
     "",
@@ -582,18 +626,13 @@ method `content=`*(clipboard: ClipboardWinapi, content: ClipboardConvertableCont
 
 
 method displayImpl(window: WindowWinapi) {.base.} =
-  var ps: PaintStruct
-  window.handle.BeginPaint(ps.addr)
-  
   window.eventsHandler.pushEvent onRender, RenderEvent(window: window)
-  
+
   if window of WindowWinapiSoftwareRendering:
     BitBlt(
       window.hdc, 0, 0, window.m_size.x, window.m_size.y,
       window.WindowWinapiSoftwareRendering.buffer.hdc, 0, 0, SrcCopy
     )
-  
-  window.handle.EndPaint(ps.addr)
 
 
 method firstStep*(window: WindowWinapi, makeVisible = true) =
@@ -628,28 +667,93 @@ proc updateWindowState(window: WindowWinapi) =
   window.m_pos = ivec2(p.rcNormalPosition.left, p.rcNormalPosition.top)
 
 
-method step*(window: WindowWinapi) =
+proc dispatchPendingWinapiMessages(): bool =
   var msg: Msg
-  var catched = false
-
   while PeekMessage(msg.addr, 0, 0, 0, PmRemove).bool:
-    # make tick if windows sent us WmPaint, it does it when the event queue is empty
-    if msg.message == WmPaint:
-      let nows = getTime()
-      window.eventsHandler.pushEvent onTick, TickEvent(window: window, deltaTime: nows - window.lastTickTime)
-      window.lastTickTime = nows
+    result = true
+    if msg.message != WmQuit:
+      TranslateMessage(msg.addr)
+      DispatchMessage(msg.addr)
 
-    TranslateMessage(msg.addr)
-    DispatchMessage(msg.addr)
+proc waitTimeoutMilliseconds(timeout: Duration): DWord =
+  if timeout == Duration.high:
+    return Infinite
 
-    if msg.message == WmPaint:
-      break
-    else:
-      catched = true
+  let nanoseconds = timeout.inNanoseconds
+  if nanoseconds <= 0:
+    return 0
 
-    if window.m_closed: return
+  let milliseconds =
+    nanoseconds div 1_000_000 + int64(nanoseconds mod 1_000_000 != 0)
+  min(milliseconds, 0xffff_fffe'i64).DWord
 
-  if not catched: sleep(1)
+proc waitForWinapiActivity(globals: SiwinGlobalsWinapi, timeout: DWord): DWord =
+  var wakeEvent = globals.wakeEvent
+  MsgWaitForMultipleObjectsEx(
+    1,
+    wakeEvent.addr,
+    timeout,
+    QsAllInput,
+    MwmoInputAvailable,
+  )
+
+method pollEventsImpl(globals: SiwinGlobalsWinapi): bool =
+  let waitResult = globals.waitForWinapiActivity(0)
+  if waitResult == WaitObject0:
+    globals.consumeEventLoopWake()
+    result = true
+  elif waitResult == WaitObject0 + 1:
+    result = true
+  elif waitResult == WaitFailed:
+    raiseOSError(osLastError())
+
+  result = dispatchPendingWinapiMessages() or result
+
+method waitEventsImpl(
+  globals: SiwinGlobalsWinapi,
+  timeout: Duration,
+): EventWaitResult =
+  if globals.pollEventsImpl():
+    return eventActivity
+
+  let waitResult = globals.waitForWinapiActivity(waitTimeoutMilliseconds(timeout))
+  if waitResult == WaitObject0:
+    globals.consumeEventLoopWake()
+  elif waitResult == WaitObject0 + 1:
+    discard
+  elif waitResult == WaitTimeout:
+    return eventTimeout
+  elif waitResult == WaitFailed:
+    raiseOSError(osLastError())
+  else:
+    raise OSError.newException("Unexpected Win32 event-loop wait result")
+
+  discard dispatchPendingWinapiMessages()
+  eventActivity
+
+method serviceWindow*(window: WindowWinapi) =
+  if window.closed:
+    return
+
+  let now = getTime()
+  window.eventsHandler.pushEvent onTick, TickEvent(
+    window: window,
+    deltaTime: now - window.lastTickTime,
+  )
+  window.lastTickTime = now
+
+  if window.closed:
+    return
+
+  if window.redrawRequested:
+    window.redrawRequested = false
+    if window.m_size.x > 0 and window.m_size.y > 0:
+      window.displayImpl()
+
+method step*(window: WindowWinapi) =
+  let globals = if window.globals == nil: getLegacyGlobals() else: window.globals
+  discard globals.waitEvents(initDuration(milliseconds = 1))
+  window.serviceWindow()
 
 
 proc poolEvent(window: WindowWinapi, message: Uint, wParam: WParam, lParam: LParam): LResult =
@@ -672,6 +776,10 @@ proc poolEvent(window: WindowWinapi, message: Uint, wParam: WParam, lParam: LPar
   
   case message
   of WmPaint:
+    var paint: PaintStruct
+    window.handle.BeginPaint(paint.addr)
+    window.handle.EndPaint(paint.addr)
+
     let rect = window.handle.clientRect
     if rect.right != window.m_size.x or rect.bottom != window.m_size.y:
       window.m_size = ivec2(rect.right, rect.bottom)
@@ -681,11 +789,6 @@ proc poolEvent(window: WindowWinapi, message: Uint, wParam: WParam, lParam: LPar
 
       window.eventsHandler.pushEvent onResize, ResizeEvent(window: window, size: window.m_size, initial: false)
       window.redrawRequested = true
-
-    if window.redrawRequested:
-      window.redrawRequested = false
-      if window.m_size.x * window.m_size.y > 0:
-        window.displayImpl()
 
 
   of WmDestroy:
@@ -830,9 +933,13 @@ proc newSoftwareRenderingWindowWinapi*(
   fullscreen = false,
   frameless = false,
   transparent = false,
+  globals: SiwinGlobalsWinapi = nil,
 ): WindowWinapiSoftwareRendering =
   new result
-  result.initWindow(size, screen, fullscreen, frameless, transparent)
+  result.initWindow(
+    size, screen, fullscreen, frameless, transparent,
+    globals = globals,
+  )
   result.title = title
   if not resizable: result.resizable = false
 
@@ -849,6 +956,7 @@ proc newPopupWindowWinapi*(
     fullscreen = false,
     frameless = true,
     transparent = transparent,
+    globals = parent.globals,
   )
   result.initPopupState(parent, placement, grab)
   result.pos = parent.pos + placement.popupRelativePos()

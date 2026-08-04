@@ -9,7 +9,7 @@ when not siwin_use_lib:
     import ./platforms/wayland/siwinGlobals as waylandGlobals
     import ./platforms/x11/siwinGlobals as x11Globals
   when defined(windows):
-    ##
+    import ./platforms/winapi/window as winapiWindow
   when defined(macosx):
     import ./platforms/cocoa/window as cocoaWindow
 
@@ -110,7 +110,7 @@ when not siwin_use_lib:
         raise SiwinPlatformSupportDefect.newException("Unsupported platform")
     
     elif defined(windows):
-      result = SiwinGlobals()
+      result = newWinapiGlobals()
     
     elif defined(macosx):
       result = newCocoaGlobals()

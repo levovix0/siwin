@@ -2,8 +2,8 @@ when not (compiles do: import winim/inc/windef):
   {.error: "winim library not installed, required to cross compile to windows\n please run `nimble install winim`".}
 
 import ../../[siwindefs]
-import winim/inc/[windef, winbase, wingdi, winuser, dwmapi], winim/winstr
-export windef, winbase, wingdi, winuser, winstr, dwmapi
+import winim/inc/[windef, winbase, winerror, wingdi, winuser, dwmapi], winim/winstr
+export windef, winbase, winerror, wingdi, winuser, winstr, dwmapi
 
 proc rtlGetVersionSiwin*(versionInfo: ptr OSVERSIONINFOW): LONG {.
   stdcall, dynlib: "ntdll", importc: "RtlGetVersion"

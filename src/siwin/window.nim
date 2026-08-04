@@ -110,10 +110,13 @@ when not siwin_use_lib:
         raise SiwinPlatformSupportDefect.newException("Unsupported platform")
 
     elif defined(windows):
-      newSoftwareRenderingWindowWinapi(
+      if not (globals of SiwinGlobalsWinapi):
+        raise SiwinPlatformSupportDefect.newException("Unsupported platform")
+      result = newSoftwareRenderingWindowWinapi(
         size, title,
         (if screen == -1: defaultScreenWinapi() else: screenWinapi(screen)),
-        resizable, fullscreen, frameless, transparent
+        resizable, fullscreen, frameless, transparent,
+        globals = globals.SiwinGlobalsWinapi,
       )
     
     elif defined(macosx):

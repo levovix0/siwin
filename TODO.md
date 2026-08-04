@@ -42,7 +42,7 @@ method serviceWindow*(window: Window)
 - [ ] Document the integration pattern for Sigils and similar queues: install one waker on the application-thread destination queue, enqueue each message before calling `wake`, then drain that queue after `waitEvents` returns.
 - [ ] Support animation scheduling either by having a timer/Sigils producer enqueue a tick and wake the loop, or by passing the next animation deadline to timed `waitEvents`; individual animations do not register with Siwin.
 - [ ] Keep arbitrary external FD/source registration outside this initial API; enqueue-plus-wake is sufficient for Sigils, renderer completions, image loading, and animation schedulers.
-- [x] Make `serviceWindow` nonblocking and responsible only for per-window tick, redraw/render, buffer swap, and presentation work on Cocoa.
+- [x] Make `serviceWindow` nonblocking and responsible only for per-window tick, redraw/render, buffer swap, and presentation work on Cocoa and Winapi.
 - [x] Preserve the existing source and C ABI: keep no-argument `Window.step()` and `siwin_window_step` behavior available as compatibility wrappers while embedders opt into `pollEvents`/`waitEvents` plus `serviceWindow`.
 - [x] Do not add a wake callback to `WindowEventsHandler`, because wakeup is application-loop control rather than a window event and changing the handler layout could break ABI consumers.
 - [x] Add corresponding additive C ABI functions: `siwin_poll_events`, `siwin_wait_events`, `siwin_wake_event_loop`, and `siwin_window_service`.
@@ -81,12 +81,12 @@ method serviceWindow*(window: Window)
 
 ### Windows (Winapi)
 
-- [ ] Store the application thread/event-loop state in a Winapi-specific `SiwinGlobals`, including an auto-reset Win32 event used for cross-thread wakeups.
-- [ ] Implement `waitEvents` with `MsgWaitForMultipleObjectsEx`, monitoring both the wake handle and the thread message queue with `QS_ALLINPUT` and `MWMO_INPUTAVAILABLE`.
-- [ ] Implement `wakeEventLoop` with `SetEvent`; signaling before the wait must remain observable and repeated signals may be coalesced.
-- [ ] Move the global `PeekMessage`/`TranslateMessage`/`DispatchMessage` loop out of `WindowWinapi.step` and remove its idle `sleep(1)` path.
-- [ ] Let normal Win32 dispatch continue routing messages to the correct `HWND` window procedure, while `serviceWindow` handles only per-window tick/render/presentation work.
-- [ ] Map finite `Duration` values safely to the millisecond timeout accepted by `MsgWaitForMultipleObjectsEx`, including zero and infinite waits.
+- [x] Store the application thread/event-loop state in a Winapi-specific `SiwinGlobals`, including an auto-reset Win32 event used for cross-thread wakeups.
+- [x] Implement `waitEvents` with `MsgWaitForMultipleObjectsEx`, monitoring both the wake handle and the thread message queue with `QS_ALLINPUT` and `MWMO_INPUTAVAILABLE`.
+- [x] Implement `wakeEventLoop` with `SetEvent`; signaling before the wait remains observable and repeated signals may be coalesced.
+- [x] Move the global `PeekMessage`/`TranslateMessage`/`DispatchMessage` loop out of `WindowWinapi.step` and remove its idle `sleep(1)` path.
+- [x] Let normal Win32 dispatch continue routing messages to the correct `HWND` window procedure, while `serviceWindow` handles only per-window tick/render/presentation work.
+- [x] Map finite `Duration` values safely to the millisecond timeout accepted by `MsgWaitForMultipleObjectsEx`, including zero and infinite waits.
 
 ## Wayland
 - [x] Make `KeyEvent.modifiers` reflect effective xkb modifier state (including remaps like Caps-as-Ctrl), not only raw pressed key symbols.

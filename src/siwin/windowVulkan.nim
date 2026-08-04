@@ -65,11 +65,14 @@ when not siwin_use_lib:
         raise SiwinPlatformSupportDefect.newException("Unsupported platform")
 
     elif defined(windows):
-      newVulkanWindowWinapi(
+      if not (globals of SiwinGlobalsWinapi):
+        raise SiwinPlatformSupportDefect.newException("Unsupported platform")
+      result = newVulkanWindowWinapi(
         vkInstance,
         size, title,
         (if screen == -1: defaultScreenWinapi() else: screenWinapi(screen)),
-        resizable, fullscreen, frameless, transparent
+        resizable, fullscreen, frameless, transparent,
+        globals = globals.SiwinGlobalsWinapi,
       )
 
   when defined(linux) or defined(bsd):

@@ -17,11 +17,16 @@ type
     ## A timed wait reached its deadline without native activity.
     eventTimeout
 
-  EventLoopWakeState = ref object
-    ## Shared by copies of an EventLoopWaker. Backends own the native handle.
+  EventLoopWakeStateObj = object
+    ## Shared by copies of an EventLoopWaker and owns the backend wake resource.
     alive: Atomic[bool]
     pending: Atomic[bool]
+    backendData: pointer
     wakeProc: proc() {.gcsafe, raises: [].}
+    ownedWakeProc: proc(data: pointer) {.gcsafe, raises: [].}
+    closeProc: proc(data: pointer) {.gcsafe, raises: [].}
+
+  EventLoopWakeState = ref EventLoopWakeStateObj
 
   EventLoopWaker* = object
     ## A narrow, copyable capability for waking an event loop from another thread.
@@ -357,6 +362,10 @@ type
     inputRegion, titleRegion: Option[tuple[pos, size: Vec2]]
     borderWidth: Option[tuple[innerWidth, outerWidrth, diagonalSize: float32]]
 
+
+proc `=destroy`(state: EventLoopWakeStateObj) {.siwin_destructor.} =
+  if state.closeProc != nil:
+    state.closeProc(state.backendData)
 
 proc `=destroy`(globals: SiwinGlobalsObj) {.siwin_destructor.} =
   if globals.eventLoopState != nil:
@@ -763,6 +772,18 @@ proc installEventLoopWakeProc*(
   discard globals.eventLoopWaker()
   globals.eventLoopState.wakeProc = wakeProc
 
+proc installOwnedEventLoopWakeProc*(
+  globals: SiwinGlobals,
+  wakeProc: proc(data: pointer) {.gcsafe, raises: [].},
+  backendData: pointer,
+  closeProc: proc(data: pointer) {.gcsafe, raises: [].},
+) =
+  ## Install a backend wake primitive and transfer its resource during startup.
+  discard globals.eventLoopWaker()
+  globals.eventLoopState.backendData = backendData
+  globals.eventLoopState.ownedWakeProc = wakeProc
+  globals.eventLoopState.closeProc = closeProc
+
 proc consumeEventLoopWake*(waker: EventLoopWaker): bool =
   ## Clears this waker's coalesced notification after the backend consumes it.
   ##
@@ -788,10 +809,13 @@ proc wake*(waker: EventLoopWaker) {.gcsafe, raises: [].} =
   if state == nil or not state.alive.load():
     return
 
-  if not state.pending.exchange(true) and state.wakeProc != nil:
+  if not state.pending.exchange(true):
     # The backend is selected when the waker is created. A backend may coalesce
     # repeated notifications while this sentinel is pending.
-    state.wakeProc()
+    if state.wakeProc != nil:
+      state.wakeProc()
+    elif state.ownedWakeProc != nil:
+      state.ownedWakeProc(state.backendData)
 
 proc wakeEventLoop*(globals: SiwinGlobals) {.gcsafe, raises: [].} =
   ## Wakes the event loop owned by `globals` from any thread.
