@@ -2,7 +2,7 @@ import std/[times, monotimes, os, options, importutils, sequtils]
 import pkg/[vmath]
 import ./[winapi]
 import ../../[colorutils, siwindefs]
-import ../any/[window, clipboards]
+import ../any/[window, clipboards, eventLoop]
 import ../any/[windowUtils]
 
 privateAccess Window
@@ -675,23 +675,6 @@ proc dispatchPendingWinapiMessages(): bool =
       TranslateMessage(msg.addr)
       DispatchMessage(msg.addr)
 
-proc waitTimeoutMilliseconds(timeout: Duration): DWord =
-  ## Converts `timeout` to WinAPI's millisecond representation.
-  ##
-  ## Infinite waits map to `Infinite`, positive fractional milliseconds round
-  ## up to avoid early timeouts, and oversized finite waits clamp below the
-  ## value reserved for `Infinite`.
-  if timeout == Duration.high:
-    return Infinite
-
-  let nanoseconds = timeout.inNanoseconds
-  if nanoseconds <= 0:
-    return 0
-
-  let milliseconds =
-    nanoseconds div 1_000_000 + int64(nanoseconds mod 1_000_000 != 0)
-  min(milliseconds, 0xffff_fffe'i64).DWord
-
 proc waitForWinapiActivity(globals: SiwinGlobalsWinapi, timeout: DWord): DWord =
   var wakeEvent = globals.wakeEvent
   MsgWaitForMultipleObjectsEx(
@@ -721,7 +704,12 @@ method waitEventsImpl(
   if globals.pollEventsImpl():
     return eventActivity
 
-  let waitResult = globals.waitForWinapiActivity(waitTimeoutMilliseconds(timeout))
+  let waitResult = globals.waitForWinapiActivity(
+    timeout.inTimeoutMilliseconds(
+      infinite = DWord(Infinite),
+      maxFinite = DWord(Infinite - 1),
+    )
+  )
   if waitResult == WaitObject0:
     globals.consumeEventLoopWake()
   elif waitResult == WaitObject0 + 1:

@@ -1,3 +1,43 @@
+import std/[assertions, times]
+
+import siwin/platforms/any/eventLoop
+
+
+const
+  signedInfiniteTimeout = -1'i32
+  signedMaxFiniteTimeout = int32.high
+
+
+block timeout_milliseconds_round_up:
+  doAssert initDuration(nanoseconds = -1).inTimeoutMilliseconds(
+    signedInfiniteTimeout, signedMaxFiniteTimeout,
+  ) == 0
+  doAssert initDuration().inTimeoutMilliseconds(
+    signedInfiniteTimeout, signedMaxFiniteTimeout,
+  ) == 0
+  doAssert initDuration(nanoseconds = 1).inTimeoutMilliseconds(
+    signedInfiniteTimeout, signedMaxFiniteTimeout,
+  ) == 1
+  doAssert initDuration(milliseconds = 1).inTimeoutMilliseconds(
+    signedInfiniteTimeout, signedMaxFiniteTimeout,
+  ) == 1
+  doAssert initDuration(
+    milliseconds = 1,
+    nanoseconds = 1,
+  ).inTimeoutMilliseconds(signedInfiniteTimeout, signedMaxFiniteTimeout) == 2
+
+block timeout_milliseconds_handle_native_bounds:
+  doAssert Duration.high.inTimeoutMilliseconds(
+    signedInfiniteTimeout, signedMaxFiniteTimeout,
+  ) == signedInfiniteTimeout
+  doAssert initDuration(seconds = int64.high - 1).inTimeoutMilliseconds(
+    signedInfiniteTimeout,
+    signedMaxFiniteTimeout,
+  ) == signedMaxFiniteTimeout
+  doAssert Duration.high.inTimeoutMilliseconds(uint32.high, uint32.high - 1) ==
+    uint32.high
+
+
 const eventLoopIntegrationSupported =
   # Add platforms here as their global event-loop backends are implemented.
   when defined(macosx) or defined(windows) or defined(linux) or defined(bsd): true
@@ -11,7 +51,7 @@ const serviceWindowNeedsVisibleSurface =
   else: false
 
 when eventLoopIntegrationSupported:
-  import std/[assertions, atomics, monotimes, os, times]
+  import std/[atomics, monotimes, os]
 
   import pkg/vmath
 

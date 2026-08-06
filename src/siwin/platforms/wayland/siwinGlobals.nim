@@ -1,6 +1,6 @@
 import std/[tables, os, posix, times, monotimes]
 import ../../[siwindefs]
-import ../any/[window, clipboards]
+import ../any/[window, clipboards, eventLoop]
 import ./[libwayland, protocol, bitfields, libdecor]
 
 type
@@ -136,20 +136,6 @@ proc drainWaylandWake(globals: SiwinGlobalsWayland): bool =
       break
   if result:
     globals.consumeEventLoopWake()
-
-proc waitTimeoutMilliseconds(timeout: Duration): cint =
-  ## Converts `timeout` to `poll`'s millisecond representation.
-  ##
-  ## Infinite waits map to `-1`, positive fractional milliseconds round up to
-  ## avoid early timeouts, and oversized finite waits clamp to `cint.high`.
-  if timeout == Duration.high:
-    return -1
-  let nanoseconds = timeout.inNanoseconds
-  if nanoseconds <= 0:
-    return 0
-  let milliseconds =
-    nanoseconds div 1_000_000 + int64(nanoseconds mod 1_000_000 != 0)
-  min(milliseconds, cint.high.int64).cint
 
 proc waitTimeout(globals: SiwinGlobalsWayland, timeout: Duration): Duration =
   result = timeout
@@ -440,7 +426,10 @@ method waitEventsImpl(
     let count = poll(
       fds[0].addr,
       fds.len.Tnfds,
-      waitTimeoutMilliseconds(globals.waitTimeout(callerRemaining)),
+      globals.waitTimeout(callerRemaining).inTimeoutMilliseconds(
+        infinite = -1.cint,
+        maxFinite = cint.high,
+      ),
     )
     if count == 0:
       wl_display_cancel_read(globals.display)

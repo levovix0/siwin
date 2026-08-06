@@ -9,7 +9,7 @@ import pkg/x11/xlib except Screen
 import pkg/x11/x except Window, Cursor, Time
 import pkg/x11/[xutil, xatom, cursorfont, keysym]
 import ../../[colorutils, siwindefs]
-import ../any/[window, clipboards]
+import ../any/[window, clipboards, eventLoop]
 import ../any/[windowUtils]
 import ./[siwinGlobals]
 
@@ -1716,7 +1716,10 @@ method waitEventsImpl(
     let count = poll(
       fds[0].addr,
       fds.len.Tnfds,
-      waitTimeoutMilliseconds(remaining),
+      remaining.inTimeoutMilliseconds(
+        infinite = -1.cint,
+        maxFinite = cint.high,
+      ),
     )
     if count == 0:
       return eventTimeout

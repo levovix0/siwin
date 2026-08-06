@@ -1,4 +1,4 @@
-import std/[os, tables, posix, times]
+import std/[os, tables, posix]
 import ../../[siwindefs]
 import ../any/[window]
 import x11/[xlib, x]
@@ -71,18 +71,6 @@ proc drainX11Wake*(globals: SiwinGlobalsX11): bool =
     else:
       break
   if result: globals.consumeEventLoopWake()
-
-proc waitTimeoutMilliseconds*(timeout: Duration): cint =
-  ## Converts `timeout` to `poll`'s millisecond representation.
-  ##
-  ## Infinite waits map to `-1`, positive fractional milliseconds round up to
-  ## avoid early timeouts, and oversized finite waits clamp to `cint.high`.
-  if timeout == Duration.high: return -1
-  let ns = timeout.inNanoseconds
-  if ns <= 0: return 0
-  let milliseconds = ns div 1_000_000 + int64(ns mod 1_000_000 != 0)
-  min(milliseconds, cint.high.int64).cint
-
 
 proc newX11Globals*: SiwinGlobalsX11 {.raises: [OsError].} =
   new result
