@@ -22,18 +22,40 @@ Can be used as an alternative to GLFW/GLUT/windy
 
 ## simple window
 
+Create a window with continous event polling:
+
 ```nim
 import siwin, opengl
 
-let win = newOpenglWindow()
+let window = newOpenglWindow()
 opengl.loadExtensions()  # load opengl functions
 
-win.eventsHandler.onRender = proc(e: RenderEvent) =
+window.eventsHandler.onRender = proc(e: RenderEvent) =
   glClearColor(0.1, 0.1, 0.1, 1)
   glClear(GlColorBufferBit or GlDepthBufferBit)
 
-run win
+run window
 ```
+
+## event loop window
+
+Run an application with a more efficient blocking event loop:
+
+```nim
+import siwin, opengl
+
+let globals = newSiwinGlobals()
+let window = globals.newOpenglWindow()
+opengl.loadExtensions()  # load opengl functions
+
+window.eventsHandler.onRender = proc(e: RenderEvent) =
+  glClearColor(0.1, 0.1, 0.1, 1)
+  glClear(GlColorBufferBit or GlDepthBufferBit)
+
+globals.runEventDriven(window)
+```
+
+This approach handles many windows with a shared event loop.
 
 ## software-rendering window
 ```nim
@@ -239,9 +261,38 @@ loadExtensions()
 # do any opengl computing
 ```
 
-<h2 align="center">efficient application event loop</h2>
+<h2 align="center">manual main cycle</h2>
 
-`runEventDriven` is the simplest efficiently blocking loop. It waits once for native input or an explicit wake and then services every window. The existing `run` remains available for compatibility and preserves its continuously delivered `onTick` events.
+```nim
+import std/times
+import siwin, opengl
+
+let globals = newSiwinGlobals()
+let window = globals.newOpenglWindow()
+opengl.loadExtensions()
+
+var elapsed = initDuration()
+window.eventsHandler = WindowEventsHandler(
+  onTick: proc(event: TickEvent) =
+    elapsed += event.deltaTime
+    event.window.redraw()
+  ,
+  onRender: proc(event: RenderEvent) =
+    let brightness = (elapsed.inMilliseconds mod 1000).float32 / 1000
+    glClearColor(brightness, brightness, brightness, 1)
+    glClear(GlColorBufferBit or GlDepthBufferBit)
+)
+
+window.firstStep(makeVisible = true)
+while window.opened:
+  window.step()
+```
+
+<h2 align="center">manual event loop cycle</h2>
+
+The blocking event loop approach is recommended when apps don't need continuous `onTick` events. Wake events can be added for short lived animations or other needs. This can significantly reduce CPU usage over the polling approach.
+
+Switch applications from `run` to `runEvenDrive` which waits once for native input or an explicit wake event and then services every window. This means `onTick` callbacks and others will only be called on wake events or when there's new events.
 
 ```nim
 import siwin
@@ -258,12 +309,14 @@ window.eventsHandler = WindowEventsHandler(
 globals.runEventDriven(window)
 ```
 
-The responsibilities are deliberately separate:
+`runEventDriven` is a convenience runner built from lower-level event-loop APIs. Use them directly when integrating Siwin with another event loop, scheduler, or application queue:
 
-* `pollEvents()` dispatches immediately available native events without blocking.
-* `waitEvents()` blocks until native input or an application wakeup arrives.
-* `waitEvents(timeout)` returns `eventActivity` or `eventTimeout` at an animation or scheduler deadline.
-* `serviceWindow()` runs tick/render/presentation work for one window without waiting.
+* `globals.pollEvents()` dispatches available native events and returns immediately.
+* `globals.waitEvents()` waits for native input or an explicit application wakeup.
+* `globals.waitEvents(timeout)` also accepts a deadline and returns `eventActivity`
+  or `eventTimeout`.
+* `window.serviceWindow()` performs one nonblocking tick, render, and presentation
+  pass after the application has handled the dispatched work.
 
 Applications that need to drain another event loop or queue can own the wait directly. Install one copied `EventLoopWaker` on each application-thread destination queue instead of sharing all of `SiwinGlobals`. Every producer must enqueue its message before waking the application thread:
 
@@ -323,13 +376,20 @@ let win2_eventsHandler = WindowEventsHandler(
     #...
 )
 
-siwinGlobals.runMultipleEventDriven(
+runMultiple(
   (window: win1, eventsHandler: win1_eventsHandler, makeVisible: true),
   (window: win2, eventsHandler: win2_eventsHandler, makeVisible: true),
 )
 ```
 
-Use `runMultiple` instead when an existing application depends on its continuous `onTick` cadence.
+Use `runMultipleEventDriven` instead when the application doesn't need continous `onTick` events and can use the more efficient blocking call:
+
+```nim
+siwinGlobals.runMultipleEventDriven(
+  (window: win1, eventsHandler: win1_eventsHandler, makeVisible: true),
+  (window: win2, eventsHandler: win2_eventsHandler, makeVisible: true),
+)
+```
 
 <h2 align="center">client-side decorations</h2>
 
