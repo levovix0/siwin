@@ -6,7 +6,6 @@ const
   CursorBlinkMilliseconds = 5_000
   PasteMaxChars = 64
   ScrollIdleMilliseconds = 150
-  globalEventLoopSupported = defined(macosx)
 
 when defined(macosx):
   const CopyPasteHint = "Cmd+C/Cmd+V"
@@ -428,14 +427,11 @@ proc main() =
         redraw e.window
   )
 
-  when globalEventLoopSupported:
-    window.firstStep()
-    window.serviceWindow()
-    while window.opened:
-      discard globals.waitEvents(demo.nextAnimationWait())
-      if window.opened:
-        window.serviceWindow()
-  else:
-    window.run()
+  window.firstStep()
+  window.serviceWindow()
+  while window.opened:
+    discard globals.waitEvents(demo.nextAnimationWait())
+    if window.opened:
+      window.serviceWindow()
 
 main()
