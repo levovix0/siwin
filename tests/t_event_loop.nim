@@ -36,6 +36,12 @@ block timeout_milliseconds_handle_native_bounds:
   ) == signedMaxFiniteTimeout
   doAssert Duration.high.inTimeoutMilliseconds(uint32.high, uint32.high - 1) ==
     uint32.high
+  doAssert initDuration(milliseconds = 1).inTimeoutMilliseconds(
+    uint32.high, uint32.high - 1,
+  ) == 1'u32
+  doAssert initDuration(seconds = int64.high - 1).inTimeoutMilliseconds(
+    uint32.high, uint32.high - 1,
+  ) == uint32.high - 1
 
 
 const eventLoopIntegrationSupported =

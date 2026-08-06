@@ -704,12 +704,13 @@ method waitEventsImpl(
   if globals.pollEventsImpl():
     return eventActivity
 
-  let waitResult = globals.waitForWinapiActivity(
-    timeout.inTimeoutMilliseconds(
-      infinite = DWord(Infinite),
-      maxFinite = DWord(Infinite - 1),
-    )
+  # Winim represents DWORD as int32, so convert against its unsigned range
+  # before preserving that value's bits in the signed binding type.
+  let timeoutMilliseconds = timeout.inTimeoutMilliseconds(
+    infinite = uint32.high,
+    maxFinite = uint32.high - 1,
   )
+  let waitResult = globals.waitForWinapiActivity(cast[DWord](timeoutMilliseconds))
   if waitResult == WaitObject0:
     globals.consumeEventLoopWake()
   elif waitResult == WaitObject0 + 1:
