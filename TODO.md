@@ -12,6 +12,10 @@ Move native event waiting out of per-window `step()` implementations so an appli
 
 Initial Nim API (implemented across the desktop backends listed below):
 
+Backend implementation is complete for Cocoa, Winapi, X11, and Wayland. The
+remaining work in this section is higher-level integration, documentation, and
+additional stress/multi-window coverage.
+
 ```nim
 type
   EventWaitResult* = enum
@@ -40,16 +44,19 @@ method serviceWindow*(window: Window)
 - [x] Keep `wakeEventLoop(globals)` as a convenience wrapper around `globals.eventLoopWaker().wake()` for callers already on or otherwise holding the globals owner.
 - [x] Define waker lifetime and shutdown semantics explicitly, including what happens when a copied waker outlives its `SiwinGlobals`; waking a stopped/destroyed loop must be harmless and must not access a closed OS handle.
 - [ ] Document the integration pattern for Sigils and similar queues: install one waker on the application-thread destination queue, enqueue each message before calling `wake`, then drain that queue after `waitEvents` returns.
-- [ ] Support animation scheduling either by having a timer/Sigils producer enqueue a tick and wake the loop, or by passing the next animation deadline to timed `waitEvents`; individual animations do not register with Siwin.
-- [ ] Keep arbitrary external FD/source registration outside this initial API; enqueue-plus-wake is sufficient for Sigils, renderer completions, image loading, and animation schedulers.
+- [x] Support animation scheduling either by having a timer/Sigils producer enqueue a tick and wake the loop, or by passing the next animation deadline to timed `waitEvents`; `examples/text_input_demo.nim` demonstrates the deadline-based form and individual animations do not register with Siwin.
+- [x] Keep arbitrary external FD/source registration outside this initial API; enqueue-plus-wake is sufficient for Sigils, renderer completions, image loading, and animation schedulers.
 - [x] Make `serviceWindow` nonblocking and responsible only for per-window tick, redraw/render, buffer swap, and presentation work on Cocoa, Winapi, X11, and Wayland.
 - [x] Preserve the existing source and C ABI: keep no-argument `Window.step()` and `siwin_window_step` behavior available as compatibility wrappers while embedders opt into `pollEvents`/`waitEvents` plus `serviceWindow`.
 - [x] Do not add a wake callback to `WindowEventsHandler`, because wakeup is application-loop control rather than a window event and changing the handler layout could break ABI consumers.
 - [x] Add corresponding additive C ABI functions: `siwin_poll_events`, `siwin_wait_events`, `siwin_wake_event_loop`, and `siwin_window_service`.
 - [ ] Decide whether non-Nim consumers also need an independently retained opaque waker handle.
 - [ ] Update `run`/`runMultiple` or add event-driven variants that wait once and then service every window, while preserving the existing observable `onTick` behavior for compatibility.
-- [ ] Support an infinite idle wait, a monotonic timeout for scheduled work, and an immediate/nonblocking path when redraw or queued work remains.
-- [ ] Add tests for idle blocking, timeouts, copied cross-thread wakers, waker shutdown/lifetime safety, wakeup coalescing/no lost wakes, multiple windows, redraw after wake, and existing `step()` compatibility.
+- [x] Support an infinite idle wait and immediate/nonblocking `pollEvents` and zero-timeout paths.
+- [ ] Ensure every backend's finite wait and internal scheduling deadlines remain monotonic across wall-clock changes.
+- [x] Add cross-platform tests for idle blocking/CPU use, zero timeout, copied cross-thread wakers, shutdown safety, wakeup coalescing, nonblocking window service, and existing `step()` compatibility.
+- [x] Exercise the X11 wait path under Xvfb and the Wayland wait path under headless Weston in Linux CI.
+- [ ] Extend global-loop coverage to multiple windows, redraw scheduled by a worker wake, and repeated producer/consumer races that stress no-lost-wake behavior.
 
 ### Cocoa (macOS)
 
