@@ -367,11 +367,11 @@ type
     borderWidth: Option[tuple[innerWidth, outerWidrth, diagonalSize: float32]]
 
 
-template retainEventLoopWakeState(state: EventLoopWakeState) =
+proc retainEventLoopWakeState(state: EventLoopWakeState) {.inline.} =
   if state != nil:
     discard state.owners.fetchAdd(1, moRelaxed)
 
-template releaseEventLoopWakeState(state: EventLoopWakeState) =
+proc releaseEventLoopWakeState(state: EventLoopWakeState) {.inline.} =
   if state != nil and state.owners.fetchSub(1, moAcquireRelease) == 1:
     if state.closeProc != nil:
       state.closeProc(state.backendData)

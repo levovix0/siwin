@@ -1223,9 +1223,7 @@ proc dispatchWindowEvent(
   event, followingEvent: XEvent,
   hasFollowingEvent: bool,
 ) =
-  var
-    ev = event
-    nextEv = followingEvent
+  var ev = event
 
   proc extractKey(xkey: XKeyEvent): Key =
     var i = 0
@@ -1253,7 +1251,7 @@ proc dispatchWindowEvent(
     # todo: press pressed in system mouse buttons
 
 
-  proc handleEvent(ev: var XEvent, nextEv: var XEvent, hasNextEvent: bool) =
+  proc handleEvent(ev: var XEvent, nextEv: XEvent, hasNextEvent: bool) =
     template button: MouseButton =
       case ev.xbutton.button
       of 1: MouseButton.left
@@ -1640,7 +1638,7 @@ proc dispatchWindowEvent(
     else: discard
 
 
-  handleEvent(ev, nextEv, hasFollowingEvent)
+  handleEvent(ev, followingEvent, hasFollowingEvent)
   if window.closed:
     window.pushCloseEvent()
 
