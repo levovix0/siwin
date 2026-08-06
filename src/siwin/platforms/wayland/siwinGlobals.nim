@@ -84,7 +84,7 @@ type
     libdecorCtx*: LibdecorContext
     libdecorIface*: LibdecorInterface
     wake: ptr WaylandWakeFd
-    repeatWakeDeadline*: times.Time
+    repeatWakeDeadline*: MonoTime
     repeatWakeWindow*: Window
 
 proc `=destroy`*(globals: SiwinGlobalsWaylandObj) {.siwin_destructor.} =
@@ -149,16 +149,16 @@ proc waitTimeoutMilliseconds(timeout: Duration): cint =
 
 proc waitTimeout(globals: SiwinGlobalsWayland, timeout: Duration): Duration =
   result = timeout
-  if globals.repeatWakeDeadline != times.Time.default:
-    let remaining = globals.repeatWakeDeadline - getTime()
+  if globals.repeatWakeDeadline != MonoTime.default:
+    let remaining = globals.repeatWakeDeadline - getMonoTime()
     if remaining <= initDuration():
       return initDuration()
     if result == Duration.high or remaining < result:
       result = remaining
 
 proc repeatWakeIsDue(globals: SiwinGlobalsWayland): bool =
-  globals.repeatWakeDeadline != times.Time.default and
-    globals.repeatWakeDeadline <= getTime()
+  globals.repeatWakeDeadline != MonoTime.default and
+    globals.repeatWakeDeadline <= getMonoTime()
 
 proc libdecorFd(globals: SiwinGlobalsWayland): cint =
   if globals.libdecorCtx != nil and libdecor_get_fd != nil:

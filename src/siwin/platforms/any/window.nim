@@ -1,4 +1,4 @@
-import std/[atomics, times, options, sequtils, tables]
+import std/[atomics, times, monotimes, options, sequtils, tables]
 import pkg/[vmath]
 import ../../[siwindefs, colorutils]
 import ./[clipboards]
@@ -17,16 +17,20 @@ type
     ## A timed wait reached its deadline without native activity.
     eventTimeout
 
+  EventLoopWakeProc = proc() {.nimcall, gcsafe, raises: [].}
+  EventLoopOwnedWakeProc = proc(data: pointer) {.nimcall, gcsafe, raises: [].}
+
   EventLoopWakeStateObj = object
     ## Shared by copies of an EventLoopWaker and owns the backend wake resource.
+    owners: Atomic[int]
     alive: Atomic[bool]
     pending: Atomic[bool]
     backendData: pointer
-    wakeProc: proc() {.gcsafe, raises: [].}
-    ownedWakeProc: proc(data: pointer) {.gcsafe, raises: [].}
-    closeProc: proc(data: pointer) {.gcsafe, raises: [].}
+    wakeProc: EventLoopWakeProc
+    ownedWakeProc: EventLoopOwnedWakeProc
+    closeProc: EventLoopOwnedWakeProc
 
-  EventLoopWakeState = ref EventLoopWakeStateObj
+  EventLoopWakeState = ptr EventLoopWakeStateObj
 
   EventLoopWaker* = object
     ## A narrow, copyable capability for waking an event loop from another thread.
@@ -327,7 +331,7 @@ type
     
     redrawRequested: bool
 
-    lastTickTime: times.Time
+    lastTickTime: MonoTime
 
     m_closed: bool
     
@@ -363,18 +367,41 @@ type
     borderWidth: Option[tuple[innerWidth, outerWidrth, diagonalSize: float32]]
 
 
-proc `=destroy`(state: EventLoopWakeStateObj) {.siwin_destructor.} =
-  if state.closeProc != nil:
-    state.closeProc(state.backendData)
+template retainEventLoopWakeState(state: EventLoopWakeState) =
+  if state != nil:
+    discard state.owners.fetchAdd(1, moRelaxed)
+
+template releaseEventLoopWakeState(state: EventLoopWakeState) =
+  if state != nil and state.owners.fetchSub(1, moAcquireRelease) == 1:
+    if state.closeProc != nil:
+      state.closeProc(state.backendData)
+    deallocShared(state)
+
+proc `=destroy`(waker: EventLoopWaker) {.siwin_destructor.} =
+  releaseEventLoopWakeState(waker.state)
+
+proc `=wasMoved`(waker: var EventLoopWaker) =
+  waker.state = nil
+
+proc `=dup`(waker: EventLoopWaker): EventLoopWaker =
+  retainEventLoopWakeState(waker.state)
+  result.state = waker.state
+
+proc `=copy`(dest: var EventLoopWaker, source: EventLoopWaker) =
+  retainEventLoopWakeState(source.state)
+  `=destroy`(dest)
+  dest.state = source.state
 
 proc `=destroy`(globals: SiwinGlobalsObj) {.siwin_destructor.} =
   if globals.eventLoopState != nil:
     globals.eventLoopState.alive.store(false)
+    releaseEventLoopWakeState(globals.eventLoopState)
 
 proc shutdownEventLoopWakeState*(globals: SiwinGlobals) {.raises: [].} =
   ## Backend destructor hook for globals types that define a custom destructor.
   if globals != nil and globals.eventLoopState != nil:
     globals.eventLoopState.alive.store(false)
+    releaseEventLoopWakeState(globals.eventLoopState)
     globals.eventLoopState = nil
 
 method number*(screen: Screen): int32 {.base.} = discard
@@ -766,13 +793,19 @@ method waitEventsImpl(
 proc eventLoopWaker*(globals: SiwinGlobals): EventLoopWaker =
   ## Returns a thread-safe capability that remains harmless after loop shutdown.
   if globals.eventLoopState == nil:
-    globals.eventLoopState = EventLoopWakeState()
+    globals.eventLoopState = cast[EventLoopWakeState](
+      allocShared0(sizeof(EventLoopWakeStateObj))
+    )
+    # The globals object owns the initial reference. EventLoopWaker copies add
+    # further owners through their copy and duplication hooks.
+    globals.eventLoopState.owners.store(1, moRelaxed)
     globals.eventLoopState.alive.store(true)
-  EventLoopWaker(state: globals.eventLoopState)
+  retainEventLoopWakeState(globals.eventLoopState)
+  result.state = globals.eventLoopState
 
 proc installEventLoopWakeProc*(
   globals: SiwinGlobals,
-  wakeProc: proc() {.gcsafe, raises: [].},
+  wakeProc: EventLoopWakeProc,
 ) =
   ## Install the backend notification primitive during globals initialization.
   discard globals.eventLoopWaker()
@@ -780,9 +813,9 @@ proc installEventLoopWakeProc*(
 
 proc installOwnedEventLoopWakeProc*(
   globals: SiwinGlobals,
-  wakeProc: proc(data: pointer) {.gcsafe, raises: [].},
+  wakeProc: EventLoopOwnedWakeProc,
   backendData: pointer,
-  closeProc: proc(data: pointer) {.gcsafe, raises: [].},
+  closeProc: EventLoopOwnedWakeProc,
 ) =
   ## Install a backend wake primitive and transfer its resource during startup.
   discard globals.eventLoopWaker()
@@ -807,21 +840,20 @@ proc consumeEventLoopWake*(globals: SiwinGlobals) =
   ## This is a backend event-pump hook. Applications normally call
   ## `pollEvents` or `waitEvents`, which consume wake notifications themselves.
   if globals.eventLoopState != nil:
-    discard EventLoopWaker(state: globals.eventLoopState).consumeEventLoopWake()
+    globals.eventLoopState.pending.store(false)
 
 proc wake*(waker: EventLoopWaker) {.gcsafe, raises: [].} =
   ## Notify the owning event loop after enqueuing application work.
-  let state = waker.state
-  if state == nil or not state.alive.load():
+  if waker.state == nil or not waker.state.alive.load():
     return
 
-  if not state.pending.exchange(true):
+  if not waker.state.pending.exchange(true):
     # The backend is selected when the waker is created. A backend may coalesce
     # repeated notifications while this sentinel is pending.
-    if state.wakeProc != nil:
-      state.wakeProc()
-    elif state.ownedWakeProc != nil:
-      state.ownedWakeProc(state.backendData)
+    if waker.state.wakeProc != nil:
+      waker.state.wakeProc()
+    elif waker.state.ownedWakeProc != nil:
+      waker.state.ownedWakeProc(waker.state.backendData)
 
 proc wakeEventLoop*(globals: SiwinGlobals) {.gcsafe, raises: [].} =
   ## Wakes the event loop owned by `globals` from any thread.
@@ -856,6 +888,51 @@ proc run*(window: sink Window, eventsHandler: WindowEventsHandler, makeVisible =
     window.eventsHandler = eventsHandler
   run(window, makeVisible)
 
+proc serviceEventDrivenWindows(
+  globals: SiwinGlobals,
+  windows: sink seq[Window],
+) =
+  proc serviceOpenWindows(windows: var seq[Window]) =
+    var index = 0
+    while index < windows.len:
+      let window = windows[index]
+      if window.closed:
+        windows.delete(index)
+      else:
+        window.serviceWindow()
+        if window.closed:
+          windows.delete(index)
+        else:
+          inc index
+
+  windows.serviceOpenWindows()
+  while windows.len > 0:
+    globals.waitEvents()
+    windows.serviceOpenWindows()
+
+proc runEventDriven*(
+  globals: SiwinGlobals,
+  window: sink Window,
+  makeVisible = true,
+) =
+  ## Run one window with an efficiently blocking application-global event loop.
+  ##
+  ## `globals` must own `window`. Unlike the compatibility `run` loop, ticks
+  ## occur when native activity or an explicit event-loop wake is serviced.
+  window.firstStep(makeVisible)
+  globals.serviceEventDrivenWindows(@[window])
+
+proc runEventDriven*(
+  globals: SiwinGlobals,
+  window: sink Window,
+  eventsHandler: WindowEventsHandler,
+  makeVisible = true,
+) =
+  ## Install `eventsHandler` and run one window with the global event loop.
+  if eventsHandler != WindowEventsHandler():
+    window.eventsHandler = eventsHandler
+  globals.runEventDriven(window, makeVisible)
+
 proc runMultiple*(windows: varargs[tuple[window: Window, makeVisible: bool]]) =
   ## run for multiple windows
   for (window, makeVisible) in windows:
@@ -889,3 +966,30 @@ proc runMultiple*(windows: varargs[tuple[window: Window, eventsHandler: WindowEv
         continue
       window.step()
       inc i
+
+proc runMultipleEventDriven*(
+  globals: SiwinGlobals,
+  windows: varargs[tuple[window: Window, makeVisible: bool]],
+) =
+  ## Run multiple windows with one efficiently blocking global event wait.
+  ##
+  ## Every window must be owned by `globals`. Each wake dispatches native
+  ## events once and then services every open window once.
+  for (window, makeVisible) in windows:
+    window.firstStep(makeVisible)
+  globals.serviceEventDrivenWindows(windows.mapIt(it.window))
+
+proc runMultipleEventDriven*(
+  globals: SiwinGlobals,
+  windows: varargs[tuple[
+    window: Window,
+    eventsHandler: WindowEventsHandler,
+    makeVisible: bool,
+  ]],
+) =
+  ## Install handlers and run multiple windows with one global event wait.
+  for (window, eventsHandler, makeVisible) in windows:
+    if eventsHandler != WindowEventsHandler():
+      window.eventsHandler = eventsHandler
+    window.firstStep(makeVisible)
+  globals.serviceEventDrivenWindows(windows.mapIt(it.window))

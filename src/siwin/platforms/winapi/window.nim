@@ -1,4 +1,4 @@
-import std/[times, os, options, importutils, sequtils]
+import std/[times, monotimes, os, options, importutils, sequtils]
 import pkg/[vmath]
 import ./[winapi]
 import ../../[colorutils, siwindefs]
@@ -647,7 +647,7 @@ method firstStep*(window: WindowWinapi, makeVisible = true) =
 
   window.handle.UpdateWindow()
 
-  window.lastTickTime = getTime()
+  window.lastTickTime = getMonoTime()
 
 
 proc updateWindowState(window: WindowWinapi) =
@@ -735,7 +735,7 @@ method serviceWindow*(window: WindowWinapi) =
   if window.closed:
     return
 
-  let now = getTime()
+  let now = getMonoTime()
   window.eventsHandler.pushEvent onTick, TickEvent(
     window: window,
     deltaTime: now - window.lastTickTime,

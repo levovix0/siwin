@@ -241,7 +241,7 @@ loadExtensions()
 
 <h2 align="center">efficient application event loop</h2>
 
-`run` is the simplest way to own one window. Applications that already have a runtime, manage several windows, or receive work from other threads can use the global event-loop API instead. It blocks in the native window system without an idle polling timer on macOS, Windows, X11, and Wayland.
+`runEventDriven` is the simplest efficiently blocking loop. It waits once for native input or an explicit wake and then services every window. The existing `run` remains available for compatibility and preserves its continuously delivered `onTick` events.
 
 ```nim
 import siwin
@@ -255,13 +255,7 @@ window.eventsHandler = WindowEventsHandler(
       event.window.close()
 )
 
-window.firstStep()
-window.serviceWindow()
-
-while window.opened:
-  globals.waitEvents()
-  if window.opened:
-    window.serviceWindow()
+globals.runEventDriven(window)
 ```
 
 The responsibilities are deliberately separate:
@@ -271,7 +265,7 @@ The responsibilities are deliberately separate:
 * `waitEvents(timeout)` returns `eventActivity` or `eventTimeout` at an animation or scheduler deadline.
 * `serviceWindow()` runs tick/render/presentation work for one window without waiting.
 
-For integrating other event loops, renderer completions, image loading, or another worker queue, copy a narrow `EventLoopWaker` instead of sharing all of `SiwinGlobals`. Enqueue the work first, then wake the application thread:
+Applications that need to drain another event loop or queue can own the wait directly. Install one copied `EventLoopWaker` on each application-thread destination queue instead of sharing all of `SiwinGlobals`. Every producer must enqueue its message before waking the application thread:
 
 The queue names below are illustrative; use the queue owned by your runtime:
 
@@ -286,7 +280,9 @@ waker.wake()
 destinationQueue.drain()
 ```
 
-Wakeups carry no data and may be coalesced, so the destination queue remains the source of truth. A copied waker is safe to retain and becomes harmless after its event loop shuts down.
+Wakeups carry no data and may be coalesced, so the destination queue remains the source of truth. Drain every relevant queue after each `waitEvents` return, then call `serviceWindow` for every open window. A copied waker is safe to retain and becomes harmless after its event loop shuts down.
+
+The C ABI provides the same lifetime model through the independently retained opaque `SiwinEventLoopWaker` handle. Create it with `siwin_event_loop_waker`, wake it from a producer with `siwin_event_loop_waker_wake`, and release it with `siwin_destroy_event_loop_waker`; the handle does not require the producer to retain `SiwinGlobals`.
 
 For animation, pass the next real deadline instead of scheduling an unconditional 16 ms wake:
 
@@ -327,11 +323,13 @@ let win2_eventsHandler = WindowEventsHandler(
     #...
 )
 
-runMultiple(
+siwinGlobals.runMultipleEventDriven(
   (window: win1, eventsHandler: win1_eventsHandler, makeVisible: true),
   (window: win2, eventsHandler: win2_eventsHandler, makeVisible: true),
 )
 ```
+
+Use `runMultiple` instead when an existing application depends on its continuous `onTick` cadence.
 
 <h2 align="center">client-side decorations</h2>
 

@@ -7,6 +7,7 @@ typedef struct {} *SiwinGlobals;
 typedef struct {} *Window;
 typedef struct {} *Screen;
 typedef struct {} *Clipboard;
+typedef struct {} *SiwinEventLoopWaker;
 
 
 typedef struct NimRtti {
@@ -327,6 +328,12 @@ typedef struct WindowEventHandler {
 	/* A negative timeout waits indefinitely. Returns 0 for activity, 1 for timeout. */
 	extern char siwin_wait_events(SiwinGlobals globals, int timeout_milliseconds);
 	extern void siwin_wake_event_loop(SiwinGlobals globals);
+	/* Retained independently of globals; destroy it when the worker is done.
+	 * Enqueue application data before waking. Wakes carry no data and may be
+	 * coalesced; drain the destination queue after siwin_wait_events returns. */
+	extern SiwinEventLoopWaker siwin_event_loop_waker(SiwinGlobals globals);
+	extern void siwin_event_loop_waker_wake(SiwinEventLoopWaker waker);
+	extern void siwin_destroy_event_loop_waker(SiwinEventLoopWaker waker);
 
 	extern void siwin_destroy_window(Window window);
 	extern void siwin_window_service(Window window);

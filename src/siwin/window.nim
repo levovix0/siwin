@@ -268,6 +268,11 @@ when siwin_build_lib:
   import ./colorutils
   import ./platforms/any/[clipboards]
 
+  type
+    CEventLoopWakerHandleObj = object
+      waker: EventLoopWaker
+    CEventLoopWakerHandle = ptr CEventLoopWakerHandleObj
+
   {.push, exportc, cdecl, dynlib.}
 
   proc siwin_destroy_window(window: Window) = GC_unref(window)
@@ -371,6 +376,27 @@ when siwin_build_lib:
     let timeout = initDuration(milliseconds = timeoutMilliseconds.int)
     result = (if globals.waitEvents(timeout) == eventActivity: 0 else: 1).cchar
   proc siwin_wake_event_loop(globals: SiwinGlobals) = globals.wakeEventLoop()
+
+  proc siwin_event_loop_waker(
+    globals: SiwinGlobals,
+  ): CEventLoopWakerHandle =
+    result = cast[CEventLoopWakerHandle](
+      allocShared0(sizeof(CEventLoopWakerHandleObj))
+    )
+    result.waker = globals.eventLoopWaker()
+
+  proc siwin_event_loop_waker_wake(
+    handle: CEventLoopWakerHandle,
+  ) {.gcsafe, raises: [], nodestroy.} =
+    if handle != nil:
+      handle.waker.wake()
+
+  proc siwin_destroy_event_loop_waker(
+    handle: CEventLoopWakerHandle,
+  ) =
+    if handle != nil:
+      `=destroy`(handle.waker)
+      deallocShared(handle)
 
   proc siwin_window_set_event_handler(window: Window, eventHandler: ptr WindowEventsHandler) = window.eventsHandler = eventHandler[]
 

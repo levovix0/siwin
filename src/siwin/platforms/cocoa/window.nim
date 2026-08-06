@@ -1,4 +1,4 @@
-import std/[importutils, tables, times, os, unicode, uri, sequtils, strutils, strformat, math]
+import std/[atomics, importutils, tables, times, monotimes, os, unicode, uri, sequtils, strutils, strformat, math]
 import pkg/[vmath]
 from pkg/darwin/quartz_core/calayer import CALayer
 from pkg/darwin/quartz_core/cametal_layer import CAMetalLayer
@@ -11,6 +11,21 @@ import ./[modifierstate, extras]
 {.passL: "-framework Cocoa".}
 
 privateAccess Window
+privateAccess SiwinGlobals
+privateAccess EventLoopWaker
+
+type DispatchQueue = pointer
+
+proc dispatchTime(baseTime: uint64, delta: int64): uint64
+  {.importc: "dispatch_time", header: "<dispatch/dispatch.h>".}
+proc dispatchGlobalQueue(identifier: int, flags: uint): DispatchQueue
+  {.importc: "dispatch_get_global_queue", header: "<dispatch/dispatch.h>".}
+proc dispatchAfter(
+  deadline: uint64,
+  queue: DispatchQueue,
+  context: pointer,
+  callback: proc(context: pointer) {.cdecl.},
+) {.importc: "dispatch_after_f", header: "<dispatch/dispatch.h>".}
 
 template autoreleasepool(body: untyped) =
   let pool = NSAutoreleasePool.alloc().init()
@@ -57,7 +72,8 @@ proc setBlendingMode(view: NSVisualEffectView, mode: NSVisualEffectBlendingMode)
 proc setState(view: NSVisualEffectView, state: NSVisualEffectState) {.objc: "setState:".}
 
 type
-  SiwinGlobalsCocoa* = ref object of SiwinGlobals
+  SiwinGlobalsCocoa* = ref SiwinGlobalsCocoaObj
+  SiwinGlobalsCocoaObj* = object of SiwinGlobals
 
   ScreenCocoa* = ref object of Screen
     id: int32
@@ -71,7 +87,7 @@ type
     trackingArea: NSTrackingArea
     updatingTrackingAreas: bool
     markedText: NSString
-    lastClickTime: array[MouseButton, Time]
+    lastClickTime: array[MouseButton, MonoTime]
     lastDragStatus: DragStatus
     m_canBecomeKeyWindow: bool
     m_canBecomeMainWindow: bool
@@ -92,23 +108,44 @@ type
   ClipboardCocoaDnd* = ref object of Clipboard
     activePasteboard: NSPasteboard
 
+var cocoaWakeWakers: seq[EventLoopWaker]
+
+proc `=destroy`(globals: SiwinGlobalsCocoaObj) {.siwin_destructor.} =
+  let wakeState = globals.eventLoopState
+  cast[SiwinGlobals](globals.addr).shutdownEventLoopWakeState()
+
+  var index = 0
+  while index < cocoaWakeWakers.len:
+    if cocoaWakeWakers[index].state == wakeState:
+      cocoaWakeWakers.delete(index)
+    else:
+      inc index
 
 var
   initialized: bool
   appDelegateClass, windowClass, softwareViewClass, openglViewClass, metalViewClass: ObjcClass
   windows: seq[WindowCocoa]
-  cocoaWakeWakers: seq[EventLoopWaker]
   legacyCocoaGlobals: SiwinGlobalsCocoa
+  cocoaTimeoutGeneration: Atomic[int64]
 proc init
 
 const
   wakeEventSubtype = 0x5349'i16 # "SI"
   wakeEventMarker = 0x534957494E57414B'i64 # "SIWINWAK"
+  timeoutEventMarker = 0x534957494E54494D'i64 # "SIWINTIM"
+
+type CocoaTimeoutRequest = object
+  generation: int64
 
 proc isWakeEvent(event: NSEvent): bool =
   event.kind == NSApplicationDefined and
     event.subtype == wakeEventSubtype and
     event.data1 == wakeEventMarker.NSInteger
+
+proc isTimeoutEvent(event: NSEvent): bool =
+  event.kind == NSApplicationDefined and
+    event.subtype == wakeEventSubtype and
+    event.data1 == timeoutEventMarker.NSInteger
 
 proc postWakeEvent() {.gcsafe, raises: [].} =
   if not initialized or NSApp == nil:
@@ -131,6 +168,45 @@ proc postWakeEvent() {.gcsafe, raises: [].} =
         NSApp.postEvent(event, false)
   except:
     discard
+
+proc postTimeoutEvent(data: pointer) {.cdecl, gcsafe, raises: [].} =
+  let request = cast[ptr CocoaTimeoutRequest](data)
+  let generation = request.generation
+  deallocShared(request)
+
+  if not initialized or NSApp == nil:
+    return
+
+  try:
+    autoreleasepool:
+      let event = NSEvent.applicationEventWithType(
+        NSApplicationDefined,
+        NSMakePoint(0, 0),
+        0,
+        0,
+        0,
+        nil,
+        wakeEventSubtype,
+        timeoutEventMarker.NSInteger,
+        generation.NSInteger,
+      )
+      if event != nil:
+        NSApp.postEvent(event, false)
+  except:
+    discard
+
+proc scheduleCocoaTimeout(timeout: Duration): int64 =
+  result = cocoaTimeoutGeneration.fetchAdd(1) + 1
+  let request = cast[ptr CocoaTimeoutRequest](
+    allocShared0(sizeof(CocoaTimeoutRequest))
+  )
+  request.generation = result
+  dispatchAfter(
+    dispatchTime(0, timeout.inNanoseconds),
+    dispatchGlobalQueue(0, 0),
+    request,
+    postTimeoutEvent,
+  )
 
 proc newCocoaGlobals*(): SiwinGlobalsCocoa =
   init()
@@ -1507,7 +1583,7 @@ proc init =
       window.mouse.pressed.incl button
       window.clicking.incl button
     else:
-      let nows = getTime()
+      let nows = getMonoTime()
 
       window.mouse.pressed.excl button
       if button in window.clicking:
@@ -1976,6 +2052,8 @@ proc init =
 proc sendCocoaEvent(event: NSEvent): bool =
   if event.isWakeEvent():
     consumeCocoaWake()
+  elif event.isTimeoutEvent():
+    return false
   else:
     NSApp.sendEvent(event)
   true
@@ -2010,28 +2088,28 @@ method waitEventsImpl(
     if globals.drainCocoaEvents():
       return eventActivity
 
-    let untilDate =
-      if timeout == Duration.high:
-        NSDate.distantFuture
-      elif timeout.inNanoseconds <= 0:
-        NSDate.distantPast
-      else:
-        NSDate.withTimeIntervalSinceNow(
-          timeout.inNanoseconds.float64 / 1_000_000_000.0,
-        )
-    let event = NSApp.nextEventMatchingMask(
-      NSEventMaskAny,
-      untilDate,
-      NSDefaultRunLoopMode,
-      true,
-    )
-    if event != nil:
-      discard sendCocoaEvent(event)
-      discard globals.drainCocoaEvents()
-      return eventActivity
-    if globals.drainCocoaEvents():
-      return eventActivity
-  eventTimeout
+    if timeout != Duration.high and timeout.inNanoseconds <= 0:
+      return eventTimeout
+
+    let timeoutGeneration =
+      if timeout == Duration.high: 0'i64
+      else: scheduleCocoaTimeout(timeout)
+
+    while true:
+      let event = NSApp.nextEventMatchingMask(
+        NSEventMaskAny,
+        NSDate.distantFuture,
+        NSDefaultRunLoopMode,
+        true,
+      )
+      if event == nil:
+        continue
+      if event.isTimeoutEvent() and
+          event.data2.int64 == timeoutGeneration:
+        return eventTimeout
+      if sendCocoaEvent(event):
+        discard globals.drainCocoaEvents()
+        return eventActivity
 
 method firstStep*(window: WindowCocoa, makeVisible = true) =
   if makeVisible:
@@ -2061,13 +2139,13 @@ method firstStep*(window: WindowCocoa, makeVisible = true) =
         w.handle.orderFront(cast[ID](nil))
     if window.canBecomeKeyWindow:
       window.handle.makeKeyAndOrderFront(cast[ID](nil))
-  window.lastTickTime = getTime()
+  window.lastTickTime = getMonoTime()
 
 
 method serviceWindow*(window: WindowCocoa) =
   window.refreshModifiers()
 
-  let now = getTime()
+  let now = getMonoTime()
   window.eventsHandler.pushEvent onTick, TickEvent(
     window: window,
     deltaTime: now - window.lastTickTime,

@@ -4,6 +4,8 @@ const eventLoopIntegrationSupported =
   else: false
 
 const delayedWakeMilliseconds = 500
+const shortWakeMilliseconds = 100
+const wakeRaceIterations = 200
 const serviceWindowNeedsVisibleSurface =
   when defined(linux) or defined(bsd): true
   else: false
@@ -42,11 +44,24 @@ when eventLoopIntegrationSupported:
   type DelayedWakeRequest = object
     waker: EventLoopWaker
     signaled: ptr Atomic[bool]
+    delayMilliseconds: int
 
   proc wakeAfterDelay(request: DelayedWakeRequest) {.thread.} =
-    sleep(delayedWakeMilliseconds)
+    sleep(request.delayMilliseconds)
     request.signaled[].store(true)
     request.waker.wake()
+
+  type WakeRaceRequest = object
+    waker: EventLoopWaker
+    produced: ptr Atomic[int]
+    consumed: ptr Atomic[int]
+
+  proc produceWakeRace(request: WakeRaceRequest) {.thread.} =
+    for sequence in 1..wakeRaceIterations:
+      while request.consumed[].load() != sequence - 1:
+        sleep(0)
+      request.produced[].store(sequence)
+      request.waker.wake()
 
   let globals = newSiwinGlobals()
 
@@ -74,6 +89,26 @@ when eventLoopIntegrationSupported:
     doAssert globals.waitEvents(initDuration(milliseconds = 50)) == eventActivity
     joinThread(worker)
 
+  block finite_wait_uses_a_monotonic_deadline:
+    discard globals.pollEvents()
+    let
+      started = getMonoTime()
+      target = initDuration(milliseconds = 100)
+
+    while true:
+      let remaining = target - (getMonoTime() - started)
+      let result = globals.waitEvents(
+        if remaining.inNanoseconds > 0: remaining else: initDuration()
+      )
+      if result == eventTimeout:
+        break
+
+    let elapsed = getMonoTime() - started
+    doAssert elapsed >= initDuration(milliseconds = 80),
+      "the finite event wait returned before its monotonic deadline"
+    doAssert elapsed < initDuration(seconds = 2),
+      "the finite event wait did not return near its deadline"
+
   block idle_wait_blocks_without_busy_spinning:
     discard globals.pollEvents()
 
@@ -90,6 +125,7 @@ when eventLoopIntegrationSupported:
       DelayedWakeRequest(
         waker: globals.eventLoopWaker(),
         signaled: signaled.addr,
+        delayMilliseconds: delayedWakeMilliseconds,
       ),
     )
 
@@ -114,6 +150,38 @@ when eventLoopIntegrationSupported:
     doAssert cpuSeconds < 0.2,
       "the idle wait may be polling: " & $cpuSeconds & " CPU seconds over " &
         $wallSeconds & " wall seconds"
+
+  block repeated_queue_before_wake_races_lose_no_wakeups:
+    discard globals.pollEvents()
+
+    var produced, consumed: Atomic[int]
+    produced.store(0)
+    consumed.store(0)
+
+    var worker: Thread[WakeRaceRequest]
+    let raceWaker = globals.eventLoopWaker()
+    createThread(
+      worker,
+      produceWakeRace,
+      WakeRaceRequest(
+        waker: raceWaker,
+        produced: produced.addr,
+        consumed: consumed.addr,
+      ),
+    )
+
+    while consumed.load() < wakeRaceIterations:
+      while produced.load() <= consumed.load():
+        doAssert globals.waitEvents(initDuration(seconds = 2)) == eventActivity,
+          "an enqueued producer wake was lost (produced=" & $produced.load() &
+            ", consumed=" & $consumed.load() & ")"
+
+      # This atomic counter stands in for draining an application queue. The
+      # producer publishes it before waking and waits for the drain before the
+      # next iteration, repeatedly exercising the wait boundary race.
+      consumed.store(produced.load())
+
+    joinThread(worker)
 
   block copied_waker_is_harmless_after_shutdown:
     var temporaryGlobals = newSiwinGlobals()
@@ -149,6 +217,36 @@ when eventLoopIntegrationSupported:
     doAssert ticks == 1
     doAssert renders == 1
 
+    block worker_wake_schedules_redraw:
+      ticks = 0
+      renders = 0
+
+      var redrawQueued: Atomic[bool]
+      redrawQueued.store(false)
+      var worker: Thread[DelayedWakeRequest]
+      createThread(
+        worker,
+        wakeAfterDelay,
+        DelayedWakeRequest(
+          waker: globals.eventLoopWaker(),
+          signaled: redrawQueued.addr,
+          delayMilliseconds: shortWakeMilliseconds,
+        ),
+      )
+
+      while not redrawQueued.load():
+        doAssert globals.waitEvents(initDuration(seconds = 2)) == eventActivity,
+          "the redraw request did not wake the application loop"
+
+      # Drain the simulated destination queue before servicing the window.
+      redrawQueued.store(false)
+      window.redraw()
+      window.serviceWindow()
+      joinThread(worker)
+
+      doAssert ticks == 1
+      doAssert renders == 1
+
     ticks = 0
     renders = 0
     window.redraw()
@@ -156,3 +254,61 @@ when eventLoopIntegrationSupported:
 
     doAssert ticks == 1
     doAssert renders == 1
+
+  block event_driven_runner_services_every_window_after_one_wait:
+    var wakeQueued: Atomic[bool]
+    wakeQueued.store(false)
+    var worker: Thread[DelayedWakeRequest]
+    createThread(
+      worker,
+      wakeAfterDelay,
+      DelayedWakeRequest(
+        waker: globals.eventLoopWaker(),
+        signaled: wakeQueued.addr,
+        delayMilliseconds: shortWakeMilliseconds,
+      ),
+    )
+
+    var ticks = [0, 0]
+    var rendersAfterWake = [0, 0]
+    let
+      firstWindow = globals.newSoftwareRenderingWindow(
+        size = ivec2(32, 32),
+        title = "Siwin event loop multi-window test 1",
+      )
+      secondWindow = globals.newSoftwareRenderingWindow(
+        size = ivec2(32, 32),
+        title = "Siwin event loop multi-window test 2",
+      )
+
+    proc handler(index: int): WindowEventsHandler =
+      WindowEventsHandler(
+        onTick: proc(event: TickEvent) =
+          inc ticks[index]
+          if wakeQueued.load():
+            event.window.redraw()
+        ,
+        onRender: proc(event: RenderEvent) =
+          if wakeQueued.load():
+            inc rendersAfterWake[index]
+            event.window.close()
+        ,
+      )
+
+    globals.runMultipleEventDriven(
+      (
+        window: firstWindow,
+        eventsHandler: handler(0),
+        makeVisible: serviceWindowNeedsVisibleSurface,
+      ),
+      (
+        window: secondWindow,
+        eventsHandler: handler(1),
+        makeVisible: serviceWindowNeedsVisibleSurface,
+      ),
+    )
+    joinThread(worker)
+
+    doAssert ticks[0] >= 2
+    doAssert ticks[1] >= 2
+    doAssert rendersAfterWake == [1, 1]

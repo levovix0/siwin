@@ -70,7 +70,7 @@ type
     syncState: SyncState
     lastSync: XSyncValue
 
-    lastClickTime: Time
+    lastClickTime: MonoTime
     doubleClickHandled: bool
 
     temporaryCursor: Option[BuiltinCursor]
@@ -1215,7 +1215,7 @@ method firstStep*(window: WindowX11, makeVisible = true) =
   if window of WindowX11SoftwareRendering:
     window.WindowX11SoftwareRendering.resizePixelBuffer(window.m_size)
   window.eventsHandler.onResize.pushEvent ResizeEvent(window: window, size: window.m_size, initial: true)
-  window.lastTickTime = getTime()
+  window.lastTickTime = getMonoTime()
 
 
 proc dispatchWindowEvent(
@@ -1401,7 +1401,7 @@ proc dispatchWindowEvent(
 
     of ButtonPress:
       if not isScroll:
-        let nows = getTime()
+        let nows = getMonoTime()
         window.mouse.pressed.incl button
         window.clicking.incl button
 
@@ -1431,7 +1431,7 @@ proc dispatchWindowEvent(
         window.onInteractiveResizeOrMoveFinished()
 
       if not isScroll:
-        let nows = getTime()
+        let nows = getMonoTime()
         window.mouse.pressed.excl button
 
         if button in window.clicking:
@@ -1648,7 +1648,7 @@ proc dispatchWindowEvent(
 method serviceWindow*(window: WindowX11) =
   if window.closed:
     return
-  let nows = getTime()
+  let nows = getMonoTime()
   window.eventsHandler.onTick.pushEvent TickEvent(window: window, deltaTime: nows - window.lastTickTime)
   window.lastTickTime = nows
 

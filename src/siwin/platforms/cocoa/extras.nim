@@ -16,6 +16,9 @@ when not declared(applicationEventWithType):
 when not declared(data1):
   proc data1*(self: NSEvent): NSInteger {.objc: "data1".}
 
+when not declared(data2):
+  proc data2*(self: NSEvent): NSInteger {.objc: "data2".}
+
 when not declared(subtype):
   proc subtype*(self: NSEvent): int16 {.objc: "subtype".}
 
