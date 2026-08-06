@@ -3,8 +3,8 @@
 ## DPI / Coordinate Consistency
 - [x] Cocoa: convert mouse move/click coordinates from points to backing pixels and expose `window.uiScale`.
 - [ ] Winapi: apply per-window DPI scaling to mouse move/click coordinates so `MouseMoveEvent`/`ClickEvent` stay in physical pixel space (`window.size`/pixel buffer space).
-- [ ] Wayland: apply surface/output scale (including fractional scale support when available) to mouse move/click coordinates so input coordinates match physical pixel size.
-- [ ] X11: define and implement DPI-scaling policy for mouse move/click coordinates (for example using `Xft.dpi`) so coordinates are consistent with the physical-pixel model.
+- [x] Wayland: apply surface/output scale (including fractional scale support when available) to mouse move/click coordinates so input coordinates match physical pixel size.
+- [x] X11: keep native X11 window and pointer coordinates in physical pixels while exposing `Xft.dpi` through `window.uiScale`.
 
 ## Event-Driven Application Loop
 
@@ -96,7 +96,7 @@
 - [ ] Implement custom image cursor support on Cocoa.
 - [x] Replace deprecated activation calls (`activateIgnoringOtherApps`) with the current AppKit approach.
 - [x] Revisit `WindowCocoaMetal` implementation so it uses a true Metal-backed view/path instead of `NSOpenGLView`.
-- [ ] Add macOS branches in top-level window/screen wrappers where missing (for example `screenCount`/`screen`/`defaultScreen` in `src/siwin/window.nim`).
+- [x] Add macOS branches in top-level window/screen wrappers where missing (for example `screenCount`/`screen`/`defaultScreen` in `src/siwin/window.nim`).
 
 ## IME / Text Input
 - [ ] Add a cross-platform API for enabling/disabling text input mode (similar to `runeInputEnabled` semantics).
