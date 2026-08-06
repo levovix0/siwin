@@ -138,6 +138,10 @@ proc drainWaylandWake(globals: SiwinGlobalsWayland): bool =
     globals.consumeEventLoopWake()
 
 proc waitTimeoutMilliseconds(timeout: Duration): cint =
+  ## Converts `timeout` to `poll`'s millisecond representation.
+  ##
+  ## Infinite waits map to `-1`, positive fractional milliseconds round up to
+  ## avoid early timeouts, and oversized finite waits clamp to `cint.high`.
   if timeout == Duration.high:
     return -1
   let nanoseconds = timeout.inNanoseconds
@@ -298,7 +302,7 @@ proc newWaylandGlobals*(): SiwinGlobalsWayland =
     closeWaylandWake(result.wake)
     result.wake = nil
     raise
-  result.installOwnedEventLoopWakeProc(signalWaylandWake, result.wake, closeWaylandWake)
+  result.installEventLoopWakeProc(signalWaylandWake, result.wake, closeWaylandWake)
 
   result.interfaces.initInterfaces()
 

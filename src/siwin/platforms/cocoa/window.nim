@@ -147,7 +147,7 @@ proc isTimeoutEvent(event: NSEvent): bool =
     event.subtype == wakeEventSubtype and
     event.data1 == timeoutEventMarker.NSInteger
 
-proc postWakeEvent() {.gcsafe, raises: [].} =
+proc postWakeEvent(_: pointer) {.gcsafe, raises: [].} =
   if not initialized or NSApp == nil:
     return
 

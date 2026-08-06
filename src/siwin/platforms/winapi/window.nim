@@ -58,7 +58,7 @@ proc newWinapiGlobals*(): SiwinGlobalsWinapi =
     raiseOSError(osLastError())
 
   result = SiwinGlobalsWinapi(wakeEvent: wakeEvent)
-  result.installOwnedEventLoopWakeProc(
+  result.installEventLoopWakeProc(
     signalWinapiWake,
     cast[pointer](wakeEvent),
     closeWinapiWake,
@@ -676,6 +676,11 @@ proc dispatchPendingWinapiMessages(): bool =
       DispatchMessage(msg.addr)
 
 proc waitTimeoutMilliseconds(timeout: Duration): DWord =
+  ## Converts `timeout` to WinAPI's millisecond representation.
+  ##
+  ## Infinite waits map to `Infinite`, positive fractional milliseconds round
+  ## up to avoid early timeouts, and oversized finite waits clamp below the
+  ## value reserved for `Infinite`.
   if timeout == Duration.high:
     return Infinite
 

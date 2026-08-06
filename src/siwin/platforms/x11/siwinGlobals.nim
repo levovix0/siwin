@@ -73,6 +73,10 @@ proc drainX11Wake*(globals: SiwinGlobalsX11): bool =
   if result: globals.consumeEventLoopWake()
 
 proc waitTimeoutMilliseconds*(timeout: Duration): cint =
+  ## Converts `timeout` to `poll`'s millisecond representation.
+  ##
+  ## Infinite waits map to `-1`, positive fractional milliseconds round up to
+  ## avoid early timeouts, and oversized finite waits clamp to `cint.high`.
   if timeout == Duration.high: return -1
   let ns = timeout.inNanoseconds
   if ns <= 0: return 0
@@ -98,7 +102,7 @@ proc newX11Globals*: SiwinGlobalsX11 {.raises: [OsError].} =
     closeX11Wake(result.wake)
     result.wake = nil
     raise
-  result.installOwnedEventLoopWakeProc(signalX11Wake, result.wake, closeX11Wake)
+  result.installEventLoopWakeProc(signalX11Wake, result.wake, closeX11Wake)
   
   result.wmForFramelessKind =
     if (result.atoms.frameless = result.display.XInternAtom("_MOTIF_WM_HINTS", 1); result.atoms.frameless != 0):
