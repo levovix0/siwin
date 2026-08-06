@@ -16,23 +16,46 @@ Can be used as an alternative to GLFW/GLUT/windy
 * works on: Linux(X11 and Wayland), Windows, MacOS
 * handles events from: mouse, keyboard
 * and also supports: clipboard, offscreen rendering, interactive move/resize, etc.
+* can block efficiently for native input, animation deadlines, or cross-thread work
 
 <h2 align="center">Examples</h2>
 
 ## simple window
 
+Create a window with continous event polling:
+
 ```nim
 import siwin, opengl
 
-let win = newOpenglWindow()
+let window = newOpenglWindow()
 opengl.loadExtensions()  # load opengl functions
 
-win.eventsHandler.onRender = proc(e: RenderEvent) =
+window.eventsHandler.onRender = proc(e: RenderEvent) =
   glClearColor(0.1, 0.1, 0.1, 1)
   glClear(GlColorBufferBit or GlDepthBufferBit)
 
-run win
+run window
 ```
+
+## event loop window
+
+Run an application with a more efficient blocking event loop:
+
+```nim
+import siwin, opengl
+
+let globals = newSiwinGlobals()
+let window = globals.newOpenglWindow()
+opengl.loadExtensions()  # load opengl functions
+
+window.eventsHandler.onRender = proc(e: RenderEvent) =
+  glClearColor(0.1, 0.1, 0.1, 1)
+  glClear(GlColorBufferBit or GlDepthBufferBit)
+
+globals.runEventDriven(window)
+```
+
+This approach handles many windows with a shared event loop.
 
 ## software-rendering window
 ```nim
@@ -241,21 +264,87 @@ loadExtensions()
 <h2 align="center">manual main cycle</h2>
 
 ```nim
-import siwin
+import std/times
+import siwin, opengl
 
-let siwinGlobals = newSiwinGlobals()
-let window = siwinGlobals.newOenglWindow()
-loadExtensions()
+let globals = newSiwinGlobals()
+let window = globals.newOpenglWindow()
+opengl.loadExtensions()
 
-let eventsHandler = WindowEventsHandler(
-  # ...
+var elapsed = initDuration()
+window.eventsHandler = WindowEventsHandler(
+  onTick: proc(event: TickEvent) =
+    elapsed += event.deltaTime
+    event.window.redraw()
+  ,
+  onRender: proc(event: RenderEvent) =
+    let brightness = (elapsed.inMilliseconds mod 1000).float32 / 1000
+    glClearColor(brightness, brightness, brightness, 1)
+    glClear(GlColorBufferBit or GlDepthBufferBit)
 )
 
-window.firstStep(eventsHandler, makeVisible=true)
+window.firstStep(makeVisible = true)
 while window.opened:
-  window.step(eventsHandler)
-
+  window.step()
 ```
+
+<h2 align="center">manual event loop cycle</h2>
+
+The blocking event loop approach is recommended when apps don't need continuous `onTick` events. Wake events can be added for short lived animations or other needs. This can significantly reduce CPU usage over the polling approach.
+
+Switch applications from `run` to `runEvenDrive` which waits once for native input or an explicit wake event and then services every window. This means `onTick` callbacks and others will only be called on wake events or when there's new events.
+
+```nim
+import siwin
+
+let globals = newSiwinGlobals()
+let window = globals.newSoftwareRenderingWindow(title = "Siwin event loop")
+
+window.eventsHandler = WindowEventsHandler(
+  onKey: proc(event: KeyEvent) =
+    if not event.pressed and event.key == Key.escape:
+      event.window.close()
+)
+
+globals.runEventDriven(window)
+```
+
+`runEventDriven` is a convenience runner built from lower-level event-loop APIs. Use them directly when integrating Siwin with another event loop, scheduler, or application queue:
+
+* `globals.pollEvents()` dispatches available native events and returns immediately.
+* `globals.waitEvents()` waits for native input or an explicit application wakeup.
+* `globals.waitEvents(timeout)` also accepts a deadline and returns `eventActivity`
+  or `eventTimeout`.
+* `window.serviceWindow()` performs one nonblocking tick, render, and presentation
+  pass after the application has handled the dispatched work.
+
+Applications that need to drain another event loop or queue can own the wait directly. Install one copied `EventLoopWaker` on each application-thread destination queue instead of sharing all of `SiwinGlobals`. Every producer must enqueue its message before waking the application thread:
+
+The queue names below are illustrative; use the queue owned by your runtime:
+
+```nim
+let waker = globals.eventLoopWaker()
+
+# On a producer thread:
+destinationQueue.send(message)
+waker.wake()
+
+# On the application thread, after waitEvents returns:
+destinationQueue.drain()
+```
+
+Wakeups carry no data and may be coalesced, so the destination queue remains the source of truth. Drain every relevant queue after each `waitEvents` return, then call `serviceWindow` for every open window. A copied waker is safe to retain and becomes harmless after its event loop shuts down.
+
+The C ABI provides the same lifetime model through the independently retained opaque `SiwinEventLoopWaker` handle. Create it with `siwin_event_loop_waker`, wake it from a producer with `siwin_event_loop_waker_wake`, and release it with `siwin_destroy_event_loop_waker`; the handle does not require the producer to retain `SiwinGlobals`.
+
+For animation, pass the next real deadline instead of scheduling an unconditional 16 ms wake:
+
+```nim
+discard globals.waitEvents(timeUntilNextAnimation)
+window.serviceWindow()
+```
+
+See [text_input_demo.nim](examples/text_input_demo.nim) for a complete loop that combines native input, cursor blinking, and scroll-decay deadlines.
 
 <h2 align="center">running multiple windows</h2>
 
@@ -288,6 +377,15 @@ let win2_eventsHandler = WindowEventsHandler(
 )
 
 runMultiple(
+  (window: win1, eventsHandler: win1_eventsHandler, makeVisible: true),
+  (window: win2, eventsHandler: win2_eventsHandler, makeVisible: true),
+)
+```
+
+Use `runMultipleEventDriven` instead when the application doesn't need continous `onTick` events and can use the more efficient blocking call:
+
+```nim
+siwinGlobals.runMultipleEventDriven(
   (window: win1, eventsHandler: win1_eventsHandler, makeVisible: true),
   (window: win2, eventsHandler: win2_eventsHandler, makeVisible: true),
 )

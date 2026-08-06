@@ -3,8 +3,67 @@
 ## DPI / Coordinate Consistency
 - [x] Cocoa: convert mouse move/click coordinates from points to backing pixels and expose `window.uiScale`.
 - [ ] Winapi: apply per-window DPI scaling to mouse move/click coordinates so `MouseMoveEvent`/`ClickEvent` stay in physical pixel space (`window.size`/pixel buffer space).
-- [ ] Wayland: apply surface/output scale (including fractional scale support when available) to mouse move/click coordinates so input coordinates match physical pixel size.
-- [ ] X11: define and implement DPI-scaling policy for mouse move/click coordinates (for example using `Xft.dpi`) so coordinates are consistent with the physical-pixel model.
+- [x] Wayland: apply surface/output scale (including fractional scale support when available) to mouse move/click coordinates so input coordinates match physical pixel size.
+- [x] X11: keep native X11 window and pointer coordinates in physical pixels while exposing `Xft.dpi` through `window.uiScale`.
+
+## Event-Driven Application Loop
+
+- [x] Define `pollEvents` and `waitEvents` as application-thread-only operations that synchronously dispatch pending native callbacks from the platform application queue.
+- [x] Define `EventLoopWaker` as a narrow, opaque, copyable capability so worker threads do not need to retain or access the complete `SiwinGlobals` object.
+- [x] Define `EventLoopWaker.wake` as thread-safe, data-free notification: producers must enqueue their work first and then wake the loop; wakeups may be coalesced.
+- [x] Keep `wakeEventLoop(globals)` as a convenience wrapper around `globals.eventLoopWaker().wake()` for callers already on or otherwise holding the globals owner.
+- [x] Define waker lifetime and shutdown semantics explicitly, including what happens when a copied waker outlives its `SiwinGlobals`; waking a stopped/destroyed loop must be harmless and must not access a closed OS handle.
+- [x] Document the integration pattern for other event loops or queues: install one waker on the application-thread destination queue, enqueue each message before calling `wake`, then drain that queue after `waitEvents` returns.
+- [x] Support animation scheduling either by having a timer or queue producer enqueue a tick and wake the loop, or by passing the next animation deadline to timed `waitEvents`; `examples/text_input_demo.nim` demonstrates the deadline-based form and individual animations do not register with Siwin.
+- [x] Keep arbitrary external FD/source registration outside this initial API; enqueue-plus-wake is sufficient for renderer completions, image loading, animation schedulers, and other application queues.
+- [x] Make `serviceWindow` nonblocking and responsible only for per-window tick, redraw/render, buffer swap, and presentation work on Cocoa, Winapi, X11, and Wayland.
+- [x] Preserve the existing source and C ABI: keep no-argument `Window.step()` and `siwin_window_step` behavior available as compatibility wrappers while embedders opt into `pollEvents`/`waitEvents` plus `serviceWindow`.
+- [x] Do not add a wake callback to `WindowEventsHandler`, because wakeup is application-loop control rather than a window event and changing the handler layout could break ABI consumers.
+- [x] Add corresponding additive C ABI functions: `siwin_poll_events`, `siwin_wait_events`, `siwin_wake_event_loop`, and `siwin_window_service`.
+- [x] Give non-Nim consumers an independently retained opaque `SiwinEventLoopWaker` handle so producer threads need not retain `SiwinGlobals`; waking it after globals shutdown is harmless.
+- [x] Add `runEventDriven` and `runMultipleEventDriven`, which wait once and then service every window; keep `run` and `runMultiple` unchanged so their continuous `onTick` behavior remains compatible.
+- [x] Support an infinite idle wait and immediate/nonblocking `pollEvents` and zero-timeout paths.
+- [x] Ensure every backend's finite wait and internal scheduling deadlines remain monotonic across wall-clock changes.
+- [x] Add cross-platform tests for idle blocking/CPU use, zero timeout, copied cross-thread wakers, shutdown safety, wakeup coalescing, nonblocking window service, and existing `step()` compatibility.
+- [x] Exercise the X11 wait path under Xvfb and the Wayland wait path under headless Weston in Linux CI.
+- [x] Extend global-loop coverage to multiple windows, redraw scheduled by a worker wake, and repeated producer/consumer races that stress no-lost-wake behavior.
+
+### Cocoa (macOS)
+
+- [x] Move the application-global `NSApp` event draining out of `WindowCocoa.step`; the compatibility wrapper now delegates to the global pump before servicing its window.
+- [x] Implement `pollEvents` by draining immediately available events in default, event-tracking/live-resize, and modal-panel run-loop modes.
+- [x] Implement `waitEvents` with `nextEventMatchingMask`, using `distantFuture` plus a monotonic dispatch-timer sentinel for finite waits, then drain immediately available events before returning.
+- [x] Implement `wakeEventLoop` by posting a coalesced application-defined `NSEvent`, which AppKit permits from a secondary thread.
+- [x] Recognize and consume the Siwin wake sentinel without forwarding it to a window or invoking a `WindowEventsHandler` callback; clear the coalescing flag before the application drains its work queues.
+- [x] Keep all AppKit dispatch and window callbacks on the application thread.
+
+### X11
+
+- [x] Wait with `poll()` on both `ConnectionNumber(display)` and a self-pipe owned by `SiwinGlobalsX11`.
+- [x] Implement `wakeEventLoop` by signaling only the wake FD; do not call Xlib from the producer thread or require `XInitThreads`.
+- [x] Add a window registry to `SiwinGlobalsX11` mapping X11 window IDs to `WindowX11` objects.
+- [x] Replace the current per-window `XCheckIfEvent` loop with direct global `XPending`/`XNextEvent` dispatch that routes each event through the registry while preserving key-repeat lookahead, clipboard, drag-and-drop, and sync-request behavior.
+- [x] Drain/reset the wake FD without losing a wake that races with event dispatch.
+- [x] Flush X11 output at the appropriate global/per-window boundaries without introducing a blocking `XNextEvent` call after the readiness check.
+
+### Wayland
+
+- [x] Wait with `poll()` on `wl_display_get_fd()` and a self-pipe owned by `SiwinGlobalsWayland`.
+- [x] Add bindings for `wl_display_prepare_read`, `wl_display_read_events`, and `wl_display_cancel_read`.
+- [x] Implement the required race-free sequence: dispatch pending events until `prepare_read` succeeds, flush, poll, call `read_events` when the display is readable or `cancel_read` when another source wakes the loop, then dispatch pending events.
+- [x] Replace the per-window `wl_display_roundtrip()` in `WindowWayland.step` with the application-global event pump; retain roundtrips only where synchronous initialization/configuration genuinely requires them.
+- [x] Continue routing callbacks through the existing `SiwinGlobalsWayland.associatedWindows` and Wayland proxy state.
+- [x] Include keyboard-repeat deadlines in the next wait timeout so held keys continue repeating without idle polling.
+- [x] Verify that libdecor dispatch and flushing are integrated with the same display wait without adding a second polling loop.
+
+### Windows (Winapi)
+
+- [x] Store the application thread/event-loop state in a Winapi-specific `SiwinGlobals`, including an auto-reset Win32 event used for cross-thread wakeups.
+- [x] Implement `waitEvents` with `MsgWaitForMultipleObjectsEx`, monitoring both the wake handle and the thread message queue with `QS_ALLINPUT` and `MWMO_INPUTAVAILABLE`.
+- [x] Implement `wakeEventLoop` with `SetEvent`; signaling before the wait remains observable and repeated signals may be coalesced.
+- [x] Move the global `PeekMessage`/`TranslateMessage`/`DispatchMessage` loop out of `WindowWinapi.step` and remove its idle `sleep(1)` path.
+- [x] Let normal Win32 dispatch continue routing messages to the correct `HWND` window procedure, while `serviceWindow` handles only per-window tick/render/presentation work.
+- [x] Map finite `Duration` values safely to the millisecond timeout accepted by `MsgWaitForMultipleObjectsEx`, including zero and infinite waits.
 
 ## Wayland
 - [x] Make `KeyEvent.modifiers` reflect effective xkb modifier state (including remaps like Caps-as-Ctrl), not only raw pressed key symbols.
@@ -37,7 +96,7 @@
 - [ ] Implement custom image cursor support on Cocoa.
 - [x] Replace deprecated activation calls (`activateIgnoringOtherApps`) with the current AppKit approach.
 - [x] Revisit `WindowCocoaMetal` implementation so it uses a true Metal-backed view/path instead of `NSOpenGLView`.
-- [ ] Add macOS branches in top-level window/screen wrappers where missing (for example `screenCount`/`screen`/`defaultScreen` in `src/siwin/window.nim`).
+- [x] Add macOS branches in top-level window/screen wrappers where missing (for example `screenCount`/`screen`/`defaultScreen` in `src/siwin/window.nim`).
 
 ## IME / Text Input
 - [ ] Add a cross-platform API for enabling/disabling text input mode (similar to `runeInputEnabled` semantics).

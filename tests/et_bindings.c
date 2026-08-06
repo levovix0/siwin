@@ -35,6 +35,13 @@ int main(int argc, char *argv[]) {
 
   Platform platform = siwin_default_platform();
   SiwinGlobals globals = siwin_new_globals(platform);
+  SiwinEventLoopWaker waker = siwin_event_loop_waker(globals);
+
+  /* A retained waker can be handed to a producer without sharing globals. */
+  siwin_event_loop_waker_wake(waker);
+  if (siwin_wait_events(globals, 0) != 0) {
+    return 1;
+  }
 
   Window win = siwin_new_software_rendering_window(
 		globals,
@@ -55,5 +62,8 @@ int main(int argc, char *argv[]) {
 	siwin_destroy_window(win);
 
 	siwin_destroy_globals(globals);
+  /* Retaining the waker past loop shutdown is safe; waking becomes a no-op. */
+  siwin_event_loop_waker_wake(waker);
+  siwin_destroy_event_loop_waker(waker);
   return 0;
 }

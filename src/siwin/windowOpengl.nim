@@ -65,10 +65,13 @@ when not siwin_use_lib:
         raise SiwinPlatformSupportDefect.newException("Unsupported platform")
 
     elif defined(windows):
-      newOpenglWindowWinapi(
+      if not (globals of SiwinGlobalsWinapi):
+        raise SiwinPlatformSupportDefect.newException("Unsupported platform")
+      result = newOpenglWindowWinapi(
         size, title,
         (if screen == -1: defaultScreenWinapi() else: screenWinapi(screen)),
-        resizable, fullscreen, frameless, transparent, vsync
+        resizable, fullscreen, frameless, transparent, vsync,
+        globals = globals.SiwinGlobalsWinapi,
       )
 
     elif defined(macosx):

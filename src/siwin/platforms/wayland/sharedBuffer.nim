@@ -1,4 +1,4 @@
-import std/[memfiles, os, oserrors, times, sequtils]
+import std/[memfiles, os, oserrors, times, monotimes, sequtils]
 import std/posix
 import pkg/[vmath]
 import ../../[siwindefs]
@@ -92,10 +92,10 @@ proc swapBuffers*(
 
   # if unlocked buffer was not found, wait up to timeout while trying again
   if stable.buffers[stable.currentBuffer].locked:
-    let deadline = now() + timeout
+    let deadline = getMonoTime() + timeout
     
     block waiting_for_unlocked_buffer:
-      while now() < deadline:
+      while getMonoTime() < deadline:
         if stable.buffers.len == 0 or stable.buffers.allIt(it.buffer.proxy.raw == nil):
           return
 
@@ -213,8 +213,8 @@ proc resize*(buffer: var SharedBuffer, size: IVec2, timeout: Duration = initDura
   buffer.size = size
   let newSizeInBytes = size.x * size.y * buffer.bytesPerPixel * buffer.buffers.len.int32
 
-  let deadline = now() + timeout
-  while now() < deadline and buffer.buffers.anyIt(it.locked):
+  let deadline = getMonoTime() + timeout
+  while getMonoTime() < deadline and buffer.buffers.anyIt(it.locked):
     discard wl_display_roundtrip buffer.globals.display
 
   if newSizeInBytes > buffer.file.size:

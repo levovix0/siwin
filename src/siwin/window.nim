@@ -1,5 +1,7 @@
 import vmath
 import ./[siwindefs]
+when siwin_build_lib:
+  import std/times
 import ./platforms
 import ./platforms/any/[window as anyWindow]
 
@@ -108,10 +110,13 @@ when not siwin_use_lib:
         raise SiwinPlatformSupportDefect.newException("Unsupported platform")
 
     elif defined(windows):
-      newSoftwareRenderingWindowWinapi(
+      if not (globals of SiwinGlobalsWinapi):
+        raise SiwinPlatformSupportDefect.newException("Unsupported platform")
+      result = newSoftwareRenderingWindowWinapi(
         size, title,
         (if screen == -1: defaultScreenWinapi() else: screenWinapi(screen)),
-        resizable, fullscreen, frameless, transparent
+        resizable, fullscreen, frameless, transparent,
+        globals = globals.SiwinGlobalsWinapi,
       )
     
     elif defined(macosx):
@@ -263,6 +268,11 @@ when siwin_build_lib:
   import ./colorutils
   import ./platforms/any/[clipboards]
 
+  type
+    CEventLoopWakerHandleObj = object
+      waker: EventLoopWaker
+    CEventLoopWakerHandle = ptr CEventLoopWakerHandleObj
+
   {.push, exportc, cdecl, dynlib.}
 
   proc siwin_destroy_window(window: Window) = GC_unref(window)
@@ -355,7 +365,38 @@ when siwin_build_lib:
   proc siwin_window_set_drag_status(window: Window, v: DragStatus) = window.dragStatus = v
   proc siwin_window_first_step(window: Window, makeVisible: cchar) = window.firstStep(makeVisible.bool)
   proc siwin_window_step(window: Window) = window.step()
+  proc siwin_window_service(window: Window) = window.serviceWindow()
   proc siwin_window_run(window: Window, makeVisible: cchar) = window.run(makeVisible.bool)
+
+  proc siwin_poll_events(globals: SiwinGlobals): cchar = globals.pollEvents().cchar
+  proc siwin_wait_events(globals: SiwinGlobals, timeoutMilliseconds: cint): cchar =
+    if timeoutMilliseconds < 0:
+      globals.waitEvents()
+      return 0.cchar
+    let timeout = initDuration(milliseconds = timeoutMilliseconds.int)
+    result = (if globals.waitEvents(timeout) == eventActivity: 0 else: 1).cchar
+  proc siwin_wake_event_loop(globals: SiwinGlobals) = globals.wakeEventLoop()
+
+  proc siwin_event_loop_waker(
+    globals: SiwinGlobals,
+  ): CEventLoopWakerHandle =
+    result = cast[CEventLoopWakerHandle](
+      allocShared0(sizeof(CEventLoopWakerHandleObj))
+    )
+    result.waker = globals.eventLoopWaker()
+
+  proc siwin_event_loop_waker_wake(
+    handle: CEventLoopWakerHandle,
+  ) {.gcsafe, raises: [], nodestroy.} =
+    if handle != nil:
+      handle.waker.wake()
+
+  proc siwin_destroy_event_loop_waker(
+    handle: CEventLoopWakerHandle,
+  ) =
+    if handle != nil:
+      `=destroy`(handle.waker)
+      deallocShared(handle)
 
   proc siwin_window_set_event_handler(window: Window, eventHandler: ptr WindowEventsHandler) = window.eventsHandler = eventHandler[]
 

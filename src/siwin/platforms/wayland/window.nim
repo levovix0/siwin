@@ -1,4 +1,4 @@
-import std/[times, importutils, strformat, options, tables, os, uri, sequtils, strutils, math]
+import std/[times, monotimes, importutils, strformat, options, tables, os, uri, sequtils, strutils, math]
 from std/posix import pipe, close, write, read
 import pkg/[vmath]
 import ../../[colorutils, siwindefs]
@@ -99,8 +99,8 @@ type
     lastPressedRawKeycode: uint32
     lastPressedRawKeyDown: bool
     lastTextEntered: string
-    lastPressedKeyTime: Time
-    lastKeyRepeatedTime: Time
+    lastPressedKeyTime: MonoTime
+    lastKeyRepeatedTime: MonoTime
     initialConfigureReceived: bool
     bufferScaleFactor: int32
     fractionalScaleFactor: float32
@@ -362,6 +362,10 @@ method release(window: WindowWayland) {.base, raises: [].} =
   if window == nil or window.releasing:
     return
   window.releasing = true
+
+  if window.globals != nil and window.globals.repeatWakeWindow == window:
+    window.globals.repeatWakeDeadline = MonoTime.default
+    window.globals.repeatWakeWindow = nil
 
   if window.surface != nil:
     if window.globals.associatedWindows_queueRemove_insteadOf_removingInstantly:
@@ -1379,7 +1383,7 @@ proc initSeatEvents*(globals: SiwinGlobalsWayland) =
         )
         window.lastPressedKey = siwinKey
         window.lastTextEntered = ""
-        window.lastPressedKeyTime = getTime()
+        window.lastPressedKeyTime = getMonoTime()
 
 
     globals.seat_keyboard.onLeave:
@@ -1400,7 +1404,7 @@ proc initSeatEvents*(globals: SiwinGlobalsWayland) =
       if pressed:
         window.lastPressedRawKeycode = key
         window.lastPressedRawKeyDown = true
-        window.lastPressedKeyTime = getTime()
+        window.lastPressedKeyTime = getMonoTime()
         window.lastTextEntered = ""
       elif key == window.lastPressedRawKeycode:
         window.lastPressedRawKeyDown = false
@@ -2110,7 +2114,7 @@ method content*(
   clipboard.globals.current_dnd_data_offer.receive(mimeType.cstring, fds[1])
   discard close fds[1]
 
-  wl_display_flush clipboard.globals.display
+  discard wl_display_flush clipboard.globals.display
 
   var data: string
   var cbuffer: array[1024, char]
@@ -2204,13 +2208,12 @@ method firstStep*(window: WindowWayland, makeVisible = true) =
   window.configureSurface()
 
   if window.opened: window.eventsHandler.onResize.pushEvent ResizeEvent(window: window, size: window.size, initial: true)
-  window.lastTickTime = getTime()
+  window.lastTickTime = getMonoTime()
   redraw window
 
 
-method step*(window: WindowWayland) =
-  ## make window main loop step
-  ## ! don't forget to call firstStep()
+method serviceWindow*(window: WindowWayland) =
+  ## Run one nonblocking per-window tick and presentation pass.
 
   template closeIfNeeded =
     if window.m_closed:
@@ -2220,31 +2223,20 @@ method step*(window: WindowWayland) =
 
   closeIfNeeded()
 
-  if window.globals.libdecorCtx != nil:
-    discard libdecor_dispatch(window.globals.libdecorCtx, 0)
-
-  let eventCount = wl_display_roundtrip(window.globals.display)
-  if eventCount < 0:
-    raise newException(RoundtripFailed, "wl_display_roundtrip() returned " & $eventCount)
-
-  closeIfNeeded()
-  if eventCount <= 2:  # seems like idle event count is 2
-    sleep(1)
-
   # repeat keys if needed
   if (
     window.globals.seat_keyboard_repeatSettings.rate > 0 and
     window.lastPressedRawKeyDown
   ):
     let repeatStartTime = window.lastPressedKeyTime + initDuration(milliseconds = window.globals.seat_keyboard_repeatSettings.delay)
-    let nows = getTime()
+    let nows = getMonoTime()
     let interval = initDuration(milliseconds = max(1'i64, (1000 div window.globals.seat_keyboard_repeatSettings.rate).int64))
 
     if repeatStartTime <= nows and window.lastKeyRepeatedTime < repeatStartTime - interval:
       window.lastKeyRepeatedTime = repeatStartTime - interval
     
     while repeatStartTime <= nows and window.lastKeyRepeatedTime + interval <= nows:
-      window.lastKeyRepeatedTime += interval
+      window.lastKeyRepeatedTime = window.lastKeyRepeatedTime + interval
 
       let repeatedKey = waylandKeyToKey(window.lastPressedRawKeycode)
       var repeatedText = waylandKeyToString(window.lastPressedRawKeycode)
@@ -2271,7 +2263,15 @@ method step*(window: WindowWayland) =
           window: window, text: repeatedText, repeated: true
         )
 
-  let nows = getTime()
+    window.globals.repeatWakeDeadline =
+      if nows < repeatStartTime: repeatStartTime
+      else: window.lastKeyRepeatedTime + interval
+    window.globals.repeatWakeWindow = window
+  elif window.globals.repeatWakeWindow == window:
+    window.globals.repeatWakeDeadline = MonoTime.default
+    window.globals.repeatWakeWindow = nil
+
+  let nows = getMonoTime()
   if window.opened: window.eventsHandler.onTick.pushEvent TickEvent(window: window, deltaTime: nows - window.lastTickTime)
   closeIfNeeded()
   window.lastTickTime = nows
@@ -2285,7 +2285,13 @@ method step*(window: WindowWayland) =
 
       window.swapBuffers()
 
-      wl_display_flush window.globals.display
+      discard wl_display_flush window.globals.display
+
+
+method step*(window: WindowWayland) =
+  let globals = window.globals
+  discard globals.waitEvents(initDuration(milliseconds = 1))
+  window.serviceWindow()
 
 
 proc newSoftwareRenderingWindowWayland*(

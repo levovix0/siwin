@@ -33,6 +33,8 @@ jobs:
         sudo apt-get install -y --no-install-recommends \
           xvfb \
           xauth \
+          weston \
+          libdecor-0-0 \
           mesa-utils \
           vulkan-tools \
           mesa-vulkan-drivers \
@@ -117,6 +119,42 @@ jobs:
         VK_DRIVER_FILES: "/usr/share/vulkan/icd.d/lvp_icd.x86_64.json"
       run: |
         xvfb-run -a -s "-screen 0 1280x1024x24" "$NIMBLE_BIN" --features:dev test
+
+    - name: Test Wayland event loop
+      if: runner.os == 'Linux'
+      env:
+        GALLIUM_DRIVER: "llvmpipe"
+        LIBGL_ALWAYS_SOFTWARE: "1"
+      run: |
+        export XDG_RUNTIME_DIR="$RUNNER_TEMP/siwin-wayland-runtime"
+        mkdir -p "$XDG_RUNTIME_DIR"
+        chmod 700 "$XDG_RUNTIME_DIR"
+        weston \
+          --backend=headless-backend.so \
+          --renderer=pixman \
+          --socket=wayland-siwin \
+          --idle-time=0 \
+          --no-config \
+          --log="$RUNNER_TEMP/siwin-weston.log" &
+        weston_pid=$!
+        trap 'kill "$weston_pid" 2>/dev/null || true' EXIT
+
+        for attempt in $(seq 1 50); do
+          if [[ -S "$XDG_RUNTIME_DIR/wayland-siwin" ]]; then
+            break
+          fi
+          if [[ "$attempt" == 50 ]]; then
+            cat "$RUNNER_TEMP/siwin-weston.log"
+            exit 1
+          fi
+          sleep 0.1
+        done
+
+        XDG_SESSION_TYPE=wayland \
+          WAYLAND_DISPLAY=wayland-siwin \
+          DISPLAY= \
+          nim c -r -d:siwin.vulkan=off --threads:on --hints:off \
+          tests/t_event_loop.nim
 
     # - name: Build Tests (Vulkan Compile Check)
     #   if: runner.os == 'Linux'

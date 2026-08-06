@@ -1,7 +1,7 @@
 when not (compiles do: import jnim):
   {.error: "jnim library not installed, required to cross compile to android\n please run `nimble install jnim`".}
 
-import std/[strutils, macros, importutils, times, os, locks, deques, tables]
+import std/[strutils, macros, importutils, times, monotimes, os, locks, deques, tables]
 import pkg/[jnim, vmath]
 import ../../[siwindefs]
 import ../any/[window]
@@ -320,12 +320,13 @@ proc newOpenglWindowAndroid*(
 method firstStep*(window: WindowAndroid, makeVisible = true) =
   if makeVisible:
     window.visible = true
-  
+
+  window.lastTickTime = getMonoTime()
   redraw window
 
 
 method step*(window: WindowAndroid) =
-  let time = getTime()
+  let time = getMonoTime()
   window.eventsHandler.onTick.pushEventImpl TickEvent(window: window, deltaTime: time - window.lastTickTime)
   window.lastTickTime = time
   let timeToSleep =
@@ -346,4 +347,3 @@ method step*(window: WindowAndroid) =
   release drawLock
   sleep timeToSleep
   acquire drawLock
-

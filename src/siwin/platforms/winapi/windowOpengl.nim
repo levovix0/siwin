@@ -11,8 +11,16 @@ type
     ctx: WglContext
 
 
-proc initWindowWinapiOpengl(window: WindowWinapiOpengl; size: IVec2; screen: ScreenWinapi, fullscreen, frameless, transparent: bool) =
-  window.initWindow size, screen, fullscreen, frameless, transparent, woClassName
+proc initWindowWinapiOpengl(
+  window: WindowWinapiOpengl,
+  size: IVec2,
+  screen: ScreenWinapi,
+  fullscreen, frameless, transparent: bool,
+  globals: SiwinGlobalsWinapi,
+) =
+  window.initWindow(
+    size, screen, fullscreen, frameless, transparent, woClassName, globals,
+  )
   
   var pfd = PixelFormatDescriptor(
     nSize: Word PixelFormatDescriptor.sizeof,
@@ -54,9 +62,12 @@ proc newOpenglWindowWinapi*(
   frameless = false,
   transparent = false,
   vsync = true,
+  globals: SiwinGlobalsWinapi = nil,
 ): WindowWinapiOpengl =
   new result
-  result.initWindowWinapiOpengl(size, screen, fullscreen, frameless, transparent)
+  result.initWindowWinapiOpengl(
+    size, screen, fullscreen, frameless, transparent, globals,
+  )
   result.title = title
   result.`vsync=`(vsync, silent=true)
   if not resizable: result.resizable = false

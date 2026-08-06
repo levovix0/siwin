@@ -26,8 +26,17 @@ method vulkanSurface*(window: WindowWinapiVulkan): pointer =
   window.surface.raw
 
 
-proc initWindowWinapiVulkan(window: WindowWinapiVulkan; vkInstance: pointer, size: IVec2; screen: ScreenWinapi, fullscreen, frameless, transparent: bool) =
-  window.initWindow size, screen, fullscreen, frameless, transparent, woClassName
+proc initWindowWinapiVulkan(
+  window: WindowWinapiVulkan,
+  vkInstance: pointer,
+  size: IVec2,
+  screen: ScreenWinapi,
+  fullscreen, frameless, transparent: bool,
+  globals: SiwinGlobalsWinapi,
+) =
+  window.initWindow(
+    size, screen, fullscreen, frameless, transparent, woClassName, globals,
+  )
   
   var pfd = PixelFormatDescriptor(
     nSize: Word PixelFormatDescriptor.sizeof,
@@ -70,8 +79,11 @@ proc newVulkanWindowWinapi*(
   fullscreen = false,
   frameless = false,
   transparent = false,
+  globals: SiwinGlobalsWinapi = nil,
 ): WindowWinapiVulkan =
   new result
-  result.initWindowWinapiVulkan(vkInstance, size, screen, fullscreen, frameless, transparent)
+  result.initWindowWinapiVulkan(
+    vkInstance, size, screen, fullscreen, frameless, transparent, globals,
+  )
   result.title = title
   if not resizable: result.resizable = false

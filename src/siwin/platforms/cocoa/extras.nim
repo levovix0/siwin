@@ -6,6 +6,25 @@ export app_kit, foundation, runtime
 when not declared(activateIgnoringOtherApps):
   proc activateIgnoringOtherApps*(self: NSApplication, x: bool) {.objc: "activateIgnoringOtherApps:".}
 
+when not declared(applicationEventWithType):
+  proc applicationEventWithType*(
+    self: typedesc[NSEvent], eventType: NSEventKind, location: NSPoint,
+    modifierFlags: NSUInteger, timestamp: NSTimeInterval, windowNumber: NSInteger,
+    context: ID, subtype: int16, data1, data2: NSInteger,
+  ): NSEvent {.objc: "otherEventWithType:location:modifierFlags:timestamp:windowNumber:context:subtype:data1:data2:".}
+
+when not declared(data1):
+  proc data1*(self: NSEvent): NSInteger {.objc: "data1".}
+
+when not declared(data2):
+  proc data2*(self: NSEvent): NSInteger {.objc: "data2".}
+
+when not declared(subtype):
+  proc subtype*(self: NSEvent): int16 {.objc: "subtype".}
+
+when not declared(distantFuture):
+  proc distantFuture*(t: typedesc[NSDate]): NSDate {.objc.}
+
 when not compiles(screens(NSScreen)):
   proc screens*(n: typedesc[NSScreen]): NSArray[NSScreen] {.objc: "screens".}
   proc registerForDraggedTypes*(self: NSView, types: NSArray[NSString]): NSArray[NSString] {.objc: "registerForDraggedTypes:".}

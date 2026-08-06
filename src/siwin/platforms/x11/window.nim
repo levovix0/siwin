@@ -1,13 +1,15 @@
 when not (compiles do: import pkg/x11/xutil):
   {.error: "x11 library not installed, required to cross compile to linux\n please run `nimble install x11`".}
 
-import std/[times, importutils, strformat, sequtils, os, options, tables, uri, strutils, dynlib]
+import std/[times, monotimes, importutils, strformat, sequtils, os, options, tables, uri, strutils, dynlib]
+from std/posix import
+  TPollfd, Tnfds, POLLIN, POLLERR, POLLHUP, POLLNVAL, EINTR, errno, poll
 import pkg/[vmath, chroma]
 import pkg/x11/xlib except Screen
 import pkg/x11/x except Window, Cursor, Time
 import pkg/x11/[xutil, xatom, cursorfont, keysym]
 import ../../[colorutils, siwindefs]
-import ../any/[window, clipboards]
+import ../any/[window, clipboards, eventLoop]
 import ../any/[windowUtils]
 import ./[siwinGlobals]
 
@@ -68,7 +70,7 @@ type
     syncState: SyncState
     lastSync: XSyncValue
 
-    lastClickTime: Time
+    lastClickTime: MonoTime
     doubleClickHandled: bool
 
     temporaryCursor: Option[BuiltinCursor]
@@ -78,6 +80,7 @@ type
     dragPositionTimestamp: x.Time
     lastDragStatus: DragStatus
     dragStatusSent: bool
+    prevEventIsKeyUpRepeated: bool
 
     closeEventSent: bool
     
@@ -478,6 +481,7 @@ proc basicInitWindow(window: WindowX11; size: IVec2; screen: ScreenX11) =
   window.m_focused = true
 
 proc setupWindow(window: WindowX11, fullscreen, frameless: bool, class: string) =
+  window.globals.windows[window.handle.uint] = window
   discard window.globals.display.XSelectInput(
     window.handle,
     ExposureMask or KeyPressMask or KeyReleaseMask or PointerMotionMask or ButtonPressMask or
@@ -595,6 +599,7 @@ method close*(window: WindowX11) =
   if window.m_closed:
     return
   window.m_closed = true
+  window.globals.windows.del(window.handle.uint)
   window.pushCloseEvent()
 
 proc backdropBlurSupported(window: WindowX11): bool =
@@ -1210,35 +1215,16 @@ method firstStep*(window: WindowX11, makeVisible = true) =
   if window of WindowX11SoftwareRendering:
     window.WindowX11SoftwareRendering.resizePixelBuffer(window.m_size)
   window.eventsHandler.onResize.pushEvent ResizeEvent(window: window, size: window.m_size, initial: true)
-  window.lastTickTime = getTime()
+  window.lastTickTime = getMonoTime()
 
 
-method step*(window: WindowX11) =
-  ## make window main loop step
-  ## ! don't forget to call firstStep()
-  template button: MouseButton =
-    case ev.xbutton.button
-    of 1: MouseButton.left
-    of 2: MouseButton.middle
-    of 3: MouseButton.right
-    of 8: MouseButton.backward
-    of 9: MouseButton.forward
-    else: MouseButton.left
+proc dispatchWindowEvent(
+  window: WindowX11,
+  event, followingEvent: XEvent,
+  hasFollowingEvent: bool,
+) =
+  var ev = event
 
-  template isScroll: bool = ev.xbutton.button.int in 4..7
-
-  template scrollDeltaY: float =
-    case ev.xbutton.button
-    of 4: 1
-    of 5: -1
-    else: 0
-
-  template scrollDeltaX: float =
-    case ev.xbutton.button
-    of 6: 1
-    of 7: -1
-    else: 0
-  
   proc extractKey(xkey: XKeyEvent): Key =
     var i = 0
     while i < 4 and result == Key.unknown:
@@ -1265,10 +1251,32 @@ method step*(window: WindowX11) =
     # todo: press pressed in system mouse buttons
 
 
-  var prevEventIsKeyUpRepeated = false
-  proc handleEvent(ev: var XEvent, nextEv: var XEvent, hasNextEvent: bool) =
-    let repeated = prevEventIsKeyUpRepeated
-    prevEventIsKeyUpRepeated = false
+  proc handleEvent(ev: var XEvent, nextEv: XEvent, hasNextEvent: bool) =
+    template button: MouseButton =
+      case ev.xbutton.button
+      of 1: MouseButton.left
+      of 2: MouseButton.middle
+      of 3: MouseButton.right
+      of 8: MouseButton.backward
+      of 9: MouseButton.forward
+      else: MouseButton.left
+
+    template isScroll: bool = ev.xbutton.button.int in 4..7
+
+    template scrollDeltaY: float =
+      case ev.xbutton.button
+      of 4: 1
+      of 5: -1
+      else: 0
+
+    template scrollDeltaX: float =
+      case ev.xbutton.button
+      of 6: 1
+      of 7: -1
+      else: 0
+
+    let repeated = window.prevEventIsKeyUpRepeated
+    window.prevEventIsKeyUpRepeated = false
 
     case ev.theType
     of Expose:
@@ -1391,7 +1399,7 @@ method step*(window: WindowX11) =
 
     of ButtonPress:
       if not isScroll:
-        let nows = getTime()
+        let nows = getMonoTime()
         window.mouse.pressed.incl button
         window.clicking.incl button
 
@@ -1421,7 +1429,7 @@ method step*(window: WindowX11) =
         window.onInteractiveResizeOrMoveFinished()
 
       if not isScroll:
-        let nows = getTime()
+        let nows = getMonoTime()
         window.mouse.pressed.excl button
 
         if button in window.clicking:
@@ -1498,7 +1506,7 @@ method step*(window: WindowX11) =
       var key = ev.xkey.extractKey
       if key != Key.unknown:
         let repeated = hasNextEvent and nextEv.theType == KeyPress and nextEv.xkey.extractKey == key
-        if repeated: prevEventIsKeyUpRepeated = true
+        if repeated: window.prevEventIsKeyUpRepeated = true
 
         window.keyboard.pressed.excl key
         window.refreshKeyboardModifiers()
@@ -1630,44 +1638,15 @@ method step*(window: WindowX11) =
     else: discard
 
 
-  block nextEvent:
-    template closeAndExit =
-      window.pushCloseEvent()
-      return
-    
-    var
-      ev: XEvent
-      nextEv: XEvent
-      catched = false
-
-    proc checkEvent(_: PDisplay, event: PXEvent, userData: XPointer): XBool {.cdecl.} =
-      if cast[int](event.xany.window) == cast[int](userData): 1 else: 0
-    
-    while window.globals.display.XCheckIfEvent(nextEv.addr, checkEvent, cast[XPointer](window.handle)) == 1:
-      if not catched:
-        ev = nextEv
-        catched = true
-        continue
-      
-      handleEvent(ev, nextEv, true)
-      ev = nextEv
-    
-      if window.closed: closeAndExit()
-
-      # force make tick if server decided to spam events to us
-      if (getTime() - window.lastTickTime) > initDuration(milliseconds=10):
-        break
-
-      discard XFlush window.globals.display
-
-    if catched:
-      handleEvent(ev, nextEv, false)
-
-    if window.closed: closeAndExit()
-    if not catched: sleep(1)
+  handleEvent(ev, followingEvent, hasFollowingEvent)
+  if window.closed:
+    window.pushCloseEvent()
 
 
-  let nows = getTime()
+method serviceWindow*(window: WindowX11) =
+  if window.closed:
+    return
+  let nows = getMonoTime()
   window.eventsHandler.onTick.pushEvent TickEvent(window: window, deltaTime: nows - window.lastTickTime)
   window.lastTickTime = nows
 
@@ -1684,6 +1663,86 @@ method step*(window: WindowX11) =
     window.endSwapBuffers()
 
     discard XFlush window.globals.display
+
+
+method pollEventsImpl(globals: SiwinGlobalsX11): bool =
+  result = globals.drainX11Wake()
+  while globals.display.XPending() > 0:
+    var events = newSeqOfCap[XEvent](globals.display.XPending().int)
+    while globals.display.XPending() > 0:
+      var event: XEvent
+      discard globals.display.XNextEvent(event.addr)
+      events.add(event)
+
+    var
+      nextForWindow = initTable[uint, int]()
+      nextEventIndices = newSeq[int](events.len)
+    for i in countdown(events.high, 0):
+      let windowId = events[i].xany.window.uint
+      nextEventIndices[i] = nextForWindow.getOrDefault(windowId, -1)
+      nextForWindow[windowId] = i
+
+    for i, event in events:
+      let window = globals.windows.getOrDefault(event.xany.window.uint)
+      if window != nil and not window.closed:
+        let nextIndex = nextEventIndices[i]
+        window.WindowX11.dispatchWindowEvent(
+          event,
+          if nextIndex >= 0: events[nextIndex] else: XEvent(),
+          nextIndex >= 0,
+        )
+
+    result = true
+    discard XFlush(globals.display)
+
+method waitEventsImpl(
+  globals: SiwinGlobalsX11,
+  timeout: Duration,
+): EventWaitResult =
+  if globals.pollEventsImpl():
+    return eventActivity
+  discard XFlush(globals.display)
+  let started = getMonoTime()
+  while true:
+    var fds = [
+      TPollfd(fd: globals.display.XConnectionNumber(), events: POLLIN),
+      TPollfd(fd: globals.wake.readFd, events: POLLIN),
+    ]
+    let remaining =
+      if timeout == Duration.high:
+        Duration.high
+      else:
+        max(initDuration(), timeout - (getMonoTime() - started))
+    let count = poll(
+      fds[0].addr,
+      fds.len.Tnfds,
+      remaining.inTimeoutMilliseconds(
+        infinite = -1.cint,
+        maxFinite = cint.high,
+      ),
+    )
+    if count == 0:
+      return eventTimeout
+    if count < 0:
+      if errno == EINTR:
+        if timeout != Duration.high and getMonoTime() - started >= timeout:
+          return eventTimeout
+        continue
+      raiseOSError(osLastError())
+
+    if (fds[0].revents and (POLLERR or POLLHUP or POLLNVAL)) != 0:
+      raise OSError.newException("X11 display connection closed while waiting")
+    if (fds[1].revents and (POLLERR or POLLHUP or POLLNVAL)) != 0:
+      raise OSError.newException("X11 event-loop wake pipe closed while waiting")
+    if (fds[1].revents and POLLIN) != 0:
+      discard globals.drainX11Wake()
+    if (fds[0].revents and POLLIN) != 0:
+      discard globals.pollEventsImpl()
+    return eventActivity
+
+method step*(window: WindowX11) =
+  discard window.globals.waitEvents(initDuration(milliseconds = 1))
+  window.serviceWindow()
 
 
 proc newSoftwareRenderingWindowX11*(

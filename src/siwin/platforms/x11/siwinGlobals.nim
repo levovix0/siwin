@@ -1,4 +1,4 @@
-import os, tables
+import std/[os, tables, posix]
 import ../../[siwindefs]
 import ../any/[window]
 import x11/[xlib, x]
@@ -13,6 +13,8 @@ type
   SiwinGlobalsX11* = ref SiwinGlobalsX11Obj
   SiwinGlobalsX11Obj* = object of SiwinGlobals
     display*: ptr Display
+    windows*: Table[uint, window.Window]
+    wake*: ptr X11WakeFd
     wmForFramelessKind*: WmForFramelessKind
     atoms*: tuple[
       frameless, wmDeleteWindow, utf8String, netWmName, netWmIconName,
@@ -25,16 +27,70 @@ type
       : Atom
     ]
 
+  X11WakeFd = object
+    readFd*, writeFd*: cint
+
 
 proc `=destroy`(x: SiwinGlobalsX11Obj) {.siwin_destructor.} =
+  cast[SiwinGlobals](x.addr).shutdownEventLoopWakeState()
   if x.display != nil:
     discard XCloseDisplay(x.display)
 
+proc signalX11Wake(data: pointer) {.gcsafe, raises: [].} =
+  let wake = cast[ptr X11WakeFd](data)
+  if wake != nil and wake.writeFd >= 0:
+    var byte = '\x01'
+    {.cast(gcsafe).}:
+      while write(wake.writeFd, byte.addr, 1) < 0 and errno == EINTR:
+        discard
+
+proc closeX11Wake(data: pointer) {.gcsafe, raises: [].} =
+  let wake = cast[ptr X11WakeFd](data)
+  if wake != nil:
+    if wake.readFd >= 0: discard close(wake.readFd)
+    if wake.writeFd >= 0: discard close(wake.writeFd)
+    dealloc(wake)
+
+proc configureWakeFd(fd: cint) =
+  let flags = fcntl(fd, F_GETFL)
+  if flags < 0 or fcntl(fd, F_SETFL, flags or O_NONBLOCK) < 0:
+    raiseOSError(osLastError())
+  let fdFlags = fcntl(fd, F_GETFD)
+  if fdFlags < 0 or fcntl(fd, F_SETFD, fdFlags or FD_CLOEXEC) < 0:
+    raiseOSError(osLastError())
+
+proc drainX11Wake*(globals: SiwinGlobalsX11): bool =
+  if globals.wake == nil: return false
+  var buffer: array[64, char]
+  while true:
+    let count = read(globals.wake.readFd, buffer[0].addr, buffer.len)
+    if count > 0:
+      result = true
+    elif count < 0 and errno == EINTR:
+      continue
+    else:
+      break
+  if result: globals.consumeEventLoopWake()
 
 proc newX11Globals*: SiwinGlobalsX11 {.raises: [OsError].} =
   new result
   result.display = XOpenDisplay(getEnv("DISPLAY").cstring)
   if result.display == nil: raise OsError.newException("failed to open X11 display, make sure the DISPLAY environment variable is set correctly")
+  result.wake = cast[ptr X11WakeFd](alloc0(sizeof(X11WakeFd)))
+  var wakeFds: array[2, cint]
+  if pipe(wakeFds) != 0:
+    dealloc(result.wake)
+    raiseOSError(osLastError())
+  result.wake.readFd = wakeFds[0]
+  result.wake.writeFd = wakeFds[1]
+  try:
+    configureWakeFd(result.wake.readFd)
+    configureWakeFd(result.wake.writeFd)
+  except OSError:
+    closeX11Wake(result.wake)
+    result.wake = nil
+    raise
+  result.installEventLoopWakeProc(signalX11Wake, result.wake, closeX11Wake)
   
   result.wmForFramelessKind =
     if (result.atoms.frameless = result.display.XInternAtom("_MOTIF_WM_HINTS", 1); result.atoms.frameless != 0):

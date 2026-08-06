@@ -1,4 +1,4 @@
-import std/[times, options, sequtils, tables]
+import std/[atomics, times, monotimes, options, sequtils, tables]
 import pkg/[vmath]
 import ../../[siwindefs, colorutils]
 import ./[clipboards]
@@ -11,6 +11,32 @@ else:
 
 
 type
+  EventWaitResult* = enum
+    ## The event loop dispatched native activity, including a wake notification.
+    eventActivity
+    ## A timed wait reached its deadline without native activity.
+    eventTimeout
+
+  EventLoopWakeProc = proc(data: pointer) {.nimcall, gcsafe, raises: [].}
+
+  EventLoopWakeStateObj = object
+    ## Shared by copies of an EventLoopWaker and owns the backend wake resource.
+    owners: Atomic[int]
+    alive: Atomic[bool]
+    pending: Atomic[bool]
+    backendData: pointer
+    wakeProc: EventLoopWakeProc
+    closeProc: EventLoopWakeProc
+
+  EventLoopWakeState = ptr EventLoopWakeStateObj
+
+  EventLoopWaker* = object
+    ## A narrow, copyable capability for waking an event loop from another thread.
+    state: EventLoopWakeState
+
+  EventLoopUnsupportedDefect* = object of Defect
+    ## Raised on platforms whose global event loop is not implemented yet.
+
   MouseButton* {.siwin_enum.} = enum
     left right middle forward backward
 
@@ -105,11 +131,13 @@ type
     ## raised when trying to get pixel buffer from non-softwareRendering window
   
 
-  SiwinGlobals* = ref object of RootObj
+  SiwinGlobalsObj = object of RootObj
+    eventLoopState: EventLoopWakeState
+
+  SiwinGlobals* = ref SiwinGlobalsObj
   
 
   Screen* = ref object of RootObj
-
 
   MouseMoveKind* {.siwin_enum.} = enum
     move
@@ -301,7 +329,7 @@ type
     
     redrawRequested: bool
 
-    lastTickTime: times.Time
+    lastTickTime: MonoTime
 
     m_closed: bool
     
@@ -336,6 +364,43 @@ type
     inputRegion, titleRegion: Option[tuple[pos, size: Vec2]]
     borderWidth: Option[tuple[innerWidth, outerWidrth, diagonalSize: float32]]
 
+
+proc retainEventLoopWakeState(state: EventLoopWakeState) {.inline.} =
+  if state != nil:
+    discard state.owners.fetchAdd(1, moRelaxed)
+
+proc releaseEventLoopWakeState(state: EventLoopWakeState) {.inline.} =
+  if state != nil and state.owners.fetchSub(1, moAcquireRelease) == 1:
+    if state.closeProc != nil:
+      state.closeProc(state.backendData)
+    deallocShared(state)
+
+proc `=destroy`(waker: EventLoopWaker) {.siwin_destructor.} =
+  releaseEventLoopWakeState(waker.state)
+
+proc `=wasMoved`(waker: var EventLoopWaker) =
+  waker.state = nil
+
+proc `=dup`(waker: EventLoopWaker): EventLoopWaker =
+  retainEventLoopWakeState(waker.state)
+  result.state = waker.state
+
+proc `=copy`(dest: var EventLoopWaker, source: EventLoopWaker) =
+  retainEventLoopWakeState(source.state)
+  `=destroy`(dest)
+  dest.state = source.state
+
+proc `=destroy`(globals: SiwinGlobalsObj) {.siwin_destructor.} =
+  if globals.eventLoopState != nil:
+    globals.eventLoopState.alive.store(false)
+    releaseEventLoopWakeState(globals.eventLoopState)
+
+proc shutdownEventLoopWakeState*(globals: SiwinGlobals) {.raises: [].} =
+  ## Backend destructor hook for globals types that define a custom destructor.
+  if globals != nil and globals.eventLoopState != nil:
+    globals.eventLoopState.alive.store(false)
+    releaseEventLoopWakeState(globals.eventLoopState)
+    globals.eventLoopState = nil
 
 method number*(screen: Screen): int32 {.base.} = discard
 
@@ -701,6 +766,102 @@ method step*(window: Window) {.base.} = discard
   ## make window main loop step
   ## ! don't forget to call firstStep()
 
+method serviceWindow*(window: Window) {.base.} =
+  ## Run per-window tick, rendering, and presentation without waiting for input.
+  discard window
+  raise EventLoopUnsupportedDefect.newException(
+    "Nonblocking window service is not implemented on this platform",
+  )
+
+method pollEventsImpl(globals: SiwinGlobals): bool {.base.} =
+  discard globals
+  raise EventLoopUnsupportedDefect.newException(
+    "Global event-loop pumping is not implemented on this platform",
+  )
+
+method waitEventsImpl(
+  globals: SiwinGlobals, timeout: Duration,
+): EventWaitResult {.base.} =
+  discard globals
+  discard timeout
+  raise EventLoopUnsupportedDefect.newException(
+    "Global event-loop waiting is not implemented on this platform",
+  )
+
+proc eventLoopWaker*(globals: SiwinGlobals): EventLoopWaker =
+  ## Returns a thread-safe capability that remains harmless after loop shutdown.
+  if globals.eventLoopState == nil:
+    globals.eventLoopState = cast[EventLoopWakeState](
+      allocShared0(sizeof(EventLoopWakeStateObj))
+    )
+    # The globals object owns the initial reference. EventLoopWaker copies add
+    # further owners through their copy and duplication hooks.
+    globals.eventLoopState.owners.store(1, moRelaxed)
+    globals.eventLoopState.alive.store(true)
+  retainEventLoopWakeState(globals.eventLoopState)
+  result.state = globals.eventLoopState
+
+proc installEventLoopWakeProc*(
+  globals: SiwinGlobals,
+  wakeProc: EventLoopWakeProc,
+  backendData: pointer = nil,
+  closeProc: EventLoopWakeProc = nil,
+) =
+  ## Installs a backend wake primitive and transfers any resource during startup.
+  discard globals.eventLoopWaker()
+  globals.eventLoopState.backendData = backendData
+  globals.eventLoopState.wakeProc = wakeProc
+  globals.eventLoopState.closeProc = closeProc
+
+proc consumeEventLoopWake*(waker: EventLoopWaker): bool =
+  ## Clears this waker's coalesced notification after the backend consumes it.
+  ##
+  ## Platform event pumps call this on the application thread before returning
+  ## control to the application, so work enqueued by a racing producer is either
+  ## observed in the current drain or causes a later wake. Returns `false` when
+  ## `waker` has no state or its owning event loop is no longer alive.
+  if waker.state != nil and waker.state.alive.load():
+    waker.state.pending.store(false)
+    result = true
+
+proc consumeEventLoopWake*(globals: SiwinGlobals) =
+  ## Clears the pending notification for `globals`, if it has a waker.
+  ##
+  ## This is a backend event-pump hook. Applications normally call
+  ## `pollEvents` or `waitEvents`, which consume wake notifications themselves.
+  if globals.eventLoopState != nil:
+    globals.eventLoopState.pending.store(false)
+
+proc wake*(waker: EventLoopWaker) {.gcsafe, raises: [].} =
+  ## Notify the owning event loop after enqueuing application work.
+  if waker.state == nil or not waker.state.alive.load():
+    return
+
+  if not waker.state.pending.exchange(true):
+    # A backend may coalesce repeated notifications while this sentinel is pending.
+    if waker.state.wakeProc != nil:
+      waker.state.wakeProc(waker.state.backendData)
+
+proc wakeEventLoop*(globals: SiwinGlobals) {.gcsafe, raises: [].} =
+  ## Wakes the event loop owned by `globals` from any thread.
+  ##
+  ## Enqueue application work before calling this procedure. The notification
+  ## carries no data and repeated calls may be coalesced. Prefer copying an
+  ## `EventLoopWaker` when a worker should not retain the complete globals owner.
+  globals.eventLoopWaker().wake()
+
+proc pollEvents*(globals: SiwinGlobals): bool =
+  ## Dispatch all immediately available native events on the application thread.
+  globals.pollEventsImpl()
+
+proc waitEvents*(globals: SiwinGlobals) =
+  ## On the application thread, wait for native input or a waker notification.
+  discard globals.waitEventsImpl(high(Duration))
+
+proc waitEvents*(globals: SiwinGlobals, timeout: Duration): EventWaitResult =
+  ## On the application thread, wait up to `timeout` for input or a notification.
+  globals.waitEventsImpl(timeout)
+
 
 proc run*(window: sink Window, makeVisible = true) =
   ## run whole window main loops
@@ -713,6 +874,51 @@ proc run*(window: sink Window, eventsHandler: WindowEventsHandler, makeVisible =
   if eventsHandler != WindowEventsHandler():
     window.eventsHandler = eventsHandler
   run(window, makeVisible)
+
+proc serviceEventDrivenWindows(
+  globals: SiwinGlobals,
+  windows: sink seq[Window],
+) =
+  proc serviceOpenWindows(windows: var seq[Window]) =
+    var index = 0
+    while index < windows.len:
+      let window = windows[index]
+      if window.closed:
+        windows.delete(index)
+      else:
+        window.serviceWindow()
+        if window.closed:
+          windows.delete(index)
+        else:
+          inc index
+
+  windows.serviceOpenWindows()
+  while windows.len > 0:
+    globals.waitEvents()
+    windows.serviceOpenWindows()
+
+proc runEventDriven*(
+  globals: SiwinGlobals,
+  window: sink Window,
+  makeVisible = true,
+) =
+  ## Run one window with an efficiently blocking application-global event loop.
+  ##
+  ## `globals` must own `window`. Unlike the compatibility `run` loop, ticks
+  ## occur when native activity or an explicit event-loop wake is serviced.
+  window.firstStep(makeVisible)
+  globals.serviceEventDrivenWindows(@[window])
+
+proc runEventDriven*(
+  globals: SiwinGlobals,
+  window: sink Window,
+  eventsHandler: WindowEventsHandler,
+  makeVisible = true,
+) =
+  ## Install `eventsHandler` and run one window with the global event loop.
+  if eventsHandler != WindowEventsHandler():
+    window.eventsHandler = eventsHandler
+  globals.runEventDriven(window, makeVisible)
 
 proc runMultiple*(windows: varargs[tuple[window: Window, makeVisible: bool]]) =
   ## run for multiple windows
@@ -747,3 +953,30 @@ proc runMultiple*(windows: varargs[tuple[window: Window, eventsHandler: WindowEv
         continue
       window.step()
       inc i
+
+proc runMultipleEventDriven*(
+  globals: SiwinGlobals,
+  windows: varargs[tuple[window: Window, makeVisible: bool]],
+) =
+  ## Run multiple windows with one efficiently blocking global event wait.
+  ##
+  ## Every window must be owned by `globals`. Each wake dispatches native
+  ## events once and then services every open window once.
+  for (window, makeVisible) in windows:
+    window.firstStep(makeVisible)
+  globals.serviceEventDrivenWindows(windows.mapIt(it.window))
+
+proc runMultipleEventDriven*(
+  globals: SiwinGlobals,
+  windows: varargs[tuple[
+    window: Window,
+    eventsHandler: WindowEventsHandler,
+    makeVisible: bool,
+  ]],
+) =
+  ## Install handlers and run multiple windows with one global event wait.
+  for (window, eventsHandler, makeVisible) in windows:
+    if eventsHandler != WindowEventsHandler():
+      window.eventsHandler = eventsHandler
+    window.firstStep(makeVisible)
+  globals.serviceEventDrivenWindows(windows.mapIt(it.window))

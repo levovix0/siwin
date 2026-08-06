@@ -82,6 +82,9 @@ let
 var
   libwaylandclientHandle = loadLib("libwayland-client.so")
 
+if libwaylandclientHandle == nil:
+  libwaylandclientHandle = loadLib("libwayland-client.so.0")
+
 
 siwin_loadDynlibIfExists libwaylandclientHandle:
   proc wl_display_disconnect*(this: Wl_display)
@@ -91,7 +94,10 @@ siwin_loadDynlibIfExists libwaylandclientHandle:
 
   proc wl_display_get_fd*(this: Wl_display): FileHandle
 
-  proc wl_display_flush*(this: Wl_display)
+  proc wl_display_flush*(this: Wl_display): int32
+  proc wl_display_prepare_read*(this: Wl_display): int32
+  proc wl_display_read_events*(this: Wl_display): int32
+  proc wl_display_cancel_read*(this: Wl_display)
   proc wl_display_roundtrip*(this: Wl_display): int32
 
 
@@ -145,11 +151,15 @@ proc destroy*(this: Wl_proxy) =
 #   this.raw = v.raw
 
 
-proc dispatch*(this: Wl_display): int32 =
+proc dispatchPending*(this: Wl_display): int32 =
   proc impl(this: Wl_display): int32 {.importc: "wl_display_dispatch_pending", importwayland.}
   result = impl(this)
   if result == -1:
     raise WaylandProtocolError.newException("failed to dispatch events")
+
+proc dispatch*(this: Wl_display): int32 {.deprecated: "Use dispatchPending".} =
+  ## Compatibility alias for the original public wrapper name.
+  this.dispatchPending()
 
 proc newWlMessage*(name: cstring, signature: cstring, types: openarray[ptr Wl_interface]): WlMessage =
   result.name = name
