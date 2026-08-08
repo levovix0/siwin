@@ -15,8 +15,7 @@ Can be used as an alternative to GLFW/GLUT/windy
 * works with: OpenGL, Vulkan, Metal (on MacOS), software rendering
 * works on: Linux(X11 and Wayland), Windows, MacOS
 * handles events from: mouse, keyboard
-* and also supports: clipboard, offscreen rendering, interactive move/resize, etc.
-* can block efficiently for native input, animation deadlines, or cross-thread work
+* and also supports: clipboard, offscreen rendering, interactive move/resize, multithreading, etc.
 
 <h2 align="center">Examples</h2>
 
