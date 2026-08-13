@@ -1220,11 +1220,9 @@ method firstStep*(window: WindowX11, makeVisible = true) =
 
 proc dispatchWindowEvent(
   window: WindowX11,
-  event, followingEvent: XEvent,
+  ev, followingEvent: XEvent,
   hasFollowingEvent: bool,
 ) =
-  var ev = event
-
   proc extractKey(xkey: XKeyEvent): Key =
     var i = 0
     while i < 4 and result == Key.unknown:
@@ -1251,7 +1249,7 @@ proc dispatchWindowEvent(
     # todo: press pressed in system mouse buttons
 
 
-  proc handleEvent(ev: var XEvent, nextEv: XEvent, hasNextEvent: bool) =
+  proc handleEvent(ev: XEvent, nextEv: XEvent, hasNextEvent: bool) =
     template button: MouseButton =
       case ev.xbutton.button
       of 1: MouseButton.left
