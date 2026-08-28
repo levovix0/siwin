@@ -593,6 +593,7 @@ proc refreshModifiers(window: WindowCocoa) =
     window.keyboard.modifiers = modifiers
 
 proc releaseAllInput(window: WindowCocoa) =
+  window.keyboard.modifiers = {}
   for key in window.keyboard.pressed:
     window.keyboard.pressed.excl key
     if window.eventsHandler.onKey != nil:
@@ -1917,17 +1918,22 @@ proc init =
             window.eventsHandler.pushEvent onKey, KeyEvent(window: window, key: key, pressed: false, repeated: false, modifiers: modifiers)  # todo: handle repeated
   
         addMethod "flagsChanged:", proc(self: Id, cmd: Sel, event: NsEvent): Id {.cdecl.} =
-          #? wtf is this?!?
           getWindow(self)
           let key = event.keyCode.keycodeToKey
           let modifiers = window.updateModifiers(event)
           if key != Key.unknown:
-            if key in window.keyboard.pressed:
-              window.keyboard.pressed.excl key
-              window.eventsHandler.pushEvent onKey, KeyEvent(window: window, key: key, pressed: false, repeated: false, modifiers: modifiers)  # todo: handle repeated
-            else:
+            let pressed = currentKeyPressed(event.keyCode)
+            if pressed:
               window.keyboard.pressed.incl key
-              window.eventsHandler.pushEvent onKey, KeyEvent(window: window, key: key, pressed: true, repeated: false, modifiers: modifiers)  # todo: handle repeated
+            else:
+              window.keyboard.pressed.excl key
+            window.eventsHandler.pushEvent onKey, KeyEvent(
+              window: window,
+              key: key,
+              pressed: pressed,
+              repeated: false,
+              modifiers: modifiers,
+            )
   
         addMethod "hasMarkedText", proc(self: Id, cmd: Sel): bool {.cdecl.} =
           getWindow(self)
