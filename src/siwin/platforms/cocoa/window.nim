@@ -1892,7 +1892,10 @@ proc init =
             Key.enter,
             Key.escape,
           }
-          if window.eventsHandler.onTextInput != nil and shouldRouteToInputContext:
+          let hasCommandModifier =
+            (modifiers * {ModifierKey.control, ModifierKey.system}).len > 0
+          if window.eventsHandler.onTextInput != nil and shouldRouteToInputContext and
+              not hasCommandModifier:
             var handledByInputContext = false
             let inputContext = cast[NSView](self).inputContext
             if inputContext != nil:
