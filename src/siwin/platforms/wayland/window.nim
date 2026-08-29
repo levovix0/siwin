@@ -1030,7 +1030,7 @@ method pixelBuffer*(window: WindowWaylandSoftwareRendering): PixelBuffer =
   PixelBuffer(
     data: (if window.buffer == nil: nil else: window.buffer.dataAddr),
     size: window.bufferSize(window.m_size),
-    format: (if window.transparent: PixelBufferFormat.xrgb_32bit else: PixelBufferFormat.urgb_32bit)
+    format: (if window.transparent: PixelBufferFormat.bgrx_32bit else: PixelBufferFormat.bgru_32bit)
   )
 
 

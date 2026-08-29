@@ -1263,14 +1263,14 @@ proc dispatchWindowEvent(
 
     template scrollDeltaY: float =
       case ev.xbutton.button
-      of 4: 1
-      of 5: -1
+      of 4: -1  # scroll up
+      of 5: 1   # scroll down
       else: 0
 
     template scrollDeltaX: float =
       case ev.xbutton.button
-      of 6: 1
-      of 7: -1
+      of 6: -1  # scroll left
+      of 7: 1   # scroll right
       else: 0
 
     let repeated = window.prevEventIsKeyUpRepeated
