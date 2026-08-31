@@ -9,7 +9,7 @@ import pkg/x11/xlib except Screen
 import pkg/x11/x except Window, Cursor, Time
 import pkg/x11/[xutil, xatom, cursorfont, keysym]
 import ../../[colorutils, siwindefs]
-import ../any/[window, clipboards, eventLoop]
+import ../any/[window, clipboards]
 import ../any/[windowUtils]
 import ./[siwinGlobals]
 
@@ -1220,8 +1220,8 @@ method firstStep*(window: WindowX11, makeVisible = true) =
 
 proc dispatchWindowEvent(
   window: WindowX11,
-  ev, followingEvent: XEvent,
-  hasFollowingEvent: bool,
+  ev, nextEvent: XEvent,
+  hasNextEvent: bool,
 ) =
   proc extractKey(xkey: XKeyEvent): Key =
     var i = 0
@@ -1636,9 +1636,17 @@ proc dispatchWindowEvent(
     else: discard
 
 
-  handleEvent(ev, followingEvent, hasFollowingEvent)
+  handleEvent(ev, nextEvent, hasNextEvent)
   if window.closed:
     window.pushCloseEvent()
+
+
+proc dispatchWindowEvent_crossModule(
+  window: window.Window,
+  ev, nextEvent: XEvent,
+  hasNextEvent: bool,
+) {.exportc: "siwin_x11_dispatch_window_event".} =
+  dispatchWindowEvent(window.WindowX11, ev, nextEvent, hasNextEvent)
 
 
 method serviceWindow*(window: WindowX11) =
@@ -1662,81 +1670,6 @@ method serviceWindow*(window: WindowX11) =
 
     discard XFlush window.globals.display
 
-
-method pollEventsImpl(globals: SiwinGlobalsX11): bool =
-  result = globals.drainX11Wake()
-  while globals.display.XPending() > 0:
-    var events = newSeqOfCap[XEvent](globals.display.XPending().int)
-    while globals.display.XPending() > 0:
-      var event: XEvent
-      discard globals.display.XNextEvent(event.addr)
-      events.add(event)
-
-    var
-      nextForWindow = initTable[uint, int]()
-      nextEventIndices = newSeq[int](events.len)
-    for i in countdown(events.high, 0):
-      let windowId = events[i].xany.window.uint
-      nextEventIndices[i] = nextForWindow.getOrDefault(windowId, -1)
-      nextForWindow[windowId] = i
-
-    for i, event in events:
-      let window = globals.windows.getOrDefault(event.xany.window.uint)
-      if window != nil and not window.closed:
-        let nextIndex = nextEventIndices[i]
-        window.WindowX11.dispatchWindowEvent(
-          event,
-          if nextIndex >= 0: events[nextIndex] else: XEvent(),
-          nextIndex >= 0,
-        )
-
-    result = true
-    discard XFlush(globals.display)
-
-method waitEventsImpl(
-  globals: SiwinGlobalsX11,
-  timeout: Duration,
-): EventWaitResult =
-  if globals.pollEventsImpl():
-    return eventActivity
-  discard XFlush(globals.display)
-  let started = getMonoTime()
-  while true:
-    var fds = [
-      TPollfd(fd: globals.display.XConnectionNumber(), events: POLLIN),
-      TPollfd(fd: globals.wake.readFd, events: POLLIN),
-    ]
-    let remaining =
-      if timeout == Duration.high:
-        Duration.high
-      else:
-        max(initDuration(), timeout - (getMonoTime() - started))
-    let count = poll(
-      fds[0].addr,
-      fds.len.Tnfds,
-      remaining.inTimeoutMilliseconds(
-        infinite = -1.cint,
-        maxFinite = cint.high,
-      ),
-    )
-    if count == 0:
-      return eventTimeout
-    if count < 0:
-      if errno == EINTR:
-        if timeout != Duration.high and getMonoTime() - started >= timeout:
-          return eventTimeout
-        continue
-      raiseOSError(osLastError())
-
-    if (fds[0].revents and (POLLERR or POLLHUP or POLLNVAL)) != 0:
-      raise OSError.newException("X11 display connection closed while waiting")
-    if (fds[1].revents and (POLLERR or POLLHUP or POLLNVAL)) != 0:
-      raise OSError.newException("X11 event-loop wake pipe closed while waiting")
-    if (fds[1].revents and POLLIN) != 0:
-      discard globals.drainX11Wake()
-    if (fds[0].revents and POLLIN) != 0:
-      discard globals.pollEventsImpl()
-    return eventActivity
 
 method step*(window: WindowX11) =
   discard window.globals.waitEvents(initDuration(milliseconds = 1))
@@ -1765,11 +1698,11 @@ proc newSoftwareRenderingWindowX11*(
   if not resizable: result.resizable = false
 
 proc newPopupWindowX11*(
-    globals: SiwinGlobalsX11,
-    parent: WindowX11,
-    placement: PopupPlacement,
-    transparent = false,
-    grab = true,
+  globals: SiwinGlobalsX11,
+  parent: WindowX11,
+  placement: PopupPlacement,
+  transparent = false,
+  grab = true,
 ): WindowX11SoftwareRendering =
   if parent == nil:
     raise ValueError.newException("Popup windows require a parent window")

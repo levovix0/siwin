@@ -2,7 +2,7 @@ import std/[times, monotimes, os, options, importutils, sequtils]
 import pkg/[vmath]
 import ./[winapi]
 import ../../[colorutils, siwindefs]
-import ../any/[window, clipboards, eventLoop]
+import ../any/[window, clipboards, timeutils]
 import ../any/[windowUtils]
 
 privateAccess Window

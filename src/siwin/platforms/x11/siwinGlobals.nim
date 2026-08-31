@@ -1,6 +1,6 @@
-import std/[os, tables, posix]
+import std/[os, tables, posix, times, monotimes]
 import ../../[siwindefs]
-import ../any/[window]
+import ../any/[window, timeutils]
 import x11/[xlib, x]
 
 type
@@ -159,3 +159,88 @@ proc property*(globals: SiwinGlobalsX11, window: x.Window, name: Atom, t: typede
   let a = globals.property(window, name, char)
   result.kind = a.kind
   result.data = cast[string](a.data)
+
+
+method pollEventsImpl(globals: SiwinGlobalsX11): bool =
+  proc dispatchWindowEvent(
+    window: window.Window,
+    ev, nextEvent: XEvent,
+    hasNextEvent: bool,
+  ) {.importc: "siwin_x11_dispatch_window_event".}
+    # this needs to be forward-declared, because with --experimental:vtables methods can not be declared outside the module the type was declared in
+
+
+  result = globals.drainX11Wake()
+  while globals.display.XPending() > 0:
+    var events = newSeqOfCap[XEvent](globals.display.XPending().int)
+    while globals.display.XPending() > 0:
+      var event: XEvent
+      discard globals.display.XNextEvent(event.addr)
+      events.add(event)
+
+    var
+      nextForWindow = initTable[uint, int]()
+      nextEventIndices = newSeq[int](events.len)
+    for i in countdown(events.high, 0):
+      let windowId = events[i].xany.window.uint
+      nextEventIndices[i] = nextForWindow.getOrDefault(windowId, -1)
+      nextForWindow[windowId] = i
+
+    for i, event in events:
+      let window = globals.windows.getOrDefault(event.xany.window.uint)
+      if window != nil and not window.closed:
+        let nextIndex = nextEventIndices[i]
+        window.dispatchWindowEvent(
+          event,
+          events[if nextIndex >= 0: nextIndex else: 0],
+          nextIndex >= 0,
+        )
+
+    result = true
+    discard XFlush(globals.display)
+
+
+method waitEventsImpl(
+  globals: SiwinGlobalsX11,
+  timeout: Duration,
+): EventWaitResult =
+  if globals.pollEventsImpl():
+    return eventActivity
+  discard XFlush(globals.display)
+  let started = getMonoTime()
+  while true:
+    var fds = [
+      TPollfd(fd: globals.display.XConnectionNumber(), events: POLLIN),
+      TPollfd(fd: globals.wake.readFd, events: POLLIN),
+    ]
+    let remaining =
+      if timeout == Duration.high:
+        Duration.high
+      else:
+        max(initDuration(), timeout - (getMonoTime() - started))
+    let count = poll(
+      fds[0].addr,
+      fds.len.Tnfds,
+      remaining.inTimeoutMilliseconds(
+        infinite = -1.cint,
+        maxFinite = cint.high,
+      ),
+    )
+    if count == 0:
+      return eventTimeout
+    if count < 0:
+      if errno == EINTR:
+        if timeout != Duration.high and getMonoTime() - started >= timeout:
+          return eventTimeout
+        continue
+      raiseOSError(osLastError())
+
+    if (fds[0].revents and (POLLERR or POLLHUP or POLLNVAL)) != 0:
+      raise OSError.newException("X11 display connection closed while waiting")
+    if (fds[1].revents and (POLLERR or POLLHUP or POLLNVAL)) != 0:
+      raise OSError.newException("X11 event-loop wake pipe closed while waiting")
+    if (fds[1].revents and POLLIN) != 0:
+      discard globals.drainX11Wake()
+    if (fds[0].revents and POLLIN) != 0:
+      discard globals.pollEventsImpl()
+    return eventActivity

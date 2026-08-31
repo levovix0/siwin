@@ -1,6 +1,6 @@
 import std/[tables, os, posix, times, monotimes]
 import ../../[siwindefs]
-import ../any/[window, clipboards, eventLoop]
+import ../any/[window, clipboards, timeutils]
 import ./[libwayland, protocol, bitfields, libdecor]
 
 type

@@ -1,7 +1,5 @@
 import std/times
 
-const nanosecondsPerMillisecond = 1_000_000'i64
-
 func inTimeoutMilliseconds*[T: SomeInteger](
     timeout: Duration, infinite, maxFinite: T
 ): T =

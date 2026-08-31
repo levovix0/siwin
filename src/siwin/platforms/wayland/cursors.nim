@@ -1,8 +1,7 @@
-import std/[times, importutils, strformat, options, tables, os]
+import std/[os]
 import pkg/[vmath]
-import ../../siwindefs, ../../colorutils
 import ../any/window {.all.}
-import ./[libwayland, protocol, siwinGlobals, sharedBuffer, bitfields, xkb]
+import ./[libwayland, protocol, siwinGlobals, sharedBuffer]
 
 
 type

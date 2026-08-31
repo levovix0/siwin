@@ -343,7 +343,7 @@ discard globals.waitEvents(timeUntilNextAnimation)
 window.serviceWindow()
 ```
 
-See [text_input_demo.nim](examples/text_input_demo.nim) for a complete loop that combines native input, cursor blinking, and scroll-decay deadlines.
+See [text_input.nim](examples/text_input.nim) for a complete loop that combines native input, cursor blinking, and scroll-decay deadlines.
 
 <h2 align="center">running multiple windows</h2>
 
@@ -436,7 +436,7 @@ if window.supports(wvcBackdropMaterial):
   window.setBackdrop(initWindowBackdrop(wbmSidebar))
 ```
 
-See [backdrop_blur_demo.nim](examples/backdrop_blur_demo.nim) for a runnable cross-platform example.
+See [backdrop_blur.nim](examples/backdrop_blur.nim) for a runnable cross-platform example.
 
 <h2 align="center">all methods and events</h2>
 
@@ -462,7 +462,6 @@ If you want to support this project, here is some tasks to do:
   * if you doing very big refactoring, first create issue to ask is all your changes needed, and if it is, refactor
 * Documentation
 * Optimization
-* MacOS support
 * Android/IOS support
 * Web support
 * copy/paste images
