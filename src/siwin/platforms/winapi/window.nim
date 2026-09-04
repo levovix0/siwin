@@ -232,7 +232,7 @@ proc windowProc(handle: HWnd, message: Uint, wParam: WParam, lParam: LParam): LR
 
 const
   wClassName = L"w"
-  woClassName = L"o"
+  woClassName* = L"o"
   dwmwaSystemBackdropType = 38.DWord
   dwmsbtNone = 1'i32
   dwmsbtTransientWindow = 3'i32
