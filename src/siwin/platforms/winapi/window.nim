@@ -326,7 +326,7 @@ method trySetBackdrop*(window: WindowWinapi, config: WindowBackdropConfig): bool
   true
 
 
-proc initWindow(
+proc initWindow*(
   window: WindowWinapi,
   size: IVec2,
   screen: ScreenWinapi,
