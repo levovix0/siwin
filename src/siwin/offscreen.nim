@@ -5,6 +5,7 @@ when not siwin_use_lib:
   when defined(android):
     import ./platforms/android/window
   elif defined(linux) or defined(bsd):
+    import ./platforms/x11/window as x11Window
     import ./platforms/x11/[offscreen, siwinGlobals]
     import ./platforms/wayland/[siwinGlobals]
   elif defined(windows):

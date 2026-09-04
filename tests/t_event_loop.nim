@@ -1,6 +1,6 @@
 import std/[assertions, times]
 
-import siwin/platforms/any/eventLoop
+import siwin/platforms/any/timeutils
 
 
 const
