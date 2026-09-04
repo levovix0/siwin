@@ -2,7 +2,7 @@ import std/[times, monotimes, importutils, strformat, options, tables, os, uri, 
 from std/posix import pipe, close, write, read
 import pkg/[vmath]
 import ../../[colorutils, siwindefs]
-import ../any/[window {.all.}, clipboards]
+import ../any/[window, clipboards]
 import ../any/[windowUtils]
 import ./[libwayland, protocol, siwinGlobals, sharedBuffer, bitfields, xkb, libdecor, cursors]
 
@@ -306,7 +306,7 @@ method width*(screen: ScreenWayland): int32 = 1920  # todo
 method height*(screen: ScreenWayland): int32 = 1080  # todo
 
 
-method release(window: WindowWayland) {.base, raises: [].}
+method release*(window: WindowWayland) {.base, raises: [].}
 
 proc clearToplevelIconResources(window: WindowWayland) =
   if window.toplevelIcon != nil:
@@ -449,7 +449,7 @@ proc bufferScale(window: WindowWayland): int32 {.inline.} =
 proc scaledBufferLength(logical: int32; uiScale: float32): int32 {.inline.} =
   max(1'i32, ((logical.float32 * uiScale) + 0.5'f32).int32)
 
-proc bufferSize(window: WindowWayland, logicalSize: IVec2): IVec2 {.inline.} =
+proc bufferSize*(window: WindowWayland, logicalSize: IVec2): IVec2 {.inline.} =
   let scale = window.effectiveUiScale()
   ivec2(scaledBufferLength(logicalSize.x, scale), scaledBufferLength(logicalSize.y, scale))
 
@@ -564,7 +564,7 @@ proc initClipboardsIfNeeded(globals: SiwinGlobalsWayland) =
     globals.dragndropClipboard = ClipboardWaylandDnd(globals: globals)
 
 
-proc basicInitWindow(window: WindowWayland; size: IVec2; screen: ScreenWayland) =
+proc basicInitWindow*(window: WindowWayland; size: IVec2; screen: ScreenWayland) =
   window.m_size = size
   window.screen = screen
   window.m_focused = false
@@ -580,7 +580,7 @@ proc basicInitWindow(window: WindowWayland; size: IVec2; screen: ScreenWayland) 
   window.m_dragndropClipboard = window.globals.dragndropClipboard
 
 
-method doResize(window: WindowWayland, size: IVec2) {.base.} =
+method doResize*(window: WindowWayland, size: IVec2) {.base.} =
   window.m_size = size
 
   if window.viewport != typeof(window.viewport).default:
@@ -593,7 +593,7 @@ method doResize(window: WindowWayland, size: IVec2) {.base.} =
     destroy opaqueRegion
 
 
-method doResize(window: WindowWaylandSoftwareRendering, size: IVec2) =
+method doResize*(window: WindowWaylandSoftwareRendering, size: IVec2) =
   procCall window.WindowWayland.doResize(size)
   let scaledSize = window.bufferSize(size)
 
@@ -1687,7 +1687,7 @@ proc initDataDeviceManagerEvents*(globals: SiwinGlobalsWayland) =
   discard wl_display_roundtrip globals.display
 
 
-proc setupWindow(window: WindowWayland, fullscreen, frameless, transparent: bool, size: IVec2, class: string) =
+proc setupWindow*(window: WindowWayland, fullscreen, frameless, transparent: bool, size: IVec2, class: string) =
   const FractionalScaleDenominator = 120'f32
 
   proc applySurfaceScale(window: WindowWayland) =
@@ -2313,7 +2313,7 @@ proc newSoftwareRenderingWindowWayland*(
   result.title = title
   if not resizable: result.resizable = false
 
-proc initLayerSurfaceWindow(
+proc initLayerSurfaceWindow*(
   window: WindowWayland,
   size: IVec2,
   screen: ScreenWayland,

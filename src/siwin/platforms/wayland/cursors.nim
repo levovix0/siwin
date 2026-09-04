@@ -1,6 +1,6 @@
 import std/[os]
 import pkg/[vmath]
-import ../any/window {.all.}
+import ../any/window
 import ./[libwayland, protocol, siwinGlobals, sharedBuffer]
 
 

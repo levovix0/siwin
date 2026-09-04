@@ -5,7 +5,7 @@ from pkg/darwin/quartz_core/cametal_layer import CAMetalLayer
 from pkg/darwin/objc/runtime import ObjcClass, ID, SEL, alloc, new, addClass, selector, callSuper
 import ../../[siwindefs]
 import ../../[colorutils]
-import ../any/[window {.all.}, clipboards]
+import ../any/[window, clipboards]
 import ./[modifierstate, extras]
 
 {.passL: "-framework Cocoa".}

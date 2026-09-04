@@ -2,7 +2,7 @@ import std/importutils
 import vmath
 import ../../[siwindefs]
 import ../any/window as anyWindow
-import window {.all.}, winapi, vkWin32
+import window, winapi, vkWin32
 
 privateAccess Window
 privateAccess WindowWinapi

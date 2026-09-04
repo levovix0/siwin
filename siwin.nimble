@@ -5,8 +5,8 @@ license       = "MIT"
 srcDir        = "src"
 
 requires "nim >= 2.0"
-requires "chroma >= 0.2.6"
-requires "vmath >= 1.1.4"
+requires "chroma >= 1.0.0"
+requires "vmath >= 3.0.0"
 
 # note: require platform dependencies only if it is the platform on which userprogrammer works.
 #       ask a userprogrammer to install specific platform dependencies if cross compiling.
@@ -29,6 +29,10 @@ feature "dev":
   requires "pixie"
   requires "sdl2"
   requires "https://github.com/planetis-m/vulkan#b223dc9"
+
+feature "dev_opengl_es":
+  requires "fusion"
+  requires "shady == 0.1.4"
 
 when fileExists("src/siwin/build_utils/tasks.nim"):
   include "src/siwin/build_utils/tasks.nim"

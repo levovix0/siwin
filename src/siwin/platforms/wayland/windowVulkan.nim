@@ -1,9 +1,9 @@
 import std/[importutils]
 import pkg/[vmath]
 import ../../[siwindefs]
-import ../any/window {.all.}
+import ../any/window
 import ./[libwayland, siwinGlobals, vkWayland]
-import window {.all.}
+import window
 
 privateAccess Window
 privateAccess WindowWayland

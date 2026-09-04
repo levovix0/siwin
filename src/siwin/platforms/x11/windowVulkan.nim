@@ -4,7 +4,7 @@ import x11/x except Window
 import x11/[xlib, xutil]
 import ../../[siwindefs]
 import ../any/window as anyWindow
-import ./[window {.all.}, vkXlib, siwinGlobals]
+import ./[window, vkXlib, siwinGlobals]
 
 privateAccess Window
 privateAccess WindowX11
@@ -25,14 +25,15 @@ proc `=destroy`*(surface: Surface) {.siwin_destructor.} =
     discard
 
 
-proc `=trace`(x: var WindowX11VulkanObj, env: pointer) =
-  #? for some reason, without this, nim produces invalid C code for =trace implementation
-  `=trace`(cast[ptr WindowX11Obj](x.addr)[], env)
+when NimMajor < 2 or NimMinor < 2:
+  proc `=trace`(x: var WindowX11VulkanObj, env: pointer) =
+    #? for some reason, without this, nim produces invalid C code for =trace implementation
+    `=trace`(cast[ptr WindowX11Obj](x.addr)[], env)
 
-proc `=destroy`(x: WindowX11VulkanObj) {.siwin_destructor.} =
-  #? for some reason, without this, nim produces invalid C code for =trace implementation
-  `=destroy`(cast[ptr WindowX11Obj](x.addr)[])
-  `=destroy`(x.surface)
+  proc `=destroy`(x: WindowX11VulkanObj) {.siwin_destructor.} =
+    #? for some reason, without this, nim produces invalid C code for =trace implementation
+    `=destroy`(cast[ptr WindowX11Obj](x.addr)[])
+    `=destroy`(x.surface)
 
 
 method vulkanSurface*(window: WindowX11Vulkan): pointer =
@@ -77,10 +78,10 @@ proc newVulkanWindowX11*(
   size = ivec2(1280, 720),
   title = "",
   screen = globals.defaultScreenX11(),
-  resizable = true,
-  fullscreen = false,
-  frameless = false,
-  transparent = false,
+  resizable = system.true,
+  fullscreen = system.false,
+  frameless = system.false,
+  transparent = system.false,
 
   class = "", # window class (used in x11), equals to title if not specified
 ): WindowX11Vulkan =
@@ -88,4 +89,4 @@ proc newVulkanWindowX11*(
   result.globals = globals
   result.initVulkanWindow(vkInstance, size, screen, fullscreen, frameless, transparent, (if class == "": title else: class))
   result.title = title
-  if not resizable: result.resizable = false
+  if not resizable: result.resizable = system.false

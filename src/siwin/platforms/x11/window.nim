@@ -28,7 +28,7 @@ type
   
   XSyncCounter* = distinct XID
 
-  SyncState = enum
+  SyncState* = enum
     none
     syncRecieved
     syncAndConfigureRecieved
@@ -342,7 +342,7 @@ proc geometry(globals: SiwinGlobalsX11, xwin: x.Window): tuple[root: x.Window; p
   discard globals.display.XGetGeometry(xwin, root.addr, x.addr, y.addr, w.addr, h.addr, borderW.addr, depth.addr)
   (root, ivec2(x.int32, y.int32), ivec2(w.int32, h.int32), borderW.int, depth.int)
 
-proc absolutePos(globals: SiwinGlobalsX11, xwin: x.Window): IVec2 =
+proc absolutePos*(globals: SiwinGlobalsX11, xwin: x.Window): IVec2 =
   let geom = globals.geometry(xwin)
   var
     child: x.Window
@@ -358,7 +358,7 @@ proc absolutePos(globals: SiwinGlobalsX11, xwin: x.Window): IVec2 =
   )
   ivec2(rootX.int32, rootY.int32)
 
-proc popupConstraintBounds(globals: SiwinGlobalsX11, anchorPos: IVec2): tuple[pos, size: IVec2] =
+proc popupConstraintBounds*(globals: SiwinGlobalsX11, anchorPos: IVec2): tuple[pos, size: IVec2] =
   result = (ivec2(0, 0), globals.geometry(globals.display.DefaultRootWindow).size)
 
   if not xineramaAvailable():
@@ -474,13 +474,13 @@ proc pushCloseEvent(window: WindowX11) =
 proc resizePixelBuffer(window: WindowX11SoftwareRendering, size: IVec2) =
   window.pixels = window.pixels.realloc(size.x * size.y * Color32bit.sizeof)
 
-proc basicInitWindow(window: WindowX11; size: IVec2; screen: ScreenX11) =
+proc basicInitWindow*(window: WindowX11; size: IVec2; screen: ScreenX11) =
   window.screen = screen.id
   window.m_size = size
 
   window.m_focused = true
 
-proc setupWindow(window: WindowX11, fullscreen, frameless: bool, class: string) =
+proc setupWindow*(window: WindowX11, fullscreen, frameless: bool, class: string) =
   window.globals.windows[window.handle.uint] = window
   discard window.globals.display.XSelectInput(
     window.handle,

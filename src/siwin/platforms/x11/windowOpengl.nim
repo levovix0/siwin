@@ -4,7 +4,7 @@ import x11/x except Window
 import x11/[xlib, xutil, xrender]
 import ../../[siwindefs]
 import ../any/window as anyWindow
-import ./[window {.all.}, glx, siwinGlobals]
+import ./[window, glx, siwinGlobals]
 
 privateAccess Window
 privateAccess WindowX11
@@ -16,21 +16,22 @@ type
     vsyncEnabled: bool
 
 
-proc `=trace`(x: var WindowX11OpenglObj, env: pointer) =
-  #? for some reason, without this, nim produces invalid C code for =trace implementation
-  `=trace`(cast[ptr WindowX11Obj](x.addr)[], env)
+when NimMajor < 2 or NimMinor < 2:
+  proc `=trace`(x: var WindowX11OpenglObj, env: pointer) =
+    #? for some reason, without this, nim produces invalid C code for =trace implementation
+    `=trace`(cast[ptr WindowX11Obj](x.addr)[], env)
 
-proc `=destroy`(x: WindowX11OpenglObj) {.siwin_destructor.} =
-  #? for some reason, without this, nim produces invalid C code for =trace implementation
-  x.globals.display.destroy(x.glxContext)
-  `=destroy`(cast[ptr WindowX11Obj](x.addr)[])
+  proc `=destroy`(x: WindowX11OpenglObj) {.siwin_destructor.} =
+    #? for some reason, without this, nim produces invalid C code for =trace implementation
+    x.globals.display.destroy(x.glxContext)
+    `=destroy`(cast[ptr WindowX11Obj](x.addr)[])
 
 
 proc initOpenglWindow(
   window: WindowX11Opengl,
   size: IVec2, screen: ScreenX11,
   fullscreen, frameless, transparent: bool, class: string,
-  popupWindow = false
+  popupWindow = system.false
 ) =
   window.basicInitWindow size, screen
 

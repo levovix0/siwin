@@ -1,7 +1,7 @@
 import std/importutils
 import vmath
 import ../any/window as anyWindow
-import window {.all.}, winapi
+import window, winapi
 
 privateAccess Window
 privateAccess WindowWinapi
