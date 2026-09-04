@@ -958,14 +958,32 @@ method `visible=`*(window: WindowX11, v: bool) =
     discard window.globals.display.XUnmapWindow(window.handle)
 
 
+proc applyMinSizeHint*(hints: var XSizeHints, size: IVec2) =
+  if size.x <= 0 or size.y <= 0:
+    hints.flags = hints.flags and not PMinSize
+  else:
+    hints.flags = hints.flags or PMinSize
+    hints.minWidth = size.x
+    hints.minHeight = size.y
+
+
+proc applyMaxSizeHint*(hints: var XSizeHints, size: IVec2) =
+  if size.x <= 0 or size.y <= 0:
+    hints.flags = hints.flags and not PMaxSize
+  else:
+    hints.flags = hints.flags or PMaxSize
+    hints.maxWidth = size.x
+    hints.maxHeight = size.y
+
+
 method `resizable=`*(window: WindowX11, v: bool) =
   window.m_resizable = v
   let size = window.size
 
   var hints: XSizeHints
   discard window.globals.display.XGetNormalHints(window.handle, hints.addr)
-  if v: hints.flags = hints.flags and not 0b110000
-  else: hints.flags = hints.flags or 0b110000
+  if v: hints.flags = hints.flags and not (PMinSize or PMaxSize)
+  else: hints.flags = hints.flags or PMinSize or PMaxSize
   hints.minWidth = size.x
   hints.minHeight = size.y
   hints.maxWidth = size.x
@@ -977,9 +995,7 @@ method `minSize=`*(window: WindowX11, v: IVec2) =
   window.m_minSize = v
   var hints: XSizeHints
   discard window.globals.display.XGetNormalHints(window.handle, hints.addr)
-  hints.flags = hints.flags or 0b010000
-  hints.minWidth = v.x
-  hints.minHeight = v.y
+  hints.applyMinSizeHint(v)
   discard window.globals.display.XSetNormalHints(window.handle, hints.addr)
 
 
@@ -987,9 +1003,7 @@ method `maxSize=`*(window: WindowX11, v: IVec2) =
   window.m_maxSize = v
   var hints: XSizeHints
   discard window.globals.display.XGetNormalHints(window.handle, hints.addr)
-  hints.flags = hints.flags or 0b100000
-  hints.maxWidth = v.x
-  hints.maxHeight = v.y
+  hints.applyMaxSizeHint(v)
   discard window.globals.display.XSetNormalHints(window.handle, hints.addr)
 
 
