@@ -631,14 +631,14 @@ method trySetBackdrop*(window: WindowX11, config: WindowBackdropConfig): bool =
       wvcBackdropBlur notin window.visualCapabilities:
     return false
 
-  var data = newSeqOfCap[culong](config.regions.len * 4)
+  var data = newSeqOfCap[Atom](config.regions.len * 4)
   for region in config.regions:
     if region.size.x <= 0 or region.size.y <= 0:
       return false
-    data.add(culong(cast[uint32](region.pos.x)))
-    data.add(culong(cast[uint32](region.pos.y)))
-    data.add(culong(region.size.x))
-    data.add(culong(region.size.y))
+    data.add(Atom(cast[uint32](region.pos.x)))
+    data.add(Atom(cast[uint32](region.pos.y)))
+    data.add(Atom(region.size.x))
+    data.add(Atom(region.size.y))
 
   discard window.globals.display.XChangeProperty(
     window.handle,
