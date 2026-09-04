@@ -252,7 +252,7 @@ block winapiInit:
   wcex.lpszClassName = woClassName
   RegisterClassEx(wcex.addr)
 
-template pushEvent(eventsHandler: WindowEventsHandler, event, args) =
+template pushEvent*(eventsHandler: WindowEventsHandler, event, args) =
   if eventsHandler.event != nil:
     eventsHandler.event(args)
 
