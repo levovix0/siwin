@@ -54,7 +54,11 @@ jobs:
     - name: Install GrabNim
       if: runner.os != 'Windows'
       run: |
-        curl -fsSL https://codeberg.org/janAkali/grabnim/raw/branch/master/misc/install.sh | sh
+        curl --fail --silent --show-error --location --http1.1 \
+          --retry 3 --retry-all-errors \
+          --output "$RUNNER_TEMP/grabnim-install.sh" \
+          https://codeberg.org/janAkali/grabnim/raw/branch/master/misc/install.sh
+        sh "$RUNNER_TEMP/grabnim-install.sh"
         echo "PATH=$HOME/.nimble/bin:$HOME/.local/share/grabnim/current/bin:$PATH" >> $GITHUB_ENV
 
     - name: Install Nim

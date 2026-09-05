@@ -232,7 +232,7 @@ proc windowProc(handle: HWnd, message: Uint, wParam: WParam, lParam: LParam): LR
 
 const
   wClassName = L"w"
-  woClassName = L"o"
+  woClassName* = L"o"
   dwmwaSystemBackdropType = 38.DWord
   dwmsbtNone = 1'i32
   dwmsbtTransientWindow = 3'i32
@@ -252,7 +252,7 @@ block winapiInit:
   wcex.lpszClassName = woClassName
   RegisterClassEx(wcex.addr)
 
-template pushEvent(eventsHandler: WindowEventsHandler, event, args) =
+template pushEvent*(eventsHandler: WindowEventsHandler, event, args) =
   if eventsHandler.event != nil:
     eventsHandler.event(args)
 
@@ -326,7 +326,7 @@ method trySetBackdrop*(window: WindowWinapi, config: WindowBackdropConfig): bool
   true
 
 
-proc initWindow(
+proc initWindow*(
   window: WindowWinapi,
   size: IVec2,
   screen: ScreenWinapi,

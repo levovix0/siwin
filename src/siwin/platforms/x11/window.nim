@@ -1731,19 +1731,21 @@ proc newPopupWindowX11*(
     let root = globals.display.DefaultRootWindow
 
     var vi: XVisualInfo
-    discard globals.display.XMatchVisualInfo(screen.id, 32, TrueColor, vi.addr)
+    if globals.display.XMatchVisualInfo(screen.id, 32, TrueColor, vi.addr) == 0:
+      raise OSError.newException("X11 does not provide a 32-bit TrueColor visual for transparent popup windows")
 
     let cmap = globals.display.XCreateColormap(root, vi.visual, AllocNone)
     var swa = XSetWindowAttributes(
       colormap: cmap,
       override_redirect: 1,
       save_under: 1,
+      border_pixel: 0,
     )
 
     result.handle = globals.display.XCreateWindow(
       root, 0, 0, placement.popupSize().x.cuint, placement.popupSize().y.cuint, 0,
       vi.depth, InputOutput, vi.visual,
-      CwColormap or CWOverrideRedirect or CWSaveUnder,
+      CwColormap or CWOverrideRedirect or CWSaveUnder or CWBorderPixel,
       swa.addr
     )
   else:
