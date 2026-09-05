@@ -2,7 +2,6 @@ import std/importutils
 import vmath
 import x11/x except Window
 import x11/[xlib, xutil, xrender]
-import ../../[siwindefs]
 import ../any/window as anyWindow
 import ./[window, glx, siwinGlobals]
 

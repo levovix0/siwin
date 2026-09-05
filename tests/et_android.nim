@@ -63,14 +63,14 @@ run window, WindowEventsHandler(
   ,
   onTouch: proc(e: TouchEvent) =
     # p_echo "touch: id=", e.touchId, " pressed=", e.pressed, " pos=", e.pos
-    if e.touchId == 0:
-      x = e.pos.x / e.window.size.x.float32
-      y = e.pos.y / e.window.size.y.float32
+    if e.touch.id == 0:
+      x = e.touch.pos.x / e.window.size.x.float32
+      y = e.touch.pos.y / e.window.size.y.float32
     redraw e.window
   ,
   onTouchMove: proc(e: TouchMoveEvent) =
     # p_echo "touch move: id=", e.touchId, " pos=", e.pos
-    if e.touchId == 0:
+    if e.touch.id == 0:
       x = e.pos.x / e.window.size.x.float32
       y = e.pos.y / e.window.size.y.float32
     redraw e.window

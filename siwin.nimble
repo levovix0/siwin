@@ -34,6 +34,12 @@ feature "dev_opengl_es":
   requires "fusion"
   requires "shady == 0.1.4"
 
+feature "android":
+  requires "https://github.com/levovix0/dali"
+  requires "https://github.com/levovix0/marco >= 0.1.2"
+  requires "jnim"
+
+
 when fileExists("src/siwin/build_utils/tasks.nim"):
   include "src/siwin/build_utils/tasks.nim"
 

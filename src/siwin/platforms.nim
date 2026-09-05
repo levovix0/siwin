@@ -5,7 +5,7 @@ import ./platforms/any/window
 when not siwin_use_lib:
   when defined(android):
     ##
-  when defined(linux) or defined(bsd) and not defined(android):
+  when (defined(linux) or defined(bsd)) and not defined(android):
     import ./platforms/wayland/siwinGlobals as waylandGlobals
     import ./platforms/x11/siwinGlobals as x11Globals
   when defined(windows):
