@@ -55,11 +55,6 @@ proc fillRect(
     for px in x0 ..< x1:
       rgbaBuffer[row + px] = color
 
-proc px(scale: float32, value: int32): int32 =
-  round(value.float64 * scale.float64).int32
-
-proc pf(scale: float32, value: float32): float32 =
-  (value.float64 * scale.float64).float32
 
 proc popupButtonRect(size: IVec2): tuple[x, y, w, h: int32] =
   (

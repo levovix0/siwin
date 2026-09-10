@@ -3,9 +3,9 @@ import ./[siwindefs]
 when siwin_build_lib:
   import std/times
 import ./platforms
-import ./platforms/any/[window as anyWindow]
+import ./platforms/any/[window as anyWindow, windowUtils]
 
-export anyWindow
+export anyWindow, windowUtils
 
 when not siwin_use_lib:
   when defined(android):
