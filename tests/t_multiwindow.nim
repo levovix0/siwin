@@ -7,10 +7,12 @@ when defined(linux) or defined(bsd):
   import x11/xlib
   import x11/x except Window
   import siwin/platforms/any/window as anyWindow
+  import siwin/platforms/wayland/protocol
   import siwin/platforms/wayland/window as waylandWindow
   import siwin/platforms/x11/window as x11Window
 
   privateAccess anyWindow.Window
+  privateAccess waylandWindow.WindowWaylandObj
 
 proc testGlobals(): SiwinGlobals =
   newSiwinGlobals()
@@ -22,10 +24,6 @@ type CloseMode = enum
   compositorTitlebarClose
 
 proc safeClose(window: Window) =
-  when defined(linux) or defined(bsd):
-    if window of waylandWindow.WindowWayland:
-      waylandWindow.WindowWayland(window).m_closed = true
-      return
   close(window)
 
 proc requestCompositorClose(window: Window): bool =
@@ -56,8 +54,14 @@ proc requestCompositorClose(window: Window): bool =
       discard XFlush display
       return
     if window of waylandWindow.WindowWayland:
-      # Emulate compositor/titlebar close request on Wayland (xdg_toplevel.close / layer_surface.closed).
-      waylandWindow.WindowWayland(window).m_closed = true
+      let waylandWin = waylandWindow.WindowWayland(window)
+      if waylandWin.xdgToplevel.proxy.raw == nil:
+        return false
+      let callbacks =
+        cast[ptr `Xdg_toplevel / Callbacks`](waylandWin.xdgToplevel.proxy.raw.impl)
+      if callbacks == nil or callbacks.close == nil:
+        return false
+      callbacks.close()
       return true
   false
 
@@ -65,13 +69,18 @@ proc nativeResourcesReleased(window: Window): bool =
   when defined(linux) or defined(bsd):
     if window of x11Window.WindowX11:
       return x11Window.nativeWindowHandle(x11Window.WindowX11(window)) == 0
+    if window of waylandWindow.WindowWayland:
+      return waylandWindow.WindowWayland(window).surface.proxy.raw == nil
   true
 
-proc runCloseDirection(closeLeftFirst: bool, closeMode = CloseMode.manualClose): tuple[
-    otherTicksAfterFirstClose: int, firstObservedClosed: bool
-] =
-  let win1 = globals.newOpenglWindow(title="1", transparent=true, class="siwin example")
-  let win2 = globals.newOpenglWindow(title="2", size=ivec2(800, 600), class="siwin example")
+proc runCloseDirection(
+    closeLeftFirst: bool, closeMode = CloseMode.manualClose
+): tuple[otherTicksAfterFirstClose: int, firstObservedClosed: bool] =
+  let win1 =
+    globals.newOpenglWindow(title = "1", transparent = true, class = "siwin example")
+  let win2 = globals.newOpenglWindow(
+    title = "2", size = ivec2(800, 600), class = "siwin example"
+  )
   loadExtensions()
 
   var
@@ -80,6 +89,8 @@ proc runCloseDirection(closeLeftFirst: bool, closeMode = CloseMode.manualClose):
     closeIssued = false
     firstObservedClosed = false
     otherTicksAfterFirstClose = 0
+    closeEvents1 = 0
+    closeEvents2 = 0
 
   proc forceCloseBoth() =
     if win1.opened:
@@ -93,9 +104,14 @@ proc runCloseDirection(closeLeftFirst: bool, closeMode = CloseMode.manualClose):
       safeClose(window)
     of CloseMode.compositorTitlebarClose:
       if not requestCompositorClose(window):
-        raise CatchableError.newException("Compositor/titlebar close simulation unsupported")
+        raise CatchableError.newException(
+          "Compositor/titlebar close simulation unsupported"
+        )
 
   let win1eh = WindowEventsHandler(
+    onClose: proc(e: CloseEvent) =
+      inc closeEvents1
+    ,
     onResize: proc(e: ResizeEvent) =
       makeCurrent e.window
       glViewport 0, 0, e.size.x.GLsizei, e.size.y.GLsizei
@@ -123,9 +139,13 @@ proc runCloseDirection(closeLeftFirst: bool, closeMode = CloseMode.manualClose):
             safeClose(win1)
       if ticks1 + ticks2 > 1200:
         forceCloseBoth()
+    ,
   )
 
   let win2eh = WindowEventsHandler(
+    onClose: proc(e: CloseEvent) =
+      inc closeEvents2
+    ,
     onResize: proc(e: ResizeEvent) =
       makeCurrent e.window
       glViewport 0, 0, e.size.x.GLsizei, e.size.y.GLsizei
@@ -153,21 +173,22 @@ proc runCloseDirection(closeLeftFirst: bool, closeMode = CloseMode.manualClose):
             safeClose(win2)
       if ticks1 + ticks2 > 1200:
         forceCloseBoth()
+    ,
   )
 
-  runMultiple(
-    (win1, win1eh, true),
-    (win2, win2eh, true),
-  )
+  runMultiple((win1, win1eh, true), (win2, win2eh, true))
+
+  check closeEvents1 == 1
+  check closeEvents2 == 1
 
   result = (
     otherTicksAfterFirstClose: otherTicksAfterFirstClose,
     firstObservedClosed: firstObservedClosed,
   )
 
-proc runCloseLeftKeepsRightAlive(closeMode: CloseMode): tuple[
-    otherTicksAfterFirstClose: int, firstObservedClosed: bool
-] =
+proc runCloseLeftKeepsRightAlive(
+    closeMode: CloseMode
+): tuple[otherTicksAfterFirstClose: int, firstObservedClosed: bool] =
   runCloseDirection(closeLeftFirst = true, closeMode = closeMode)
 
 test "manual close left then keep right alive":
@@ -207,7 +228,9 @@ test "compositor/titlebar close right then keep left alive":
   block runCompositorCloseRight:
     var stats: tuple[otherTicksAfterFirstClose: int, firstObservedClosed: bool]
     try:
-      stats = runCloseDirection(closeLeftFirst = false, closeMode = CloseMode.compositorTitlebarClose)
+      stats = runCloseDirection(
+        closeLeftFirst = false, closeMode = CloseMode.compositorTitlebarClose
+      )
     except CatchableError:
       skip()
       break runCompositorCloseRight
@@ -215,8 +238,11 @@ test "compositor/titlebar close right then keep left alive":
     check stats.otherTicksAfterFirstClose >= 20
 
 test "2 windows at once":
-  let win1 = globals.newOpenglWindow(title="1", transparent=true, class="siwin example")
-  let win2 = globals.newOpenglWindow(title="2", size=ivec2(800, 600), class="siwin example")
+  let win1 =
+    globals.newOpenglWindow(title = "1", transparent = true, class = "siwin example")
+  let win2 = globals.newOpenglWindow(
+    title = "2", size = ivec2(800, 600), class = "siwin example"
+  )
   loadExtensions()
   var ticks = 0
 
@@ -240,26 +266,25 @@ test "2 windows at once":
         of Key.escape:
           close win1
           close win2
-        else: discard
+        else:
+          discard
     ,
     onTick: proc(e: TickEvent) =
       inc ticks
       if ticks > 180:
         close win1
         close win2
+    ,
   )
   var win2eh = win1eh
-  
+
   win2eh.onRender = proc(e: RenderEvent) =
     makeCurrent e.window
     glClearColor 0.7, 0.7, 0.7, 1
     glClear GlColorBufferBit or GlDepthBufferBit
-  
+
   win2eh.onClick = proc(e: ClickEvent) =
     if e.double:
       close (if win1.opened: win1 else: e.window)
 
-  runMultiple(
-    (win1, win1eh, true),
-    (win2, win2eh, true),
-  )
+  runMultiple((win1, win1eh, true), (win2, win2eh, true))
