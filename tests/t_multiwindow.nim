@@ -61,6 +61,12 @@ proc requestCompositorClose(window: Window): bool =
       return true
   false
 
+proc nativeResourcesReleased(window: Window): bool =
+  when defined(linux) or defined(bsd):
+    if window of x11Window.WindowX11:
+      return x11Window.nativeWindowHandle(x11Window.WindowX11(window)) == 0
+  true
+
 proc runCloseDirection(closeLeftFirst: bool, closeMode = CloseMode.manualClose): tuple[
     otherTicksAfterFirstClose: int, firstObservedClosed: bool
 ] =
@@ -110,6 +116,7 @@ proc runCloseDirection(closeLeftFirst: bool, closeMode = CloseMode.manualClose):
           closeIssued = true
           closeRequestedWindow(win2)
         if not win2.opened:
+          check nativeResourcesReleased(win2)
           firstObservedClosed = true
           inc otherTicksAfterFirstClose
           if otherTicksAfterFirstClose >= 40 and win1.opened:
@@ -139,6 +146,7 @@ proc runCloseDirection(closeLeftFirst: bool, closeMode = CloseMode.manualClose):
           closeIssued = true
           closeRequestedWindow(win1)
         if not win1.opened:
+          check nativeResourcesReleased(win1)
           firstObservedClosed = true
           inc otherTicksAfterFirstClose
           if otherTicksAfterFirstClose >= 40 and win2.opened:

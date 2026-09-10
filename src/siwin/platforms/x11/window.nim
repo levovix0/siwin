@@ -599,7 +599,12 @@ method close*(window: WindowX11) =
   if window.m_closed:
     return
   window.m_closed = true
-  window.globals.windows.del(window.handle.uint)
+  let handle = window.handle
+  window.handle = 0
+  window.globals.windows.del(handle.uint)
+  if handle != 0:
+    discard window.globals.display.XDestroyWindow(handle)
+    discard window.globals.display.XFlush()
   window.pushCloseEvent()
 
 proc backdropBlurSupported(window: WindowX11): bool =
