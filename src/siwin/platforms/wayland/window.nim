@@ -746,7 +746,7 @@ proc createLibdecorFrameIface(): LibdecorFrameInterface =
     ,
     close: proc(frame: LibdecorFrame, userData: pointer) {.cdecl.} =
       let win = cast[WindowWayland](userData)
-      win.m_closed = true
+      win.close()
     ,
     commit: proc(frame: LibdecorFrame, userData: pointer) {.cdecl.} =
       let win = cast[WindowWayland](userData)
@@ -833,6 +833,9 @@ proc createPopupPositioner(window: WindowWayland): Xdg_positioner =
 proc resize(window: WindowWayland, size: IVec2) =
   if size.x <= 0 or size.y <= 0:
     ## todo: means we should decide the size by ourselves
+    return
+
+  if window.m_size == size:
     return
     
   window.doResize size
@@ -1792,7 +1795,7 @@ proc setupWindow*(window: WindowWayland, fullscreen, frameless, transparent: boo
         window.toplevelSetAppId(class)
 
       window.xdgToplevel.onClose:
-        window.m_closed = true
+        window.close()
 
       window.xdgToplevel.onConfigure:
         window.resize(ivec2(width, height))
@@ -1862,8 +1865,7 @@ proc setupWindow*(window: WindowWayland, fullscreen, frameless, transparent: boo
       window.resize(ivec2(width.int32, height.int32))
 
     window.layerShellSurface.onClosed:
-      window.m_closed = true
-      window.surface.destroy()
+      window.close()
 
 
 proc initSoftwareRenderingWindow(

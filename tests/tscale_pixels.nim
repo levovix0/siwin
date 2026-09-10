@@ -38,6 +38,21 @@ suite "platform size reporting":
 
       check window.uiScale == 1'f32
       check window.size == ivec2(320, 180)
+
+    test "Wayland ignores repeated logical size assignments":
+      var window: waylandWindow.WindowWayland
+      new window
+      window.m_size = ivec2(775, 618)
+      window.m_transparent = true
+
+      var resizeEvents = 0
+      window.eventsHandler.onResize = proc(event: ResizeEvent) =
+        inc resizeEvents
+
+      window.size = ivec2(775, 618)
+
+      check window.m_size == ivec2(775, 618)
+      check resizeEvents == 0
   else:
     test "platform size reporting is covered by platform-specific backends":
       skip()
