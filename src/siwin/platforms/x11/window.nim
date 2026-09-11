@@ -13,6 +13,9 @@ import ../any/[window, clipboards]
 import ../any/[windowUtils]
 import ./[siwinGlobals]
 
+when defined(android):
+  {.error: "x11 backend is not supported on android, do not import it".}
+
 {.experimental: "overloadableEnums".}
 
 privateAccess Window

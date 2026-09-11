@@ -3,7 +3,6 @@
 # import siwin/build_utils/android.nim before including this file
 
 
-
 proc buildBasiaIfNeeded* =
   if not dirExists "build/basia":
     withDir "build":
@@ -62,8 +61,8 @@ proc buildAndroid*() =
 </manifest>"""
   
   # https://github.com/akavel/marco
-  exec "marco -i=build/android/AndroidManifest.xml -o=build/android/apk/AndroidManifest.xml"
-  # cpFile "build/android/AndroidManifest.xml", "build/android/apk/AndroidManifest.xml"
+  withDir "build/android":
+    exec "marco -i=AndroidManifest.xml -o=apk/AndroidManifest.xml"
 
 
   # build so
@@ -91,7 +90,8 @@ proc buildAndroid*() =
 
 
   # pack apk and (incorrectly) sign it
-  packApk("siwintest.apk", "apk/", "../basia/basia")
+  withDir "build/android":
+    packApk("siwintest.apk", "apk/", "../basia/basia")
   
 
   # sign apk

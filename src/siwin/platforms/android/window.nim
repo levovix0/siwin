@@ -168,8 +168,8 @@ jexport SiwinGlSurfaceView extends GLSurfaceView:
         )
         
         for window in openWindows:
-          window.raw.touchScreen.pressed[touch.id] = touch
-          window.raw.eventsHandler.onTouch.pushEventImpl TouchEvent(window: window.raw, pressed: true, touchId: touch.id, pos: touch.pos)
+          window.raw.touchScreen.touches[touch.id] = touch
+          window.raw.eventsHandler.onTouch.pushEventImpl TouchEvent(window: window.raw, pressed: true, touch: touch)
 
       of ACTION_UP, ACTION_POINTER_UP:
         let pointerIndex =
@@ -181,26 +181,27 @@ jexport SiwinGlSurfaceView extends GLSurfaceView:
           else: event.getPointerId(pointerIndex)
         
         for window in openWindows:
-          if not window.raw.touchScreen.pressed.hasKey(touchId):
+          if not window.raw.touchScreen.touches.hasKey(touchId):
             continue
 
-          let touch = window.raw.touchScreen.pressed[touchId]
+          let touch = window.raw.touchScreen.touches[touchId]
           
-          window.raw.touchScreen.pressed.del touchId
-          window.raw.eventsHandler.onTouch.pushEventImpl TouchEvent(window: window.raw, pressed: false, touchId: touch.id, pos: touch.pos)
+          window.raw.touchScreen.touches.del touchId
+          window.raw.eventsHandler.onTouch.pushEventImpl TouchEvent(window: window.raw, pressed: false, touch: touch)
       
       of ACTION_MOVE:
         for window in openWindows:
           for pointerIndex in 0..<event.getPointerCount:
             let touchId = event.getPointerId(pointerIndex)
             
-            if not window.raw.touchScreen.pressed.hasKey(touchId):
+            if not window.raw.touchScreen.touches.hasKey(touchId):
               continue
             
             let pos = vec2(event.getX(pointerIndex), event.getY(pointerIndex)) - vec2(this.getX, this.getY)
 
-            window.raw.touchScreen.pressed[touchId].pos = pos
-            window.raw.eventsHandler.onTouchMove.pushEventImpl TouchMoveEvent(window: window.raw, touchId: touchId, pos: pos)
+            window.raw.touchScreen.touches[touchId].pos = pos
+            let touch = window.raw.touchScreen.touches[touchId]
+            window.raw.eventsHandler.onTouchMove.pushEventImpl TouchMoveEvent(window: window.raw, touch: touch, kind: MouseMoveKind.move, pos: pos)
 
       else:
         discard

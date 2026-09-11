@@ -3,15 +3,15 @@ import ./[siwindefs]
 when siwin_build_lib:
   import std/times
 import ./platforms
-import ./platforms/any/[window as anyWindow]
+import ./platforms/any/[window as anyWindow, windowUtils]
 
-export anyWindow
+export anyWindow, windowUtils
 
 when not siwin_use_lib:
   when defined(android):
     import ./platforms/android/window as androidWindow
 
-  elif defined(linux) or defined(bsd):
+  elif (defined(linux) or defined(bsd)) and not defined(android):
     import ./platforms/x11/siwinGlobals as x11SiwinGlobals
     import ./platforms/x11/window as x11Window
     import ./platforms/x11/windowOpengl as x11WindowOpengl
@@ -30,7 +30,7 @@ when not siwin_use_lib:
     when defined(android):
       1
 
-    elif defined(linux) or defined(bsd):
+    elif (defined(linux) or defined(bsd)) and not defined(android):
       if globals of SiwinGlobalsX11:
         result = globals.SiwinGlobalsX11.screenCountX11()
       elif globals of SiwinGlobalsWayland:
@@ -45,7 +45,7 @@ when not siwin_use_lib:
     when defined(android):
       Screen()
 
-    elif defined(linux) or defined(bsd):
+    elif (defined(linux) or defined(bsd)) and not defined(android):
       if globals of SiwinGlobalsX11:
         result = globals.SiwinGlobalsX11.screenX11(number)
       elif globals of SiwinGlobalsWayland:
@@ -60,7 +60,7 @@ when not siwin_use_lib:
     when defined(android):
       Screen()
 
-    elif defined(linux) or defined(bsd):
+    elif (defined(linux) or defined(bsd)) and not defined(android):
       if globals of SiwinGlobalsX11:
         result = globals.SiwinGlobalsX11.defaultScreenX11()
       elif globals of SiwinGlobalsWayland:
@@ -91,7 +91,7 @@ when not siwin_use_lib:
         resizable, fullscreen, frameless, transparent
       )
 
-    elif defined(linux) or defined(bsd):
+    elif (defined(linux) or defined(bsd)) and not defined(android):
       if globals of SiwinGlobalsX11:
         result = globals.SiwinGlobalsX11.newSoftwareRenderingWindowX11(
           size, title,
@@ -135,7 +135,7 @@ when not siwin_use_lib:
   ): PopupWindow =
     when defined(android):
       raise SiwinPlatformSupportDefect.newException("Popup windows are not supported on Android")
-    elif defined(linux) or defined(bsd):
+    elif (defined(linux) or defined(bsd)) and not defined(android):
       if globals of SiwinGlobalsX11:
         if parent of WindowX11Opengl:
           result = globals.SiwinGlobalsX11.newPopupWindowX11(
@@ -154,7 +154,7 @@ when not siwin_use_lib:
     elif defined(macosx):
       result = newPopupWindowCocoa(parent.WindowCocoa, placement, transparent, grab)
 
-  when defined(linux) or defined(bsd):
+  when (defined(linux) or defined(bsd)) and not(defined(android)):
     proc newSoftwareRenderingLayerSurfaceWindow*(
         globals: SiwinGlobals,
         size = ivec2(1280, 32),

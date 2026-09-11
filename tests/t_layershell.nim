@@ -2,7 +2,7 @@
 import std/[unittest]
 import siwin
 
-when defined(linux) or defined(bsd):
+when (defined(linux) or defined(bsd)) and not defined(android):
   import opengl, vmath
   import siwin/platforms/wayland/[siwinGlobals, window, windowOpengl]
 
@@ -20,7 +20,7 @@ when defined(linux) or defined(bsd):
     )
 
 test "wlr-layer-shell":
-  when not defined(linux) and not defined(bsd):
+  when not ((defined(linux) or defined(bsd)) and not defined(android)):
     skip()
   else:
     block runLayerShell:
