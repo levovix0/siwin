@@ -4,7 +4,9 @@ import pkg/x11/x except Window
 import pkg/x11/[xutil]
 import ../../[siwindefs]
 import ../any/window
-import ./[glx, siwinGlobals]
+import ./[glx, siwinGlobals, window]
+
+static: discard XSyncCounter 0  # so ./window is considered used (it is needed for siwin_x11_dispatch_window_event definition)
 
 type
   InvisibleOpenglWindowX11* = ref InvisibleOpenglWindowX11Obj
