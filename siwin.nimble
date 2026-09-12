@@ -1,4 +1,4 @@
-version       = "1.1.1"
+version       = "1.1.2"
 author        = "levovix0"
 description   = "Cross-platform window creation and event handling library"
 license       = "MIT"
@@ -23,14 +23,14 @@ when defined(android):
 when defined(macosx):
   requires "darwin#30d16cf0983124057a57553a0f1f9fd5df525f84"
 
-feature "dev":
+feature "siwin_examples":
   requires "opengl"
   requires "nimgl"
   requires "pixie"
   requires "sdl2"
   requires "https://github.com/planetis-m/vulkan#b223dc9"
 
-feature "dev_opengl_es":
+feature "siwin_examples_opengl_es":
   requires "fusion"
   requires "shady == 0.1.4"
 
