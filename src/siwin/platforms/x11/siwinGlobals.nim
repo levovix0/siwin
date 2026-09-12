@@ -72,7 +72,7 @@ proc drainX11Wake*(globals: SiwinGlobalsX11): bool =
       break
   if result: globals.consumeEventLoopWake()
 
-proc newX11Globals*: SiwinGlobalsX11 {.raises: [OsError].} =
+proc newX11Globals*: SiwinGlobalsX11 =
   new result
   result.display = XOpenDisplay(getEnv("DISPLAY").cstring)
   if result.display == nil: raise OsError.newException("failed to open X11 display, make sure the DISPLAY environment variable is set correctly")
