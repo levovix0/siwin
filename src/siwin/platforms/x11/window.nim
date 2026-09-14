@@ -1300,7 +1300,7 @@ proc dispatchWindowEvent(
 
     case ev.theType
     of Expose:
-      ##
+      window.redraw()
     
     of ClientMessage:
       if ev.xclient.message_type == window.globals.atoms.xDndEnter:

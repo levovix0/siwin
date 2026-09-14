@@ -64,7 +64,11 @@ when eventLoopIntegrationSupported:
   import siwin
 
   when defined(windows):
+    import std/importutils
+    import siwin/platforms/winapi/window as winapiWindow
     import siwin/platforms/winapi/winapi
+
+    privateAccess winapiWindow.WindowWinapi
 
     # Nim's `cpuTime` uses Microsoft's wall-clock `clock()`. Query actual
     # thread execution time so this assertion can distinguish waiting from spin.
@@ -83,6 +87,11 @@ when eventLoopIntegrationSupported:
       (kernelTime.fileTimeTicks + userTime.fileTimeTicks).float64 / 10_000_000.0
   else:
     proc threadCpuTime(): float64 = cpuTime()
+
+  when defined(linux) or defined(bsd):
+    import x11/x except Window
+    import x11/xlib
+    import siwin/platforms/x11/window as x11Window
 
   proc wakeFromWorker(waker: EventLoopWaker) {.thread.} =
     waker.wake()
@@ -300,6 +309,127 @@ when eventLoopIntegrationSupported:
 
     doAssert ticks == 1
     doAssert renders == 1
+
+  block only_requested_windows_render:
+    var renders, resizes: array[2, int]
+    let
+      firstWindow = globals.newSoftwareRenderingWindow(
+        size = ivec2(32, 32), title = "Siwin damage target"
+      )
+      secondWindow = globals.newSoftwareRenderingWindow(
+        size = ivec2(32, 32), title = "Siwin unchanged window"
+      )
+    defer:
+      if secondWindow.opened:
+        secondWindow.close()
+      if firstWindow.opened:
+        firstWindow.close()
+
+    proc handler(index: int): WindowEventsHandler =
+      WindowEventsHandler(
+        onRender: proc(event: RenderEvent) =
+          inc renders[index]
+        ,
+        onResize: proc(event: ResizeEvent) =
+          inc resizes[index]
+        ,
+      )
+
+    proc serviceWindows() =
+      firstWindow.serviceWindow()
+      secondWindow.serviceWindow()
+
+    firstWindow.eventsHandler = handler(0)
+    secondWindow.eventsHandler = handler(1)
+    let makeVisible = serviceWindowNeedsVisibleSurface or defined(windows)
+    firstWindow.firstStep(makeVisible = makeVisible)
+    secondWindow.firstStep(makeVisible = makeVisible)
+    secondWindow.pos = ivec2(160, 160)
+
+    let readyDeadline = getMonoTime() + initDuration(seconds = 5)
+    var ready = false
+    while getMonoTime() < readyDeadline and not ready:
+      let activity = globals.pollEvents()
+      serviceWindows()
+      ready = not activity and renders[0] > 0 and renders[1] > 0
+      if not ready:
+        sleep(1)
+    doAssert ready, "the windows did not finish their initial rendering"
+
+    block wake_without_redraw:
+      let before = renders
+      globals.eventLoopWaker().wake()
+      globals.eventLoopWaker().wake()
+      doAssert globals.pollEvents()
+      serviceWindows()
+      doAssert renders == before, "a wake must not request a render"
+
+    block explicit_redraw_without_content_changes:
+      let before = renders
+      firstWindow.redraw()
+      serviceWindows()
+      doAssert renders == [before[0] + 1, before[1]]
+
+    when defined(linux) or defined(bsd) or defined(windows):
+      block native_damage:
+        when defined(linux) or defined(bsd):
+          if not (firstWindow of x11Window.WindowX11):
+            break native_damage
+          let
+            window = x11Window.WindowX11(firstWindow)
+            display = cast[ptr Display](window.nativeDisplayHandle())
+            handle = window.nativeWindowHandle().culong
+        else:
+          let handle = winapiWindow.WindowWinapi(firstWindow).handle
+
+        block unrelated_native_event:
+          let before = renders
+          when defined(linux) or defined(bsd):
+            var event: XEvent
+            event.xclient = XClientMessageEvent(
+              theType: ClientMessage, display: display, window: handle, format: 32
+            )
+            doAssert display.XSendEvent(handle, 0, NoEventMask, event.addr) != 0
+            discard display.XSync(0)
+          else:
+            doAssert PostMessage(handle, WmNull, 0, 0) != 0
+          doAssert globals.pollEvents()
+          serviceWindows()
+          doAssert renders == before, "unhandled events must not request a render"
+
+        let originalSize = firstWindow.size
+        for wakeFirst in [true, false]:
+          let
+            before = renders
+            resizesBefore = resizes
+          if wakeFirst:
+            globals.eventLoopWaker().wake()
+          when defined(linux) or defined(bsd):
+            discard display.XClearArea(handle, 0, 0, 0, 0, 1)
+            discard display.XSync(0)
+          else:
+            doAssert InvalidateRect(handle, nil, 0) != 0
+          if not wakeFirst:
+            globals.eventLoopWaker().wake()
+
+          let deadline = getMonoTime() + initDuration(seconds = 5)
+          while getMonoTime() < deadline and renders[0] == before[0]:
+            discard globals.pollEvents()
+            serviceWindows()
+            if renders[0] == before[0]:
+              sleep(1)
+          doAssert renders[0] > before[0], "native damage did not request onRender"
+          doAssert renders[1] == before[1], "an undamaged window was redrawn"
+          doAssert firstWindow.size == originalSize
+          doAssert resizes == resizesBefore, "damage must not synthesize a resize"
+
+        when defined(windows):
+          block paint_without_damage:
+            let before = renders
+            doAssert RedrawWindow(handle, nil, 0, RdwInternalPaint) != 0
+            discard globals.pollEvents()
+            serviceWindows()
+            doAssert renders == before, "an internal WM_PAINT has no surface damage"
 
   block event_driven_runner_services_every_window_after_one_wait:
     var wakeQueued: Atomic[bool]

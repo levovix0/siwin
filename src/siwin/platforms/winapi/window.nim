@@ -784,6 +784,10 @@ proc poolEvent(window: WindowWinapi, message: Uint, wParam: WParam, lParam: LPar
       window.eventsHandler.pushEvent onResize, ResizeEvent(window: window, size: window.m_size, initial: false)
       window.redrawRequested = true
 
+    # Native damage needs presentation even when the client size is unchanged.
+    if paint.rcPaint.right > paint.rcPaint.left and paint.rcPaint.bottom > paint.rcPaint.top:
+      window.redrawRequested = true
+
 
   of WmDestroy:
     window.m_closed = true
