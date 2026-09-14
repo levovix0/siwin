@@ -325,22 +325,26 @@ when eventLoopIntegrationSupported:
       if firstWindow.opened:
         firstWindow.close()
 
-    proc handler(index: int): WindowEventsHandler =
-      WindowEventsHandler(
-        onRender: proc(event: RenderEvent) =
-          inc renders[index]
-        ,
-        onResize: proc(event: ResizeEvent) =
-          inc resizes[index]
-        ,
-      )
-
     proc serviceWindows() =
       firstWindow.serviceWindow()
       secondWindow.serviceWindow()
 
-    firstWindow.eventsHandler = handler(0)
-    secondWindow.eventsHandler = handler(1)
+    firstWindow.eventsHandler = WindowEventsHandler(
+      onRender: proc(event: RenderEvent) =
+        inc renders[0]
+      ,
+      onResize: proc(event: ResizeEvent) =
+        inc resizes[0]
+      ,
+    )
+    secondWindow.eventsHandler = WindowEventsHandler(
+      onRender: proc(event: RenderEvent) =
+        inc renders[1]
+      ,
+      onResize: proc(event: ResizeEvent) =
+        inc resizes[1]
+      ,
+    )
     let makeVisible = serviceWindowNeedsVisibleSurface or defined(windows)
     firstWindow.firstStep(makeVisible = makeVisible)
     secondWindow.firstStep(makeVisible = makeVisible)
@@ -356,10 +360,7 @@ when eventLoopIntegrationSupported:
       ready = renders[0] > 0 and renders[1] > 0
       if not ready:
         sleep(1)
-    doAssert ready,
-      "initial render counts=" & $renders &
-      " opened=" & $firstWindow.opened & "/" & $secondWindow.opened &
-      " visible=" & $firstWindow.visible & "/" & $secondWindow.visible
+    doAssert ready, "the windows did not finish their initial rendering"
 
     block wake_without_redraw:
       let before = renders
