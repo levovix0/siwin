@@ -729,8 +729,6 @@ method serviceWindow*(window: WindowWinapi) =
   if window.closed:
     return
 
-  echo "service redraw=", window.redrawRequested
-
   let now = getMonoTime()
   window.eventsHandler.pushEvent onTick, TickEvent(
     window: window,
@@ -772,9 +770,14 @@ proc poolEvent(window: WindowWinapi, message: Uint, wParam: WParam, lParam: LPar
   
   case message
   of WmPaint:
-    echo "paint message"
+    let hasUpdateRegion = window.handle.GetUpdateRect(nil, 0).bool
     var paint: PaintStruct
     window.handle.BeginPaint(paint.addr)
+    let hasPaintDamage =
+      hasUpdateRegion or (
+        paint.rcPaint.right > paint.rcPaint.left and
+        paint.rcPaint.bottom > paint.rcPaint.top
+      )
     window.handle.EndPaint(paint.addr)
 
     let rect = window.handle.clientRect
@@ -787,9 +790,9 @@ proc poolEvent(window: WindowWinapi, message: Uint, wParam: WParam, lParam: LPar
       window.eventsHandler.pushEvent onResize, ResizeEvent(window: window, size: window.m_size, initial: false)
       window.redrawRequested = true
 
-    # Native paint notifications need presentation even when the client size
-    # is unchanged. The render callback draws a complete frame.
-    window.redrawRequested = true
+    # Native damage needs presentation even when the client size is unchanged.
+    if hasPaintDamage:
+      window.redrawRequested = true
 
 
   of WmDestroy:

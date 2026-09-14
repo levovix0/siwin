@@ -313,7 +313,7 @@ when eventLoopIntegrationSupported:
   block native_damage_requests_render:
     var renders, resizes: int
     let window = globals.newSoftwareRenderingWindow(
-      size = ivec2(32, 32), title = "Siwin native damage test"
+      size = ivec2(320, 240), title = "Siwin native damage test"
     )
     defer:
       if window.opened:
@@ -356,6 +356,11 @@ when eventLoopIntegrationSupported:
         renders = 0
         resizes = 0
 
+        when defined(windows):
+          let client = handle.clientRect
+          doAssert client.right > client.left and client.bottom > client.top,
+            "native damage test requires a drawable client area"
+
         block unrelated_native_event:
           let before = renders
           when defined(linux) or defined(bsd):
@@ -395,6 +400,14 @@ when eventLoopIntegrationSupported:
           doAssert renders > before, "native damage did not request onRender"
           doAssert window.size == originalSize
           doAssert resizes == resizesBefore, "damage must not synthesize a resize"
+
+        when defined(windows):
+          block paint_without_damage:
+            let before = renders
+            doAssert RedrawWindow(handle, nil, 0, RdwInternalPaint) != 0
+            discard globals.pollEvents()
+            window.serviceWindow()
+            doAssert renders == before, "an internal WM_PAINT has no surface damage"
 
   block event_driven_runner_services_every_window_after_one_wait:
     var wakeQueued: Atomic[bool]
