@@ -390,6 +390,12 @@ when eventLoopIntegrationSupported:
             discard display.XSync(0)
           else:
             doAssert InvalidateRect(handle, nil, 0) != 0
+            var updateRect: RECT
+            var pendingMessage: Msg
+            echo "after invalidate visible=", IsWindowVisible(handle),
+              " update=", GetUpdateRect(handle, updateRect.addr, 0),
+              " peek=", PeekMessage(pendingMessage.addr, 0, 0, 0, PmNoRemove),
+              " message=", pendingMessage.message
           if not wakeFirst:
             globals.eventLoopWaker().wake()
 
