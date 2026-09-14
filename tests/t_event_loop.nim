@@ -345,6 +345,8 @@ when eventLoopIntegrationSupported:
     firstWindow.firstStep(makeVisible = makeVisible)
     secondWindow.firstStep(makeVisible = makeVisible)
     secondWindow.pos = ivec2(160, 160)
+    firstWindow.redraw()
+    secondWindow.redraw()
 
     let readyDeadline = getMonoTime() + initDuration(seconds = 5)
     var ready = false
