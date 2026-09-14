@@ -356,7 +356,10 @@ when eventLoopIntegrationSupported:
       ready = renders[0] > 0 and renders[1] > 0
       if not ready:
         sleep(1)
-    doAssert ready, "the windows did not finish their initial rendering"
+    doAssert ready,
+      "initial render counts=" & $renders &
+      " opened=" & $firstWindow.opened & "/" & $secondWindow.opened &
+      " visible=" & $firstWindow.visible & "/" & $secondWindow.visible
 
     block wake_without_redraw:
       let before = renders
