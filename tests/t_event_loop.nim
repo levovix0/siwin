@@ -64,7 +64,11 @@ when eventLoopIntegrationSupported:
   import siwin
 
   when defined(windows):
+    import std/importutils
+    import siwin/platforms/winapi/window as winapiWindow
     import siwin/platforms/winapi/winapi
+
+    privateAccess winapiWindow.WindowWinapi
 
     # Nim's `cpuTime` uses Microsoft's wall-clock `clock()`. Query actual
     # thread execution time so this assertion can distinguish waiting from spin.
@@ -83,6 +87,11 @@ when eventLoopIntegrationSupported:
       (kernelTime.fileTimeTicks + userTime.fileTimeTicks).float64 / 10_000_000.0
   else:
     proc threadCpuTime(): float64 = cpuTime()
+
+  when defined(linux) or defined(bsd):
+    import x11/x except Window
+    import x11/xlib
+    import siwin/platforms/x11/window as x11Window
 
   proc wakeFromWorker(waker: EventLoopWaker) {.thread.} =
     waker.wake()
@@ -300,6 +309,105 @@ when eventLoopIntegrationSupported:
 
     doAssert ticks == 1
     doAssert renders == 1
+
+  block native_damage_requests_render:
+    var renders, resizes: int
+    let window = globals.newSoftwareRenderingWindow(
+      size = ivec2(320, 240), title = "Siwin native damage test"
+    )
+    defer:
+      if window.opened:
+        window.close()
+
+    window.eventsHandler = WindowEventsHandler(
+      onRender: proc(event: RenderEvent) =
+        inc renders
+      ,
+      onResize: proc(event: ResizeEvent) =
+        inc resizes
+      ,
+    )
+    window.firstStep(makeVisible = serviceWindowNeedsVisibleSurface)
+    window.redraw()
+    window.serviceWindow()
+    doAssert renders == 1
+    renders = 0
+    resizes = 0
+
+    when defined(linux) or defined(bsd) or defined(windows):
+      block native_damage:
+        when defined(linux) or defined(bsd):
+          if not (window of x11Window.WindowX11):
+            break native_damage
+          let
+            x11win = x11Window.WindowX11(window)
+            display = cast[ptr Display](x11win.nativeDisplayHandle())
+            handle = x11win.nativeWindowHandle().culong
+        else:
+          let handle = winapiWindow.WindowWinapi(window).handle
+
+        when defined(windows):
+          window.visible = true
+
+        when defined(linux) or defined(bsd):
+          discard display.XSync(0)
+        discard globals.pollEvents()
+        window.serviceWindow()
+        renders = 0
+        resizes = 0
+
+        when defined(windows):
+          let client = handle.clientRect
+          doAssert client.right > client.left and client.bottom > client.top,
+            "native damage test requires a drawable client area"
+
+        block unrelated_native_event:
+          let before = renders
+          when defined(linux) or defined(bsd):
+            var event: XEvent
+            event.xclient = XClientMessageEvent(
+              theType: ClientMessage, display: display, window: handle, format: 32
+            )
+            doAssert display.XSendEvent(handle, 0, NoEventMask, event.addr) != 0
+            discard display.XSync(0)
+          else:
+            doAssert PostMessage(handle, WmNull, 0, 0) != 0
+          doAssert globals.pollEvents()
+          window.serviceWindow()
+          doAssert renders == before, "unhandled events must not request a render"
+
+        let originalSize = window.size
+        for wakeFirst in [true, false]:
+          let
+            before = renders
+            resizesBefore = resizes
+          if wakeFirst:
+            globals.eventLoopWaker().wake()
+          when defined(linux) or defined(bsd):
+            discard display.XClearArea(handle, 0, 0, 0, 0, 1)
+            discard display.XSync(0)
+          else:
+            doAssert InvalidateRect(handle, nil, 0) != 0
+          if not wakeFirst:
+            globals.eventLoopWaker().wake()
+
+          let deadline = getMonoTime() + initDuration(seconds = 5)
+          while getMonoTime() < deadline and renders == before:
+            discard globals.pollEvents()
+            window.serviceWindow()
+            if renders == before:
+              sleep(1)
+          doAssert renders > before, "native damage did not request onRender"
+          doAssert window.size == originalSize
+          doAssert resizes == resizesBefore, "damage must not synthesize a resize"
+
+        when defined(windows):
+          block paint_without_damage:
+            let before = renders
+            doAssert RedrawWindow(handle, nil, 0, RdwInternalPaint) != 0
+            discard globals.pollEvents()
+            window.serviceWindow()
+            doAssert renders == before, "an internal WM_PAINT has no surface damage"
 
   block event_driven_runner_services_every_window_after_one_wait:
     var wakeQueued: Atomic[bool]

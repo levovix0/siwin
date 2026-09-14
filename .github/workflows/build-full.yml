@@ -109,7 +109,7 @@ jobs:
       env:
         NIMFLAGS: ${{ runner.os == 'Windows' && '--cc:vcc' || '' }}
       run: |
-        "$NIMBLE_BIN" install -y -d --features:dev
+        "$NIMBLE_BIN" install -y -d --features:siwin_examples
 
     - name: Build Tests
       if: runner.os == 'Linux'
@@ -122,7 +122,7 @@ jobs:
         VK_ICD_FILENAMES: "/usr/share/vulkan/icd.d/lvp_icd.x86_64.json"
         VK_DRIVER_FILES: "/usr/share/vulkan/icd.d/lvp_icd.x86_64.json"
       run: |
-        xvfb-run -a -s "-screen 0 1280x1024x24" "$NIMBLE_BIN" --features:dev test
+        xvfb-run -a -s "-screen 0 1280x1024x24" "$NIMBLE_BIN" --features:siwin_examples test
 
     - name: Test Wayland event loop
       if: runner.os == 'Linux'
@@ -170,21 +170,21 @@ jobs:
     - name: Build Tests
       if: runner.os == 'macOS'
       run: |
-        "$NIMBLE_BIN" --features:dev test
+        "$NIMBLE_BIN" --features:siwin_examples test
 
     - name: Build Tests
       if: runner.os == 'Windows'
       env:
         NIMFLAGS: "--cc:vcc -d:siwin.vulkan=off"
       run: |
-        "$NIMBLE_BIN" --features:dev test
+        "$NIMBLE_BIN" --features:siwin_examples test
 
     - name: Build Tests (Vulkan Run Check)
       if: runner.os == 'Windows'
       env:
         NIMFLAGS: "--cc:vcc -d:siwin.vulkan=on"
       run: |
-        "$NIMBLE_BIN" test
+        "$NIMBLE_BIN" --features:siwin_examples test
 
     - name: Upload Test Output (on failure)
       if: failure()

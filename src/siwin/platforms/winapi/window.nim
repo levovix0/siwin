@@ -770,8 +770,14 @@ proc poolEvent(window: WindowWinapi, message: Uint, wParam: WParam, lParam: LPar
   
   case message
   of WmPaint:
+    let hasUpdateRegion = window.handle.GetUpdateRect(nil, 0).bool
     var paint: PaintStruct
     window.handle.BeginPaint(paint.addr)
+    let hasPaintDamage =
+      hasUpdateRegion or (
+        paint.rcPaint.right > paint.rcPaint.left and
+        paint.rcPaint.bottom > paint.rcPaint.top
+      )
     window.handle.EndPaint(paint.addr)
 
     let rect = window.handle.clientRect
@@ -782,6 +788,10 @@ proc poolEvent(window: WindowWinapi, message: Uint, wParam: WParam, lParam: LPar
         resizeBufferIfNeeded window.WindowWinapiSoftwareRendering.buffer, window.m_size
 
       window.eventsHandler.pushEvent onResize, ResizeEvent(window: window, size: window.m_size, initial: false)
+      window.redrawRequested = true
+
+    # Native damage needs presentation even when the client size is unchanged.
+    if hasPaintDamage:
       window.redrawRequested = true
 
 

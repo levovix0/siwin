@@ -122,7 +122,11 @@ run window, WindowEventsHandler(
     glEnd()
 )
 ```
-note: call redraw(window) every time you want window.render to be called. siwin will automatically call window.render only when window resizes.  
+Call `redraw(window)` when application content changes. Siwin also schedules
+`onRender` when the window resizes or its native surface needs repainting, such
+as X11 `Expose` and WinAPI `WM_PAINT` damage. An event-loop wake does not itself
+request a redraw. Render a complete frame in `onRender`, including when your
+application state is unchanged.
 note: opengl 1.x and 2.x functions (like `glBegin`), is not supported on Wayland, due to Wayland only beeng able to initialize with EGL
 
 ## Vulkan
