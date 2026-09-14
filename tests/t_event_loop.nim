@@ -327,7 +327,7 @@ when eventLoopIntegrationSupported:
         inc resizes
       ,
     )
-    window.firstStep(makeVisible = serviceWindowNeedsVisibleSurface or defined(windows))
+    window.firstStep(makeVisible = serviceWindowNeedsVisibleSurface)
     window.redraw()
     window.serviceWindow()
     doAssert renders == 1
@@ -345,6 +345,14 @@ when eventLoopIntegrationSupported:
             handle = x11win.nativeWindowHandle().culong
         else:
           let handle = winapiWindow.WindowWinapi(window).handle
+
+        when defined(windows):
+          window.visible = true
+
+        while globals.pollEvents():
+          window.serviceWindow()
+        renders = 0
+        resizes = 0
 
         block unrelated_native_event:
           let before = renders
