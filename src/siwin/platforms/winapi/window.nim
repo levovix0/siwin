@@ -729,6 +729,8 @@ method serviceWindow*(window: WindowWinapi) =
   if window.closed:
     return
 
+  echo "service redraw=", window.redrawRequested
+
   let now = getMonoTime()
   window.eventsHandler.pushEvent onTick, TickEvent(
     window: window,
@@ -770,6 +772,7 @@ proc poolEvent(window: WindowWinapi, message: Uint, wParam: WParam, lParam: LPar
   
   case message
   of WmPaint:
+    echo "paint message"
     var paint: PaintStruct
     window.handle.BeginPaint(paint.addr)
     window.handle.EndPaint(paint.addr)
