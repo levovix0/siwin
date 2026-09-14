@@ -351,8 +351,8 @@ when eventLoopIntegrationSupported:
 
         when defined(linux) or defined(bsd):
           discard display.XSync(0)
-        while globals.pollEvents():
-          window.serviceWindow()
+        discard globals.pollEvents()
+        window.serviceWindow()
         renders = 0
         resizes = 0
 
