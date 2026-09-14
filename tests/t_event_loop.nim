@@ -351,9 +351,9 @@ when eventLoopIntegrationSupported:
     let readyDeadline = getMonoTime() + initDuration(seconds = 5)
     var ready = false
     while getMonoTime() < readyDeadline and not ready:
-      let activity = globals.pollEvents()
+      discard globals.pollEvents()
       serviceWindows()
-      ready = not activity and renders[0] > 0 and renders[1] > 0
+      ready = renders[0] > 0 and renders[1] > 0
       if not ready:
         sleep(1)
     doAssert ready, "the windows did not finish their initial rendering"
