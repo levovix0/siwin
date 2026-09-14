@@ -349,17 +349,10 @@ when eventLoopIntegrationSupported:
         when defined(windows):
           window.visible = true
 
-        block drain_initial_native_events:
-          when defined(linux) or defined(bsd):
-            discard display.XSync(0)
-          var quietDeadline = getMonoTime() + initDuration(milliseconds = 100)
-          while getMonoTime() < quietDeadline:
-            if globals.pollEvents():
-              window.serviceWindow()
-              quietDeadline = getMonoTime() + initDuration(milliseconds = 100)
-            else:
-              window.serviceWindow()
-              sleep(1)
+        when defined(linux) or defined(bsd):
+          discard display.XSync(0)
+        while globals.pollEvents():
+          window.serviceWindow()
         renders = 0
         resizes = 0
 
