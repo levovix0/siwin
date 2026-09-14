@@ -184,7 +184,7 @@ jobs:
       env:
         NIMFLAGS: "--cc:vcc -d:siwin.vulkan=on"
       run: |
-        "$NIMBLE_BIN" test
+        "$NIMBLE_BIN" --features:siwin_examples test
 
     - name: Upload Test Output (on failure)
       if: failure()
