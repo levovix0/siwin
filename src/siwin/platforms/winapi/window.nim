@@ -774,7 +774,8 @@ proc poolEvent(window: WindowWinapi, message: Uint, wParam: WParam, lParam: LPar
     window.handle.BeginPaint(paint.addr)
     window.handle.EndPaint(paint.addr)
     echo "WM_PAINT rc=", paint.rcPaint.left, ",", paint.rcPaint.top, ",",
-      paint.rcPaint.right, ",", paint.rcPaint.bottom
+      paint.rcPaint.right, ",", paint.rcPaint.bottom, " erase=", paint.fErase,
+      " restore=", paint.fRestore, " inc=", paint.fIncUpdate
 
     let rect = window.handle.clientRect
     if rect.right != window.m_size.x or rect.bottom != window.m_size.y:
