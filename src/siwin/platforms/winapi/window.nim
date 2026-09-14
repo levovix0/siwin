@@ -772,6 +772,9 @@ proc poolEvent(window: WindowWinapi, message: Uint, wParam: WParam, lParam: LPar
   of WmPaint:
     var paint: PaintStruct
     window.handle.BeginPaint(paint.addr)
+    echo "WM_PAINT before end rc=", paint.rcPaint.left, ",", paint.rcPaint.top, ",",
+      paint.rcPaint.right, ",", paint.rcPaint.bottom, " erase=", paint.fErase,
+      " restore=", paint.fRestore, " inc=", paint.fIncUpdate
     let hasPaintDamage =
       paint.rcPaint.right > paint.rcPaint.left and
       paint.rcPaint.bottom > paint.rcPaint.top
