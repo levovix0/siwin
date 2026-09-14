@@ -770,14 +770,14 @@ proc poolEvent(window: WindowWinapi, message: Uint, wParam: WParam, lParam: LPar
   
   case message
   of WmPaint:
+    let hasUpdateRegion = window.handle.GetUpdateRect(nil, 0).bool
     var paint: PaintStruct
     window.handle.BeginPaint(paint.addr)
-    echo "WM_PAINT before end rc=", paint.rcPaint.left, ",", paint.rcPaint.top, ",",
-      paint.rcPaint.right, ",", paint.rcPaint.bottom, " erase=", paint.fErase,
-      " restore=", paint.fRestore, " inc=", paint.fIncUpdate
     let hasPaintDamage =
-      paint.rcPaint.right > paint.rcPaint.left and
-      paint.rcPaint.bottom > paint.rcPaint.top
+      hasUpdateRegion or (
+        paint.rcPaint.right > paint.rcPaint.left and
+        paint.rcPaint.bottom > paint.rcPaint.top
+      )
     window.handle.EndPaint(paint.addr)
 
     let rect = window.handle.clientRect
