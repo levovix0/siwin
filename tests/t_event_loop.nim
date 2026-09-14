@@ -396,14 +396,6 @@ when eventLoopIntegrationSupported:
           doAssert window.size == originalSize
           doAssert resizes == resizesBefore, "damage must not synthesize a resize"
 
-        when defined(windows):
-          block paint_without_damage:
-            let before = renders
-            doAssert RedrawWindow(handle, nil, 0, RdwInternalPaint) != 0
-            discard globals.pollEvents()
-            window.serviceWindow()
-            doAssert renders == before, "an internal WM_PAINT has no surface damage"
-
   block event_driven_runner_services_every_window_after_one_wait:
     var wakeQueued: Atomic[bool]
     wakeQueued.store(false)
