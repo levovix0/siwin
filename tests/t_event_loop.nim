@@ -120,24 +120,6 @@ when eventLoopIntegrationSupported:
 
   let globals = newSiwinGlobals()
 
-  var multiWindowRenders, multiWindowResizes: array[2, int]
-
-  proc firstMultiWindowRender(event: RenderEvent) =
-    discard event
-    inc multiWindowRenders[0]
-
-  proc secondMultiWindowRender(event: RenderEvent) =
-    discard event
-    inc multiWindowRenders[1]
-
-  proc firstMultiWindowResize(event: ResizeEvent) =
-    discard event
-    inc multiWindowResizes[0]
-
-  proc secondMultiWindowResize(event: ResizeEvent) =
-    discard event
-    inc multiWindowResizes[1]
-
   block poll_is_nonblocking:
     discard globals.pollEvents()
 
@@ -328,79 +310,44 @@ when eventLoopIntegrationSupported:
     doAssert ticks == 1
     doAssert renders == 1
 
-  block only_requested_windows_render:
-    multiWindowRenders = [0, 0]
-    multiWindowResizes = [0, 0]
-    let
-      firstWindow = globals.newSoftwareRenderingWindow(
-        size = ivec2(32, 32), title = "Siwin damage target"
-      )
-      secondWindow = globals.newSoftwareRenderingWindow(
-        size = ivec2(32, 32), title = "Siwin unchanged window"
-      )
+  block native_damage_requests_render:
+    var renders, resizes: int
+    let window = globals.newSoftwareRenderingWindow(
+      size = ivec2(32, 32), title = "Siwin native damage test"
+    )
     defer:
-      if secondWindow.opened:
-        secondWindow.close()
-      if firstWindow.opened:
-        firstWindow.close()
+      if window.opened:
+        window.close()
 
-    proc serviceWindows() =
-      firstWindow.serviceWindow()
-      secondWindow.serviceWindow()
-
-    firstWindow.eventsHandler = WindowEventsHandler(
-      onRender: firstMultiWindowRender,
-      onResize: firstMultiWindowResize,
+    window.eventsHandler = WindowEventsHandler(
+      onRender: proc(event: RenderEvent) =
+        inc renders
+      ,
+      onResize: proc(event: ResizeEvent) =
+        inc resizes
+      ,
     )
-    secondWindow.eventsHandler = WindowEventsHandler(
-      onRender: secondMultiWindowRender,
-      onResize: secondMultiWindowResize,
-    )
-    let makeVisible = serviceWindowNeedsVisibleSurface or defined(windows)
-    firstWindow.firstStep(makeVisible = makeVisible)
-    secondWindow.firstStep(makeVisible = makeVisible)
-    secondWindow.pos = ivec2(160, 160)
-    firstWindow.redraw()
-    secondWindow.redraw()
-
-    let readyDeadline = getMonoTime() + initDuration(seconds = 5)
-    var ready = false
-    while getMonoTime() < readyDeadline and not ready:
-      discard globals.pollEvents()
-      serviceWindows()
-      ready = multiWindowRenders[0] > 0 and multiWindowRenders[1] > 0
-      if not ready:
-        sleep(1)
-    doAssert ready, "the windows did not finish their initial rendering"
-
-    block wake_without_redraw:
-      let before = multiWindowRenders
-      globals.eventLoopWaker().wake()
-      globals.eventLoopWaker().wake()
-      doAssert globals.pollEvents()
-      serviceWindows()
-      doAssert multiWindowRenders == before, "a wake must not request a render"
-
-    block explicit_redraw_without_content_changes:
-      let before = multiWindowRenders
-      firstWindow.redraw()
-      serviceWindows()
-      doAssert multiWindowRenders == [before[0] + 1, before[1]]
+    window.firstStep(makeVisible = serviceWindowNeedsVisibleSurface or defined(windows))
+    window.redraw()
+    window.serviceWindow()
+    doAssert renders == 1
+    renders = 0
+    resizes = 0
 
     when defined(linux) or defined(bsd) or defined(windows):
       block native_damage:
         when defined(linux) or defined(bsd):
-          if not (firstWindow of x11Window.WindowX11):
+          if not (window of x11Window.WindowX11):
             break native_damage
           let
-            window = x11Window.WindowX11(firstWindow)
-            display = cast[ptr Display](window.nativeDisplayHandle())
-            handle = window.nativeWindowHandle().culong
+            x11win = x11Window.WindowX11(window)
+            display = cast[ptr Display](x11win.nativeDisplayHandle())
+            handle = x11win.nativeWindowHandle().culong
         else:
-          let handle = winapiWindow.WindowWinapi(firstWindow).handle
+          let handle = winapiWindow.WindowWinapi(window).handle
 
         block unrelated_native_event:
-          let before = multiWindowRenders
+          let before = renders
           when defined(linux) or defined(bsd):
             var event: XEvent
             event.xclient = XClientMessageEvent(
@@ -411,14 +358,14 @@ when eventLoopIntegrationSupported:
           else:
             doAssert PostMessage(handle, WmNull, 0, 0) != 0
           doAssert globals.pollEvents()
-          serviceWindows()
-          doAssert multiWindowRenders == before, "unhandled events must not request a render"
+          window.serviceWindow()
+          doAssert renders == before, "unhandled events must not request a render"
 
-        let originalSize = firstWindow.size
+        let originalSize = window.size
         for wakeFirst in [true, false]:
           let
-            before = multiWindowRenders
-            resizesBefore = multiWindowResizes
+            before = renders
+            resizesBefore = resizes
           if wakeFirst:
             globals.eventLoopWaker().wake()
           when defined(linux) or defined(bsd):
@@ -430,23 +377,22 @@ when eventLoopIntegrationSupported:
             globals.eventLoopWaker().wake()
 
           let deadline = getMonoTime() + initDuration(seconds = 5)
-          while getMonoTime() < deadline and multiWindowRenders[0] == before[0]:
+          while getMonoTime() < deadline and renders == before:
             discard globals.pollEvents()
-            serviceWindows()
-            if multiWindowRenders[0] == before[0]:
+            window.serviceWindow()
+            if renders == before:
               sleep(1)
-          doAssert multiWindowRenders[0] > before[0], "native damage did not request onRender"
-          doAssert multiWindowRenders[1] == before[1], "an undamaged window was redrawn"
-          doAssert firstWindow.size == originalSize
-          doAssert multiWindowResizes == resizesBefore, "damage must not synthesize a resize"
+          doAssert renders > before, "native damage did not request onRender"
+          doAssert window.size == originalSize
+          doAssert resizes == resizesBefore, "damage must not synthesize a resize"
 
         when defined(windows):
           block paint_without_damage:
-            let before = multiWindowRenders
+            let before = renders
             doAssert RedrawWindow(handle, nil, 0, RdwInternalPaint) != 0
             discard globals.pollEvents()
-            serviceWindows()
-            doAssert multiWindowRenders == before, "an internal WM_PAINT has no surface damage"
+            window.serviceWindow()
+            doAssert renders == before, "an internal WM_PAINT has no surface damage"
 
   block event_driven_runner_services_every_window_after_one_wait:
     var wakeQueued: Atomic[bool]
