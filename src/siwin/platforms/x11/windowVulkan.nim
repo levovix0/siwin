@@ -22,14 +22,15 @@ proc `=destroy`*(surface: Surface) {.siwin_destructor.} =
     # vkDestroySurfaceKHR(surface.instance, surface.raw, nil)  #? causes crash
     discard
 
-proc `=trace`(x: var WindowX11VulkanObj, env: pointer) =
-  #? for some reason, without this, nim produces invalid C code for =trace implementation
-  `=trace`(cast[ptr WindowX11Obj](x.addr)[], env)
+when NimMajor < 2 or NimMinor < 2:
+  proc `=trace`(x: var WindowX11VulkanObj, env: pointer) =
+    #? for some reason, without this, nim produces invalid C code for =trace implementation
+    `=trace`(cast[ptr WindowX11Obj](x.addr)[], env)
 
-proc `=destroy`(x: WindowX11VulkanObj) {.siwin_destructor.} =
-  #? for some reason, without this, nim produces invalid C code for =trace implementation
-  `=destroy`(cast[ptr WindowX11Obj](x.addr)[])
-  `=destroy`(x.surface)
+  proc `=destroy`(x: WindowX11VulkanObj) {.siwin_destructor.} =
+    #? for some reason, without this, nim produces invalid C code for =trace implementation
+    `=destroy`(cast[ptr WindowX11Obj](x.addr)[])
+    `=destroy`(x.surface)
 
 method vulkanSurface*(window: WindowX11Vulkan): anyWindow.VulkanSurface =
   cast[anyWindow.VulkanSurface](window.surface.raw)

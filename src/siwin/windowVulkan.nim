@@ -7,7 +7,7 @@ when not siwin_use_lib:
   when defined(android):
     import ./platforms/android/window as androidWindow
 
-  elif defined(linux) or defined(bsd):
+  elif (defined(linux) or defined(bsd)) and not defined(android):
     import ./platforms/x11/siwinGlobals as x11SiwinGlobals
     import ./platforms/x11/window as x11Window
     import ./platforms/x11/windowVulkan as x11WindowVulkan
@@ -44,7 +44,7 @@ when not siwin_use_lib:
         resizable, fullscreen, frameless, transparent, true
       )
 
-    elif defined(linux) or defined(bsd):
+    elif (defined(linux) or defined(bsd)) and not defined(android):
       if globals of SiwinGlobalsX11:
         globals.SiwinGlobalsX11.newVulkanWindowX11(
           vkInstance,
@@ -75,7 +75,7 @@ when not siwin_use_lib:
         globals = globals.SiwinGlobalsWinapi,
       )
 
-  when defined(linux) or defined(bsd):
+  when (defined(linux) or defined(bsd)) and not(defined(android)):
     proc newVulkanLayerSurfaceWindow*(
       globals: SiwinGlobals,
       vkInstance: pointer,

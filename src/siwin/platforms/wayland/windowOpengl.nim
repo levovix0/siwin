@@ -1,9 +1,9 @@
 import std/[importutils]
 import pkg/[vmath]
 import ../../[siwindefs]
-import ../any/window {.all.}
+import ../any/window
 import ./[libwayland, protocol, egl, siwinGlobals]
-import window {.all.}
+import window
 
 privateAccess Window
 privateAccess WindowWayland
@@ -64,6 +64,11 @@ method makeCurrent*(window: WindowWaylandOpengl) =
 method swapBuffers(window: WindowWaylandOpengl) =
   swapBuffers window.eglContext
   commit window.surface
+
+method serviceWindow*(window: WindowWaylandOpengl) =
+  makeCurrent window.eglContext
+  procCall window.WindowWayland.serviceWindow()
+
 
 method doResize(window: WindowWaylandOpengl, size: IVec2) =
   procCall window.WindowWayland.doResize(size)

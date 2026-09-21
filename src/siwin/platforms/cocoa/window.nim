@@ -5,7 +5,7 @@ from pkg/darwin/quartz_core/cametal_layer import CAMetalLayer
 from pkg/darwin/objc/runtime import ObjcClass, ID, SEL, alloc, new, addClass, selector, callSuper
 import ../../[siwindefs]
 import ../../[colorutils]
-import ../any/[window {.all.}, clipboards]
+import ../any/[window, clipboards, windowUtils]
 import ./[modifierstate, extras]
 
 {.passL: "-framework Cocoa".}
@@ -2171,6 +2171,10 @@ method serviceWindow*(window: WindowCocoa) =
       window.WindowCocoaSoftwareRendering.presentSoftwarePixelBuffer()
     elif window of WindowCocoaOpengl:
       window.WindowCocoaOpengl.swapBuffers()
+
+method serviceWindow*(window: WindowCocoaOpengl) =
+  window.makeCurrent()
+  procCall window.WindowCocoa.serviceWindow()
 
 method step*(window: WindowCocoa) =
   ## Compatibility path: retain the old short global wait followed by one window tick.

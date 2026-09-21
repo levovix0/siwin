@@ -1,12 +1,12 @@
-version       = "1.1.0"
+version       = "1.1.2"
 author        = "levovix0"
 description   = "Cross-platform window creation and event handling library"
 license       = "MIT"
 srcDir        = "src"
 
 requires "nim >= 2.0"
-requires "chroma >= 0.2.6"
-requires "vmath >= 1.1.4"
+requires "chroma >= 1.0.0"
+requires "vmath >= 3.0.0"
 
 # note: require platform dependencies only if it is the platform on which userprogrammer works.
 #       ask a userprogrammer to install specific platform dependencies if cross compiling.
@@ -23,12 +23,22 @@ when defined(android):
 when defined(macosx):
   requires "darwin#30d16cf0983124057a57553a0f1f9fd5df525f84"
 
-feature "dev":
+feature "siwin_examples":
   requires "opengl"
   requires "nimgl"
   requires "pixie"
   requires "sdl2"
   requires "https://github.com/planetis-m/vulkan#b223dc9"
+
+feature "siwin_examples_opengl_es":
+  requires "fusion"
+  requires "shady == 0.1.4"
+
+feature "android":
+  requires "https://github.com/levovix0/dali"
+  requires "https://github.com/levovix0/marco >= 0.1.2"
+  requires "jnim"
+
 
 when fileExists("src/siwin/build_utils/tasks.nim"):
   include "src/siwin/build_utils/tasks.nim"

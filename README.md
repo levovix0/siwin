@@ -122,7 +122,11 @@ run window, WindowEventsHandler(
     glEnd()
 )
 ```
-note: call redraw(window) every time you want window.render to be called. siwin will automatically call window.render only when window resizes.  
+Call `redraw(window)` when application content changes. Siwin also schedules
+`onRender` when the window resizes or its native surface needs repainting, such
+as X11 `Expose` and WinAPI `WM_PAINT` damage. An event-loop wake does not itself
+request a redraw. Render a complete frame in `onRender`, including when your
+application state is unchanged.
 note: opengl 1.x and 2.x functions (like `glBegin`), is not supported on Wayland, due to Wayland only beeng able to initialize with EGL
 
 ## Vulkan
@@ -343,7 +347,7 @@ discard globals.waitEvents(timeUntilNextAnimation)
 window.serviceWindow()
 ```
 
-See [text_input_demo.nim](examples/text_input_demo.nim) for a complete loop that combines native input, cursor blinking, and scroll-decay deadlines.
+See [text_input.nim](examples/text_input.nim) for a complete loop that combines native input, cursor blinking, and scroll-decay deadlines.
 
 <h2 align="center">running multiple windows</h2>
 
@@ -358,20 +362,16 @@ loadExtensions()
 
 let win1_eventsHandler = WindowEventsHandler(
   onResize: proc(e: ResizeEvent) =
-    makeCurrent e.window
     #...
   ,
   onRender: proc(e: RenderEvent) =
-    makeCurrent e.window
     #...
 )
 let win2_eventsHandler = WindowEventsHandler(
   onResize: proc(e: ResizeEvent) =
-    makeCurrent e.window
     #...
   ,
   onRender: proc(e: RenderEvent) =
-    makeCurrent e.window
     #...
 )
 
@@ -436,7 +436,7 @@ if window.supports(wvcBackdropMaterial):
   window.setBackdrop(initWindowBackdrop(wbmSidebar))
 ```
 
-See [backdrop_blur_demo.nim](examples/backdrop_blur_demo.nim) for a runnable cross-platform example.
+See [backdrop_blur.nim](examples/backdrop_blur.nim) for a runnable cross-platform example.
 
 <h2 align="center">all methods and events</h2>
 
@@ -462,7 +462,6 @@ If you want to support this project, here is some tasks to do:
   * if you doing very big refactoring, first create issue to ask is all your changes needed, and if it is, refactor
 * Documentation
 * Optimization
-* MacOS support
 * Android/IOS support
 * Web support
 * copy/paste images

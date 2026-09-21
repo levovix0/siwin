@@ -47,49 +47,49 @@ test "OpenGL":
     var ticks = 0
 
     let vertSrcCore = """
-#version 330 core
-in vec2 aPos;
-out vec2 vPos;
-void main() {
-  vPos = aPos;
-  gl_Position = vec4(aPos, 0.0, 1.0);
-}
-"""
+      #version 330 core
+      in vec2 aPos;
+      out vec2 vPos;
+      void main() {
+        vPos = aPos;
+        gl_Position = vec4(aPos, 0.0, 1.0);
+      }
+    """
 
     let fragSrcCore = """
-#version 330 core
-in vec2 vPos;
-uniform float uG;
-out vec4 outColor;
-void main() {
-  vec3 col = vec3((vPos.x + 1.0) * 0.5 * uG, (vPos.y + 1.0) * 0.5, 1.0 - uG * 0.5);
-  outColor = vec4(col, 1.0);
-}
-"""
+      #version 330 core
+      in vec2 vPos;
+      uniform float uG;
+      out vec4 outColor;
+      void main() {
+        vec3 col = vec3((vPos.x + 1.0) * 0.5 * uG, (vPos.y + 1.0) * 0.5, 1.0 - uG * 0.5);
+        outColor = vec4(col, 1.0);
+      }
+    """
 
     let vertSrcLegacy = """
-#ifdef GL_ES
-precision mediump float;
-#endif
-attribute vec2 aPos;
-varying vec2 vPos;
-void main() {
-  vPos = aPos;
-  gl_Position = vec4(aPos, 0.0, 1.0);
-}
-"""
+      #ifdef GL_ES
+      precision mediump float;
+      #endif
+      attribute vec2 aPos;
+      varying vec2 vPos;
+      void main() {
+        vPos = aPos;
+        gl_Position = vec4(aPos, 0.0, 1.0);
+      }
+    """
 
     let fragSrcLegacy = """
-#ifdef GL_ES
-precision mediump float;
-#endif
-varying vec2 vPos;
-uniform float uG;
-void main() {
-  vec3 col = vec3((vPos.x + 1.0) * 0.5 * uG, (vPos.y + 1.0) * 0.5, 1.0 - uG * 0.5);
-  gl_FragColor = vec4(col, 1.0);
-}
-"""
+      #ifdef GL_ES
+      precision mediump float;
+      #endif
+      varying vec2 vPos;
+      uniform float uG;
+      void main() {
+        vec3 col = vec3((vPos.x + 1.0) * 0.5 * uG, (vPos.y + 1.0) * 0.5, 1.0 - uG * 0.5);
+        gl_FragColor = vec4(col, 1.0);
+      }
+    """
 
     proc compileShader(kind: GlEnum, src: string): GlUint =
       result = glCreateShader(kind)
@@ -119,7 +119,7 @@ void main() {
         raise CatchableError.newException("shader link failed: " & $cast[cstring](buffer.addr))
     
     let window = globals.newOpenglWindow(title="OpenGL test", transparent=true)
-    makeCurrent(window)
+    
     if not hasRequiredShaderApi():
       echo "[SKIPPED] OpenGL shader API unavailable on this backend"
       skip()

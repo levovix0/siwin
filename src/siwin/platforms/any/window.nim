@@ -3,10 +3,12 @@ import pkg/[vmath]
 import ../../[siwindefs, colorutils]
 import ./[clipboards]
 
+
 when siwin_use_pure_enums:
   {.pragma: siwin_enum, pure.}
 else:
   {.pragma: siwin_enum.}
+
 
 type
   EventWaitResult* = enum
@@ -36,11 +38,7 @@ type
     ## Raised on platforms whose global event loop is not implemented yet.
 
   MouseButton* {.siwin_enum.} = enum
-    left
-    right
-    middle
-    forward
-    backward
+    left right middle forward backward
 
   ModifierKey* {.siwin_enum.} = enum
     shift
@@ -52,127 +50,36 @@ type
 
   Key* {.siwin_enum.} = enum
     unknown = 0
-    a
-    b
-    c
-    d
-    e
-    f
-    g
-    h
-    i
-    j
-    k
-    l
-    m
-    n
-    o
-    p
-    q
-    r
-    s
-    t
-    u
-    v
-    w
-    x
-    y
-    z
-    tilde
-    n1
-    n2
-    n3
-    n4
-    n5
-    n6
-    n7
-    n8
-    n9
-    n0
-    minus
-    equal
-    f1
-    f2
-    f3
-    f4
-    f5
-    f6
-    f7
-    f8
-    f9
-    f10
-    f11
-    f12
-    f13
-    f14
-    f15
-    lcontrol
-    rcontrol
-    lshift
-    rshift
-    lalt
-    ralt
-    lsystem
-    rsystem
-    lbracket
-    rbracket
-    space
-    escape
-    enter
-    tab
-    backspace
-    menu
-    slash
-    dot
-    comma
-    semicolon
-    quote
-    backslash
-    pageUp
-    pageDown
-    home
-    End
-    insert
-    del
-    left
-    right
-    up
-    down
-    npad0
-    npad1
-    npad2
-    npad3
-    npad4
-    npad5
-    npad6
-    npad7
-    npad8
-    npad9
-    npadDot
-    add
-    subtract
-    multiply
-    divide
-    capsLock
-    numLock
-    scrollLock
-    printScreen
-    pause
-    level3_shift
-    level5_shift
+
+    a b c d e f g h i j k l m n o p q r s t u v w x y z
+    tilde n1 n2 n3 n4 n5 n6 n7 n8 n9 n0 minus equal
+    f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 f11 f12 f13 f14 f15
+    lcontrol rcontrol  lshift rshift  lalt ralt  lsystem rsystem  lbracket rbracket
+    space escape enter tab backspace menu
+    slash dot comma  semicolon quote  backslash
+
+    pageUp pageDown  home End  insert del
+    left right up down
+    npad0 npad1 npad2 npad3 npad4 npad5 npad6 npad7 npad8 npad9 npadDot
+    add subtract multiply divide
+    capsLock numLock scrollLock printScreen pause
+
+    level3_shift level5_shift
+
 
   TouchDeviceKind* {.siwin_enum.} = enum
     touchScreen
     touchPad
     graphicsTablet
-
+  
   Touch* = ref object
-    id*: int # begins at 1, increments for each new touch
+    id*: int  # begins at 1, increments for each new touch
     pos*: Vec2
     pressed*: bool
-    pressure*: float # 0..1
+    pressure*: float  # 0..1
     button*: Option[MouseButton]
     device*: TouchDeviceKind
+
 
   Mouse* = object
     pos*: Vec2
@@ -181,9 +88,10 @@ type
   Keyboard* = object
     pressed*: set[Key]
     modifiers*: set[ModifierKey]
-
+  
   TouchScreen* = object
-    touches*: Table[int, Touch] # id -> touch
+    touches*: Table[int, Touch]  # id -> touch
+  
 
   Edge* {.siwin_enum.} = enum
     left
@@ -195,6 +103,7 @@ type
     bottomLeft
     bottomRight
 
+
   CursorKind* {.siwin_enum.} = enum
     builtin
     image
@@ -205,35 +114,28 @@ type
     of image: image*: ImageCursor
 
   BuiltinCursor* {.siwin_enum.} = enum
-    arrow
-    arrowUp
-    arrowRight
-    wait
-    arrowWait
-    pointingHand
-    grab
-    text
-    cross
-    sizeAll
-    sizeHorizontal
-    sizeVertical
-    sizeTopLeft
-    sizeTopRight
-    sizeBottomLeft
-    sizeBottomRight
+    arrow arrowUp arrowRight
+    wait arrowWait
+    pointingHand grab
+    text cross
+    sizeAll sizeHorizontal sizeVertical
+    sizeTopLeft sizeTopRight sizeBottomLeft sizeBottomRight
     hided
-
+  
   ImageCursor* = object
     origin*: IVec2
     pixels*: PixelBuffer
 
+
   WindowTypeDefect* = object of Defect
     ## raised when trying to get pixel buffer from non-softwareRendering window
+  
 
   SiwinGlobalsObj = object of RootObj
     eventLoopState: EventLoopWakeState
 
   SiwinGlobals* = ref SiwinGlobalsObj
+  
 
   Screen* = ref object of RootObj
 
@@ -241,11 +143,15 @@ type
     move
     enter
     leave
-    moveWhileDragging ## (from this or other window)
+    moveWhileDragging  ## (from this or other window)
 
+  
   DragStatus* {.siwin_enum.} = enum
     rejected
     accepted
+
+
+  PopupWindow* = Window
 
   PopupConstraintAdjustment* {.siwin_enum.} = enum
     pcaSlideX
@@ -270,6 +176,7 @@ type
     constraintAdjustment*: set[PopupConstraintAdjustment]
     reactive*: bool
 
+
   WindowVisualCapability* {.siwin_enum.} = enum
     wvcBackdropBlur
     wvcBackdropBlurRegion
@@ -289,7 +196,8 @@ type
     wbmHud
     wbmPopover
 
-  WindowVisualRegion* = object ## Window-local region in Siwin window coordinates.
+  WindowVisualRegion* = object
+    ## Window-local region in Siwin window coordinates.
     pos*: IVec2
     size*: IVec2
 
@@ -304,42 +212,42 @@ type
   WindowVisualEffectError* = object of CatchableError
     ## raised by strict visual-effect APIs when a backend cannot apply the request
 
+
   AnyWindowEvent* = object of RootObj
     window*: Window
-
+  
   CloseEvent* = object of AnyWindowEvent
   RenderEvent* = object of AnyWindowEvent
 
   TickEvent* = object of AnyWindowEvent
     deltaTime*: Duration
-
+  
   ResizeEvent* = object of AnyWindowEvent
     size*: IVec2
     initial*: bool
-
+  
   WindowMoveEvent* = object of AnyWindowEvent
     pos*: IVec2
 
   MouseMoveEvent* = object of AnyWindowEvent
     pos*: Vec2
     kind*: MouseMoveKind
-
+  
   MouseButtonEvent* = object of AnyWindowEvent
     button*: MouseButton
     pressed*: bool
-    generated*: bool
-      ## generated, for example, by releaseAllKeys when alt-tab. Means user don't actually do this action
-
+    generated*: bool  ## generated, for example, by releaseAllKeys when alt-tab. Means user don't actually do this action
+  
   ScrollDeviceKind* {.siwin_enum.} = enum
-    unknown ## device not reported by the platform
-    discrete ## mouse wheel
-    continuous ## touchpad or touchscreen
+    unknown     ## device not reported by the platform
+    discrete    ## mouse wheel
+    continuous  ## touchpad or touchscreen
 
   ScrollEvent* = object of AnyWindowEvent
     delta*: float
     deltaX*: float
     device*: ScrollDeviceKind
-
+  
   ClickEvent* = object of AnyWindowEvent
     button*: MouseButton
     pos*: Vec2
@@ -348,29 +256,27 @@ type
   KeyEvent* = object of AnyWindowEvent
     key*: Key
     pressed*: bool
-    repeated*: bool
-      ## means user is holding this key and system is repeating keydown+keyup
-    generated*: bool
-      ## generated, for example, by releaseAllKeys when alt-tab. Means user don't actually do this action
+    repeated*: bool  ## means user is holding this key and system is repeating keydown+keyup
+    generated*: bool  ## generated, for example, by releaseAllKeys when alt-tab. Means user don't actually do this action
     modifiers*: set[ModifierKey]
-
+  
   TextInputEvent* = object of AnyWindowEvent
     text*: string
     repeated*: bool
-
+  
   TouchEvent* = object of AnyWindowEvent
     touch*: Touch
     pressed*: bool
-
+  
   TouchMoveEvent* = object of AnyWindowEvent
     touch*: Touch
     kind*: MouseMoveKind
     pos*: Vec2
-
+  
   TouchPressureChangedEvent* = object of AnyWindowEvent
     touch*: Touch
-    pressure*: float # 0..1
-
+    pressure*: float  # 0..1
+  
   StateBoolChangedEventKind* {.siwin_enum.} = enum
     focus
     fullscreen
@@ -380,49 +286,42 @@ type
   StateBoolChangedEvent* = object of AnyWindowEvent
     value*: bool
     kind*: StateBoolChangedEventKind
-    isExternal*: bool ## changed by user via compositor (server-side change)
+    isExternal*: bool  ## changed by user via compositor (server-side change)
 
   PopupEvent* = object of AnyWindowEvent
     reason*: PopupDismissReason
+  
 
   DropEvent* = object of AnyWindowEvent
 
+
   WindowEventsHandler* = object
-    onClose*: proc(e: CloseEvent)
-      ## this window was closed (by pressing window close button, alt+f4, or by code)
-    onRender*: proc(e: RenderEvent)
-      ## this window is beeng redrawn, a full frame should be drawn on window until this callback finishes
-    onTick*: proc(e: TickEvent)
-      ## some time has passed and all pending events was handled
-    onResize*: proc(e: ResizeEvent) ## this window changed it's width or height
-    onWindowMove*: proc(e: WindowMoveEvent)
-      ## this window changed it's position on screen
+    onClose*:        proc(e: CloseEvent)  ## this window was closed (by pressing window close button, alt+f4, or by code)
+    onRender*:       proc(e: RenderEvent)  ## this window is beeng redrawn, a full frame should be drawn on window until this callback finishes
+    onTick*:         proc(e: TickEvent)  ## some time has passed and all pending events was handled
+    onResize*:       proc(e: ResizeEvent)  ## this window changed it's width or height
+    onWindowMove*:   proc(e: WindowMoveEvent)  ## this window changed it's position on screen
 
-    onMouseMove*: proc(e: MouseMoveEvent) ## the mouse cursor changed it's position
-    onMouseButton*: proc(e: MouseButtonEvent)
-      ## a mouse button become pressed or released
-    onScroll*: proc(e: ScrollEvent) ## a mouse wheel rotated (or scrolled by touchpad)
-    onClick*: proc(e: ClickEvent)
-      ## a mouse released a button without moving from position is was pressed this button
+    onMouseMove*:    proc(e: MouseMoveEvent)  ## the mouse cursor changed it's position
+    onMouseButton*:  proc(e: MouseButtonEvent)  ## a mouse button become pressed or released
+    onScroll*:       proc(e: ScrollEvent)  ## a mouse wheel rotated (or scrolled by touchpad)
+    onClick*:        proc(e: ClickEvent)  ## a mouse released a button without moving from position is was pressed this button
 
-    onKey*: proc(e: KeyEvent) ## a key on a keyboard become pressed or released
-    onTextInput*: proc(e: TextInputEvent)
-      ## a (input method managed) unicode characters was inputed
+    onKey*:          proc(e: KeyEvent)  ## a key on a keyboard become pressed or released
+    onTextInput*:    proc(e: TextInputEvent)  ## a (input method managed) unicode characters was inputed
 
-    onTouch*: proc(e: TouchEvent) ## a touch either become pressed or released
-    onTouchMove*: proc(e: TouchMoveEvent)
-      ## a touch changed it's position (can be either pressed or released)
-    onTouchPressureChanged*: proc(e: TouchPressureChangedEvent)
-      ## a touch changed it's pressure (can be either pressed or released)
+    onTouch*:        proc(e: TouchEvent)  ## a touch either become pressed or released
+    onTouchMove*:    proc(e: TouchMoveEvent)  ## a touch changed it's position (can be either pressed or released)
+    onTouchPressureChanged*: proc(e: TouchPressureChangedEvent)  ## a touch changed it's pressure (can be either pressed or released)
 
     onStateBoolChanged*: proc(e: StateBoolChangedEvent)
       ## binary state of focus/fullscreen/maximized/frameless changed
       ## fullscreen and maximized changes are sent before ResizeEvent
 
-    onPopupDone*: proc(e: PopupEvent) ## popup was dismissed or explicitly closed
+    onPopupDone*:      proc(e: PopupEvent)  ## popup was dismissed or explicitly closed
 
-    onDrop*: proc(e: DropEvent)
-      ## drag&drop clipboard content is beeng pasted to this window
+    onDrop*:         proc(e: DropEvent)  ## drag&drop clipboard content is beeng pasted to this window
+
 
   Window* = ref object of RootObj
     mouse*: Mouse
@@ -431,13 +330,13 @@ type
     eventsHandler*: WindowEventsHandler
 
     clicking: set[MouseButton]
-
+    
     redrawRequested: bool
 
     lastTickTime: MonoTime
 
     m_closed: bool
-
+    
     m_transparent: bool
     m_backdrop: WindowBackdropConfig
     m_frameless: bool
@@ -449,7 +348,7 @@ type
     m_popupDismissed: bool
     m_popupParent: Window
     m_popupPlacement: PopupPlacement
-
+    
     m_size: IVec2
     m_pos: IVec2
     m_focused: bool
@@ -468,6 +367,7 @@ type
 
     inputRegion, titleRegion: Option[tuple[pos, size: Vec2]]
     borderWidth: Option[tuple[innerWidth, outerWidrth, diagonalSize: float32]]
+
 
 proc retainEventLoopWakeState(state: EventLoopWakeState) {.inline.} =
   if state != nil:
@@ -506,19 +406,13 @@ proc shutdownEventLoopWakeState*(globals: SiwinGlobals) {.raises: [].} =
     releaseEventLoopWakeState(globals.eventLoopState)
     globals.eventLoopState = nil
 
-method number*(screen: Screen): int32 {.base.} =
-  discard
+method number*(screen: Screen): int32 {.base.} = discard
 
-method width*(screen: Screen): int32 {.base.} =
-  discard
+method width*(screen: Screen): int32 {.base.} = discard
+method height*(screen: Screen): int32 {.base.} = discard
 
-method height*(screen: Screen): int32 {.base.} =
-  discard
+proc size*(screen: Screen): IVec2 = ivec2(screen.width, screen.height)
 
-proc size*(screen: Screen): IVec2 =
-  ivec2(screen.width, screen.height)
-
-type PopupWindow* = Window
 
 func popupSize*(placement: PopupPlacement): IVec2 =
   if placement.size.x > 0 and placement.size.y > 0:
@@ -528,197 +422,43 @@ func popupSize*(placement: PopupPlacement): IVec2 =
   else:
     ivec2(1, 1)
 
-func popupAnchorOffset*(anchor: Edge, size: IVec2): IVec2 =
-  case anchor
-  of Edge.topLeft:
-    ivec2(0, 0)
-  of Edge.top:
-    ivec2(size.x div 2, 0)
-  of Edge.topRight:
-    ivec2(size.x, 0)
-  of Edge.left:
-    ivec2(0, size.y div 2)
-  of Edge.right:
-    ivec2(size.x, size.y div 2)
-  of Edge.bottomLeft:
-    ivec2(0, size.y)
-  of Edge.bottom:
-    ivec2(size.x div 2, size.y)
-  of Edge.bottomRight:
-    ivec2(size.x, size.y)
 
-func popupRelativePos*(placement: PopupPlacement): IVec2 =
-  let anchorPoint =
-    placement.anchorRectPos +
-    placement.anchor.popupAnchorOffset(placement.anchorRectSize)
-  anchorPoint - placement.gravity.popupAnchorOffset(placement.popupSize()) +
-    placement.offset
-
-proc flipPopupEdgeX*(edge: Edge): Edge =
-  case edge
-  of Edge.topLeft: Edge.topRight
-  of Edge.topRight: Edge.topLeft
-  of Edge.left: Edge.right
-  of Edge.right: Edge.left
-  of Edge.bottomLeft: Edge.bottomRight
-  of Edge.bottomRight: Edge.bottomLeft
-  else: edge
-
-proc flipPopupEdgeY*(edge: Edge): Edge =
-  case edge
-  of Edge.topLeft: Edge.bottomLeft
-  of Edge.top: Edge.bottom
-  of Edge.topRight: Edge.bottomRight
-  of Edge.bottomLeft: Edge.topLeft
-  of Edge.bottom: Edge.top
-  of Edge.bottomRight: Edge.topRight
-  else: edge
-
-proc popupOverflowX*(posX, width, boundsWidth: int32): int32 {.inline.} =
-  max(0'i32, -posX) + max(0'i32, posX + width - boundsWidth)
-
-proc popupOverflowY*(posY, height, boundsHeight: int32): int32 {.inline.} =
-  max(0'i32, -posY) + max(0'i32, posY + height - boundsHeight)
-
-proc resolvePopupRect*(
-    parentPos, boundsPos, boundsSize: IVec2, placement: PopupPlacement
-): tuple[pos, size: IVec2] =
-  proc popupRectFor(placement: PopupPlacement): tuple[pos, size: IVec2] =
-    (parentPos + placement.popupRelativePos(), placement.popupSize())
-
-  var resolvedPlacement = placement
-  result = popupRectFor(resolvedPlacement)
-
-  if PopupConstraintAdjustment.pcaFlipX in placement.constraintAdjustment:
-    var flipped = resolvedPlacement
-    flipped.anchor = flipped.anchor.flipPopupEdgeX()
-    flipped.gravity = flipped.gravity.flipPopupEdgeX()
-    let flippedRect = popupRectFor(flipped)
-    if popupOverflowX(flippedRect.pos.x - boundsPos.x, flippedRect.size.x, boundsSize.x) <
-        popupOverflowX(result.pos.x - boundsPos.x, result.size.x, boundsSize.x):
-      resolvedPlacement = flipped
-      result = flippedRect
-
-  if PopupConstraintAdjustment.pcaFlipY in placement.constraintAdjustment:
-    var flipped = resolvedPlacement
-    flipped.anchor = flipped.anchor.flipPopupEdgeY()
-    flipped.gravity = flipped.gravity.flipPopupEdgeY()
-    let flippedRect = popupRectFor(flipped)
-    if popupOverflowY(flippedRect.pos.y - boundsPos.y, flippedRect.size.y, boundsSize.y) <
-        popupOverflowY(result.pos.y - boundsPos.y, result.size.y, boundsSize.y):
-      resolvedPlacement = flipped
-      result = flippedRect
-
-  if PopupConstraintAdjustment.pcaSlideX in placement.constraintAdjustment:
-    result.pos.x = clamp(
-      result.pos.x,
-      boundsPos.x,
-      max(boundsPos.x, boundsPos.x + boundsSize.x - result.size.x),
-    )
-
-  if PopupConstraintAdjustment.pcaSlideY in placement.constraintAdjustment:
-    result.pos.y = clamp(
-      result.pos.y,
-      boundsPos.y,
-      max(boundsPos.y, boundsPos.y + boundsSize.y - result.size.y),
-    )
-
-  if PopupConstraintAdjustment.pcaResizeX in placement.constraintAdjustment:
-    if result.pos.x < boundsPos.x:
-      result.size.x -= boundsPos.x - result.pos.x
-      result.pos.x = boundsPos.x
-    if result.pos.x + result.size.x > boundsPos.x + boundsSize.x:
-      result.size.x = max(1'i32, boundsPos.x + boundsSize.x - result.pos.x)
-    result.size.x = max(1'i32, result.size.x)
-
-  if PopupConstraintAdjustment.pcaResizeY in placement.constraintAdjustment:
-    if result.pos.y < boundsPos.y:
-      result.size.y -= boundsPos.y - result.pos.y
-      result.pos.y = boundsPos.y
-    if result.pos.y + result.size.y > boundsPos.y + boundsSize.y:
-      result.size.y = max(1'i32, boundsPos.y + boundsSize.y - result.pos.y)
-    result.size.y = max(1'i32, result.size.y)
-
-proc closed*(window: Window): bool =
-  window.m_closed
-
-proc opened*(window: Window): bool =
-  not window.closed
+proc closed*(window: Window): bool = window.m_closed
+proc opened*(window: Window): bool = not window.closed
 
 method close*(window: Window) {.base.} =
   ## request window close
   window.m_closed = true
 
-proc transparent*(window: Window): bool =
-  window.m_transparent
-
-proc backdrop*(window: Window): WindowBackdropConfig =
-  window.m_backdrop
-
-proc frameless*(window: Window): bool =
-  window.m_frameless
-
-proc cursor*(window: Window): Cursor =
-  window.m_cursor
-
-proc separateTouch*(window: Window): bool =
+proc transparent*(window: Window): bool = window.m_transparent
+proc backdrop*(window: Window): WindowBackdropConfig = window.m_backdrop
+proc frameless*(window: Window): bool = window.m_frameless
+proc cursor*(window: Window): Cursor = window.m_cursor
+proc separateTouch*(window: Window): bool = window.m_separateTouch
   ## enable/disable handling touch events separately from mouse events
-  window.m_separateTouch
+proc isPopup*(window: Window): bool = window.m_isPopup
+proc popupGrab*(window: Window): bool = window.m_popupGrab
 
-proc isPopup*(window: Window): bool =
-  window.m_isPopup
-
-proc popupGrab*(window: Window): bool =
-  window.m_popupGrab
-
-method reportedSize*(window: Window): IVec2 {.base.} =
+method reportedSize*(window: Window): IVec2 {.base.} = window.m_size
   ## Size reported to API users/events (backing pixels on HiDPI platforms).
-  window.m_size
 
-proc size*(window: Window): IVec2 =
-  window.reportedSize()
-
-proc pos*(window: Window): IVec2 =
-  window.m_pos
-
-proc fullscreen*(window: Window): bool =
-  window.m_fullscreen
-
-proc maximized*(window: Window): bool =
-  window.m_maximized
-
-proc minimized*(window: Window): bool =
-  window.m_minimized
-
-proc visible*(window: Window): bool =
-  window.m_visible
-
-proc resizable*(window: Window): bool =
-  window.m_resizable
-
+proc size*(window: Window): IVec2 = window.reportedSize()
+proc pos*(window: Window): IVec2 = window.m_pos
+proc fullscreen*(window: Window): bool = window.m_fullscreen
+proc maximized*(window: Window): bool = window.m_maximized
+proc minimized*(window: Window): bool = window.m_minimized
+proc visible*(window: Window): bool = window.m_visible
+proc resizable*(window: Window): bool = window.m_resizable
 proc preservesContentDuringLiveResize*(window: Window): bool =
   window.m_preservesContentDuringLiveResize
+proc minSize*(window: Window): IVec2 = window.m_minSize
+proc maxSize*(window: Window): IVec2 = window.m_maxSize
 
-proc minSize*(window: Window): IVec2 =
-  window.m_minSize
-
-proc maxSize*(window: Window): IVec2 =
-  window.m_maxSize
-
-proc focused*(window: Window): bool =
-  window.m_focused
-
-proc customTitlebar*(window: Window): bool =
-  window.m_customTitlebar
-
-method parentWindow*(window: Window): Window {.base.} =
-  window.m_popupParent
-
-method placement*(window: Window): PopupPlacement {.base.} =
-  window.m_popupPlacement
-
-proc popupOpen*(window: Window): bool =
-  window.opened and window.visible
+proc focused*(window: Window): bool = window.m_focused
+proc customTitlebar*(window: Window): bool = window.m_customTitlebar
+method parentWindow*(window: Window): Window {.base.} = window.m_popupParent
+method placement*(window: Window): PopupPlacement {.base.} = window.m_popupPlacement
+proc popupOpen*(window: Window): bool = window.opened and window.visible
 
 proc initPopupState*(window, parent: Window, placement: PopupPlacement, grab: bool) =
   window.m_isPopup = true
@@ -735,26 +475,25 @@ proc notifyPopupDone*(window: Window, reason: PopupDismissReason) =
   if window.eventsHandler.onPopupDone != nil:
     window.eventsHandler.onPopupDone(PopupEvent(window: window, reason: reason))
 
-method uiScale*(window: Window): float32 {.base.} =
+method uiScale*(window: Window): float32 {.base.} = 1'f32
   ## UI scale factor (device pixels per logical point).
-  1'f32
+
 
 # note: locks: "unknown" usualy means that function can cause event outside of event loop
 
-method redraw*(window: Window) {.base.} = ## request render
-  window.redrawRequested = true
 
-method `frameless=`*(window: Window, v: bool) {.base.} =
-  discard
+method redraw*(window: Window) {.base.} = window.redrawRequested = true
+  ## request render
 
-method `cursor=`*(window: Window, v: Cursor) {.base.} =
+method `frameless=`*(window: Window, v: bool) {.base.} = discard
+
+method `cursor=`*(window: Window, v: Cursor) {.base.} = discard
   ## set cursor
   ## used when mouse hover window
-  discard
 
-method `separateTouch=`*(window: Window, v: bool) {.base.} =
+
+method `separateTouch=`*(window: Window, v: bool) {.base.} = discard
   ## enable/disable handling touch events separately from mouse events
-  discard
 
 method `placement=`*(window: Window, v: PopupPlacement) {.base.} =
   window.m_popupPlacement = v
@@ -762,26 +501,24 @@ method `placement=`*(window: Window, v: PopupPlacement) {.base.} =
 method reposition*(window: Window, v: PopupPlacement) {.base.} =
   window.placement = v
 
-method `size=`*(window: Window, v: IVec2) {.base.} =
+
+method `size=`*(window: Window, v: IVec2) {.base.} = discard
   ## resize window
   ## exit fullscreen if window is fullscreen
-  discard
 
-method `pos=`*(window: Window, v: IVec2) {.base.} =
+method `pos=`*(window: Window, v: IVec2) {.base.} = discard
   ## move window
   ## do nothing if window is fullscreen
-  discard
 
-method `title=`*(window: Window, v: string) {.base.} = ## set window title
-  discard
+method `title=`*(window: Window, v: string) {.base.} = discard
+  ## set window title
 
 method `customTitlebar=`*(window: Window, v: bool) {.base.} =
   ## enable/disable custom titlebar integration when backend supports it.
   window.m_customTitlebar = v
 
-method supportsCustomTitlebar*(window: Window): bool {.base.} =
+method supportsCustomTitlebar*(window: Window): bool {.base.} = false
   ## reports whether this backend currently applies customTitlebar behavior.
-  false
 
 method visualCapabilities*(window: Window): set[WindowVisualCapability] {.base.} =
   ## reports which compositor/window visual effects this window can currently use.
@@ -791,13 +528,14 @@ proc supports*(window: Window, capability: WindowVisualCapability): bool =
   capability in window.visualCapabilities()
 
 proc initWindowBackdrop*(
-    regions: openArray[WindowVisualRegion] = []
+  regions: openArray[WindowVisualRegion] = []
 ): WindowBackdropConfig =
   ## Configure ordinary background blur. An empty region list means the whole window.
   WindowBackdropConfig(kind: wbkBlur, regions: @regions)
 
 proc initWindowBackdrop*(
-    material: WindowBackdropMaterial, regions: openArray[WindowVisualRegion] = []
+  material: WindowBackdropMaterial,
+  regions: openArray[WindowVisualRegion] = [],
 ): WindowBackdropConfig =
   ## Configure a platform material. This is currently supported on macOS.
   WindowBackdropConfig(kind: wbkMaterial, material: material, regions: @regions)
@@ -821,87 +559,77 @@ proc setBackdrop*(window: Window, config: WindowBackdropConfig) =
       "window backdrop effect is not supported by this backend or configuration"
     )
 
-method `fullscreen=`*(window: Window, v: bool) {.base.} =
+method `fullscreen=`*(window: Window, v: bool) {.base.} = discard
   ## fullscreen/unfullscreen window
-  discard
 
-method `maximized=`*(window: Window, v: bool) {.base.} =
+method `maximized=`*(window: Window, v: bool) {.base.} = discard
   ## maximize/unmaximize window
   ## exit fullscreen if window is fullscreen
-  discard
 
-method `minimized=`*(window: Window, v: bool) {.base.} = ## minimize/unminimize window
-  discard
+method `minimized=`*(window: Window, v: bool) {.base.} = discard
+  ## minimize/unminimize window
 
-method `visible=`*(window: Window, v: bool) {.base.} = ## show/hide window
-  discard
+method `visible=`*(window: Window, v: bool) {.base.} = discard
+  ## show/hide window
 
-method `resizable=`*(window: Window, v: bool) {.base.} = ## enable/disable resizing
-  discard
+method `resizable=`*(window: Window, v: bool) {.base.} = discard
+  ## enable/disable resizing
 
 method `preservesContentDuringLiveResize=`*(window: Window, v: bool) {.base.} =
   window.m_preservesContentDuringLiveResize = v
 
-method `minSize=`*(window: Window, v: IVec2) {.base.} =
+method `minSize=`*(window: Window, v: IVec2) {.base.} = discard
   ## set minimum size
   ## `window.resizable=` will disable this
-  discard
 
-method `maxSize=`*(window: Window, v: IVec2) {.base.} =
+method `maxSize=`*(window: Window, v: IVec2) {.base.} = discard
   ## set maximum size
   ## `window.resizable=` will disable this
-  discard
 
-method canBecomeKeyWindow*(window: Window): bool {.base.} =
+method canBecomeKeyWindow*(window: Window): bool {.base.} = true
   ## whether this window is allowed to become key window.
   ## only macOS backend uses this property.
-  true
 
-method canBecomeMainWindow*(window: Window): bool {.base.} =
+method canBecomeMainWindow*(window: Window): bool {.base.} = true
   ## whether this window is allowed to become main window.
   ## only macOS backend uses this property.
-  true
 
-method `canBecomeKeyWindow=`*(window: Window, v: bool) {.base.} =
-  discard
+method `canBecomeKeyWindow=`*(window: Window, v: bool) {.base.} = discard
+method `canBecomeMainWindow=`*(window: Window, v: bool) {.base.} = discard
 
-method `canBecomeMainWindow=`*(window: Window, v: bool) {.base.} =
-  discard
+method `icon=`*(window: Window, v: nil.typeof) {.base.} = discard
+  ## clear window icon
 
-method `icon=`*(window: Window, v: nil.typeof) {.base.} = ## clear window icon
-  discard
+method `icon=`*(window: Window, v: PixelBuffer) {.base.} = discard
+  ## set window icon
 
-method `icon=`*(window: Window, v: PixelBuffer) {.base.} = ## set window icon
-  discard
 
-method startInteractiveMove*(window: Window, pos: Option[Vec2] = none Vec2) {.base.} =
+method startInteractiveMove*(window: Window, pos: Option[Vec2] = none Vec2) {.base.} = discard
   ## allow user to move window interactivly
   ## useful to create client-side decorated windows
   ## it's recomended to start interactive move after user grabbed window header and started to move mouse
-  discard
 
-method startInteractiveResize*(
-    window: Window, edge: Edge, pos: Option[Vec2] = none Vec2
-) {.base.} =
+
+method startInteractiveResize*(window: Window, edge: Edge, pos: Option[Vec2] = none Vec2) {.base.} = discard
   ## allow user to resize window interactivly
   ## useful to create client-side decorated windows
   ## it's recomended to start interactive resize after user grabbed window border and started to move mouse
-  discard
 
-method showWindowMenu*(window: Window, pos: Option[Vec2] = none Vec2) {.base.} =
+
+method showWindowMenu*(window: Window, pos: Option[Vec2] = none Vec2) {.base.} = discard
   ## show OS/platform/DE-specific window menu
   ## it's recomended to show menu after user right-clicked on window header
   ## for now works only on Linux(Wayland)
-  discard
+
 
 method setInputRegion*(window: Window, pos, size: Vec2) {.base.} =
   ## set the rect (in window-local coordinates) where actual window is placed (inluding titlebar, if has one).
   ## this is used by Windows and Linux(Wayland) to correctly anchor the window and to correctly send mouse and touch events.
   ## it's recomended to set input region if you draw shadows for window.
   ## setInputRegion, if called once, must be called after each resize of the window
-  assert size.x > 0 and size.y > 0,
-    "there must be at least one pixel of the actual window"
+  assert size.x > 0 and size.y > 0, "there must be at least one pixel of the actual window"
   window.inputRegion = some (pos, size)
+
 
 method setTitleRegion*(window: Window, pos, size: Vec2) {.base.} =
   ## set the rect (in window-local coordinates) where titlebar is placed.
@@ -909,86 +637,80 @@ method setTitleRegion*(window: Window, pos, size: Vec2) {.base.} =
   ## it's recomended to set title region if you have custom titlebar.
   window.titleRegion = some (pos, size)
 
-method setBorderWidth*(
-    window: Window, innerWidth, outerWidth: float32, diagonalSize: float32
-) {.base.} =
+
+method setBorderWidth*(window: Window, innerWidth, outerWidth: float32, diagonalSize: float32) {.base.} =
   ## set window border width. This will not change the look of window, it is for resizing window.
   ## this is used on Windows to allow user to resize window interactivly. siwin will replicate this behaviour on other platforms.
   ## it's recomended to set border width if you have custom titlebar.
   window.borderWidth = some (innerWidth, outerWidth, diagonalSize)
 
+
 method pixelBuffer*(window: Window): PixelBuffer {.base.} =
   ## returns pixel buffer attached to window
-  raise WindowTypeDefect.newException(
-    "this Window has no pixel buffer. only SoftwareRendering windows have one"
-  )
+  raise WindowTypeDefect.newException("this Window has no pixel buffer. only SoftwareRendering windows have one")
 
-method makeCurrent*(window: Window) {.base.} =
+
+method makeCurrent*(window: Window) {.base.} = discard
   ## set window as current opengl rendering target
-  discard
 
-method `vsync=`*(window: Window, v: bool, silent = false) {.base.} =
+method `vsync=`*(window: Window, v: bool, silent = false) {.base.} = discard
   ## enable/disable vsync
-  discard
 
 when sizeof(pointer) == 8:
   type VulkanSurface* = pointer
 else:
   type VulkanSurface* = uint64
 
-method vulkanSurface*(window: Window): VulkanSurface {.base.} =
+method vulkanSurface*(window: Window): VulkanSurface {.base.} = discard
   ## get a VkSurfaceKHR attached to window
-  discard
 
-proc clipboard*(window: Window): Clipboard =
-  window.m_clipboard
 
-proc selectionClipboard*(window: Window): Clipboard =
-  window.m_selectionClipboard
+proc clipboard*(window: Window): Clipboard = window.m_clipboard
 
-proc dragndropClipboard*(window: Window): Clipboard =
-  window.m_dragndropClipboard
+proc selectionClipboard*(window: Window): Clipboard = window.m_selectionClipboard
 
-method `dragStatus=`*(window: Window, v: DragStatus) {.base.} =
-  discard
+proc dragndropClipboard*(window: Window): Clipboard = window.m_dragndropClipboard
 
-method firstStep*(window: Window, makeVisible = true) {.base.} =
+
+method `dragStatus=`*(window: Window, v: DragStatus) {.base.} = discard
+
+
+method firstStep*(window: Window, makeVisible = true) {.base.} = discard
   ## init window main loop
   ## don't call this proc if you will manage window events via run()
-  discard
 
-method step*(window: Window) {.base.} =
+method step*(window: Window) {.base.} = discard
   ## make window main loop step
   ## ! don't forget to call firstStep()
-  discard
 
 method serviceWindow*(window: Window) {.base.} =
   ## Run per-window tick, rendering, and presentation without waiting for input.
   discard window
   raise EventLoopUnsupportedDefect.newException(
-    "Nonblocking window service is not implemented on this platform"
+    "Nonblocking window service is not implemented on this platform",
   )
 
 method pollEventsImpl(globals: SiwinGlobals): bool {.base.} =
   discard globals
   raise EventLoopUnsupportedDefect.newException(
-    "Global event-loop pumping is not implemented on this platform"
+    "Global event-loop pumping is not implemented on this platform",
   )
 
 method waitEventsImpl(
-    globals: SiwinGlobals, timeout: Duration
+  globals: SiwinGlobals, timeout: Duration,
 ): EventWaitResult {.base.} =
   discard globals
   discard timeout
   raise EventLoopUnsupportedDefect.newException(
-    "Global event-loop waiting is not implemented on this platform"
+    "Global event-loop waiting is not implemented on this platform",
   )
 
 proc eventLoopWaker*(globals: SiwinGlobals): EventLoopWaker =
   ## Returns a thread-safe capability that remains harmless after loop shutdown.
   if globals.eventLoopState == nil:
-    globals.eventLoopState =
-      cast[EventLoopWakeState](allocShared0(sizeof(EventLoopWakeStateObj)))
+    globals.eventLoopState = cast[EventLoopWakeState](
+      allocShared0(sizeof(EventLoopWakeStateObj))
+    )
     # The globals object owns the initial reference. EventLoopWaker copies add
     # further owners through their copy and duplication hooks.
     globals.eventLoopState.owners.store(1, moRelaxed)
@@ -997,10 +719,10 @@ proc eventLoopWaker*(globals: SiwinGlobals): EventLoopWaker =
   result.state = globals.eventLoopState
 
 proc installEventLoopWakeProc*(
-    globals: SiwinGlobals,
-    wakeProc: EventLoopWakeProc,
-    backendData: pointer = nil,
-    closeProc: EventLoopWakeProc = nil,
+  globals: SiwinGlobals,
+  wakeProc: EventLoopWakeProc,
+  backendData: pointer = nil,
+  closeProc: EventLoopWakeProc = nil,
 ) =
   ## Installs a backend wake primitive and transfers any resource during startup.
   discard globals.eventLoopWaker()
@@ -1057,6 +779,7 @@ proc waitEvents*(globals: SiwinGlobals, timeout: Duration): EventWaitResult =
   ## On the application thread, wait up to `timeout` for input or a notification.
   globals.waitEventsImpl(timeout)
 
+
 proc run*(window: sink Window, makeVisible = true) =
   ## run whole window main loops
   window.firstStep(makeVisible)
@@ -1069,7 +792,10 @@ proc run*(window: sink Window, eventsHandler: WindowEventsHandler, makeVisible =
     window.eventsHandler = eventsHandler
   run(window, makeVisible)
 
-proc serviceEventDrivenWindows(globals: SiwinGlobals, windows: sink seq[Window]) =
+proc serviceEventDrivenWindows(
+  globals: SiwinGlobals,
+  windows: sink seq[Window],
+) =
   proc serviceOpenWindows(windows: var seq[Window]) =
     var index = 0
     while index < windows.len:
@@ -1088,7 +814,11 @@ proc serviceEventDrivenWindows(globals: SiwinGlobals, windows: sink seq[Window])
     globals.waitEvents()
     windows.serviceOpenWindows()
 
-proc runEventDriven*(globals: SiwinGlobals, window: sink Window, makeVisible = true) =
+proc runEventDriven*(
+  globals: SiwinGlobals,
+  window: sink Window,
+  makeVisible = true,
+) =
   ## Run one window with an efficiently blocking application-global event loop.
   ##
   ## `globals` must own `window`. Unlike the compatibility `run` loop, ticks
@@ -1097,10 +827,10 @@ proc runEventDriven*(globals: SiwinGlobals, window: sink Window, makeVisible = t
   globals.serviceEventDrivenWindows(@[window])
 
 proc runEventDriven*(
-    globals: SiwinGlobals,
-    window: sink Window,
-    eventsHandler: WindowEventsHandler,
-    makeVisible = true,
+  globals: SiwinGlobals,
+  window: sink Window,
+  eventsHandler: WindowEventsHandler,
+  makeVisible = true,
 ) =
   ## Install `eventsHandler` and run one window with the global event loop.
   if eventsHandler != WindowEventsHandler():
@@ -1123,11 +853,7 @@ proc runMultiple*(windows: varargs[tuple[window: Window, makeVisible: bool]]) =
       window.step()
       inc i
 
-proc runMultiple*(
-    windows: varargs[
-      tuple[window: Window, eventsHandler: WindowEventsHandler, makeVisible: bool]
-    ]
-) =
+proc runMultiple*(windows: varargs[tuple[window: Window, eventsHandler: WindowEventsHandler, makeVisible: bool]]) =
   ## run for multiple windows
   for (window, eventsHandler, makeVisible) in windows:
     if eventsHandler != WindowEventsHandler():
@@ -1146,7 +872,8 @@ proc runMultiple*(
       inc i
 
 proc runMultipleEventDriven*(
-    globals: SiwinGlobals, windows: varargs[tuple[window: Window, makeVisible: bool]]
+  globals: SiwinGlobals,
+  windows: varargs[tuple[window: Window, makeVisible: bool]],
 ) =
   ## Run multiple windows with one efficiently blocking global event wait.
   ##
@@ -1157,10 +884,12 @@ proc runMultipleEventDriven*(
   globals.serviceEventDrivenWindows(windows.mapIt(it.window))
 
 proc runMultipleEventDriven*(
-    globals: SiwinGlobals,
-    windows: varargs[
-      tuple[window: Window, eventsHandler: WindowEventsHandler, makeVisible: bool]
-    ],
+  globals: SiwinGlobals,
+  windows: varargs[tuple[
+    window: Window,
+    eventsHandler: WindowEventsHandler,
+    makeVisible: bool,
+  ]],
 ) =
   ## Install handlers and run multiple windows with one global event wait.
   for (window, eventsHandler, makeVisible) in windows:

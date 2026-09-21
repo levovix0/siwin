@@ -164,6 +164,54 @@ when defined(linux) or defined(bsd):
       paramStr(1) == "--popup-runtime-helper":
     runPopupProbe(parseEnum[Platform](getEnv("SIWIN_POPUP_TEST_HELPER")))
 
+  proc checkX11PopupPlacement(transparent: bool) =
+    let globals = newSiwinGlobals(Platform.x11)
+    let parent =
+      globals.newSoftwareRenderingWindow(size = ivec2(300, 200), title = "popup parent")
+    parent.firstStep(makeVisible = false)
+    parent.step()
+
+    let placement = PopupPlacement(
+      anchorRectPos: ivec2(40, 48),
+      anchorRectSize: ivec2(96, 32),
+      size: ivec2(140, 110),
+      anchor: bottomLeft,
+      gravity: topLeft,
+      offset: ivec2(0, 14),
+    )
+    let popup = globals.newPopupWindow(parent, placement, transparent, grab = true)
+    popup.firstStep(makeVisible = false)
+    popup.stepUntil(
+      proc(): bool =
+        popup.pos == parent.pos + placement.popupRelativePos() and
+          popup.size == placement.popupSize()
+    )
+
+    check popup.pos == parent.pos + placement.popupRelativePos()
+    check popup.size == placement.popupSize()
+    check popup.transparent == transparent
+
+    let updatedPlacement = PopupPlacement(
+      anchorRectPos: ivec2(120, 76),
+      anchorRectSize: ivec2(84, 28),
+      size: ivec2(120, 96),
+      anchor: topRight,
+      gravity: bottomRight,
+      offset: ivec2(-6, -8),
+    )
+    popup.reposition(updatedPlacement)
+    popup.stepUntil(
+      proc(): bool =
+        popup.pos == parent.pos + updatedPlacement.popupRelativePos() and
+          popup.size == updatedPlacement.popupSize()
+    )
+
+    check popup.pos == parent.pos + updatedPlacement.popupRelativePos()
+    check popup.size == updatedPlacement.popupSize()
+
+    close popup
+    close parent
+
 suite "siwin popup api":
   test "popup placement resolves size and relative position":
     let placement = PopupPlacement(
@@ -269,56 +317,15 @@ suite "siwin popup api":
       check maxAbsComponent(waylandResult.relPos - x11Result.relPos) <= 1
       check maxAbsComponent(waylandResult.reportedSize - x11Result.reportedSize) <= 1
 
-    test "x11 popup window position matches relative placement in unconstrained case":
+    test "opaque x11 popup window position matches relative placement":
       if Platform.x11 notin availablePlatforms():
         skip()
+      checkX11PopupPlacement(transparent = false)
 
-      let globals = newSiwinGlobals(Platform.x11)
-      let parent = globals.newSoftwareRenderingWindow(
-        size = ivec2(300, 200), title = "popup parent"
-      )
-      parent.firstStep(makeVisible = false)
-      parent.step()
-
-      let placement = PopupPlacement(
-        anchorRectPos: ivec2(40, 48),
-        anchorRectSize: ivec2(96, 32),
-        size: ivec2(140, 110),
-        anchor: bottomLeft,
-        gravity: topLeft,
-        offset: ivec2(0, 14),
-      )
-      let popup = globals.newPopupWindow(parent, placement, grab = true)
-      popup.firstStep(makeVisible = false)
-      popup.stepUntil(
-        proc(): bool =
-          popup.pos == parent.pos + placement.popupRelativePos() and
-            popup.size == placement.popupSize()
-      )
-
-      check popup.pos == parent.pos + placement.popupRelativePos()
-      check popup.size == placement.popupSize()
-
-      let updatedPlacement = PopupPlacement(
-        anchorRectPos: ivec2(120, 76),
-        anchorRectSize: ivec2(84, 28),
-        size: ivec2(120, 96),
-        anchor: topRight,
-        gravity: bottomRight,
-        offset: ivec2(-6, -8),
-      )
-      popup.reposition(updatedPlacement)
-      popup.stepUntil(
-        proc(): bool =
-          popup.pos == parent.pos + updatedPlacement.popupRelativePos() and
-            popup.size == updatedPlacement.popupSize()
-      )
-
-      check popup.pos == parent.pos + updatedPlacement.popupRelativePos()
-      check popup.size == updatedPlacement.popupSize()
-
-      close popup
-      close parent
+    test "transparent x11 popup window position matches relative placement":
+      if Platform.x11 notin availablePlatforms():
+        skip()
+      checkX11PopupPlacement(transparent = true)
 
     test "x11 popup from opengl parent keeps opengl window type":
       if Platform.x11 notin availablePlatforms():

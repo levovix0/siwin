@@ -2,7 +2,7 @@ import std/[times, monotimes, os, options, importutils, sequtils]
 import pkg/[vmath]
 import ./[winapi]
 import ../../[colorutils, siwindefs]
-import ../any/[window, clipboards, eventLoop]
+import ../any/[window, clipboards, timeutils]
 import ../any/[windowUtils]
 
 privateAccess Window
@@ -232,7 +232,7 @@ proc windowProc(handle: HWnd, message: Uint, wParam: WParam, lParam: LParam): LR
 
 const
   wClassName = L"w"
-  woClassName = L"o"
+  woClassName* = L"o"
   dwmwaSystemBackdropType = 38.DWord
   dwmsbtNone = 1'i32
   dwmsbtTransientWindow = 3'i32
@@ -252,7 +252,7 @@ block winapiInit:
   wcex.lpszClassName = woClassName
   RegisterClassEx(wcex.addr)
 
-template pushEvent(eventsHandler: WindowEventsHandler, event, args) =
+template pushEvent*(eventsHandler: WindowEventsHandler, event, args) =
   if eventsHandler.event != nil:
     eventsHandler.event(args)
 
@@ -326,7 +326,7 @@ method trySetBackdrop*(window: WindowWinapi, config: WindowBackdropConfig): bool
   true
 
 
-proc initWindow(
+proc initWindow*(
   window: WindowWinapi,
   size: IVec2,
   screen: ScreenWinapi,
@@ -770,8 +770,14 @@ proc poolEvent(window: WindowWinapi, message: Uint, wParam: WParam, lParam: LPar
   
   case message
   of WmPaint:
+    let hasUpdateRegion = window.handle.GetUpdateRect(nil, 0).bool
     var paint: PaintStruct
     window.handle.BeginPaint(paint.addr)
+    let hasPaintDamage =
+      hasUpdateRegion or (
+        paint.rcPaint.right > paint.rcPaint.left and
+        paint.rcPaint.bottom > paint.rcPaint.top
+      )
     window.handle.EndPaint(paint.addr)
 
     let rect = window.handle.clientRect
@@ -782,6 +788,10 @@ proc poolEvent(window: WindowWinapi, message: Uint, wParam: WParam, lParam: LPar
         resizeBufferIfNeeded window.WindowWinapiSoftwareRendering.buffer, window.m_size
 
       window.eventsHandler.pushEvent onResize, ResizeEvent(window: window, size: window.m_size, initial: false)
+      window.redrawRequested = true
+
+    # Native damage needs presentation even when the client size is unchanged.
+    if hasPaintDamage:
       window.redrawRequested = true
 
 

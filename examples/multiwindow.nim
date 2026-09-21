@@ -1,4 +1,5 @@
-import opengl, vmath, siwin
+import pkg/[opengl, vmath]
+import siwin
 
 let globals = newSiwinGlobals(
   preferedPlatform = (when defined(linux): x11 else: defaultPreferedPlatform())
@@ -30,11 +31,9 @@ proc makeEventsHandler(
 ): WindowEventsHandler =
   WindowEventsHandler(
     onResize: proc(e: ResizeEvent) =
-      makeCurrent e.window
       glViewport(0, 0, e.size.x.GLsizei, e.size.y.GLsizei)
     ,
     onRender: proc(e: RenderEvent) =
-      makeCurrent e.window
       glClearColor(clearR, clearG, clearB, 1.0)
       glClear(GlColorBufferBit or GlDepthBufferBit)
     ,

@@ -2,14 +2,13 @@ import unittest
 import opengl, vmath
 import siwin
 
-const HasAstDsl = compiles do: import fusion/astdsl
-
 let globals = newSiwinGlobals()
-when HasAstDsl:
+
+when defined(feature.siwin.dev_opengl_es):
   import ./gl
 
 test "OpenGL ES":
-  when not HasAstDsl:
+  when not defined(feature.siwin.dev_opengl_es):
     skip()
   else:
     var g = 1.0

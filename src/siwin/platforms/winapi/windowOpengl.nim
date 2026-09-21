@@ -1,7 +1,7 @@
 import std/importutils
 import vmath
 import ../any/window as anyWindow
-import window {.all.}, winapi
+import window, winapi
 
 privateAccess Window
 privateAccess WindowWinapi
@@ -49,6 +49,7 @@ method `vsync=`*(window: WindowWinapiOpengl, v: bool, silent = false) =
       raise OSError.newException("failed to " & (if v: "enable" else: "disable") & " vsync")
 
 method displayImpl(window: WindowWinapiOpengl) =
+  window.makeCurrent()
   window.eventsHandler.pushEvent onRender, RenderEvent(window: window)
   window.hdc.SwapBuffers
 

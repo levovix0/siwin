@@ -3,15 +3,16 @@ import
     times, monotimes, importutils, strformat, sequtils, os, options, tables, uri,
     strutils, dynlib,
   ]
-from std/posix import
-  TPollfd, Tnfds, POLLIN, POLLERR, POLLHUP, POLLNVAL, EINTR, errno, poll
 import pkg/[vmath, chroma]
 import pkg/x11/x except Window, Cursor, Time
 import pkg/x11/[xatom, cursorfont, keysym]
 import ../../[colorutils, siwindefs]
-import ../any/[window, clipboards, eventLoop]
+import ../any/[window, clipboards]
 import ../any/[windowUtils]
 import ./[siwinGlobals, x11api]
+
+when defined(android):
+  {.error: "x11 backend is not supported on android, do not import it".}
 
 {.experimental: "overloadableEnums".}
 
@@ -28,7 +29,7 @@ type
 
   XSyncCounter* = distinct XID
 
-  SyncState = enum
+  SyncState* = enum
     none
     syncRecieved
     syncAndConfigureRecieved
@@ -353,7 +354,7 @@ proc geometry(
   )
   (root, ivec2(x.int32, y.int32), ivec2(w.int32, h.int32), borderW.int, depth.int)
 
-proc absolutePos(globals: SiwinGlobalsX11, xwin: x.Window): IVec2 =
+proc absolutePos*(globals: SiwinGlobalsX11, xwin: x.Window): IVec2 =
   let geom = globals.geometry(xwin)
   var
     child: x.Window
@@ -363,7 +364,7 @@ proc absolutePos(globals: SiwinGlobalsX11, xwin: x.Window): IVec2 =
   )
   ivec2(rootX.int32, rootY.int32)
 
-proc popupConstraintBounds(
+proc popupConstraintBounds*(
     globals: SiwinGlobalsX11, anchorPos: IVec2
 ): tuple[pos, size: IVec2] =
   result = (ivec2(0, 0), globals.geometry(globals.display.DefaultRootWindow).size)
@@ -504,13 +505,13 @@ proc pushCloseEvent(window: WindowX11) =
 proc resizePixelBuffer(window: WindowX11SoftwareRendering, size: IVec2) =
   window.pixels = window.pixels.realloc(size.x * size.y * Color32bit.sizeof)
 
-proc basicInitWindow(window: WindowX11, size: IVec2, screen: ScreenX11) =
+proc basicInitWindow*(window: WindowX11, size: IVec2, screen: ScreenX11) =
   window.screen = screen.id
   window.m_size = size
 
   window.m_focused = true
 
-proc setupWindow(window: WindowX11, fullscreen, frameless: bool, class: string) =
+proc setupWindow*(window: WindowX11, fullscreen, frameless: bool, class: string) =
   window.globals.windows[window.handle.uint] = window
   discard window.globals.display.XSelectInput(
     window.handle,
@@ -689,7 +690,12 @@ method close*(window: WindowX11) =
   if window.m_closed:
     return
   window.m_closed = true
-  window.globals.windows.del(window.handle.uint)
+  let handle = window.handle
+  window.handle = 0
+  window.globals.windows.del(handle.uint)
+  if handle != 0:
+    discard window.globals.display.XDestroyWindow(handle)
+    discard window.globals.display.XFlush()
   window.pushCloseEvent()
 
 proc backdropBlurSupported(window: WindowX11): bool =
@@ -718,14 +724,14 @@ method trySetBackdrop*(window: WindowX11, config: WindowBackdropConfig): bool =
       wvcBackdropBlur notin window.visualCapabilities:
     return false
 
-  var data = newSeqOfCap[culong](config.regions.len * 4)
+  var data = newSeqOfCap[Atom](config.regions.len * 4)
   for region in config.regions:
     if region.size.x <= 0 or region.size.y <= 0:
       return false
-    data.add(culong(cast[uint32](region.pos.x)))
-    data.add(culong(cast[uint32](region.pos.y)))
-    data.add(culong(region.size.x))
-    data.add(culong(region.size.y))
+    data.add(Atom(cast[uint32](region.pos.x)))
+    data.add(Atom(cast[uint32](region.pos.y)))
+    data.add(Atom(region.size.x))
+    data.add(Atom(region.size.y))
 
   discard window.globals.display.XChangeProperty(
     window.handle,
@@ -1117,16 +1123,31 @@ method `visible=`*(window: WindowX11, v: bool) =
   else:
     discard window.globals.display.XUnmapWindow(window.handle)
 
+proc applyMinSizeHint*(hints: var XSizeHints, size: IVec2) =
+  if size.x <= 0 or size.y <= 0:
+    hints.flags = hints.flags and not PMinSize
+  else:
+    hints.flags = hints.flags or PMinSize
+    hints.minWidth = size.x
+    hints.minHeight = size.y
+
+
+proc applyMaxSizeHint*(hints: var XSizeHints, size: IVec2) =
+  if size.x <= 0 or size.y <= 0:
+    hints.flags = hints.flags and not PMaxSize
+  else:
+    hints.flags = hints.flags or PMaxSize
+    hints.maxWidth = size.x
+    hints.maxHeight = size.y
+
 method `resizable=`*(window: WindowX11, v: bool) =
   window.m_resizable = v
   let size = window.size
 
   var hints: XSizeHints
   discard window.globals.display.XGetNormalHints(window.handle, hints.addr)
-  if v:
-    hints.flags = hints.flags and not 0b110000
-  else:
-    hints.flags = hints.flags or 0b110000
+  if v: hints.flags = hints.flags and not (PMinSize or PMaxSize)
+  else: hints.flags = hints.flags or PMinSize or PMaxSize
   hints.minWidth = size.x
   hints.minHeight = size.y
   hints.maxWidth = size.x
@@ -1137,18 +1158,14 @@ method `minSize=`*(window: WindowX11, v: IVec2) =
   window.m_minSize = v
   var hints: XSizeHints
   discard window.globals.display.XGetNormalHints(window.handle, hints.addr)
-  hints.flags = hints.flags or 0b010000
-  hints.minWidth = v.x
-  hints.minHeight = v.y
+  hints.applyMinSizeHint(v)
   discard window.globals.display.XSetNormalHints(window.handle, hints.addr)
 
 method `maxSize=`*(window: WindowX11, v: IVec2) =
   window.m_maxSize = v
   var hints: XSizeHints
   discard window.globals.display.XGetNormalHints(window.handle, hints.addr)
-  hints.flags = hints.flags or 0b100000
-  hints.maxWidth = v.x
-  hints.maxHeight = v.y
+  hints.applyMaxSizeHint(v)
   discard window.globals.display.XSetNormalHints(window.handle, hints.addr)
 
 method startInteractiveMove*(window: WindowX11, pos: Option[Vec2]) =
@@ -1404,10 +1421,10 @@ method firstStep*(window: WindowX11, makeVisible = true) =
   window.lastTickTime = getMonoTime()
 
 proc dispatchWindowEvent(
-    window: WindowX11, event, followingEvent: XEvent, hasFollowingEvent: bool
+  window: WindowX11,
+  ev, nextEvent: XEvent,
+  hasNextEvent: bool,
 ) =
-  var ev = event
-
   proc extractKey(xkey: XKeyEvent): Key =
     var i = 0
     while i < 4 and result == Key.unknown:
@@ -1440,8 +1457,8 @@ proc dispatchWindowEvent(
 
     # todo: press pressed in system mouse buttons
 
-  proc handleEvent(ev: var XEvent, nextEv: XEvent, hasNextEvent: bool) =
-    template button(): MouseButton =
+  proc handleEvent(ev: XEvent, nextEv: XEvent, hasNextEvent: bool) =
+    template button: MouseButton =
       case ev.xbutton.button
       of 1: MouseButton.left
       of 2: MouseButton.middle
@@ -1455,14 +1472,14 @@ proc dispatchWindowEvent(
 
     template scrollDeltaY(): float =
       case ev.xbutton.button
-      of 4: 1
-      of 5: -1
+      of 4: -1  # scroll up
+      of 5: 1   # scroll down
       else: 0
 
     template scrollDeltaX(): float =
       case ev.xbutton.button
-      of 6: 1
-      of 7: -1
+      of 6: -1  # scroll left
+      of 7: 1   # scroll right
       else: 0
 
     let repeated = window.prevEventIsKeyUpRepeated
@@ -1470,7 +1487,7 @@ proc dispatchWindowEvent(
 
     case ev.theType
     of Expose:
-      ##
+      window.redraw()
     of ClientMessage:
       if ev.xclient.message_type == window.globals.atoms.xDndEnter:
         window.dragSourceWindow = x.Window ev.xclient.data.l[0]
@@ -1885,9 +1902,17 @@ proc dispatchWindowEvent(
     else:
       discard
 
-  handleEvent(ev, followingEvent, hasFollowingEvent)
+  handleEvent(ev, nextEvent, hasNextEvent)
   if window.closed:
     window.pushCloseEvent()
+
+proc dispatchWindowEvent_crossModule(
+  window: window.Window,
+  ev, nextEvent: XEvent,
+  hasNextEvent: bool,
+) {.exportc: "siwin_x11_dispatch_window_event".} =
+  dispatchWindowEvent(window.WindowX11, ev, nextEvent, hasNextEvent)
+
 
 method serviceWindow*(window: WindowX11) =
   if window.closed:
@@ -1913,78 +1938,6 @@ method serviceWindow*(window: WindowX11) =
     window.endSwapBuffers()
 
     discard XFlush window.globals.display
-
-method pollEventsImpl(globals: SiwinGlobalsX11): bool =
-  result = globals.drainX11Wake()
-  while globals.display.XPending() > 0:
-    var events = newSeqOfCap[XEvent](globals.display.XPending().int)
-    while globals.display.XPending() > 0:
-      var event: XEvent
-      discard globals.display.XNextEvent(event.addr)
-      events.add(event)
-
-    var
-      nextForWindow = initTable[uint, int]()
-      nextEventIndices = newSeq[int](events.len)
-    for i in countdown(events.high, 0):
-      let windowId = events[i].xany.window.uint
-      nextEventIndices[i] = nextForWindow.getOrDefault(windowId, -1)
-      nextForWindow[windowId] = i
-
-    for i, event in events:
-      let window = globals.windows.getOrDefault(event.xany.window.uint)
-      if window != nil and not window.closed:
-        let nextIndex = nextEventIndices[i]
-        window.WindowX11.dispatchWindowEvent(
-          event,
-          if nextIndex >= 0:
-            events[nextIndex]
-          else:
-            XEvent(),
-          nextIndex >= 0,
-        )
-
-    result = true
-    discard XFlush(globals.display)
-
-method waitEventsImpl(globals: SiwinGlobalsX11, timeout: Duration): EventWaitResult =
-  if globals.pollEventsImpl():
-    return eventActivity
-  discard XFlush(globals.display)
-  let started = getMonoTime()
-  while true:
-    var fds = [
-      TPollfd(fd: globals.display.XConnectionNumber(), events: POLLIN),
-      TPollfd(fd: globals.wake.readFd, events: POLLIN),
-    ]
-    let remaining =
-      if timeout == Duration.high:
-        Duration.high
-      else:
-        max(initDuration(), timeout - (getMonoTime() - started))
-    let count = poll(
-      fds[0].addr,
-      fds.len.Tnfds,
-      remaining.inTimeoutMilliseconds(infinite = -1.cint, maxFinite = cint.high),
-    )
-    if count == 0:
-      return eventTimeout
-    if count < 0:
-      if errno == EINTR:
-        if timeout != Duration.high and getMonoTime() - started >= timeout:
-          return eventTimeout
-        continue
-      raiseOSError(osLastError())
-
-    if (fds[0].revents and (POLLERR or POLLHUP or POLLNVAL)) != 0:
-      raise OSError.newException("X11 display connection closed while waiting")
-    if (fds[1].revents and (POLLERR or POLLHUP or POLLNVAL)) != 0:
-      raise OSError.newException("X11 event-loop wake pipe closed while waiting")
-    if (fds[1].revents and POLLIN) != 0:
-      discard globals.drainX11Wake()
-    if (fds[0].revents and POLLIN) != 0:
-      discard globals.pollEventsImpl()
-    return eventActivity
 
 method step*(window: WindowX11) =
   discard window.globals.waitEvents(initDuration(milliseconds = 1))
@@ -2017,11 +1970,11 @@ proc newSoftwareRenderingWindowX11*(
     result.resizable = false
 
 proc newPopupWindowX11*(
-    globals: SiwinGlobalsX11,
-    parent: WindowX11,
-    placement: PopupPlacement,
-    transparent = false,
-    grab = true,
+  globals: SiwinGlobalsX11,
+  parent: WindowX11,
+  placement: PopupPlacement,
+  transparent = false,
+  grab = true,
 ): WindowX11SoftwareRendering =
   if parent == nil:
     raise ValueError.newException("Popup windows require a parent window")
@@ -2036,23 +1989,22 @@ proc newPopupWindowX11*(
     let root = globals.display.DefaultRootWindow
 
     var vi: XVisualInfo
-    discard globals.display.XMatchVisualInfo(screen.id, 32, TrueColor, vi.addr)
+    if globals.display.XMatchVisualInfo(screen.id, 32, TrueColor, vi.addr) == 0:
+      raise OSError.newException("X11 does not provide a 32-bit TrueColor visual for transparent popup windows")
 
     let cmap = globals.display.XCreateColormap(root, vi.visual, AllocNone)
-    var swa = XSetWindowAttributes(colormap: cmap, override_redirect: 1, save_under: 1)
+    var swa = XSetWindowAttributes(
+      colormap: cmap,
+      override_redirect: 1,
+      save_under: 1,
+      border_pixel: 0,
+    )
 
     result.handle = globals.display.XCreateWindow(
-      root,
-      0,
-      0,
-      placement.popupSize().x.cuint,
-      placement.popupSize().y.cuint,
-      0,
-      vi.depth,
-      InputOutput,
-      vi.visual,
-      CwColormap or CWOverrideRedirect or CWSaveUnder,
-      swa.addr,
+      root, 0, 0, placement.popupSize().x.cuint, placement.popupSize().y.cuint, 0,
+      vi.depth, InputOutput, vi.visual,
+      CwColormap or CWOverrideRedirect or CWSaveUnder or CWBorderPixel,
+      swa.addr
     )
   else:
     var swa = XSetWindowAttributes(

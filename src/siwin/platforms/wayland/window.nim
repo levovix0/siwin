@@ -2,7 +2,7 @@ import std/[times, monotimes, importutils, strformat, options, tables, os, uri, 
 from std/posix import pipe, close, write, read
 import pkg/[vmath]
 import ../../[colorutils, siwindefs]
-import ../any/[window {.all.}, clipboards]
+import ../any/[window, clipboards]
 import ../any/[windowUtils]
 import ./[libwayland, protocol, siwinGlobals, sharedBuffer, bitfields, xkb, libdecor, cursors]
 
@@ -306,7 +306,7 @@ method width*(screen: ScreenWayland): int32 = 1920  # todo
 method height*(screen: ScreenWayland): int32 = 1080  # todo
 
 
-method release(window: WindowWayland) {.base, raises: [].}
+method release*(window: WindowWayland) {.base, raises: [].}
 
 proc clearToplevelIconResources(window: WindowWayland) =
   if window.toplevelIcon != nil:
@@ -449,7 +449,7 @@ proc bufferScale(window: WindowWayland): int32 {.inline.} =
 proc scaledBufferLength(logical: int32; uiScale: float32): int32 {.inline.} =
   max(1'i32, ((logical.float32 * uiScale) + 0.5'f32).int32)
 
-proc bufferSize(window: WindowWayland, logicalSize: IVec2): IVec2 {.inline.} =
+proc bufferSize*(window: WindowWayland, logicalSize: IVec2): IVec2 {.inline.} =
   let scale = window.effectiveUiScale()
   ivec2(scaledBufferLength(logicalSize.x, scale), scaledBufferLength(logicalSize.y, scale))
 
@@ -564,7 +564,7 @@ proc initClipboardsIfNeeded(globals: SiwinGlobalsWayland) =
     globals.dragndropClipboard = ClipboardWaylandDnd(globals: globals)
 
 
-proc basicInitWindow(window: WindowWayland; size: IVec2; screen: ScreenWayland) =
+proc basicInitWindow*(window: WindowWayland; size: IVec2; screen: ScreenWayland) =
   window.m_size = size
   window.screen = screen
   window.m_focused = false
@@ -580,7 +580,7 @@ proc basicInitWindow(window: WindowWayland; size: IVec2; screen: ScreenWayland) 
   window.m_dragndropClipboard = window.globals.dragndropClipboard
 
 
-method doResize(window: WindowWayland, size: IVec2) {.base.} =
+method doResize*(window: WindowWayland, size: IVec2) {.base.} =
   window.m_size = size
 
   if window.viewport != typeof(window.viewport).default:
@@ -593,7 +593,7 @@ method doResize(window: WindowWayland, size: IVec2) {.base.} =
     destroy opaqueRegion
 
 
-method doResize(window: WindowWaylandSoftwareRendering, size: IVec2) =
+method doResize*(window: WindowWaylandSoftwareRendering, size: IVec2) =
   procCall window.WindowWayland.doResize(size)
   let scaledSize = window.bufferSize(size)
 
@@ -746,7 +746,7 @@ proc createLibdecorFrameIface(): LibdecorFrameInterface =
     ,
     close: proc(frame: LibdecorFrame, userData: pointer) {.cdecl.} =
       let win = cast[WindowWayland](userData)
-      win.m_closed = true
+      win.close()
     ,
     commit: proc(frame: LibdecorFrame, userData: pointer) {.cdecl.} =
       let win = cast[WindowWayland](userData)
@@ -833,6 +833,9 @@ proc createPopupPositioner(window: WindowWayland): Xdg_positioner =
 proc resize(window: WindowWayland, size: IVec2) =
   if size.x <= 0 or size.y <= 0:
     ## todo: means we should decide the size by ourselves
+    return
+
+  if window.m_size == size:
     return
     
   window.doResize size
@@ -1030,7 +1033,7 @@ method pixelBuffer*(window: WindowWaylandSoftwareRendering): PixelBuffer =
   PixelBuffer(
     data: (if window.buffer == nil: nil else: window.buffer.dataAddr),
     size: window.bufferSize(window.m_size),
-    format: (if window.transparent: PixelBufferFormat.xrgb_32bit else: PixelBufferFormat.urgb_32bit)
+    format: (if window.transparent: PixelBufferFormat.bgrx_32bit else: PixelBufferFormat.bgru_32bit)
   )
 
 
@@ -1687,7 +1690,7 @@ proc initDataDeviceManagerEvents*(globals: SiwinGlobalsWayland) =
   discard wl_display_roundtrip globals.display
 
 
-proc setupWindow(window: WindowWayland, fullscreen, frameless, transparent: bool, size: IVec2, class: string) =
+proc setupWindow*(window: WindowWayland, fullscreen, frameless, transparent: bool, size: IVec2, class: string) =
   const FractionalScaleDenominator = 120'f32
 
   proc applySurfaceScale(window: WindowWayland) =
@@ -1792,7 +1795,7 @@ proc setupWindow(window: WindowWayland, fullscreen, frameless, transparent: bool
         window.toplevelSetAppId(class)
 
       window.xdgToplevel.onClose:
-        window.m_closed = true
+        window.close()
 
       window.xdgToplevel.onConfigure:
         window.resize(ivec2(width, height))
@@ -1862,8 +1865,7 @@ proc setupWindow(window: WindowWayland, fullscreen, frameless, transparent: bool
       window.resize(ivec2(width.int32, height.int32))
 
     window.layerShellSurface.onClosed:
-      window.m_closed = true
-      window.surface.destroy()
+      window.close()
 
 
 proc initSoftwareRenderingWindow(
@@ -2313,7 +2315,7 @@ proc newSoftwareRenderingWindowWayland*(
   result.title = title
   if not resizable: result.resizable = false
 
-proc initLayerSurfaceWindow(
+proc initLayerSurfaceWindow*(
   window: WindowWayland,
   size: IVec2,
   screen: ScreenWayland,
