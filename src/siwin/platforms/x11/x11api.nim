@@ -78,6 +78,10 @@ let
   XGetGeometry* = loadProc[x11Types.x11_XGetGeometry](libX11Handle, "XGetGeometry")
   XGetSelectionOwner* =
     loadProc[x11Types.x11_XGetSelectionOwner](libX11Handle, "XGetSelectionOwner")
+  XGetVisualInfo* =
+    loadProc[x11Types.x11_XGetVisualInfo](libX11Handle, "XGetVisualInfo")
+  XGetWindowAttributes* =
+    loadProc[x11Types.x11_XGetWindowAttributes](libX11Handle, "XGetWindowAttributes")
   XGetWindowProperty* =
     loadProc[x11Types.x11_XGetWindowProperty](libX11Handle, "XGetWindowProperty")
   XIconifyWindow* =
@@ -115,6 +119,8 @@ let
     loadProc[x11Types.x11_XUngrabPointer](libX11Handle, "XUngrabPointer")
   XUnmapWindow* = loadProc[x11Types.x11_XUnmapWindow](libX11Handle, "XUnmapWindow")
   XUnsetICFocus* = loadProc[x11Types.x11_XUnsetICFocus](libX11Handle, "XUnsetICFocus")
+  XVisualIDFromVisual* =
+    loadProc[x11Types.x11_XVisualIDFromVisual](libX11Handle, "XVisualIDFromVisual")
   Xutf8LookupString* =
     loadProc[x11Types.x11_Xutf8LookupString](libX11Handle, "Xutf8LookupString")
 
@@ -138,15 +144,16 @@ proc x11Available*(): bool =
     XDefineCursor != nil and XDeleteProperty != nil and XDestroyIC != nil and
     XDestroyWindow != nil and XFlush != nil and XFree != nil and XFreeCursor != nil and
     XFreeGC != nil and XFreePixmap != nil and XGetAtomName != nil and XGetDefault != nil and
-    XGetGeometry != nil and XGetSelectionOwner != nil and XGetWindowProperty != nil and
-    XIconifyWindow != nil and XInternAtom != nil and XKeycodeToKeysym != nil and
-    XLookupKeysym != nil and XMapRaised != nil and XMapWindow != nil and
-    XNextEvent != nil and XMoveWindow != nil and XOpenDisplay != nil and XOpenIM != nil and
-    XPending != nil and XPutImage != nil and XQueryKeymap != nil and XQueryPointer != nil and
-    XRaiseWindow != nil and XResizeWindow != nil and XRootWindow != nil and
-    XSelectInput != nil and XSendEvent != nil and XSetICFocus != nil and
-    XSetSelectionOwner != nil and XSetTransientForHint != nil and XSetWMProtocols != nil and
-    XSync != nil and XTranslateCoordinates != nil and XUngrabPointer != nil and
-    XUnmapWindow != nil and XUnsetICFocus != nil and Xutf8LookupString != nil and
+    XGetGeometry != nil and XGetSelectionOwner != nil and XGetVisualInfo != nil and
+    XGetWindowAttributes != nil and XGetWindowProperty != nil and XIconifyWindow != nil and
+    XInternAtom != nil and XKeycodeToKeysym != nil and XLookupKeysym != nil and
+    XMapRaised != nil and XMapWindow != nil and XNextEvent != nil and XMoveWindow != nil and
+    XOpenDisplay != nil and XOpenIM != nil and XPending != nil and XPutImage != nil and
+    XQueryKeymap != nil and XQueryPointer != nil and XRaiseWindow != nil and
+    XResizeWindow != nil and XRootWindow != nil and XSelectInput != nil and
+    XSendEvent != nil and XSetICFocus != nil and XSetSelectionOwner != nil and
+    XSetTransientForHint != nil and XSetWMProtocols != nil and XSync != nil and
+    XTranslateCoordinates != nil and XUngrabPointer != nil and XUnmapWindow != nil and
+    XUnsetICFocus != nil and XVisualIDFromVisual != nil and Xutf8LookupString != nil and
     XGetNormalHints != nil and XMatchVisualInfo != nil and XSetClassHint != nil and
     XSetNormalHints != nil and XSetWMHints != nil and Xutf8SetWMProperties != nil
