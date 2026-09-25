@@ -37,3 +37,21 @@ when defined(linux) or defined(bsd):
           defer:
             discard XFree(visuals)
           check count > 0
+
+  suite "optional X11-XCB bridge":
+    test "loads independently of core X11":
+      check x11XcbAvailable() == (XGetXCBConnection != nil)
+      if libX11XcbHandle == nil:
+        check XGetXCBConnection == nil
+
+    test "gets the XCB connection for an X11 display":
+      if not x11Available() or not x11XcbAvailable():
+        skip()
+      else:
+        let display = XOpenDisplay(nil)
+        if display == nil:
+          skip()
+        else:
+          defer:
+            discard XCloseDisplay(display)
+          check XGetXCBConnection(display) != nil

@@ -3,6 +3,8 @@ import ./x11types as x11Types
 
 export x11Types except Screen, Window, Cursor, Time
 
+type XGetXCBConnectionProc = proc(display: PDisplay): pointer {.cdecl, raises: [].}
+
 proc loadFirst*(names: openArray[string]): LibHandle =
   for name in names:
     result = loadLib(name)
@@ -38,6 +40,19 @@ let
       when defined(macosx): "libXrender.so" else: "libXrender.so.1",
     ]
   )
+  # The Xlib/XCB bridge is only needed by callers using XCB surfaces.
+  libX11XcbHandle* = loadFirst(
+    [
+      when defined(macosx): "libX11-xcb.dylib" else: "libX11-xcb.so",
+      when defined(macosx): "libX11-xcb.so" else: "libX11-xcb.so.1",
+    ]
+  )
+
+let XGetXCBConnection* =
+  loadProc[XGetXCBConnectionProc](libX11XcbHandle, "XGetXCBConnection")
+
+proc x11XcbAvailable*(): bool =
+  XGetXCBConnection != nil
 
 let
   XChangeProperty* =
