@@ -2172,6 +2172,10 @@ method serviceWindow*(window: WindowCocoa) =
     elif window of WindowCocoaOpengl:
       window.WindowCocoaOpengl.swapBuffers()
 
+method serviceWindow*(window: WindowCocoaOpengl) =
+  window.makeCurrent()
+  procCall window.WindowCocoa.serviceWindow()
+
 method step*(window: WindowCocoa) =
   ## Compatibility path: retain the old short global wait followed by one window tick.
   let globals = legacyGlobals()

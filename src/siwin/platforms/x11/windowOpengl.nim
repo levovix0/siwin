@@ -137,6 +137,11 @@ method endSwapBuffers*(window: WindowX11Opengl) =
     window.vsync = true  # re-enable vsync
 
 
+method serviceWindow*(window: WindowX11Opengl) =
+  window.makeCurrent()
+  procCall window.WindowX11.serviceWindow()
+
+
 proc newOpenglWindowX11*(
   globals: SiwinGlobalsX11,
   size = ivec2(1280, 720),

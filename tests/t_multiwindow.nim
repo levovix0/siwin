@@ -1,5 +1,5 @@
 import unittest
-import opengl, pixie
+import pkg/[opengl, vmath]
 import siwin
 
 when defined(linux) or defined(bsd):
@@ -113,11 +113,9 @@ proc runCloseDirection(
       inc closeEvents1
     ,
     onResize: proc(e: ResizeEvent) =
-      makeCurrent e.window
       glViewport 0, 0, e.size.x.GLsizei, e.size.y.GLsizei
     ,
     onRender: proc(e: RenderEvent) =
-      makeCurrent e.window
       glClearColor 0.3, 0.3, 0.3, 0.7
       glClear GlColorBufferBit or GlDepthBufferBit
     ,
@@ -147,11 +145,9 @@ proc runCloseDirection(
       inc closeEvents2
     ,
     onResize: proc(e: ResizeEvent) =
-      makeCurrent e.window
       glViewport 0, 0, e.size.x.GLsizei, e.size.y.GLsizei
     ,
     onRender: proc(e: RenderEvent) =
-      makeCurrent e.window
       glClearColor 0.7, 0.7, 0.7, 1
       glClear GlColorBufferBit or GlDepthBufferBit
     ,
@@ -248,11 +244,9 @@ test "2 windows at once":
 
   let win1eh = WindowEventsHandler(
     onResize: proc(e: ResizeEvent) =
-      makeCurrent e.window
       glViewport 0, 0, e.size.x.GLsizei, e.size.y.GLsizei
     ,
     onRender: proc(e: RenderEvent) =
-      makeCurrent e.window
       glClearColor 0.3, 0.3, 0.3, 0.7
       glClear GlColorBufferBit or GlDepthBufferBit
     ,
@@ -279,7 +273,6 @@ test "2 windows at once":
   var win2eh = win1eh
 
   win2eh.onRender = proc(e: RenderEvent) =
-    makeCurrent e.window
     glClearColor 0.7, 0.7, 0.7, 1
     glClear GlColorBufferBit or GlDepthBufferBit
 

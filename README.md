@@ -362,20 +362,16 @@ loadExtensions()
 
 let win1_eventsHandler = WindowEventsHandler(
   onResize: proc(e: ResizeEvent) =
-    makeCurrent e.window
     #...
   ,
   onRender: proc(e: RenderEvent) =
-    makeCurrent e.window
     #...
 )
 let win2_eventsHandler = WindowEventsHandler(
   onResize: proc(e: ResizeEvent) =
-    makeCurrent e.window
     #...
   ,
   onRender: proc(e: RenderEvent) =
-    makeCurrent e.window
     #...
 )
 

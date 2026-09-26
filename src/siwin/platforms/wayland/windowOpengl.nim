@@ -65,6 +65,11 @@ method swapBuffers(window: WindowWaylandOpengl) =
   commit window.surface
 
 
+method serviceWindow*(window: WindowWaylandOpengl) =
+  makeCurrent window.eglContext
+  procCall window.WindowWayland.serviceWindow()
+
+
 method doResize(window: WindowWaylandOpengl, size: IVec2) =
   procCall window.WindowWayland.doResize(size)
   let scaledSize = window.bufferSize(size)

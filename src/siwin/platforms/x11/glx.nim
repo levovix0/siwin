@@ -126,8 +126,7 @@ proc glxCurrentContext*(): GlxContext {.glx: "getCurrentContext".}
 
 proc cMakeCurrent(dpy: PDisplay, drawable: Drawable, ctx: pointer): cint {.glx: "makeCurrent".}
 proc makeCurrent*(display: ptr Display, a: Drawable, ctx: GlxContext) =
-  proc impl(dpy: PDisplay, drawable: Drawable, ctx: pointer): cint {.glx: "makeCurrent".}
-  discard display.impl(a, ctx.raw)
+  discard display.cMakeCurrent(a, ctx.raw)
 
 
 proc destroy*(display: ptr Display, context: GlxContext) {.siwin_destructor.} =
