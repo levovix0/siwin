@@ -84,6 +84,12 @@ siwin_loadDynlibIfExists libeglHandle:
   proc eglGetError*(): EglError
   proc eglGetDisplay*(native: pointer): EglDisplay
 
+  proc eglInitialize*(d: EglDisplay; major: ptr int32 = nil; minor: ptr int32 = nil): cuint
+  proc eglTerminate*(d: EglDisplay): cuint
+
+  proc eglChooseConfig*(d: EglDisplay; attrs: ptr int32; retConfigs: ptr EglConfig;
+      maxConfigs: int32; retConfigCount: ptr int32): cuint
+
   proc eglCreateContext*(d: EglDisplay; config: EglConfig; share: EglContext = nil;
       attrs: ptr int32 = nil): EglContext
 
@@ -93,47 +99,13 @@ siwin_loadDynlibIfExists libeglHandle:
   proc eglCreateWindowSurface*(d: EglDisplay; config: EglConfig; native_window: pointer; attrs: ptr int32 = nil): EglSurface
   proc eglCreatePlatformWindowSurface*(d: EglDisplay; config: EglConfig; native_window: pointer; attrs: ptr int32 = nil): EglSurface
 
+  proc eglMakeCurrent*(d: EglDisplay; draw, read: EglSurface; ctx: EglContext): cuint
   proc eglGetCurrentContext*(): EglContext
+  proc eglSwapBuffers*(d: EglDisplay; srf: EglSurface): cuint
 
+  proc eglDestroyContext*(d: EglDisplay; ctx: EglContext): cuint
+  proc eglDestroySurface*(d: EglDisplay; srf: EglSurface): cuint
 
-# Keep C declarations in their own scope: Nim cannot overload by return type.
-let eglApi = block:
-  siwin_loadDynlibIfExists libeglHandle:
-    proc eglInitialize(d: EglDisplay; major: ptr int32; minor: ptr int32): cuint
-    proc eglTerminate(d: EglDisplay): cuint
-    proc eglChooseConfig(d: EglDisplay; attrs: ptr int32; retConfigs: ptr EglConfig;
-        maxConfigs: int32; retConfigCount: ptr int32): cuint
-    proc eglMakeCurrent(d: EglDisplay; draw, read: EglSurface; ctx: EglContext): cuint
-    proc eglSwapBuffers(d: EglDisplay; srf: EglSurface): cuint
-    proc eglDestroyContext(d: EglDisplay; ctx: EglContext): cuint
-    proc eglDestroySurface(d: EglDisplay; srf: EglSurface): cuint
-  (eglInitialize: eglInitialize, eglTerminate: eglTerminate,
-    eglChooseConfig: eglChooseConfig, eglMakeCurrent: eglMakeCurrent,
-    eglSwapBuffers: eglSwapBuffers, eglDestroyContext: eglDestroyContext,
-    eglDestroySurface: eglDestroySurface)
-
-# EGLBoolean is a C unsigned int; preserve the existing bool API for callers.
-proc eglInitialize*(d: EglDisplay; major: ptr int32 = nil; minor: ptr int32 = nil): bool =
-  eglApi.eglInitialize(d, major, minor) != 0
-
-proc eglTerminate*(d: EglDisplay) =
-  discard eglApi.eglTerminate(d)
-
-proc eglChooseConfig*(d: EglDisplay; attrs: ptr int32; retConfigs: ptr EglConfig;
-    maxConfigs: int32; retConfigCount: ptr int32): bool =
-  eglApi.eglChooseConfig(d, attrs, retConfigs, maxConfigs, retConfigCount) != 0
-
-proc eglMakeCurrent*(d: EglDisplay; draw, read: EglSurface; ctx: EglContext): bool =
-  eglApi.eglMakeCurrent(d, draw, read, ctx) != 0
-
-proc eglSwapBuffers*(d: EglDisplay; srf: EglSurface): bool =
-  eglApi.eglSwapBuffers(d, srf) != 0
-
-proc eglDestroyContext*(d: EglDisplay; ctx: EglContext): bool =
-  eglApi.eglDestroyContext(d, ctx) != 0
-
-proc eglDestroySurface*(d: EglDisplay; srf: EglSurface): bool =
-  eglApi.eglDestroySurface(d, srf) != 0
 
 siwin_loadDynlibIfExists libwaylandeglHandle:
   proc wl_egl_window_create*(surface: pointer, width, height: int32): EglWindow
@@ -145,14 +117,17 @@ siwin_loadDynlibIfExists libwaylandeglHandle:
 proc expect(x: bool) =
   if not x: raise OsError.newException("Error creating OpenGL context (" & $eglGetError() & ")")
 
+proc expect(x: cuint) =
+  expect x != 0
+
 
 proc requireEgl() =
   if libeglHandle == nil or eglGetError == nil or eglGetDisplay == nil or
-      eglApi.eglInitialize == nil or eglApi.eglTerminate == nil or eglApi.eglChooseConfig == nil or
+      eglInitialize == nil or eglTerminate == nil or eglChooseConfig == nil or
       eglCreateContext == nil or eglCreatePbufferSurface == nil or
-      eglCreateWindowSurface == nil or eglApi.eglMakeCurrent == nil or
-      eglGetCurrentContext == nil or eglApi.eglSwapBuffers == nil or eglApi.eglDestroyContext == nil or
-      eglApi.eglDestroySurface == nil:
+      eglCreateWindowSurface == nil or eglMakeCurrent == nil or
+      eglGetCurrentContext == nil or eglSwapBuffers == nil or eglDestroyContext == nil or
+      eglDestroySurface == nil:
     raise OSError.newException("EGL library is not available")
 
 proc requireEglInitialized() =
@@ -177,11 +152,11 @@ proc initEgl*(nativeDisplay: pointer) =
 
 proc destroy*(context: OpenglContext) =
   if initialized and context.ctx != nil and eglGetCurrentContext != nil and
-      eglApi.eglMakeCurrent != nil and eglGetCurrentContext() == context.ctx:
+      eglMakeCurrent != nil and eglGetCurrentContext() == context.ctx:
     discard egl_display.eglMakeCurrent(nil, nil, nil)
-  if initialized and context.srf != nil and eglApi.eglDestroySurface != nil:
+  if initialized and context.srf != nil and eglDestroySurface != nil:
     discard egl_display.eglDestroySurface(context.srf)
-  if initialized and context.ctx != nil and eglApi.eglDestroyContext != nil:
+  if initialized and context.ctx != nil and eglDestroyContext != nil:
     discard egl_display.eglDestroyContext(context.ctx)
   if context.win != nil and wl_egl_window_destroy != nil:
     wl_egl_window_destroy(context.win)
@@ -272,6 +247,6 @@ proc terminateEgl* =
   if not initialized: return
   initialized = false
 
-  if eglApi.eglTerminate != nil:
-    eglTerminate(egl_display)
+  if eglTerminate != nil:
+    discard eglTerminate(egl_display)
   egl_display = nil
