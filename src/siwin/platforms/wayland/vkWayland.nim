@@ -1,3 +1,4 @@
+import ../../siwindefs
 import std/dynlib
 
 when sizeof(pointer) == 8:
@@ -6,17 +7,14 @@ else:
   type VkSurfaceHandle* = uint64
 
 const vkDLL =
-  when defined(windows):
-    "vulkan-1.dll"
-  elif defined(macosx):
-    "libMoltenVK.dylib"
-  else:
-    "libvulkan.so.1"
+  when defined(windows): "vulkan-1.dll"
+  elif defined(macosx): "libMoltenVK.dylib"
+  else: "libvulkan.so.1"
 
 type
   VkStructureType* {.size: int32.sizeof.} = enum
     VK_STRUCTURE_TYPE_WAYLAND_SURFACE_CREATE_INFO_KHR = 1000006000
-
+  
   VkResult* {.size: int32.sizeof.} = enum
     VK_ERROR_FRAGMENTED_POOL = -12
     VK_ERROR_FORMAT_NOT_SUPPORTED = -11
@@ -36,7 +34,7 @@ type
     VK_EVENT_SET = 3
     VK_EVENT_RESET = 4
     VK_INCOMPLETE = 5
-
+  
   VkWaylandSurfaceCreateInfoKHR* = object
     sType*: VkStructureType
     pNext*: pointer
@@ -44,35 +42,18 @@ type
     display*: pointer
     surface*: pointer
 
-proc loadFirst(names: openArray[string]): LibHandle =
-  for name in names:
-    result = loadLib(name)
-    if result != nil:
-      return
-
 let libVulkanHandle =
-  loadFirst([vkDLL, when defined(linux) or defined(bsd): "libvulkan.so" else: vkDLL])
+  loadLibPattern(when defined(linux) or defined(bsd): "libvulkan.so(.1|)" else: vkDLL)
 
-type
-  VkCreateWaylandSurfaceProc = proc(
+siwin_loadDynlibIfExists libVulkanHandle:
+  proc vkCreateWaylandSurfaceKHR*(
     instance: pointer,
     pCreateInfo: ptr VkWaylandSurfaceCreateInfoKHR,
     pAllocator: pointer,
-    pSurface: ptr VkSurfaceHandle,
-  ): VkResult {.cdecl.}
+    pSurface: ptr VkSurfaceHandle
+  ): VkResult
 
-  VkDestroySurfaceProc =
-    proc(instance: pointer, surface: VkSurfaceHandle, pAllocator: pointer) {.cdecl.}
-
-let
-  vkCreateWaylandSurfaceKHR* = cast[VkCreateWaylandSurfaceProc](if libVulkanHandle == nil:
-    nil
-  else:
-    symAddr(libVulkanHandle, "vkCreateWaylandSurfaceKHR"))
-  vkDestroySurfaceKHR* = cast[VkDestroySurfaceProc](if libVulkanHandle == nil:
-    nil
-  else:
-    symAddr(libVulkanHandle, "vkDestroySurfaceKHR"))
+  proc vkDestroySurfaceKHR*(instance: pointer, surface: VkSurfaceHandle, pAllocator: pointer)
 
 proc requireVulkanWayland*() =
   if libVulkanHandle == nil or vkCreateWaylandSurfaceKHR == nil:

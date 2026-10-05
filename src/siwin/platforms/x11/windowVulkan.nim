@@ -17,10 +17,12 @@ type
   WindowX11VulkanObj* = object of WindowX11
     surface: Surface
 
+
 proc `=destroy`*(surface: Surface) {.siwin_destructor.} =
   if surface.instance != nil and cast[uint64](surface.raw) != 0:
     # vkDestroySurfaceKHR(surface.instance, surface.raw, nil)  #? causes crash
     discard
+
 
 when NimMajor < 2 or NimMinor < 2:
   proc `=trace`(x: var WindowX11VulkanObj, env: pointer) =
@@ -35,36 +37,23 @@ when NimMajor < 2 or NimMinor < 2:
 method vulkanSurface*(window: WindowX11Vulkan): anyWindow.VulkanSurface =
   cast[anyWindow.VulkanSurface](window.surface.raw)
 
+
 proc initVulkanWindow(
-    window: WindowX11Vulkan,
-    vkInstance: pointer,
-    size: IVec2,
-    screen: ScreenX11,
-    fullscreen, frameless, transparent: bool,
-    class: string,
+  window: WindowX11Vulkan, vkInstance: pointer,
+  size: IVec2, screen: ScreenX11,
+  fullscreen, frameless, transparent: bool, class: string
 ) =
   requireVulkanXlib()
   window.basicInitWindow size, screen
 
   let root = window.globals.display.DefaultRootWindow
   var vi: XVisualInfo
-  discard window.globals.display.XMatchVisualInfo(
-    window.screen, if transparent: 32 else: 24, TrueColor, vi.addr
-  )
+  discard window.globals.display.XMatchVisualInfo(window.screen, if transparent: 32 else: 24, TrueColor, vi.addr)
   let cmap = window.globals.display.XCreateColormap(root, vi.visual, AllocNone)
   var swa = XSetWindowAttributes(colormap: cmap, overrideRedirect: true.XBool)
   window.handle = window.globals.display.XCreateWindow(
-    root,
-    0,
-    0,
-    size.x.cuint,
-    size.y.cuint,
-    0,
-    vi.depth,
-    InputOutput,
-    vi.visual,
-    CwColormap or CwEventMask or CwBorderPixel or CwBackPixel,
-    swa.addr,
+    root, 0, 0, size.x.cuint, size.y.cuint, 0, vi.depth, InputOutput, vi.visual,
+    CwColormap or CwEventMask or CwBorderPixel or CwBackPixel, swa.addr
   )
 
   window.setupWindow fullscreen, frameless, class
@@ -81,33 +70,26 @@ proc initVulkanWindow(
   if res != VK_SUCCESS:
     raise OSError.newException("Failed to create Vulkan surface, error: " & $res)
 
+
 proc newVulkanWindowX11*(
-    globals: SiwinGlobalsX11,
-    vkInstance: pointer,
-    size = ivec2(1280, 720),
-    title = "",
-    screen = globals.defaultScreenX11(),
-    resizable = true,
-    fullscreen = false,
-    frameless = false,
-    transparent = false,
-    class = "", # window class (used in x11), equals to title if not specified
+  globals: SiwinGlobalsX11,
+  vkInstance: pointer,
+  size = ivec2(1280, 720),
+  title = "",
+  screen = globals.defaultScreenX11(),
+  resizable = system.true,
+  fullscreen = system.false,
+  frameless = system.false,
+  transparent = system.false,
+
+  class = "", # window class (used in x11), equals to title if not specified
 ): WindowX11Vulkan =
   new result
   result.globals = globals
   try:
-    result.initVulkanWindow(
-      vkInstance,
-      size,
-      screen,
-      fullscreen,
-      frameless,
-      transparent,
-      (if class == "": title else: class),
-    )
+    result.initVulkanWindow(vkInstance, size, screen, fullscreen, frameless, transparent, (if class == "": title else: class))
     result.title = title
-    if not resizable:
-      result.resizable = false
+    if not resizable: result.resizable = system.false
   except:
     if result.handle != 0:
       result.globals.windows.del(result.handle.uint)

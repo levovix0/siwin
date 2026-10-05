@@ -13,9 +13,11 @@ type
   WindowWaylandOpenglObj* = object of WindowWayland
     eglContext: OpenglContext
 
+
 proc `=trace`(x: var WindowWaylandOpenglObj, env: pointer) =
   #? for some reason, without this, nim produces invalid C code for =trace implementation
   `=trace`(cast[ptr WindowWaylandObj](x.addr)[], env)
+
 
 proc `=destroy`(window: WindowWaylandOpenglObj) {.siwin_destructor.} =
   release cast[WindowWaylandOpengl](window.addr)
@@ -24,8 +26,8 @@ proc `=destroy`(window: WindowWaylandOpenglObj) {.siwin_destructor.} =
     when compiles(`=destroy`(x)):
       try:
         `=destroy`(x)
-      except:
-        discard
+      except: discard
+
 
 method release(window: WindowWaylandOpengl) =
   ## destroy wayland part of window
@@ -38,32 +40,32 @@ method release(window: WindowWaylandOpengl) =
   procCall window.WindowWayland.release()
 
 proc initOpenglWindow(
-    window: WindowWaylandOpengl,
-    size: IVec2,
-    screen: ScreenWayland,
-    fullscreen, frameless, transparent: bool,
-    class: string,
+  window: WindowWaylandOpengl,
+  size: IVec2, screen: ScreenWayland,
+  fullscreen, frameless, transparent: bool, class: string
 ) =
   initEgl(window.globals.display.raw)
   requireWaylandEgl()
 
   window.basicInitWindow size, screen
-
+  
   window.setupWindow fullscreen, frameless, transparent, size, class
 
   let scaledSize = window.bufferSize(size)
-  window.eglContext =
-    newOpenglContext(window.surface.proxy.raw, scaledSize.x, scaledSize.y)
+  window.eglContext = newOpenglContext(window.surface.proxy.raw, scaledSize.x, scaledSize.y)
   makeCurrent window.eglContext
 
   # commit window.surface
 
+
 method makeCurrent*(window: WindowWaylandOpengl) =
   makeCurrent window.eglContext
+
 
 method swapBuffers(window: WindowWaylandOpengl) =
   swapBuffers window.eglContext
   commit window.surface
+
 
 method serviceWindow*(window: WindowWaylandOpengl) =
   makeCurrent window.eglContext
@@ -75,20 +77,22 @@ method doResize(window: WindowWaylandOpengl, size: IVec2) =
   let scaledSize = window.bufferSize(size)
   wl_egl_window_resize(window.eglContext.win, scaledSize.x, scaledSize.y, 0, 0)
 
+
 proc newOpenglWindowWayland*(
-    globals: SiwinGlobalsWayland,
-    size = ivec2(1280, 720),
-    title = "",
-    screen: ScreenWayland,
-    resizable = true,
-    fullscreen = false,
-    frameless = false,
-    transparent = false,
-    vsync = true,
-    kind = WindowWaylandKind.XdgSurface,
-    layer = Layer.Overlay,
-    namespace = "siwin",
-    class = "", # application ID; defaults to title
+  globals: SiwinGlobalsWayland,
+  size = ivec2(1280, 720),
+  title = "",
+  screen: ScreenWayland,
+  resizable = true,
+  fullscreen = false,
+  frameless = false,
+  transparent = false,
+  vsync = true,
+  kind = WindowWaylandKind.XdgSurface,
+  layer = Layer.Overlay,
+  namespace = "siwin",
+
+  class = "", # application ID; defaults to title
 ): WindowWaylandOpengl =
   new result
   result.globals = globals
@@ -96,30 +100,22 @@ proc newOpenglWindowWayland*(
   result.namespace = namespace
   result.layer = layer
   try:
-    result.initOpenglWindow(
-      size,
-      screen,
-      fullscreen,
-      frameless,
-      transparent,
-      (if class == "": title else: class),
-    )
+    result.initOpenglWindow(size, screen, fullscreen, frameless, transparent, (if class == "": title else: class))
     result.title = title
-    result.`vsync=`(vsync, silent = true)
-    if not resizable:
-      result.resizable = false
+    result.`vsync=`(vsync, silent=true)
+    if not resizable: result.resizable = false
   except:
     result.release()
     raise
 
 proc newOpenglLayerSurfaceWindowWayland*(
-    globals: SiwinGlobalsWayland,
-    size = ivec2(1280, 32),
-    title = "",
-    screen: ScreenWayland,
-    config: LayerSurfaceConfig,
-    transparent = false,
-    vsync = true,
+  globals: SiwinGlobalsWayland,
+  size = ivec2(1280, 32),
+  title = "",
+  screen: ScreenWayland,
+  config: LayerSurfaceConfig,
+  transparent = false,
+  vsync = true,
 ): WindowWaylandOpengl =
   ## Creates an OpenGL window backed by a Wayland layer-shell surface.
   ##
@@ -137,8 +133,9 @@ proc newOpenglLayerSurfaceWindowWayland*(
     result.initLayerSurfaceWindow(size, screen, config, transparent, title)
 
     let scaledSize = result.bufferSize(size)
-    result.eglContext =
-      newOpenglContext(result.surface.proxy.raw, scaledSize.x, scaledSize.y)
+    result.eglContext = newOpenglContext(
+      result.surface.proxy.raw, scaledSize.x, scaledSize.y
+    )
     makeCurrent result.eglContext
     result.title = title
     result.`vsync=`(vsync, silent = true)

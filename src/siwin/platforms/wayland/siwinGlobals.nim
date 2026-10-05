@@ -22,11 +22,10 @@ type
     display*: WlDisplay
     registry: WlRegistry
 
-    registryCallbacks*:
-      Table[string, proc(registry: Wl_registry, name: uint32, version: uint32)]
+    registryCallbacks*: Table[string, proc(registry: Wl_registry, name: uint32, version: uint32)]
 
     interfaces*: WaylandInterfaces
-
+    
     compositor*: WlCompositor
     shm*: WlShm
     xdgWmBase*: XdgWmBase
@@ -43,7 +42,7 @@ type
     layerShell*: Zwlr_layer_shell_v1
     idleInhibitManager*: Zwp_idle_inhibit_manager_v1
     cursorShapeManager*: Wp_cursor_shape_manager_v1
-
+    
     shmFormats*: seq[`WlShm / Format`]
     seatCapabilities*: Bitfield[`WlSeat / Capability`]
 
@@ -61,7 +60,7 @@ type
     current_dnd_data_offer_mimeTypes*: seq[string]
     current_dnd_surface_id*: uint32
 
-    associatedWindows*: Table[uint32, Window] # surface proxy id -> window
+    associatedWindows*: Table[uint32, Window]  # surface proxy id -> window
     associatedWindows_queueRemove_insteadOf_removingInstantly* = false
     associatedWindows_removeQueue*: seq[uint32]
 
@@ -69,6 +68,7 @@ type
     seat_pointer_lastAxisSource*: `Wl_pointer / Axis_source`
     seat_keyboard_currentWindow*: Window
     # seat_touch_currentWindow*: Window
+
     seat_keyboard_repeatSettings*: tuple[rate, delay: int32]
 
     tabletManager*: Zwp_tablet_manager_v2
@@ -94,8 +94,8 @@ proc `=destroy`*(globals: SiwinGlobalsWaylandObj) {.siwin_destructor.} =
       libdecor_unref(globals.libdecorCtx)
     if globals.display != nil and wl_display_disconnect != nil:
       wl_display_disconnect globals.display
-  except:
-    discard
+  except: discard
+
 
 proc signalWaylandWake(data: pointer) {.gcsafe, raises: [].} =
   let wake = cast[ptr WaylandWakeFd](data)
@@ -162,18 +162,17 @@ proc dispatchLibdecor(globals: SiwinGlobalsWayland) =
       libdecor_dispatch(globals.libdecorCtx, 0) < 0:
     raise WaylandProtocolError.newException("failed to dispatch libdecor events")
 
+
 proc initRegistryCallbacks(globals: SiwinGlobalsWayland) =
   template addRegistry(target: type, body) =
-    globals.registryCallbacks[ifaceName(target)] = proc(
-        registry {.inject.}: Wl_registry,
-        name {.inject.}: uint32,
-        version {.inject.}: uint32,
-    ) =
+    globals.registryCallbacks[ifaceName(target)] = proc(registry {.inject.}: Wl_registry, name {.inject.}: uint32, version {.inject.}: uint32) =
       let binded {.inject.} = registry.bindTyped(name, target, version)
       body
 
+
   addRegistry Wl_compositor:
     globals.compositor = binded
+
 
   addRegistry Wl_shm:
     globals.shm = binded
@@ -181,14 +180,16 @@ proc initRegistryCallbacks(globals: SiwinGlobalsWayland) =
     globals.shmFormats = @[]
     globals.shm.onFormat:
       globals.shmFormats.add format
-
+    
     discard wl_display_roundtrip globals.display
+
 
   addRegistry Xdg_wm_base:
     globals.xdgWmBase = binded
 
     globals.xdgWmBase.onPing:
       globals.xdgWmBase.pong(serial)
+
 
   addRegistry Wl_seat:
     globals.seat = binded
@@ -198,8 +199,9 @@ proc initRegistryCallbacks(globals: SiwinGlobalsWayland) =
       globals.seatCapabilities = capabilities.asBitfield
       if not globals.seatCapabilitiesChanged.isNil:
         globals.seatCapabilitiesChanged(globals)
-
+    
     discard wl_display_roundtrip globals.display
+
 
   addRegistry Zxdg_decoration_manager_v1:
     globals.serverDecorationManager = binded
@@ -232,12 +234,13 @@ proc initRegistryCallbacks(globals: SiwinGlobalsWayland) =
     globals.tabletManager = binded
 
   addRegistry Wp_cursor_shape_manager_v1:
-    globals.cursorShapeManager = binded
+    globals.cursorShapeManager = binded 
 
   addRegistry Wl_output:
     globals.outputs.add WaylandOutput(registryName: name, output: binded)
 
-proc isWaylandAvailable*(): bool =
+
+proc isWaylandAvailable*: bool =
   proc isSocket(filename: string): bool =
     var res: Stat
     return stat(filename, res) >= 0'i32 and S_ISSOCK(res.st_mode)
@@ -246,20 +249,18 @@ proc isWaylandAvailable*(): bool =
     return false
 
   let isWayland = getEnv("XDG_SESSION_TYPE") == "wayland"
-  if not isWayland:
-    return false
+  if not isWayland: return false
 
   let runtimeDir = getEnv("XDG_RUNTIME_DIR")
-  if runtimeDir == "":
-    return false
+  if runtimeDir == "": return false
 
   var serverName = getEnv("WAYLAND_DISPLAY")
-  if serverName == "":
-    serverName = "wayland-0"
-
+  if serverName == "": serverName = "wayland-0"
+  
   let waylandServer = runtimeDir / serverName
 
   result = isSocket(waylandServer)
+
 
 proc newWaylandGlobals*(): SiwinGlobalsWayland =
   ## Create globals for wayland platform,
@@ -314,6 +315,7 @@ proc newWaylandGlobals*(): SiwinGlobalsWayland =
         release globals.outputs[idx].output
         globals.outputs.delete(idx)
 
+
 method pollEventsImpl(globals: SiwinGlobalsWayland): bool =
   result = globals.drainWaylandWake()
   if globals.display.dispatchPending() > 0:
@@ -329,7 +331,10 @@ method pollEventsImpl(globals: SiwinGlobalsWayland): bool =
   var fds = [
     TPollfd(fd: displayFd, events: POLLIN),
     TPollfd(fd: globals.wake.readFd, events: POLLIN),
-    TPollfd(fd: (if decorationFd != displayFd: decorationFd else: -1), events: POLLIN),
+    TPollfd(
+      fd: (if decorationFd != displayFd: decorationFd else: -1),
+      events: POLLIN,
+    ),
   ]
   let flushResult = wl_display_flush(globals.display)
   if flushResult < 0:
@@ -384,7 +389,8 @@ method pollEventsImpl(globals: SiwinGlobalsWayland): bool =
   result = globals.repeatWakeIsDue() or result
 
 method waitEventsImpl(
-    globals: SiwinGlobalsWayland, timeout: Duration
+  globals: SiwinGlobalsWayland,
+  timeout: Duration,
 ): EventWaitResult =
   if globals.pollEventsImpl():
     return eventActivity
@@ -401,7 +407,10 @@ method waitEventsImpl(
     var fds = [
       TPollfd(fd: displayFd, events: POLLIN),
       TPollfd(fd: globals.wake.readFd, events: POLLIN),
-      TPollfd(fd: (if decorationFd != displayFd: decorationFd else: -1), events: POLLIN),
+      TPollfd(
+        fd: (if decorationFd != displayFd: decorationFd else: -1),
+        events: POLLIN,
+      ),
     ]
     let flushResult = wl_display_flush(globals.display)
     if flushResult < 0:
@@ -420,7 +429,8 @@ method waitEventsImpl(
       fds[0].addr,
       fds.len.Tnfds,
       globals.waitTimeout(callerRemaining).inTimeoutMilliseconds(
-        infinite = -1.cint, maxFinite = cint.high
+        infinite = -1.cint,
+        maxFinite = cint.high,
       ),
     )
     if count == 0:
@@ -475,14 +485,14 @@ method waitEventsImpl(
     # POLLOUT only means queued protocol output can proceed; keep waiting for
     # application-visible activity without turning writability into a busy loop.
 
+
 proc roundtrip*(globals: SiwinGlobalsWayland) =
   discard wl_display_roundtrip globals.display
 
+
 proc initLibdecor*(globals: SiwinGlobalsWayland) =
-  if globals.libdecorCtx != nil:
-    return
-  if not libdecorAvailable():
-    return
+  if globals.libdecorCtx != nil: return
+  if not libdecorAvailable(): return
 
   globals.libdecorIface = LibdecorInterface(
     # raise is unsafe in cdecl callbacks:
@@ -491,16 +501,11 @@ proc initLibdecor*(globals: SiwinGlobalsWayland) =
     # with --exceptions:setjmp, longjmp skips C cleanup code (free, etc).
     # see also https://github.com/nim-lang/c2nim/issues/243
     # so it uses writing to stderr as workaround
-    error: proc(
-        context: LibdecorContext, error: LibdecorError, message: cstring
-    ) {.cdecl.} =
-      stderr.writeLine "siwin: libdecor error: ", message
-  )
+    error: proc(context: LibdecorContext, error: LibdecorError, message: cstring) {.cdecl.} =
+      stderr.writeLine "siwin: libdecor error: ", message)
 
   globals.libdecorCtx = libdecor_new(globals.display.raw, globals.libdecorIface.addr)
 
+
 proc expectExtension*[T](x: T) =
-  if x.proxy == nil:
-    raise WaylandExtensionNotFound.newException(
-      "Extension required, but not found: " & ifaceName(T)
-    )
+  if x.proxy == nil: raise WaylandExtensionNotFound.newException("Extension required, but not found: " & ifaceName(T))

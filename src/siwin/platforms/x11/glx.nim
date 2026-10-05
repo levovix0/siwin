@@ -1,3 +1,4 @@
+import std/dynlib
 import sequtils
 import x11/x except Window
 import ../../[siwindefs]
@@ -6,7 +7,7 @@ import ./x11api
 type
   GlxContext* = object
     raw: pointer
-
+  
   GlxFbConfig* = ptr object
 
 const
@@ -85,66 +86,42 @@ const
   GLX_COLOR_INDEX_BIT* = 0x00000002'i32
   GLX_PBUFFER_CLOBBER_MASK* = 0x08000000'i32
 
+
 const dllname =
-  when defined(linux) or defined(bsd):
-    "libGL.so.1"
-  elif defined(windows):
-    "GL.dll"
-  elif defined(macosx):
-    "/usr/X11R6/lib/libGL.dylib"
-  else:
-    "libGL.so"
+  when defined(linux) or defined(bsd): "libGL.so.1"
+  elif defined(windows): "GL.dll"
+  elif defined(macosx): "/usr/X11R6/lib/libGL.dylib"
+  else: "libGL.so"
+
 
 let libGlHandle =
-  loadFirst([dllname, when defined(linux) or defined(bsd): "libGL.so" else: dllname])
+  loadLibPattern(when defined(linux) or defined(bsd): "libGL.so(.1|)" else: dllname)
 
-type
-  GlxChooseVisualProc = proc(
-    dpy: ptr Display, screen: cint, attribList: ptr int32
-  ): PXVisualInfo {.cdecl, raises: [].}
-  GlxChooseFbConfigProc = proc(
-    dpy: ptr Display, screen: cint, attribList: ptr int32, nitems: ptr cint
-  ): ptr UncheckedArray[GlxFbConfig] {.cdecl, raises: [].}
-  GlxGetVisualFromFbConfigProc =
-    proc(dpy: ptr Display, config: GlxFbConfig): PXVisualInfo {.cdecl, raises: [].}
-  GlxGetCurrentContextProc = proc(): pointer {.cdecl, raises: [].}
-  GlxMakeCurrentProc =
-    proc(dpy: PDisplay, drawable: Drawable, ctx: pointer): cint {.cdecl, raises: [].}
-  GlxDestroyContextProc = proc(dpy: PDisplay, ctx: pointer) {.cdecl, raises: [].}
-  GlxCreateContextProc = proc(
-    dpy: PDisplay, vis: PXVisualInfo, shareList: pointer, direct: cint
-  ): pointer {.cdecl, raises: [].}
-  GlxCreateNewContextProc = proc(
-    dpy: PDisplay, fbc: GlxFbConfig, renderType: cint, shareList: pointer, direct: cint
-  ): pointer {.cdecl, raises: [].}
-  GlxSwapBuffersProc = proc(dpy: PDisplay, drawable: Drawable) {.cdecl, raises: [].}
+siwin_loadDynlibIfExists libGlHandle:
+  proc glxChooseVisualProc(dpy: ptr Display, screen: cint, attribList: ptr int32): PXVisualInfo {.importc: "glXChooseVisual", raises: [].}
+  proc glxChooseFbConfigProc(dpy: ptr Display, screen: cint, attribList: ptr int32, nitems: ptr cint): ptr UncheckedArray[GlxFbConfig] {.importc: "glXChooseFBConfig", raises: [].}
+  proc glxGetVisualFromFbConfigProc(dpy: ptr Display, config: GlxFbConfig): PXVisualInfo {.importc: "glXGetVisualFromFBConfig", raises: [].}
+  proc glxGetCurrentContextProc(): pointer {.importc: "glXGetCurrentContext", raises: [].}
+  proc glxMakeCurrentProc(dpy: PDisplay, drawable: Drawable, ctx: pointer): cint {.importc: "glXMakeCurrent", raises: [].}
+  proc glxDestroyContextProc(dpy: PDisplay, ctx: pointer) {.importc: "glXDestroyContext", raises: [].}
+  proc glxCreateContextProc(dpy: PDisplay, vis: PXVisualInfo, shareList: pointer, direct: cint): pointer {.importc: "glXCreateContext", raises: [].}
+  proc glxCreateNewContextProc(dpy: PDisplay, fbc: GlxFbConfig, renderType: cint, shareList: pointer, direct: cint): pointer {.importc: "glXCreateNewContext", raises: [].}
+  proc glxSwapBuffersProc(dpy: PDisplay, drawable: Drawable) {.importc: "glXSwapBuffers", raises: [].}
+  proc glxSwapIntervalExt*(d: ptr Display, drawable: Drawable, interval: cint) {.importc: "glXSwapIntervalEXT", raises: [].}
+  proc glxSwapIntervalMesaRaw(interval: cuint): cint {.importc: "glXSwapIntervalMESA", raises: [].}
+  proc glxSwapIntervalSgiRaw(interval: cint): cint {.importc: "glXSwapIntervalSGI", raises: [].}
 
-let
-  glxChooseVisualProc = loadProc[GlxChooseVisualProc](libGlHandle, "glXChooseVisual")
-  glxChooseFbConfigProc =
-    loadProc[GlxChooseFbConfigProc](libGlHandle, "glXChooseFBConfig")
-  glxGetVisualFromFbConfigProc =
-    loadProc[GlxGetVisualFromFbConfigProc](libGlHandle, "glXGetVisualFromFBConfig")
-  glxGetCurrentContextProc =
-    loadProc[GlxGetCurrentContextProc](libGlHandle, "glXGetCurrentContext")
-  glxMakeCurrentProc = loadProc[GlxMakeCurrentProc](libGlHandle, "glXMakeCurrent")
-  glxDestroyContextProc =
-    loadProc[GlxDestroyContextProc](libGlHandle, "glXDestroyContext")
-  glxCreateContextProc = loadProc[GlxCreateContextProc](libGlHandle, "glXCreateContext")
-  glxCreateNewContextProc =
-    loadProc[GlxCreateNewContextProc](libGlHandle, "glXCreateNewContext")
-  glxSwapBuffersProc = loadProc[GlxSwapBuffersProc](libGlHandle, "glXSwapBuffers")
+var glxSwapIntervalMesa* =
+  if glxSwapIntervalMesaRaw == nil: nil
+  else:
+    proc(interval: cint) {.cdecl, raises: [].} =
+      discard glxSwapIntervalMesaRaw(interval.cuint)
 
-let
-  glxSwapIntervalExt* = loadProc[
-    proc(d: ptr Display, drawable: Drawable, interval: cint) {.cdecl, raises: [].}
-  ](libGlHandle, "glXSwapIntervalEXT")
-  glxSwapIntervalMesa* = loadProc[proc(interval: cuint): cint {.cdecl, raises: [].}](
-    libGlHandle, "glXSwapIntervalMESA"
-  )
-  glxSwapIntervalSgi* = loadProc[proc(interval: cint): cint {.cdecl, raises: [].}](
-    libGlHandle, "glXSwapIntervalSGI"
-  )
+var glxSwapIntervalSgi* =
+  if glxSwapIntervalSgiRaw == nil: nil
+  else:
+    proc(interval: cint) {.cdecl, raises: [].} =
+      discard glxSwapIntervalSgiRaw(interval)
 
 proc requireGlx*() =
   if libGlHandle == nil or glxChooseVisualProc == nil or glxChooseFbConfigProc == nil or
@@ -154,16 +131,12 @@ proc requireGlx*() =
       glxSwapBuffersProc == nil:
     raise OSError.newException("OpenGL/GLX libraries are not available")
 
-proc glxChooseVisual*(
-    display: ptr Display, screen: int, attr: openarray[int32]
-): PXVisualInfo =
+proc glxChooseVisual*(display: ptr Display, screen: int, attr: openarray[int32]): PXVisualInfo =
   requireGlx()
   let attr = attr.toSeq & 0
   glxChooseVisualProc(display, screen.cint, attr[0].addr)
 
-proc glxChooseFbConfig*(
-    display: ptr Display, screen: int, attr: openarray[int32]
-): seq[GlxFbConfig] =
+proc glxChooseFbConfig*(display: ptr Display, screen: int, attr: openarray[int32]): seq[GlxFbConfig] =
   requireGlx()
   let attr = attr.toSeq & 0
   var nitems: cint
@@ -171,12 +144,10 @@ proc glxChooseFbConfig*(
   if nitems == 0 or p == nil:
     return
   result = newSeq[GlxFbConfig](nitems)
-  for i in 0 ..< nitems:
+  for i in 0..<nitems:
     result[i] = p[i]
 
-proc glxGetVisualFromFBConfig*(
-    display: ptr Display, config: GlxFbConfig
-): PXVisualInfo =
+proc glxGetVisualFromFBConfig*(display: ptr Display, config: GlxFbConfig): PXVisualInfo =
   requireGlx()
   glxGetVisualFromFbConfigProc(display, config)
 
@@ -191,9 +162,7 @@ proc makeCurrent*(display: ptr Display, a: Drawable, ctx: GlxContext) =
   requireGlx()
   discard glxMakeCurrentProc(display, a, ctx.raw)
 
-proc destroy*(
-    display: ptr Display, context: GlxContext
-) {.siwin_destructor, raises: [].} =
+proc destroy*(display: ptr Display, context: GlxContext) {.siwin_destructor, raises: [].} =
   if context.raw == nil or glxDestroyContextProc == nil:
     return
   if glxGetCurrentContextProc != nil and glxGetCurrentContextProc() == context.raw and
@@ -201,25 +170,15 @@ proc destroy*(
     discard glxMakeCurrentProc(display, 0, nil)
   glxDestroyContextProc(display, context.raw)
 
-proc newGlxContext*(
-    display: ptr Display,
-    vis: PXVisualInfo,
-    direct: bool = true,
-    shareList: GlxContext = GlxContext(),
-): GlxContext =
+proc newGlxContext*(display: ptr Display, vis: PXVisualInfo, direct: bool = true, shareList: GlxContext = GlxContext()): GlxContext =
   requireGlx()
   result.raw = glxCreateContextProc(display, vis, shareList.raw, direct.cint)
 
 proc newGlxContext*(
-    display: ptr Display,
-    fbc: GlxFbConfig,
-    renderType: cint = GLX_RGBA_TYPE,
-    direct: bool = true,
-    shareList: GlxContext = GlxContext(),
+  display: ptr Display, fbc: GlxFbConfig, renderType: cint = GLX_RGBA_TYPE, direct: bool = true, shareList: GlxContext = GlxContext()
 ): GlxContext =
   requireGlx()
-  result.raw =
-    glxCreateNewContextProc(display, fbc, renderType, shareList.raw, direct.cint)
+  result.raw = glxCreateNewContextProc(display, fbc, renderType, shareList.raw, direct.cint)
 
 proc glxSwapBuffers*(display: ptr Display, d: Drawable) =
   requireGlx()

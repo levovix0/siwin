@@ -1,154 +1,242 @@
 import std/dynlib
-import ./x11types as x11Types
+import x11/[x, xlib, xutil]
+import ../../siwindefs
 
-export x11Types except Screen, Window, Cursor, Time
-
-type XGetXCBConnectionProc = proc(display: PDisplay): pointer {.cdecl, raises: [].}
-
-proc loadFirst*(names: openArray[string]): LibHandle =
-  for name in names:
-    result = loadLib(name)
-    if result != nil:
-      return
-
-proc loadProc*[T](handle: LibHandle, name: string): T =
-  if handle != nil:
-    result = cast[T](symAddr(handle, name))
+export xlib except
+  Screen, Window, Cursor, Time, XChangeProperty, XCloseDisplay, XCloseIM, XConnectionNumber,
+  XConvertSelection, XCreateBitmapFromData, XCreateColormap, XCreateFontCursor, XCreateGC,
+  XCreateIC, XCreatePixmap, XCreatePixmapCursor, XCreateSimpleWindow, XCreateWindow, XDefineCursor,
+  XDeleteProperty, XDestroyIC, XDestroyWindow, XFlush, XFree, XFreeCursor, XFreeGC, XFreePixmap,
+  XGetAtomName, XGetDefault, XGetGeometry, XGetSelectionOwner, XGetWindowProperty, XIconifyWindow,
+  XInternAtom, XKeycodeToKeysym, XLookupKeysym, XMapRaised, XMapWindow, XMoveWindow, XNextEvent,
+  XOpenDisplay, XOpenIM, XPending, XPutImage, XQueryKeymap, XQueryPointer, XRaiseWindow,
+  XResizeWindow, XRootWindow, XSelectInput, XSendEvent, XSetICFocus, XSetSelectionOwner,
+  XSetTransientForHint, XSetWMProtocols, XSync, XTranslateCoordinates, XUngrabPointer,
+  XUnmapWindow, XUnsetICFocus, XVisualIDFromVisual, XGetWindowAttributes, Xutf8LookupString
+export xutil except
+  XGetNormalHints, XGetVisualInfo, XMatchVisualInfo, XSetClassHint, XSetNormalHints, XSetWMHints,
+  Xutf8SetWMProperties
 
 let
-  libX11Handle* = loadFirst(
-    [
-      when defined(macosx): "libX11.dylib" else: "libX11.so",
-      when defined(macosx): "libX11.so" else: "libX11.so.6",
-    ]
-  )
-  libXextHandle* = loadFirst(
-    [
-      when defined(macosx): "libXext.dylib" else: "libXext.so",
-      when defined(macosx): "libXext.so" else: "libXext.so.6",
-    ]
-  )
-  libXcursorHandle* = loadFirst(
-    [
-      when defined(macosx): "libXcursor.dylib" else: "libXcursor.so",
-      when defined(macosx): "libXcursor.so" else: "libXcursor.so.1",
-    ]
-  )
-  libXrenderHandle* = loadFirst(
-    [
-      when defined(macosx): "libXrender.dylib" else: "libXrender.so",
-      when defined(macosx): "libXrender.so" else: "libXrender.so.1",
-    ]
-  )
-  # The Xlib/XCB bridge is only needed by callers using XCB surfaces.
-  libX11XcbHandle* = loadFirst(
-    [
-      when defined(macosx): "libX11-xcb.dylib" else: "libX11-xcb.so",
-      when defined(macosx): "libX11-xcb.so" else: "libX11-xcb.so.1",
-    ]
-  )
+  libX11Handle* = loadLibPattern(when defined(macosx): "libX11.(dylib|so)" else: "libX11.so(|.6)")
+  libXextHandle* = loadLibPattern(when defined(macosx): "libXext.(dylib|so)" else: "libXext.so(|.6)")
+  libXcursorHandle* = loadLibPattern(when defined(macosx): "libXcursor.(dylib|so)" else: "libXcursor.so(|.1)")
+  libXrenderHandle* = loadLibPattern(when defined(macosx): "libXrender.(dylib|so)" else: "libXrender.so(|.1)")
 
-let XGetXCBConnection* =
-  loadProc[XGetXCBConnectionProc](libX11XcbHandle, "XGetXCBConnection")
+  # The Xlib/XCB bridge is only needed by callers using XCB surfaces.
+  libX11XcbHandle* = loadLibPattern(when defined(macosx): "libX11-xcb.(dylib|so)" else: "libX11-xcb.so(|.1)")
+
+siwin_loadDynlibIfExists libX11XcbHandle:
+  proc XGetXCBConnection*(display: PDisplay): pointer {.raises: [].}
 
 proc x11XcbAvailable*(): bool =
   XGetXCBConnection != nil
 
-let
-  XChangeProperty* =
-    loadProc[x11Types.x11_XChangeProperty](libX11Handle, "XChangeProperty")
-  XCloseDisplay* = loadProc[x11Types.x11_XCloseDisplay](libX11Handle, "XCloseDisplay")
-  XCloseIM* = loadProc[x11Types.x11_XCloseIM](libX11Handle, "XCloseIM")
-  XConnectionNumber* =
-    loadProc[x11Types.x11_XConnectionNumber](libX11Handle, "XConnectionNumber")
-  XConvertSelection* =
-    loadProc[x11Types.x11_XConvertSelection](libX11Handle, "XConvertSelection")
-  XCreateBitmapFromData* =
-    loadProc[x11Types.x11_XCreateBitmapFromData](libX11Handle, "XCreateBitmapFromData")
-  XCreateColormap* =
-    loadProc[x11Types.x11_XCreateColormap](libX11Handle, "XCreateColormap")
-  XCreateFontCursor* =
-    loadProc[x11Types.x11_XCreateFontCursor](libX11Handle, "XCreateFontCursor")
-  XCreateGC* = loadProc[x11Types.x11_XCreateGC](libX11Handle, "XCreateGC")
-  XCreateIC* = loadProc[x11Types.x11_XCreateIC](libX11Handle, "XCreateIC")
-  XCreatePixmap* = loadProc[x11Types.x11_XCreatePixmap](libX11Handle, "XCreatePixmap")
-  XCreatePixmapCursor* =
-    loadProc[x11Types.x11_XCreatePixmapCursor](libX11Handle, "XCreatePixmapCursor")
-  XCreateSimpleWindow* =
-    loadProc[x11Types.x11_XCreateSimpleWindow](libX11Handle, "XCreateSimpleWindow")
-  XCreateWindow* = loadProc[x11Types.x11_XCreateWindow](libX11Handle, "XCreateWindow")
-  XDefineCursor* = loadProc[x11Types.x11_XDefineCursor](libX11Handle, "XDefineCursor")
-  XDeleteProperty* =
-    loadProc[x11Types.x11_XDeleteProperty](libX11Handle, "XDeleteProperty")
-  XDestroyIC* = loadProc[x11Types.x11_XDestroyIC](libX11Handle, "XDestroyIC")
-  XDestroyWindow* =
-    loadProc[x11Types.x11_XDestroyWindow](libX11Handle, "XDestroyWindow")
-  XFlush* = loadProc[x11Types.x11_XFlush](libX11Handle, "XFlush")
-  XFree* = loadProc[x11Types.x11_XFree](libX11Handle, "XFree")
-  XFreeCursor* = loadProc[x11Types.x11_XFreeCursor](libX11Handle, "XFreeCursor")
-  XFreeGC* = loadProc[x11Types.x11_XFreeGC](libX11Handle, "XFreeGC")
-  XFreePixmap* = loadProc[x11Types.x11_XFreePixmap](libX11Handle, "XFreePixmap")
-  XGetAtomName* = loadProc[x11Types.x11_XGetAtomName](libX11Handle, "XGetAtomName")
-  XGetDefault* = loadProc[x11Types.x11_XGetDefault](libX11Handle, "XGetDefault")
-  XGetGeometry* = loadProc[x11Types.x11_XGetGeometry](libX11Handle, "XGetGeometry")
-  XGetSelectionOwner* =
-    loadProc[x11Types.x11_XGetSelectionOwner](libX11Handle, "XGetSelectionOwner")
-  XGetVisualInfo* =
-    loadProc[x11Types.x11_XGetVisualInfo](libX11Handle, "XGetVisualInfo")
-  XGetWindowAttributes* =
-    loadProc[x11Types.x11_XGetWindowAttributes](libX11Handle, "XGetWindowAttributes")
-  XGetWindowProperty* =
-    loadProc[x11Types.x11_XGetWindowProperty](libX11Handle, "XGetWindowProperty")
-  XIconifyWindow* =
-    loadProc[x11Types.x11_XIconifyWindow](libX11Handle, "XIconifyWindow")
-  XInternAtom* = loadProc[x11Types.x11_XInternAtom](libX11Handle, "XInternAtom")
-  XKeycodeToKeysym* =
-    loadProc[x11Types.x11_XKeycodeToKeysym](libX11Handle, "XKeycodeToKeysym")
-  XLookupKeysym* = loadProc[x11Types.x11_XLookupKeysym](libX11Handle, "XLookupKeysym")
-  XMapRaised* = loadProc[x11Types.x11_XMapRaised](libX11Handle, "XMapRaised")
-  XMapWindow* = loadProc[x11Types.x11_XMapWindow](libX11Handle, "XMapWindow")
-  XMoveWindow* = loadProc[x11Types.x11_XMoveWindow](libX11Handle, "XMoveWindow")
-  XNextEvent* = loadProc[x11Types.x11_XNextEvent](libX11Handle, "XNextEvent")
-  XOpenDisplay* = loadProc[x11Types.x11_XOpenDisplay](libX11Handle, "XOpenDisplay")
-  XOpenIM* = loadProc[x11Types.x11_XOpenIM](libX11Handle, "XOpenIM")
-  XPending* = loadProc[x11Types.x11_XPending](libX11Handle, "XPending")
-  XPutImage* = loadProc[x11Types.x11_XPutImage](libX11Handle, "XPutImage")
-  XQueryKeymap* = loadProc[x11Types.x11_XQueryKeymap](libX11Handle, "XQueryKeymap")
-  XQueryPointer* = loadProc[x11Types.x11_XQueryPointer](libX11Handle, "XQueryPointer")
-  XRaiseWindow* = loadProc[x11Types.x11_XRaiseWindow](libX11Handle, "XRaiseWindow")
-  XResizeWindow* = loadProc[x11Types.x11_XResizeWindow](libX11Handle, "XResizeWindow")
-  XRootWindow* = loadProc[x11Types.x11_XRootWindow](libX11Handle, "XRootWindow")
-  XSelectInput* = loadProc[x11Types.x11_XSelectInput](libX11Handle, "XSelectInput")
-  XSendEvent* = loadProc[x11Types.x11_XSendEvent](libX11Handle, "XSendEvent")
-  XSetICFocus* = loadProc[x11Types.x11_XSetICFocus](libX11Handle, "XSetICFocus")
-  XSetSelectionOwner* =
-    loadProc[x11Types.x11_XSetSelectionOwner](libX11Handle, "XSetSelectionOwner")
-  XSetTransientForHint* =
-    loadProc[x11Types.x11_XSetTransientForHint](libX11Handle, "XSetTransientForHint")
-  XSetWMProtocols* =
-    loadProc[x11Types.x11_XSetWMProtocols](libX11Handle, "XSetWMProtocols")
-  XSync* = loadProc[x11Types.x11_XSync](libX11Handle, "XSync")
-  XTranslateCoordinates* =
-    loadProc[x11Types.x11_XTranslateCoordinates](libX11Handle, "XTranslateCoordinates")
-  XUngrabPointer* =
-    loadProc[x11Types.x11_XUngrabPointer](libX11Handle, "XUngrabPointer")
-  XUnmapWindow* = loadProc[x11Types.x11_XUnmapWindow](libX11Handle, "XUnmapWindow")
-  XUnsetICFocus* = loadProc[x11Types.x11_XUnsetICFocus](libX11Handle, "XUnsetICFocus")
-  XVisualIDFromVisual* =
-    loadProc[x11Types.x11_XVisualIDFromVisual](libX11Handle, "XVisualIDFromVisual")
-  Xutf8LookupString* =
-    loadProc[x11Types.x11_Xutf8LookupString](libX11Handle, "Xutf8LookupString")
-
-  XGetNormalHints* =
-    loadProc[x11Types.x11_XGetNormalHints](libX11Handle, "XGetNormalHints")
-  XMatchVisualInfo* =
-    loadProc[x11Types.x11_XMatchVisualInfo](libX11Handle, "XMatchVisualInfo")
-  XSetClassHint* = loadProc[x11Types.x11_XSetClassHint](libX11Handle, "XSetClassHint")
-  XSetNormalHints* =
-    loadProc[x11Types.x11_XSetNormalHints](libX11Handle, "XSetNormalHints")
-  XSetWMHints* = loadProc[x11Types.x11_XSetWMHints](libX11Handle, "XSetWMHints")
-  Xutf8SetWMProperties* =
-    loadProc[x11Types.x11_Xutf8SetWMProperties](libX11Handle, "Xutf8SetWMProperties")
+siwin_loadDynlibIfExists libX11Handle:
+  proc XChangeProperty*(
+    para1: PDisplay,
+    para2: Window,
+    para3: Atom,
+    para4: Atom,
+    para5: cint,
+    para6: cint,
+    para7: Pcuchar,
+    para8: cint,
+  ): cint {.raises: [].}
+  proc XCloseDisplay*(para1: PDisplay): cint {.raises: [].}
+  proc XCloseIM*(para1: XIM): Status {.varargs, raises: [].}
+  proc XConnectionNumber*(para1: PDisplay): cint {.raises: [].}
+  proc XConvertSelection*(
+    para1: PDisplay, para2: Atom, para3: Atom, para4: Atom, para5: Window, para6: Time
+  ): cint {.raises: [].}
+  proc XCreateBitmapFromData*(
+    para1: PDisplay, para2: Drawable, para3: cstring, para4: cuint, para5: cuint
+  ): Pixmap {.raises: [].}
+  proc XCreateColormap*(
+    para1: PDisplay, para2: Window, para3: PVisual, para4: cint
+  ): Colormap {.raises: [].}
+  proc XCreateFontCursor*(para1: PDisplay, para2: cuint): Cursor {.raises: [].}
+  proc XCreateGC*(
+    para1: PDisplay, para2: Drawable, para3: culong, para4: PXGCValues
+  ): GC {.raises: [].}
+  proc XCreateIC*(para1: XIM): XIC {.varargs, raises: [].}
+  proc XCreatePixmap*(
+    para1: PDisplay, para2: Drawable, para3: cuint, para4: cuint, para5: cuint
+  ): Pixmap {.raises: [].}
+  proc XCreatePixmapCursor*(
+    para1: PDisplay,
+    para2: Pixmap,
+    para3: Pixmap,
+    para4: PXColor,
+    para5: PXColor,
+    para6: cuint,
+    para7: cuint,
+  ): Cursor {.raises: [].}
+  proc XCreateSimpleWindow*(
+    para1: PDisplay,
+    para2: Window,
+    para3: cint,
+    para4: cint,
+    para5: cuint,
+    para6: cuint,
+    para7: cuint,
+    para8: culong,
+    para9: culong,
+  ): Window {.raises: [].}
+  proc XCreateWindow*(
+    para1: PDisplay,
+    para2: Window,
+    para3: cint,
+    para4: cint,
+    para5: cuint,
+    para6: cuint,
+    para7: cuint,
+    para8: cint,
+    para9: cuint,
+    para10: PVisual,
+    para11: culong,
+    para12: PXSetWindowAttributes,
+  ): Window {.raises: [].}
+  proc XDefineCursor*(para1: PDisplay, para2: Window, para3: Cursor): cint {.raises: [].}
+  proc XDeleteProperty*(para1: PDisplay, para2: Window, para3: Atom): cint {.raises: [].}
+  proc XDestroyIC*(para1: XIC) {.raises: [].}
+  proc XDestroyWindow*(para1: PDisplay, para2: Window): cint {.raises: [].}
+  proc XFlush*(para1: PDisplay): cint {.raises: [].}
+  proc XFree*(para1: pointer): cint {.raises: [].}
+  proc XFreeCursor*(para1: PDisplay, para2: Cursor): cint {.raises: [].}
+  proc XFreeGC*(para1: PDisplay, para2: GC): cint {.raises: [].}
+  proc XFreePixmap*(para1: PDisplay, para2: Pixmap): cint {.raises: [].}
+  proc XGetAtomName*(para1: PDisplay, para2: Atom): cstring {.raises: [].}
+  proc XGetDefault*(para1: PDisplay, para2: cstring, para3: cstring): cstring {.raises: [].}
+  proc XGetGeometry*(
+    para1: PDisplay,
+    para2: Drawable,
+    para3: PWindow,
+    para4: Pcint,
+    para5: Pcint,
+    para6: Pcuint,
+    para7: Pcuint,
+    para8: Pcuint,
+    para9: Pcuint,
+  ): Status {.raises: [].}
+  proc XGetSelectionOwner*(para1: PDisplay, para2: Atom): Window {.raises: [].}
+  proc XGetVisualInfo*(
+    para1: PDisplay, para2: clong, para3: PXVisualInfo, para4: Pcint
+  ): PXVisualInfo {.raises: [].}
+  proc XGetWindowAttributes*(
+    para1: PDisplay, para2: Window, para3: PXWindowAttributes
+  ): Status {.raises: [].}
+  proc XGetWindowProperty*(
+    para1: PDisplay,
+    para2: Window,
+    para3: Atom,
+    para4: clong,
+    para5: clong,
+    para6: XBool,
+    para7: Atom,
+    para8: PAtom,
+    para9: Pcint,
+    para10: Pculong,
+    para11: Pculong,
+    para12: PPcuchar,
+  ): cint {.raises: [].}
+  proc XIconifyWindow*(para1: PDisplay, para2: Window, para3: cint): Status {.raises: [].}
+  proc XInternAtom*(para1: PDisplay, para2: cstring, para3: XBool): Atom {.raises: [].}
+  proc XKeycodeToKeysym*(para1: PDisplay, para2: KeyCode, para3: cint): KeySym {.raises: [].}
+  proc XLookupKeysym*(para1: PXKeyEvent, para2: cint): KeySym {.raises: [].}
+  proc XMapRaised*(para1: PDisplay, para2: Window): cint {.raises: [].}
+  proc XMapWindow*(para1: PDisplay, para2: Window): cint {.raises: [].}
+  proc XMoveWindow*(
+    para1: PDisplay, para2: Window, para3: cint, para4: cint
+  ): cint {.raises: [].}
+  proc XNextEvent*(para1: PDisplay, para2: PXEvent): cint {.raises: [].}
+  proc XOpenDisplay*(para1: cstring): PDisplay {.raises: [].}
+  proc XOpenIM*(
+    para1: PDisplay, para2: PXrmHashBucketRec, para3: cstring, para4: cstring
+  ): XIM {.raises: [].}
+  proc XPending*(para1: PDisplay): cint {.raises: [].}
+  proc XPutImage*(
+    para1: PDisplay,
+    para2: Drawable,
+    para3: GC,
+    para4: PXImage,
+    para5: cint,
+    para6: cint,
+    para7: cint,
+    para8: cint,
+    para9: cuint,
+    para10: cuint,
+  ): cint {.raises: [].}
+  proc XQueryKeymap*(para1: PDisplay, para2: chararr32): cint {.raises: [].}
+  proc XQueryPointer*(
+    para1: PDisplay,
+    para2: Window,
+    para3: PWindow,
+    para4: PWindow,
+    para5: Pcint,
+    para6: Pcint,
+    para7: Pcint,
+    para8: Pcint,
+    para9: Pcuint,
+  ): XBool {.raises: [].}
+  proc XRaiseWindow*(para1: PDisplay, para2: Window): cint {.raises: [].}
+  proc XResizeWindow*(
+    para1: PDisplay, para2: Window, para3: cuint, para4: cuint
+  ): cint {.raises: [].}
+  proc XRootWindow*(para1: PDisplay, para2: cint): Window {.raises: [].}
+  proc XSelectInput*(para1: PDisplay, para2: Window, para3: clong): cint {.raises: [].}
+  proc XSendEvent*(
+    para1: PDisplay, para2: Window, para3: XBool, para4: clong, para5: PXEvent
+  ): Status {.raises: [].}
+  proc XSetICFocus*(para1: XIC) {.raises: [].}
+  proc XSetSelectionOwner*(
+    para1: PDisplay, para2: Atom, para3: Window, para4: Time
+  ): cint {.raises: [].}
+  proc XSetTransientForHint*(para1: PDisplay, para2: Window, para3: Window): cint {.raises: [].}
+  proc XSetWMProtocols*(
+    para1: PDisplay, para2: Window, para3: PAtom, para4: cint
+  ): Status {.raises: [].}
+  proc XSync*(para1: PDisplay, para2: XBool): cint {.raises: [].}
+  proc XTranslateCoordinates*(
+    para1: PDisplay,
+    para2: Window,
+    para3: Window,
+    para4: cint,
+    para5: cint,
+    para6: Pcint,
+    para7: Pcint,
+    para8: PWindow,
+  ): XBool {.raises: [].}
+  proc XUngrabPointer*(para1: PDisplay, para2: Time): cint {.raises: [].}
+  proc XUnmapWindow*(para1: PDisplay, para2: Window): cint {.raises: [].}
+  proc XUnsetICFocus*(para1: XIC) {.raises: [].}
+  proc XVisualIDFromVisual*(para1: PVisual): VisualID {.raises: [].}
+  proc Xutf8LookupString*(
+    para1: XIC,
+    para2: PXKeyPressedEvent,
+    para3: cstring,
+    para4: cint,
+    para5: PKeySym,
+    para6: PStatus,
+  ): cint {.raises: [].}
+  proc XGetNormalHints*(para1: PDisplay, para2: Window, para3: PXSizeHints): Status {.raises: [].}
+  proc XMatchVisualInfo*(
+    para1: PDisplay, para2: cint, para3: cint, para4: cint, para5: PXVisualInfo
+  ): Status {.raises: [].}
+  proc XSetClassHint*(para1: PDisplay, para2: Window, para3: PXClassHint): cint {.raises: [].}
+  proc XSetNormalHints*(para1: PDisplay, para2: Window, para3: PXSizeHints): cint {.raises: [].}
+  proc XSetWMHints*(para1: PDisplay, para2: Window, para3: PXWMHints): cint {.raises: [].}
+  proc Xutf8SetWMProperties*(
+    para1: PDisplay,
+    para2: Window,
+    para3: cstring,
+    para4: cstring,
+    para5: PPchar,
+    para6: cint,
+    para7: PXSizeHints,
+    para8: PXWMHints,
+    para9: PXClassHint,
+  ) {.raises: [].}
 
 proc x11Available*(): bool =
   libX11Handle != nil and XChangeProperty != nil and XCloseDisplay != nil and

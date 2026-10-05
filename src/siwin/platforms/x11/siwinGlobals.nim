@@ -10,26 +10,27 @@ type
     motiv
     kwm
     other
-
+  
   SiwinGlobalsX11* = ref SiwinGlobalsX11Obj
   SiwinGlobalsX11Obj* = object of SiwinGlobals
     display*: ptr Display
     windows*: Table[uint, window.Window]
     wake*: ptr X11WakeFd
     wmForFramelessKind*: WmForFramelessKind
-    atoms*:
-      tuple[
-        frameless, wmDeleteWindow, utf8String, netWmName, netWmIconName, netSupported,
-          netWmState, netWmStateFullscreen, netWmStateMaximizedHorz,
-          netWmStateMaximizedVert, netWmStateHidden, netWmMoveResize, netWmSyncRequest,
-          netWmSyncRequestCounter, netFrameExtents, kdeNetWmBlurBehindRegion, clipboard,
-          siwin_clipboardTargetProperty, targets, text, primary, xDndAware, xDndEnter,
-          xDndTypeList, xDndSelection, xDndPosition, xDndLeave, xDndDrop, xDndFinished,
-          xDndStatus, xDndActionCopy, xDndActionPrivate: Atom
-      ]
+    atoms*: tuple[
+      frameless, wmDeleteWindow, utf8String, netWmName, netWmIconName,
+      netSupported, netWmState, netWmStateFullscreen, netWmStateMaximizedHorz,
+      netWmStateMaximizedVert, netWmStateHidden, netWmMoveResize,
+      netWmSyncRequest, netWmSyncRequestCounter, netFrameExtents,
+      kdeNetWmBlurBehindRegion,
+      clipboard, siwin_clipboardTargetProperty, targets, text, primary,
+      xDndAware, xDndEnter, xDndTypeList, xDndSelection, xDndPosition, xDndLeave, xDndDrop, xDndFinished, xDndStatus, xDndActionCopy, xDndActionPrivate
+      : Atom
+    ]
 
   X11WakeFd = object
     readFd*, writeFd*: cint
+
 
 proc `=destroy`(x: SiwinGlobalsX11Obj) {.siwin_destructor.} =
   cast[SiwinGlobals](x.addr).shutdownEventLoopWakeState()
@@ -47,10 +48,8 @@ proc signalX11Wake(data: pointer) {.gcsafe, raises: [].} =
 proc closeX11Wake(data: pointer) {.gcsafe, raises: [].} =
   let wake = cast[ptr X11WakeFd](data)
   if wake != nil:
-    if wake.readFd >= 0:
-      discard close(wake.readFd)
-    if wake.writeFd >= 0:
-      discard close(wake.writeFd)
+    if wake.readFd >= 0: discard close(wake.readFd)
+    if wake.writeFd >= 0: discard close(wake.writeFd)
     dealloc(wake)
 
 proc configureWakeFd(fd: cint) =
@@ -62,8 +61,7 @@ proc configureWakeFd(fd: cint) =
     raiseOSError(osLastError())
 
 proc drainX11Wake*(globals: SiwinGlobalsX11): bool =
-  if globals.wake == nil:
-    return false
+  if globals.wake == nil: return false
   var buffer: array[64, char]
   while true:
     let count = read(globals.wake.readFd, buffer[0].addr, buffer.len)
@@ -73,8 +71,7 @@ proc drainX11Wake*(globals: SiwinGlobalsX11): bool =
       continue
     else:
       break
-  if result:
-    globals.consumeEventLoopWake()
+  if result: globals.consumeEventLoopWake()
 
 proc newX11Globals*(): SiwinGlobalsX11 {.raises: [OsError].} =
   if not x11Available():
@@ -82,10 +79,7 @@ proc newX11Globals*(): SiwinGlobalsX11 {.raises: [OsError].} =
 
   new result
   result.display = XOpenDisplay(getEnv("DISPLAY").cstring)
-  if result.display == nil:
-    raise OsError.newException(
-      "failed to open X11 display, make sure the DISPLAY environment variable is set correctly"
-    )
+  if result.display == nil: raise OsError.newException("failed to open X11 display, make sure the DISPLAY environment variable is set correctly")
   result.wake = cast[ptr X11WakeFd](alloc0(sizeof(X11WakeFd)))
   var wakeFds: array[2, cint]
   if pipe(wakeFds) != 0:
@@ -101,22 +95,13 @@ proc newX11Globals*(): SiwinGlobalsX11 {.raises: [OsError].} =
     result.wake = nil
     raise
   result.installEventLoopWakeProc(signalX11Wake, result.wake, closeX11Wake)
-
+  
   result.wmForFramelessKind =
-    if (;
-      result.atoms.frameless = result.display.XInternAtom("_MOTIF_WM_HINTS", 1)
-      result.atoms.frameless != 0
-    ):
+    if (result.atoms.frameless = result.display.XInternAtom("_MOTIF_WM_HINTS", 1); result.atoms.frameless != 0):
       WmForFramelessKind.motiv
-    elif (;
-      result.atoms.frameless = result.display.XInternAtom("KWM_WIN_DECORATION", 1)
-      result.atoms.frameless != 0
-    ):
+    elif (result.atoms.frameless = result.display.XInternAtom("KWM_WIN_DECORATION", 1); result.atoms.frameless != 0):
       WmForFramelessKind.kwm
-    elif (;
-      result.atoms.frameless = result.display.XInternAtom("_WIN_HINTS", 1)
-      result.atoms.frameless != 0
-    ):
+    elif (result.atoms.frameless = result.display.XInternAtom("_WIN_HINTS", 1); result.atoms.frameless != 0):
       WmForFramelessKind.other
     else:
       WmForFramelessKind.unsupported
@@ -127,23 +112,19 @@ proc newX11Globals*(): SiwinGlobalsX11 {.raises: [OsError].} =
   result.atoms.netWmIconName = result.display.XInternAtom("_NET_WM_ICON_NAME", 0)
   result.atoms.netSupported = result.display.XInternAtom("_NET_SUPPORTED", 0)
   result.atoms.netWmState = result.display.XInternAtom("_NET_WM_STATE", 0)
-  result.atoms.netWmStateFullscreen =
-    result.display.XInternAtom("_NET_WM_STATE_FULLSCREEN", 0)
-  result.atoms.netWmStateMaximizedHorz =
-    result.display.XInternAtom("_NET_WM_STATE_MAXIMIZED_HORZ", 0)
-  result.atoms.netWmStateMaximizedVert =
-    result.display.XInternAtom("_NET_WM_STATE_MAXIMIZED_VERT", 0)
+  result.atoms.netWmStateFullscreen = result.display.XInternAtom("_NET_WM_STATE_FULLSCREEN", 0)
+  result.atoms.netWmStateMaximizedHorz = result.display.XInternAtom("_NET_WM_STATE_MAXIMIZED_HORZ", 0)
+  result.atoms.netWmStateMaximizedVert = result.display.XInternAtom("_NET_WM_STATE_MAXIMIZED_VERT", 0)
   result.atoms.netWmStateHidden = result.display.XInternAtom("_NET_WM_STATE_HIDDEN", 0)
   result.atoms.netWmMoveResize = result.display.XInternAtom("_NET_WM_MOVERESIZE", 0)
   result.atoms.netWmSyncRequest = result.display.XInternAtom("_NET_WM_SYNC_REQUEST", 0)
-  result.atoms.netWmSyncRequestCounter =
-    result.display.XInternAtom("_NET_WM_SYNC_REQUEST_COUNTER", 0)
+  result.atoms.netWmSyncRequestCounter = result.display.XInternAtom("_NET_WM_SYNC_REQUEST_COUNTER", 0)
   result.atoms.netFrameExtents = result.display.XInternAtom("_NET_FRAME_EXTENTS", 0)
-  result.atoms.kdeNetWmBlurBehindRegion =
-    result.display.XInternAtom("_KDE_NET_WM_BLUR_BEHIND_REGION", 0)
+  result.atoms.kdeNetWmBlurBehindRegion = result.display.XInternAtom(
+    "_KDE_NET_WM_BLUR_BEHIND_REGION", 0
+  )
   result.atoms.clipboard = result.display.XInternAtom("CLIPBOARD", 0)
-  result.atoms.siwin_clipboardTargetProperty =
-    result.display.XInternAtom("siwin_clipboardTargetProperty", 0)
+  result.atoms.siwin_clipboardTargetProperty = result.display.XInternAtom("siwin_clipboardTargetProperty", 0)
   result.atoms.targets = result.display.XInternAtom("TARGETS", 0)
   result.atoms.text = result.display.XInternAtom("TEXT", 0)
   result.atoms.primary = result.display.XInternAtom("PRIMARY", 0)
@@ -162,9 +143,8 @@ proc newX11Globals*(): SiwinGlobalsX11 {.raises: [OsError].} =
 proc isX11Available*(): bool =
   x11Available()
 
-proc property*(
-    globals: SiwinGlobalsX11, window: x.Window, name: Atom, t: typedesc = typedesc[byte]
-): tuple[kind: Atom, data: seq[t]] =
+
+proc property*(globals: SiwinGlobalsX11, window: x.Window, name: Atom, t: typedesc = typedesc[byte]): tuple[kind: Atom, data: seq[t]] =
   var
     format: cint
     n: culong
@@ -172,28 +152,17 @@ proc property*(
     data: ptr UncheckedArray[t]
 
   discard globals.display.XGetWindowProperty(
-    window,
-    name,
-    0,
-    clong.high,
-    0,
-    AnyPropertyType,
-    result.kind.addr,
-    format.addr,
-    n.addr,
-    remainingBytes.addr,
-    cast[PPCUchar](data.addr),
+    window, name, 0, clong.high, 0, AnyPropertyType,
+    result.kind.addr, format.addr, n.addr, remainingBytes.addr, cast[PPCUchar](data.addr)
   )
 
   if n != 0:
     result.data.setLen n.int
     copyMem(result.data[0].addr, data, n.int * t.sizeof)
-
+  
   discard XFree data
 
-proc property*(
-    globals: SiwinGlobalsX11, window: x.Window, name: Atom, t: typedesc[string]
-): tuple[kind: Atom, data: string] =
+proc property*(globals: SiwinGlobalsX11, window: x.Window, name: Atom, t: typedesc[string]): tuple[kind: Atom, data: string] =
   let a = globals.property(window, name, char)
   result.kind = a.kind
   result.data = cast[string](a.data)

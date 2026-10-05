@@ -62,7 +62,7 @@ task installTestDeps, "install test dependencies":
 const testTargets = [
   "t_opengl_es", "t_opengl", "t_swrendering", "t_multiwindow", "t_vulkan",
   "t_offscreen", "t_macos_live_resize", "t_event_loop", "t_x11_size_hints",
-  "tpopup_api",
+  "tpopup_api", "t_dynlib_loading",
 ]
 
 proc shouldSkipTarget(target, args: string): bool =
