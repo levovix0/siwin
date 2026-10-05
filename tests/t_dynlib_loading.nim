@@ -83,6 +83,14 @@ when defined(linux) or defined(bsd):
       wl_egl_window_destroy(window)
     )
     doAssert compiles(block:
-      let connect: proc(name: cstring): Wl_display {.cdecl.} = wl_display_connect
-      if connect != nil: discard connect(nil)
+      var display: Wl_display = wl_display_connect(nil)
+      let fd: FileHandle = wl_display_get_fd(display)
+      var connected: Wl_display = wl_display_connect_to_fd(fd)
+      var status: int32 = wl_display_flush(display)
+      status = wl_display_prepare_read(display)
+      status = wl_display_read_events(display)
+      wl_display_cancel_read(display)
+      status = wl_display_roundtrip(display)
+      status = wl_display_dispatch_pending(display)
+      wl_display_disconnect(display)
     )

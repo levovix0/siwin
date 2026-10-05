@@ -112,59 +112,35 @@ siwin_loadDynlibIfExists libwaylandclientHandle:
     proxy: pointer, callback: Wl_dispatcher_proc, impl: pointer, proxyUserdata: pointer
   ): int32 {.importc: "wl_proxy_add_dispatcher".}
 
-proc wl_display_disconnect*(this: Wl_display) {.cdecl.} =
+proc wl_display_disconnect*(this: Wl_display) =
   if this.raw != nil and wl_display_disconnect_c != nil:
     wl_display_disconnect_c(this.raw)
 
-var wl_display_connect* =
-  if wl_display_connect_c == nil: nil
-  else:
-    proc(name: cstring): Wl_display {.cdecl.} =
-      if wl_display_connect_c != nil:
-        result.raw = wl_display_connect_c(name)
+proc wl_display_connect*(name: cstring): Wl_display =
+  if wl_display_connect_c != nil:
+    result.raw = wl_display_connect_c(name)
 
-var wl_display_connect_to_fd* =
-  if wl_display_connect_to_fd_c == nil: nil
-  else:
-    proc(fd: FileHandle): Wl_display {.cdecl.} =
-      if wl_display_connect_to_fd_c != nil:
-        result.raw = wl_display_connect_to_fd_c(fd)
+proc wl_display_connect_to_fd*(fd: FileHandle): Wl_display =
+  if wl_display_connect_to_fd_c != nil:
+    result.raw = wl_display_connect_to_fd_c(fd)
 
-var wl_display_get_fd* =
-  if wl_display_get_fd_c == nil: nil
-  else:
-    proc(this: Wl_display): FileHandle {.cdecl.} =
-      wl_display_get_fd_c(this.raw)
+proc wl_display_get_fd*(this: Wl_display): FileHandle =
+  wl_display_get_fd_c(this.raw)
 
-var wl_display_flush* =
-  if wl_display_flush_c == nil: nil
-  else:
-    proc(this: Wl_display): int32 {.cdecl.} =
-      wl_display_flush_c(this.raw)
+proc wl_display_flush*(this: Wl_display): int32 =
+  wl_display_flush_c(this.raw)
 
-var wl_display_prepare_read* =
-  if wl_display_prepare_read_c == nil: nil
-  else:
-    proc(this: Wl_display): int32 {.cdecl.} =
-      wl_display_prepare_read_c(this.raw)
+proc wl_display_prepare_read*(this: Wl_display): int32 =
+  wl_display_prepare_read_c(this.raw)
 
-var wl_display_read_events* =
-  if wl_display_read_events_c == nil: nil
-  else:
-    proc(this: Wl_display): int32 {.cdecl.} =
-      wl_display_read_events_c(this.raw)
+proc wl_display_read_events*(this: Wl_display): int32 =
+  wl_display_read_events_c(this.raw)
 
-var wl_display_cancel_read* =
-  if wl_display_cancel_read_c == nil: nil
-  else:
-    proc(this: Wl_display) {.cdecl.} =
-      wl_display_cancel_read_c(this.raw)
+proc wl_display_cancel_read*(this: Wl_display) =
+  wl_display_cancel_read_c(this.raw)
 
-var wl_display_roundtrip* =
-  if wl_display_roundtrip_c == nil: nil
-  else:
-    proc(this: Wl_display): int32 {.cdecl.} =
-      wl_display_roundtrip_c(this.raw)
+proc wl_display_roundtrip*(this: Wl_display): int32 =
+  wl_display_roundtrip_c(this.raw)
 
 var wl_proxy_set_user_data* =
   if wl_proxy_set_user_data_c == nil: nil
@@ -208,11 +184,8 @@ var wl_proxy_get_id* =
     proc(this: Wl_proxy): uint32 {.cdecl.} =
       wl_proxy_get_id_c(cast[pointer](this.raw))
 
-var wl_display_dispatch_pending* =
-  if wl_display_dispatch_pending_c == nil: nil
-  else:
-    proc(this: Wl_display): int32 {.cdecl.} =
-      wl_display_dispatch_pending_c(this.raw)
+proc wl_display_dispatch_pending*(this: Wl_display): int32 =
+  wl_display_dispatch_pending_c(this.raw)
 
 var wl_proxy_add_dispatcher* =
   if wl_proxy_add_dispatcher_c == nil: nil
