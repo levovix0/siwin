@@ -60,20 +60,29 @@ when defined(linux) or defined(bsd):
       if glxSwapIntervalSgi != nil: glxSwapIntervalSgi(1)
     )
     doAssert compiles(block:
-      var display: EglDisplay
+      var display: EglDisplay = eglGetDisplay(nil)
+      var config: EglConfig
       var context: EglContext
       var surface: EglSurface
       var ok: bool = eglInitialize(display)
+      var error: EglError = eglGetError()
       ok = eglChooseConfig(display, nil, nil, 0, nil)
+      context = eglCreateContext(display, config)
+      surface = eglCreatePbufferSurface(display, config)
+      surface = eglCreateWindowSurface(display, config, nil)
+      surface = eglCreatePlatformWindowSurface(display, config, nil)
       ok = eglMakeCurrent(display, surface, surface, context)
+      context = eglGetCurrentContext()
       ok = eglSwapBuffers(display, surface)
       ok = eglDestroyContext(display, context)
       ok = eglDestroySurface(display, surface)
       eglTerminate(display)
+      var window: EglWindow = wl_egl_window_create(nil, 1, 1)
+      wl_egl_window_resize(window, 2, 2, 0, 0)
+      wl_egl_window_get_attached_size(window, nil, nil)
+      wl_egl_window_destroy(window)
     )
     doAssert compiles(block:
-      let initialize: proc(d: EglDisplay; major, minor: ptr int32): bool {.cdecl.} = eglInitialize
       let connect: proc(name: cstring): Wl_display {.cdecl.} = wl_display_connect
-      if initialize != nil: discard initialize(nil, nil, nil)
       if connect != nil: discard connect(nil)
     )

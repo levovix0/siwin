@@ -101,16 +101,4 @@ siwin_loadDynlibIfExists libdecorHandle:
 
 
 proc libdecorAvailable*(): bool =
-  libdecorHandle != nil and libdecor_new != nil and libdecor_unref != nil and
-    libdecor_get_fd != nil and libdecor_dispatch != nil and libdecor_decorate != nil and
-    libdecor_frame_unref != nil and libdecor_frame_map != nil and
-    libdecor_frame_set_title != nil and libdecor_frame_set_app_id != nil and
-    libdecor_frame_set_visibility != nil and libdecor_frame_get_xdg_toplevel != nil and
-    libdecor_frame_commit != nil and libdecor_frame_set_min_content_size != nil and
-    libdecor_frame_set_max_content_size != nil and libdecor_state_new != nil and
-    libdecor_state_free != nil and libdecor_configuration_get_content_size != nil and
-    libdecor_configuration_get_window_state != nil and
-    libdecor_frame_set_fullscreen != nil and libdecor_frame_unset_fullscreen != nil and
-    libdecor_frame_set_maximized != nil and libdecor_frame_unset_maximized != nil and
-    libdecor_frame_set_minimized != nil and libdecor_frame_move != nil and
-    libdecor_frame_resize != nil and libdecor_frame_show_window_menu != nil
+  libdecor_new != nil
