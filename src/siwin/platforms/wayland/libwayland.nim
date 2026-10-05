@@ -112,12 +112,9 @@ siwin_loadDynlibIfExists libwaylandclientHandle:
     proxy: pointer, callback: Wl_dispatcher_proc, impl: pointer, proxyUserdata: pointer
   ): int32 {.importc: "wl_proxy_add_dispatcher".}
 
-var wl_display_disconnect* =
-  if wl_display_disconnect_c == nil: nil
-  else:
-    proc(this: Wl_display) {.cdecl.} =
-      if this.raw != nil and wl_display_disconnect_c != nil:
-        wl_display_disconnect_c(this.raw)
+proc wl_display_disconnect*(this: Wl_display) {.cdecl.} =
+  if this.raw != nil and wl_display_disconnect_c != nil:
+    wl_display_disconnect_c(this.raw)
 
 var wl_display_connect* =
   if wl_display_connect_c == nil: nil

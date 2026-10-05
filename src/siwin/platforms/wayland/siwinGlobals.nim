@@ -92,7 +92,7 @@ proc `=destroy`*(globals: SiwinGlobalsWaylandObj) {.siwin_destructor.} =
   try:
     if globals.libdecorCtx != nil and libdecor_unref != nil:
       libdecor_unref(globals.libdecorCtx)
-    if globals.display != nil and wl_display_disconnect != nil:
+    if globals.display != nil:
       wl_display_disconnect globals.display
   except: discard
 
