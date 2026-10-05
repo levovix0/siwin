@@ -358,7 +358,7 @@ when siwin_build_lib:
     try: window.`vsync=`(v.bool, false)
     except: return 1.cchar
 
-  proc siwin_window_vulkan_surface(window: Window): pointer = window.vulkanSurface
+  proc siwin_window_vulkan_surface(window: Window): VulkanSurface = window.vulkanSurface
   proc siwin_window_clipboard(window: Window): Clipboard = window.clipboard
   proc siwin_window_selection_clipboard(window: Window): Clipboard = window.selectionClipboard
   proc siwin_window_dragndrop_clipboard(window: Window): Clipboard = window.dragndropClipboard

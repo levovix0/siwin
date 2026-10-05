@@ -1,4 +1,6 @@
 
+#include <stdint.h>
+
 #ifdef __cplusplus
 	namespace siwin {
 #endif
@@ -8,6 +10,12 @@ typedef struct {} *Window;
 typedef struct {} *Screen;
 typedef struct {} *Clipboard;
 typedef struct {} *SiwinEventLoopWaker;
+
+#if UINTPTR_MAX == UINT64_MAX
+typedef void* VulkanSurface;
+#else
+typedef uint64_t VulkanSurface;
+#endif
 
 
 typedef struct NimRtti {
@@ -417,7 +425,7 @@ typedef struct WindowEventHandler {
 	extern void siwin_window_make_current(Window window);
 
 	extern char siwin_window_set_vsync(Window window, char v);
-	extern void* siwin_window_vulkan_surface(Window window);
+	extern VulkanSurface siwin_window_vulkan_surface(Window window);
 	extern Clipboard siwin_window_clipboard(Window window);
 	extern Clipboard siwin_window_selection_clipboard(Window window);
 	extern Clipboard siwin_window_dragndrop_clipboard(Window window);

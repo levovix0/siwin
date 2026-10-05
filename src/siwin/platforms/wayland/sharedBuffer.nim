@@ -56,7 +56,7 @@ proc `=destroy`(buffer: SharedBufferObj) {.siwin_destructor.} =
     if buffer.pool.proxy.raw != nil:
       destroy buffer.pool
 
-    discard wl_display_roundtrip buffer.globals.display  # make sure server don't use the memory we about to dealloc
+    discard wl_display_roundtrip buffer.globals.display.raw  # make sure server don't use the memory we about to dealloc
   except: discard
 
   try:
@@ -104,7 +104,7 @@ proc swapBuffers*(
             stable.currentBuffer = i
             break waiting_for_unlocked_buffer
         
-        discard wl_display_roundtrip stable.globals.display  # let libwayland process events
+        discard wl_display_roundtrip stable.globals.display.raw  # let libwayland process events
   
   if stable.currentBuffer notin 0..stable.buffers.high:
     return
@@ -215,7 +215,7 @@ proc resize*(buffer: var SharedBuffer, size: IVec2, timeout: Duration = initDura
 
   let deadline = getMonoTime() + timeout
   while getMonoTime() < deadline and buffer.buffers.anyIt(it.locked):
-    discard wl_display_roundtrip buffer.globals.display
+    discard wl_display_roundtrip buffer.globals.display.raw
 
   if newSizeInBytes > buffer.file.size:
     buffer.file.resize(newSizeInBytes)

@@ -3,6 +3,11 @@ import ../../siwindefs
 import x11/x
 import ./x11api
 
+when sizeof(pointer) == 8:
+  type VkSurfaceHandle* = pointer
+else:
+  type VkSurfaceHandle* = uint64
+
 const vkDLL =
   when defined(windows): "vulkan-1.dll"
   elif defined(macosx): "libMoltenVK.dylib"
@@ -47,10 +52,10 @@ siwin_loadDynlibIfExists libVulkanHandle:
     instance: pointer,
     pCreateInfo: ptr VkXlibSurfaceCreateInfoKHR,
     pAllocator: pointer,
-    pSurface: ptr pointer
+    pSurface: ptr VkSurfaceHandle
   ): VkResult
 
-  proc vkDestroySurfaceKHR*(instance: pointer, surface: pointer, pAllocator: pointer)
+  proc vkDestroySurfaceKHR*(instance: pointer, surface: VkSurfaceHandle, pAllocator: pointer)
 
 proc requireVulkanXlib*() =
   if libVulkanHandle == nil or vkCreateXlibSurfaceKHR == nil:

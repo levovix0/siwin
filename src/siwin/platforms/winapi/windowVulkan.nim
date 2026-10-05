@@ -10,20 +10,20 @@ privateAccess WindowWinapi
 type
   Surface = object
     instance: pointer
-    raw: pointer
+    raw: VkSurfaceHandle
 
   WindowWinapiVulkan* = ref object of WindowWinapi
     surface: Surface
 
 proc `=destroy`*(surface: Surface) {.siwin_destructor.} =
-  if surface.instance != nil and surface.raw != nil:
+  if surface.instance != nil and cast[uint64](surface.raw) != 0:
     discard
     # let vkDestroySurfaceKHR = cast[VkDestroySurfaceKHR](surface.instance.vkGetInstanceProcAddr("vkDestroySurfaceKHR"))
     # vkDestroySurfaceKHR(surface.instance, surface.raw, nil)  #? causes crash
 
 
-method vulkanSurface*(window: WindowWinapiVulkan): pointer =
-  window.surface.raw
+method vulkanSurface*(window: WindowWinapiVulkan): anyWindow.VulkanSurface =
+  cast[anyWindow.VulkanSurface](window.surface.raw)
 
 
 proc initWindowWinapiVulkan(
