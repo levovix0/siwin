@@ -108,48 +108,27 @@ siwin_loadDynlibIfExists libeglHandle:
 
 
 # EGLBoolean is a C unsigned int; preserve the existing bool API for callers.
-var eglInitialize* =
-  if eglInitializeRaw == nil: nil
-  else:
-    proc(d: EglDisplay; major: ptr int32 = nil; minor: ptr int32 = nil): bool {.cdecl.} =
-      eglInitializeRaw(d, major, minor) != 0
+proc eglInitialize*(d: EglDisplay; major: ptr int32 = nil; minor: ptr int32 = nil): bool {.cdecl.} =
+  eglInitializeRaw(d, major, minor) != 0
 
-var eglTerminate* =
-  if eglTerminateRaw == nil: nil
-  else:
-    proc(d: EglDisplay) {.cdecl.} =
-      discard eglTerminateRaw(d)
+proc eglTerminate*(d: EglDisplay) {.cdecl.} =
+  discard eglTerminateRaw(d)
 
-var eglChooseConfig* =
-  if eglChooseConfigRaw == nil: nil
-  else:
-    proc(d: EglDisplay; attrs: ptr int32; retConfigs: ptr EglConfig;
-        maxConfigs: int32; retConfigCount: ptr int32): bool {.cdecl.} =
-      eglChooseConfigRaw(d, attrs, retConfigs, maxConfigs, retConfigCount) != 0
+proc eglChooseConfig*(d: EglDisplay; attrs: ptr int32; retConfigs: ptr EglConfig;
+    maxConfigs: int32; retConfigCount: ptr int32): bool {.cdecl.} =
+  eglChooseConfigRaw(d, attrs, retConfigs, maxConfigs, retConfigCount) != 0
 
-var eglMakeCurrent* =
-  if eglMakeCurrentRaw == nil: nil
-  else:
-    proc(d: EglDisplay; draw, read: EglSurface; ctx: EglContext): bool {.cdecl.} =
-      eglMakeCurrentRaw(d, draw, read, ctx) != 0
+proc eglMakeCurrent*(d: EglDisplay; draw, read: EglSurface; ctx: EglContext): bool {.cdecl.} =
+  eglMakeCurrentRaw(d, draw, read, ctx) != 0
 
-var eglSwapBuffers* =
-  if eglSwapBuffersRaw == nil: nil
-  else:
-    proc(d: EglDisplay; srf: EglSurface): bool {.cdecl.} =
-      eglSwapBuffersRaw(d, srf) != 0
+proc eglSwapBuffers*(d: EglDisplay; srf: EglSurface): bool {.cdecl.} =
+  eglSwapBuffersRaw(d, srf) != 0
 
-var eglDestroyContext* =
-  if eglDestroyContextRaw == nil: nil
-  else:
-    proc(d: EglDisplay; ctx: EglContext): bool {.cdecl.} =
-      eglDestroyContextRaw(d, ctx) != 0
+proc eglDestroyContext*(d: EglDisplay; ctx: EglContext): bool {.cdecl.} =
+  eglDestroyContextRaw(d, ctx) != 0
 
-var eglDestroySurface* =
-  if eglDestroySurfaceRaw == nil: nil
-  else:
-    proc(d: EglDisplay; srf: EglSurface): bool {.cdecl.} =
-      eglDestroySurfaceRaw(d, srf) != 0
+proc eglDestroySurface*(d: EglDisplay; srf: EglSurface): bool {.cdecl.} =
+  eglDestroySurfaceRaw(d, srf) != 0
 
 siwin_loadDynlibIfExists libwaylandeglHandle:
   proc wl_egl_window_create*(surface: pointer, width, height: int32): EglWindow
