@@ -80,18 +80,15 @@ let
   libwaylandeglHandle = loadLibPattern("libwayland-egl.so(|.1)")
 
 
-# Match the C ABI on 32- and 64-bit targets: handles are pointers and
-# EGLBoolean is cuint. A bool function-pointer declaration does not convert
-# the library's unsigned-int result to a Nim bool.
 siwin_loadDynlibIfExists libeglHandle:
   proc eglGetError*(): EglError
   proc eglGetDisplay*(native: pointer): EglDisplay
 
-  proc eglInitialize*(d: EglDisplay; major: ptr int32 = nil; minor: ptr int32 = nil): cuint
-  proc eglTerminate*(d: EglDisplay): cuint
+  proc eglInitialize*(d: EglDisplay; major: ptr int32 = nil; minor: ptr int32 = nil): bool
+  proc eglTerminate*(d: EglDisplay)
 
   proc eglChooseConfig*(d: EglDisplay; attrs: ptr int32; retConfigs: ptr EglConfig;
-      maxConfigs: int32; retConfigCount: ptr int32): cuint
+      maxConfigs: int32; retConfigCount: ptr int32): bool
 
   proc eglCreateContext*(d: EglDisplay; config: EglConfig; share: EglContext = nil;
       attrs: ptr int32 = nil): EglContext
@@ -102,12 +99,12 @@ siwin_loadDynlibIfExists libeglHandle:
   proc eglCreateWindowSurface*(d: EglDisplay; config: EglConfig; native_window: pointer; attrs: ptr int32 = nil): EglSurface
   proc eglCreatePlatformWindowSurface*(d: EglDisplay; config: EglConfig; native_window: pointer; attrs: ptr int32 = nil): EglSurface
 
-  proc eglMakeCurrent*(d: EglDisplay; draw, read: EglSurface; ctx: EglContext): cuint
+  proc eglMakeCurrent*(d: EglDisplay; draw, read: EglSurface; ctx: EglContext): bool
   proc eglGetCurrentContext*(): EglContext
-  proc eglSwapBuffers*(d: EglDisplay; srf: EglSurface): cuint
+  proc eglSwapBuffers*(d: EglDisplay; srf: EglSurface): bool
 
-  proc eglDestroyContext*(d: EglDisplay; ctx: EglContext): cuint
-  proc eglDestroySurface*(d: EglDisplay; srf: EglSurface): cuint
+  proc eglDestroyContext*(d: EglDisplay; ctx: EglContext): bool
+  proc eglDestroySurface*(d: EglDisplay; srf: EglSurface): bool
 
 
 siwin_loadDynlibIfExists libwaylandeglHandle:
@@ -119,9 +116,6 @@ siwin_loadDynlibIfExists libwaylandeglHandle:
 
 proc expect(x: bool) =
   if not x: raise OsError.newException("Error creating OpenGL context (" & $eglGetError() & ")")
-
-proc expect(x: cuint) =
-  expect x != 0
 
 
 proc requireEgl() =
@@ -251,5 +245,5 @@ proc terminateEgl* =
   initialized = false
 
   if eglTerminate != nil:
-    discard eglTerminate(egl_display)
+    eglTerminate(egl_display)
   egl_display = nil

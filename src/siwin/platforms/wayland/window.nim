@@ -1604,7 +1604,7 @@ proc initDataDeviceManagerEvents*(globals: SiwinGlobalsWayland) =
     globals.current_selection_data_offer.onOffer:
       offered_mime_types.add $mime_type
     
-    discard wl_display_roundtrip globals.display.raw  # get all the mime types
+    discard wl_display_roundtrip globals.display  # get all the mime types
     
     for mime_type in offered_mime_types:
       if mime_type in ["UTF8_STRING", "STRING", "TEXT", "text/plain", "text/plain;charset=utf-8"]:
@@ -1687,7 +1687,7 @@ proc initDataDeviceManagerEvents*(globals: SiwinGlobalsWayland) =
     globals.current_dnd_data_offer_mimeTypes = @[]
     globals.current_dnd_surface_id = 0
 
-  discard wl_display_roundtrip globals.display.raw
+  discard wl_display_roundtrip globals.display
 
 
 proc setupWindow*(window: WindowWayland, fullscreen, frameless, transparent: bool, size: IVec2, class: string) =
@@ -2068,7 +2068,7 @@ method content*(
     clipboard.globals.current_selection_data_offer.receive(mimeType.cstring, fds[1])
     discard close fds[1]
 
-    discard wl_display_roundtrip clipboard.globals.display.raw
+    discard wl_display_roundtrip clipboard.globals.display
 
     var data: string
     var cbuffer: array[1024, char]
@@ -2116,7 +2116,7 @@ method content*(
   clipboard.globals.current_dnd_data_offer.receive(mimeType.cstring, fds[1])
   discard close fds[1]
 
-  discard wl_display_flush clipboard.globals.display.raw
+  discard wl_display_flush clipboard.globals.display
 
   var data: string
   var cbuffer: array[1024, char]
@@ -2179,7 +2179,7 @@ method `content=`*(clipboard: ClipboardWayland, content: ClipboardConvertableCon
   if clipboard == clipboard.globals.primaryClipboard.CLipboardWayland and clipboard.globals.dataDevice != nil:
     clipboard.globals.dataDevice.set_selection(clipboard.dataSource, clipboard.globals.lastSeatEventSerial)
   
-  discard wl_display_roundtrip clipboard.globals.display.raw
+  discard wl_display_roundtrip clipboard.globals.display
 
 
 proc configureSurface*(window: WindowWayland) =
@@ -2193,7 +2193,7 @@ proc configureSurface*(window: WindowWayland) =
   while true:
     if window.globals.libdecorCtx != nil:
       discard libdecor_dispatch(window.globals.libdecorCtx, 0)
-    let eventCount = wl_display_roundtrip(window.globals.display.raw)
+    let eventCount = wl_display_roundtrip(window.globals.display)
     if eventCount < 0:
       raise newException(RoundtripFailed, "wl_display_roundtrip() returned " & $eventCount)
     if window.initialConfigureReceived:
@@ -2287,7 +2287,7 @@ method serviceWindow*(window: WindowWayland) =
 
       window.swapBuffers()
 
-      discard wl_display_flush window.globals.display.raw
+      discard wl_display_flush window.globals.display
 
 
 method step*(window: WindowWayland) =

@@ -64,7 +64,7 @@ when defined(linux) or defined(bsd):
       var config: EglConfig
       var context: EglContext
       var surface: EglSurface
-      var ok: cuint = eglInitialize(display)
+      var ok: bool = eglInitialize(display)
       var error: EglError = eglGetError()
       ok = eglChooseConfig(display, nil, nil, 0, nil)
       context = eglCreateContext(display, config)
@@ -76,16 +76,16 @@ when defined(linux) or defined(bsd):
       ok = eglSwapBuffers(display, surface)
       ok = eglDestroyContext(display, context)
       ok = eglDestroySurface(display, surface)
-      discard eglTerminate(display)
+      eglTerminate(display)
       var window: EglWindow = wl_egl_window_create(nil, 1, 1)
       wl_egl_window_resize(window, 2, 2, 0, 0)
       wl_egl_window_get_attached_size(window, nil, nil)
       wl_egl_window_destroy(window)
     )
     doAssert compiles(block:
-      var display: pointer = wl_display_connect(nil)
+      var display: Wl_display = wl_display_connect(nil)
       let fd: FileHandle = wl_display_get_fd(display)
-      var connected: pointer = wl_display_connect_to_fd(fd)
+      var connected: Wl_display = wl_display_connect_to_fd(fd)
       var status: int32 = wl_display_flush(display)
       status = wl_display_prepare_read(display)
       status = wl_display_read_events(display)

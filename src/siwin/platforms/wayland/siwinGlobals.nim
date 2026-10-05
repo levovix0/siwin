@@ -93,7 +93,7 @@ proc `=destroy`*(globals: SiwinGlobalsWaylandObj) {.siwin_destructor.} =
     if globals.libdecorCtx != nil and libdecor_unref != nil:
       libdecor_unref(globals.libdecorCtx)
     if globals.display != nil and wl_display_disconnect != nil:
-      wl_display_disconnect globals.display.raw
+      wl_display_disconnect globals.display
   except: discard
 
 
@@ -181,7 +181,7 @@ proc initRegistryCallbacks(globals: SiwinGlobalsWayland) =
     globals.shm.onFormat:
       globals.shmFormats.add format
     
-    discard wl_display_roundtrip globals.display.raw
+    discard wl_display_roundtrip globals.display
 
 
   addRegistry Xdg_wm_base:
@@ -200,7 +200,7 @@ proc initRegistryCallbacks(globals: SiwinGlobalsWayland) =
       if not globals.seatCapabilitiesChanged.isNil:
         globals.seatCapabilitiesChanged(globals)
     
-    discard wl_display_roundtrip globals.display.raw
+    discard wl_display_roundtrip globals.display
 
 
   addRegistry Zxdg_decoration_manager_v1:
@@ -272,7 +272,7 @@ proc newWaylandGlobals*(): SiwinGlobalsWayland =
 
   new result
 
-  result.display.raw = wl_display_connect(nil)
+  result.display = wl_display_connect(nil)
   if result.display == nil:
     raise OSError.newException("Wayland is not available")
 
@@ -321,12 +321,12 @@ method pollEventsImpl(globals: SiwinGlobalsWayland): bool =
   if globals.display.dispatchPending() > 0:
     result = true
 
-  while wl_display_prepare_read(globals.display.raw) != 0:
+  while wl_display_prepare_read(globals.display) != 0:
     if globals.display.dispatchPending() > 0:
       result = true
 
   let
-    displayFd = globals.display.raw.wl_display_get_fd().cint
+    displayFd = globals.display.wl_display_get_fd().cint
     decorationFd = globals.libdecorFd()
   var fds = [
     TPollfd(fd: displayFd, events: POLLIN),
@@ -336,48 +336,48 @@ method pollEventsImpl(globals: SiwinGlobalsWayland): bool =
       events: POLLIN,
     ),
   ]
-  let flushResult = wl_display_flush(globals.display.raw)
+  let flushResult = wl_display_flush(globals.display)
   if flushResult < 0:
     if errno == EAGAIN:
       fds[0].events = fds[0].events or POLLOUT
     else:
-      wl_display_cancel_read(globals.display.raw)
+      wl_display_cancel_read(globals.display)
       raise WaylandProtocolError.newException("failed to flush Wayland requests")
 
   let count = poll(fds[0].addr, fds.len.Tnfds, 0)
   if count < 0:
-    wl_display_cancel_read(globals.display.raw)
+    wl_display_cancel_read(globals.display)
     if errno == EINTR:
       return
     raiseOSError(osLastError())
   if count == 0:
-    wl_display_cancel_read(globals.display.raw)
+    wl_display_cancel_read(globals.display)
     return result or globals.repeatWakeIsDue()
 
   if (fds[0].revents and (POLLERR or POLLHUP or POLLNVAL)) != 0:
-    wl_display_cancel_read(globals.display.raw)
+    wl_display_cancel_read(globals.display)
     raise OSError.newException("Wayland display connection closed while polling")
   if (fds[1].revents and (POLLERR or POLLHUP or POLLNVAL)) != 0:
-    wl_display_cancel_read(globals.display.raw)
+    wl_display_cancel_read(globals.display)
     raise OSError.newException("Wayland event-loop wake pipe closed while polling")
   if (fds[2].revents and (POLLERR or POLLHUP or POLLNVAL)) != 0:
-    wl_display_cancel_read(globals.display.raw)
+    wl_display_cancel_read(globals.display)
     raise OSError.newException("libdecor connection closed while polling")
 
   let
     displayReadable = (fds[0].revents and POLLIN) != 0
     decorationReadable = (fds[2].revents and POLLIN) != 0
   if displayReadable:
-    if wl_display_read_events(globals.display.raw) < 0:
+    if wl_display_read_events(globals.display) < 0:
       raise WaylandProtocolError.newException("failed to read Wayland events")
     result = true
   else:
-    wl_display_cancel_read(globals.display.raw)
+    wl_display_cancel_read(globals.display)
 
   if (fds[1].revents and POLLIN) != 0:
     result = globals.drainWaylandWake() or result
   if (fds[0].revents and POLLOUT) != 0:
-    let retryFlushResult = wl_display_flush(globals.display.raw)
+    let retryFlushResult = wl_display_flush(globals.display)
     if retryFlushResult < 0 and errno != EAGAIN:
       raise WaylandProtocolError.newException("failed to flush Wayland requests")
 
@@ -397,12 +397,12 @@ method waitEventsImpl(
 
   let started = getMonoTime()
   while true:
-    while wl_display_prepare_read(globals.display.raw) != 0:
+    while wl_display_prepare_read(globals.display) != 0:
       if globals.display.dispatchPending() > 0:
         return eventActivity
 
     let
-      displayFd = globals.display.raw.wl_display_get_fd().cint
+      displayFd = globals.display.wl_display_get_fd().cint
       decorationFd = globals.libdecorFd()
     var fds = [
       TPollfd(fd: displayFd, events: POLLIN),
@@ -412,12 +412,12 @@ method waitEventsImpl(
         events: POLLIN,
       ),
     ]
-    let flushResult = wl_display_flush(globals.display.raw)
+    let flushResult = wl_display_flush(globals.display)
     if flushResult < 0:
       if errno == EAGAIN:
         fds[0].events = fds[0].events or POLLOUT
       else:
-        wl_display_cancel_read(globals.display.raw)
+        wl_display_cancel_read(globals.display)
         raise WaylandProtocolError.newException("failed to flush Wayland requests")
 
     let callerRemaining =
@@ -434,14 +434,14 @@ method waitEventsImpl(
       ),
     )
     if count == 0:
-      wl_display_cancel_read(globals.display.raw)
+      wl_display_cancel_read(globals.display)
       if globals.repeatWakeIsDue():
         return eventActivity
       if timeout != Duration.high and getMonoTime() - started >= timeout:
         return eventTimeout
       continue
     if count < 0:
-      wl_display_cancel_read(globals.display.raw)
+      wl_display_cancel_read(globals.display)
       if errno == EINTR:
         if timeout != Duration.high and getMonoTime() - started >= timeout:
           return eventTimeout
@@ -449,13 +449,13 @@ method waitEventsImpl(
       raiseOSError(osLastError())
 
     if (fds[0].revents and (POLLERR or POLLHUP or POLLNVAL)) != 0:
-      wl_display_cancel_read(globals.display.raw)
+      wl_display_cancel_read(globals.display)
       raise OSError.newException("Wayland display connection closed while waiting")
     if (fds[1].revents and (POLLERR or POLLHUP or POLLNVAL)) != 0:
-      wl_display_cancel_read(globals.display.raw)
+      wl_display_cancel_read(globals.display)
       raise OSError.newException("Wayland event-loop wake pipe closed while waiting")
     if (fds[2].revents and (POLLERR or POLLHUP or POLLNVAL)) != 0:
-      wl_display_cancel_read(globals.display.raw)
+      wl_display_cancel_read(globals.display)
       raise OSError.newException("libdecor connection closed while waiting")
 
     let
@@ -463,15 +463,15 @@ method waitEventsImpl(
       decorationReadable = (fds[2].revents and POLLIN) != 0
       wakeReadable = (fds[1].revents and POLLIN) != 0
     if displayReadable:
-      if wl_display_read_events(globals.display.raw) < 0:
+      if wl_display_read_events(globals.display) < 0:
         raise WaylandProtocolError.newException("failed to read Wayland events")
     else:
-      wl_display_cancel_read(globals.display.raw)
+      wl_display_cancel_read(globals.display)
 
     if wakeReadable:
       discard globals.drainWaylandWake()
     if (fds[0].revents and POLLOUT) != 0:
-      let retryFlushResult = wl_display_flush(globals.display.raw)
+      let retryFlushResult = wl_display_flush(globals.display)
       if retryFlushResult < 0 and errno != EAGAIN:
         raise WaylandProtocolError.newException("failed to flush Wayland requests")
 
@@ -487,7 +487,7 @@ method waitEventsImpl(
 
 
 proc roundtrip*(globals: SiwinGlobalsWayland) =
-  discard wl_display_roundtrip globals.display.raw
+  discard wl_display_roundtrip globals.display
 
 
 proc initLibdecor*(globals: SiwinGlobalsWayland) =

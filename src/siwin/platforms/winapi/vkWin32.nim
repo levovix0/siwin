@@ -5,11 +5,6 @@ const vkDLL =
   elif defined(macosx): "libMoltenVK.dylib"
   else: "libvulkan.so.1"
 
-when sizeof(pointer) == 8:
-  type VkSurfaceHandle* = pointer
-else:
-  type VkSurfaceHandle* = uint64
-
 type
   VkStructureType* {.size: int32.sizeof.} = enum
     VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR = 1000009000
@@ -45,12 +40,12 @@ type
     instance: pointer,
     pCreateInfo: ptr VkWin32SurfaceCreateInfoKHR,
     pAllocator: pointer,
-    pSurface: ptr VkSurfaceHandle
+    pSurface: ptr pointer
   ): VkResult {.cdecl, stdcall, raises: [].}
 
   VkDestroySurfaceKHR* = proc(
     instance: pointer,
-    surface: VkSurfaceHandle,
+    surface: pointer,
     pAllocator: pointer
   ) {.cdecl, stdcall, raises: [].}
 

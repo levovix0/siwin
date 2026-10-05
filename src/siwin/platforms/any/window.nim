@@ -656,12 +656,8 @@ method makeCurrent*(window: Window) {.base.} = discard
 method `vsync=`*(window: Window, v: bool, silent = false) {.base.} = discard
   ## enable/disable vsync
 
-when sizeof(pointer) == 8:
-  type VulkanSurface* = pointer
-else:
-  type VulkanSurface* = uint64
 
-method vulkanSurface*(window: Window): VulkanSurface {.base.} = discard
+method vulkanSurface*(window: Window): pointer {.base.} = discard
   ## get a VkSurfaceKHR attached to window
 
 
