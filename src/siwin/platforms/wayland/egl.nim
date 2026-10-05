@@ -80,6 +80,9 @@ let
   libwaylandeglHandle = loadLibPattern("libwayland-egl.so(|.1)")
 
 
+# Match the C ABI on 32- and 64-bit targets: handles are pointers and
+# EGLBoolean is cuint. A bool function-pointer declaration does not convert
+# the library's unsigned-int result to a Nim bool.
 siwin_loadDynlibIfExists libeglHandle:
   proc eglGetError*(): EglError
   proc eglGetDisplay*(native: pointer): EglDisplay

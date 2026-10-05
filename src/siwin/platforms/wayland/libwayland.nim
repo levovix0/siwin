@@ -84,6 +84,9 @@ if libwaylandclientHandle == nil:
   libwaylandclientHandle = loadLib("libwayland-client.so.0")
 
 
+# Use C pointers here: Wl_display/Wl_proxy are Nim structs, whose ABI can
+# differ from pointers on 32-bit platforms. For example, 32-bit Linux adds
+# a hidden result pointer for struct returns, breaking wl_display_connect.
 siwin_loadDynlibIfExists libwaylandclientHandle:
   proc wl_display_disconnect*(this: pointer)
   proc wl_display_connect*(name: cstring): pointer
