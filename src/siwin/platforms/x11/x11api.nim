@@ -2,6 +2,7 @@ import std/dynlib
 import x11/[x, xlib, xutil]
 import ../../siwindefs
 
+export x.Drawable
 export xlib except
   Screen, Window, Cursor, Time, XChangeProperty, XCloseDisplay, XCloseIM, XConnectionNumber,
   XConvertSelection, XCreateBitmapFromData, XCreateColormap, XCreateFontCursor, XCreateGC,

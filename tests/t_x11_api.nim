@@ -23,10 +23,9 @@ when defined(linux) or defined(bsd):
           defer:
             discard XCloseDisplay(display)
 
+          let drawable: x11api.Drawable = XRootWindow(display, 0)
           var attributes: XWindowAttributes
-          require XGetWindowAttributes(
-            display, XRootWindow(display, 0), attributes.addr
-          ) != 0
+          require XGetWindowAttributes(display, drawable, attributes.addr) != 0
 
           var
             visual = XVisualInfo(visualid: XVisualIDFromVisual(attributes.visual))
