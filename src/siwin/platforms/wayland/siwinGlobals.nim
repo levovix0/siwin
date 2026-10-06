@@ -1,7 +1,7 @@
 import std/[tables, os, posix, times, monotimes]
 import ../../[siwindefs]
 import ../any/[window, clipboards, timeutils]
-import ./[libwayland, protocol, bitfields, libdecor]
+import ./[libwayland, protocol, bitfields, libdecor, xkb]
 
 type
   WaylandExtensionNotFound* = object of CatchableError
@@ -92,7 +92,8 @@ proc `=destroy`*(globals: SiwinGlobalsWaylandObj) {.siwin_destructor.} =
   try:
     if globals.libdecorCtx != nil and libdecor_unref != nil:
       libdecor_unref(globals.libdecorCtx)
-    wl_display_disconnect globals.display
+    if globals.display != nil and wl_display_disconnect != nil:
+      wl_display_disconnect globals.display
   except: discard
 
 
@@ -244,8 +245,9 @@ proc isWaylandAvailable*: bool =
     var res: Stat
     return stat(filename, res) >= 0'i32 and S_ISSOCK(res.st_mode)
 
-  if wl_display_connect == nil: return false
-  
+  if not waylandClientAvailable() or not xkbAvailable():
+    return false
+
   let isWayland = getEnv("XDG_SESSION_TYPE") == "wayland"
   if not isWayland: return false
 
@@ -265,10 +267,10 @@ proc newWaylandGlobals*(): SiwinGlobalsWayland =
   ## ! roundtrip must be called after this to finish initialization
   ## registers callbacks for registry globals siwin care about,
   ## additional registryCallbacks can be added before calling roundtrip
-  new result
-
-  if wl_display_connect == nil:
+  if not waylandClientAvailable() or not xkbAvailable():
     raise OSError.newException("Wayland is not available")
+
+  new result
 
   result.display = wl_display_connect(nil)
   if result.display == nil:

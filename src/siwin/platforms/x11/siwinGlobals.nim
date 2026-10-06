@@ -1,7 +1,8 @@
 import std/[os, tables, posix, times, monotimes]
 import ../../[siwindefs]
 import ../any/[window, timeutils]
-import x11/[xlib, x]
+import x11/x except Window
+import ./x11api
 
 type
   WmForFramelessKind* {.pure.} = enum
@@ -72,7 +73,10 @@ proc drainX11Wake*(globals: SiwinGlobalsX11): bool =
       break
   if result: globals.consumeEventLoopWake()
 
-proc newX11Globals*: SiwinGlobalsX11 =
+proc newX11Globals*(): SiwinGlobalsX11 {.raises: [OsError].} =
+  if not x11Available():
+    raise OsError.newException("X11 client libraries are not available")
+
   new result
   result.display = XOpenDisplay(getEnv("DISPLAY").cstring)
   if result.display == nil: raise OsError.newException("failed to open X11 display, make sure the DISPLAY environment variable is set correctly")
@@ -135,6 +139,9 @@ proc newX11Globals*: SiwinGlobalsX11 =
   result.atoms.xDndStatus = result.display.XInternAtom("XdndStatus", 0)
   result.atoms.xDndActionCopy = result.display.XInternAtom("XdndActionCopy", 0)
   result.atoms.xDndActionPrivate = result.display.XInternAtom("XdndActionPrivate", 0)
+
+proc isX11Available*(): bool =
+  x11Available()
 
 
 proc property*(globals: SiwinGlobalsX11, window: x.Window, name: Atom, t: typedesc = typedesc[byte]): tuple[kind: Atom, data: seq[t]] =

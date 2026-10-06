@@ -1,10 +1,9 @@
-import std/importutils
+import std/[importutils, tables]
 import vmath
 import x11/x except Window
-import x11/[xlib, xutil]
 import ../../[siwindefs]
 import ../any/window as anyWindow
-import ./[window, vkXlib, siwinGlobals]
+import ./[window {.all.}, vkXlib, siwinGlobals, x11api]
 
 privateAccess Window
 privateAccess WindowX11
@@ -45,6 +44,7 @@ proc initVulkanWindow(
   size: IVec2, screen: ScreenX11,
   fullscreen, frameless, transparent: bool, class: string
 ) =
+  requireVulkanXlib()
   window.basicInitWindow size, screen
 
   let root = window.globals.display.DefaultRootWindow
@@ -87,6 +87,11 @@ proc newVulkanWindowX11*(
 ): WindowX11Vulkan =
   new result
   result.globals = globals
-  result.initVulkanWindow(vkInstance, size, screen, fullscreen, frameless, transparent, (if class == "": title else: class))
-  result.title = title
-  if not resizable: result.resizable = system.false
+  try:
+    result.initVulkanWindow(vkInstance, size, screen, fullscreen, frameless, transparent, (if class == "": title else: class))
+    result.title = title
+    if not resizable: result.resizable = system.false
+  except:
+    if result.handle != 0:
+      result.globals.windows.del(result.handle.uint)
+    raise

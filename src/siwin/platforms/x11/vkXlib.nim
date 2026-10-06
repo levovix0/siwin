@@ -1,4 +1,7 @@
-import x11/[x, xlib]
+import std/dynlib
+import ../../siwindefs
+import x11/x
+import ./x11api
 
 const vkDLL =
   when defined(windows): "vulkan-1.dll"
@@ -36,15 +39,19 @@ type
     dpy*: ptr Display
     window*: Window
 
+let libVulkanHandle =
+  loadLibPattern(when defined(linux) or defined(bsd): "libvulkan.so(.1|)" else: vkDLL)
 
-{.push, cdecl, stdcall, dynlib: vkDLL, importc.}
+siwin_loadDynlibIfExists libVulkanHandle:
+  proc vkCreateXlibSurfaceKHR*(
+    instance: pointer,
+    pCreateInfo: ptr VkXlibSurfaceCreateInfoKHR,
+    pAllocator: pointer,
+    pSurface: ptr pointer
+  ): VkResult
 
-proc vkCreateXlibSurfaceKHR*(
-  instance: pointer,
-  pCreateInfo: ptr VkXlibSurfaceCreateInfoKHR,
-  pAllocator: pointer,
-  pSurface: ptr pointer): VkResult
+  proc vkDestroySurfaceKHR*(instance: pointer, surface: pointer, pAllocator: pointer)
 
-proc vkDestroySurfaceKHR*(instance: pointer, surface: pointer, pAllocator: pointer)
-
-{.pop.}
+proc requireVulkanXlib*() =
+  if libVulkanHandle == nil or vkCreateXlibSurfaceKHR == nil:
+    raise OSError.newException("Vulkan loader or Xlib surface support is not available")

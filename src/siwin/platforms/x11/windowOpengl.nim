@@ -1,9 +1,9 @@
 import std/importutils
 import vmath
 import x11/x except Window
-import x11/[xlib, xutil, xrender]
-import ../any/[window, windowUtils]
-import ./[window, glx, siwinGlobals]
+import ../any/window as anyWindow
+import ./[window {.all.}, glx, siwinGlobals, x11api, xrender]
+import ../any/windowUtils
 
 privateAccess Window
 privateAccess WindowX11
@@ -35,6 +35,12 @@ proc initOpenglWindow(
   window.basicInitWindow size, screen
 
   window.m_transparent = transparent
+  if transparent and not xrenderAvailable():
+    raise
+      OSError.newException("XRender library is required for transparent OpenGL windows")
+
+  requireGlx()
+
   let root = window.globals.display.DefaultRootWindow
   
   var vi: XVisualInfo
@@ -52,24 +58,6 @@ proc initOpenglWindow(
       GLX_DEPTH_SIZE, 16,
     ])
     for i, x in fbcs:
-      type
-        XRenderDirectFormat = object
-          red*: cshort
-          redMask*: cshort
-          green*: cshort
-          greenMask*: cshort
-          blue*: cshort
-          blueMask*: cshort
-          alpha*: cshort
-          alphaMask*: cshort
-
-        XRenderPictFormat = object
-          id*: culong
-          thetype*: cint
-          depth*: cint
-          direct*: XRenderDirectFormat
-          colormap*: Colormap
-
       if window.globals.display.glxGetVisualFromFBConfig(x) == nil: continue
       var pf = cast[ptr XRenderPictFormat](
         window.globals.display.XRenderFindVisualFormat(window.globals.display.glxGetVisualFromFBConfig(x).visual)

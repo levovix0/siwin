@@ -50,8 +50,8 @@ when not siwin_use_lib:
           result.add Platform.wayland
       when siwin_use_x11:
         # x11 is available on wayland compositors through XWayland
-        result.add Platform.x11
-    
+        if x11Globals.isX11Available():
+          result.add Platform.x11
     elif defined(macosx):
       @[Platform.cocoa]
 

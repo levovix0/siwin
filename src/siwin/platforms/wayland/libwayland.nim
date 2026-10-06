@@ -1,8 +1,6 @@
 import std/[dynlib]
 import ../../[siwindefs]
 
-{.pragma: importwayland, cdecl, dynlib: "libwayland-client.so(|.0)".}
-
 type
   Wl_display* = object
     raw*: pointer
@@ -99,6 +97,7 @@ siwin_loadDynlibIfExists libwaylandclientHandle:
   proc wl_display_read_events*(this: Wl_display): int32
   proc wl_display_cancel_read*(this: Wl_display)
   proc wl_display_roundtrip*(this: Wl_display): int32
+  proc wl_display_dispatch_pending*(this: Wl_display): int32
 
 
   proc wl_proxy_set_user_data*(this: Wl_proxy, v: pointer)
@@ -126,7 +125,7 @@ siwin_loadDynlibIfExists libwaylandclientHandle:
 
 
 proc `=destroy`*(this: Wl_display) {.siwin_destructor.} =
-  if this.raw != nil:
+  if this.raw != nil and wl_display_disconnect != nil:
     try:
       wl_display_disconnect this
     except:
@@ -152,10 +151,24 @@ proc destroy*(this: Wl_proxy) =
 
 
 proc dispatchPending*(this: Wl_display): int32 =
-  proc impl(this: Wl_display): int32 {.importc: "wl_display_dispatch_pending", importwayland.}
-  result = impl(this)
+  if wl_display_dispatch_pending == nil:
+    raise OSError.newException("Wayland client library is not available")
+  result = wl_display_dispatch_pending(this)
   if result == -1:
     raise WaylandProtocolError.newException("failed to dispatch events")
+
+proc waylandClientAvailable*(): bool =
+  libwaylandclientHandle != nil and wl_display_disconnect != nil and
+    wl_display_connect != nil and wl_display_connect_to_fd != nil and
+    wl_display_get_fd != nil and wl_display_flush != nil and
+    wl_display_prepare_read != nil and wl_display_read_events != nil and
+    wl_display_cancel_read != nil and wl_display_roundtrip != nil and
+    wl_display_dispatch_pending != nil and wl_proxy_set_user_data != nil and
+    wl_proxy_get_user_data != nil and wl_proxy_set_tag != nil and
+    wl_proxy_get_tag != nil and wl_proxy_destroy != nil and
+    wl_proxy_get_version != nil and wl_proxy_get_id != nil and
+    wl_proxy_marshal_array_flags != nil and wl_proxy_marshal_flags != nil and
+    wl_proxy_add_dispatcher != nil
 
 proc dispatch*(this: Wl_display): int32 {.deprecated: "Use dispatchPending".} =
   ## Compatibility alias for the original public wrapper name.

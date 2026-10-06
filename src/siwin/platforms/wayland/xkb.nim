@@ -1,4 +1,6 @@
+import std/dynlib
 import posix
+import ../../siwindefs
 
 type
   xkb_context* = object
@@ -673,241 +675,247 @@ template xkb_keycode_is_legal_ext*(key: untyped): untyped =
 template xkb_keycode_is_legal_x11*(key: untyped): untyped =
   (key >= 8 and key <= 255)
 
+var libXkbcommonHandle = loadLib("libxkbcommon.so")
+if libXkbcommonHandle == nil:
+  libXkbcommonHandle = loadLib("libxkbcommon.so.0")
 
-{.push, importc, dynlib: "libxkbcommon.so(|.0)".}
-
-proc xkb_keysym_get_name*(keysym: xkb_keysym_t; buffer: cstring; size: csize_t): cint
-
-
-proc xkb_keysym_from_name*(name: cstring; flags: xkb_keysym_flags): xkb_keysym_t
-
-proc xkb_keysym_to_utf8*(keysym: xkb_keysym_t; buffer: cstring; size: csize_t): cint
-
-proc xkb_keysym_to_utf32*(keysym: xkb_keysym_t): uint32
-
-proc xkb_utf32_to_keysym*(ucs: uint32): xkb_keysym_t
-
-proc xkb_keysym_to_upper*(ks: xkb_keysym_t): xkb_keysym_t
-
-proc xkb_keysym_to_lower*(ks: xkb_keysym_t): xkb_keysym_t
+siwin_loadDynlibIfExists libXkbcommonHandle:
+  proc xkb_keysym_get_name*(keysym: xkb_keysym_t; buffer: cstring; size: csize_t): cint
 
 
-proc xkb_context_new*(flags: xkb_context_flags): ptr xkb_context
+  proc xkb_keysym_from_name*(name: cstring; flags: xkb_keysym_flags): xkb_keysym_t
+
+  proc xkb_keysym_to_utf8*(keysym: xkb_keysym_t; buffer: cstring; size: csize_t): cint
+
+  proc xkb_keysym_to_utf32*(keysym: xkb_keysym_t): uint32
+
+  proc xkb_utf32_to_keysym*(ucs: uint32): xkb_keysym_t
+
+  proc xkb_keysym_to_upper*(ks: xkb_keysym_t): xkb_keysym_t
+
+  proc xkb_keysym_to_lower*(ks: xkb_keysym_t): xkb_keysym_t
 
 
-proc xkb_context_ref*(context: ptr xkb_context): ptr xkb_context
+  proc xkb_context_new*(flags: xkb_context_flags): ptr xkb_context
 
 
-proc xkb_context_unref*(context: ptr xkb_context)
-
-proc xkb_context_set_user_data*(context: ptr xkb_context; user_data: pointer)
+  proc xkb_context_ref*(context: ptr xkb_context): ptr xkb_context
 
 
-proc xkb_context_get_user_data*(context: ptr xkb_context): pointer
+  proc xkb_context_unref*(context: ptr xkb_context)
+
+  proc xkb_context_set_user_data*(context: ptr xkb_context; user_data: pointer)
 
 
-proc xkb_context_include_path_append*(context: ptr xkb_context; path: cstring): cint
+  proc xkb_context_get_user_data*(context: ptr xkb_context): pointer
 
 
-proc xkb_context_include_path_append_default*(context: ptr xkb_context): cint
-
-proc xkb_context_include_path_reset_defaults*(context: ptr xkb_context): cint
+  proc xkb_context_include_path_append*(context: ptr xkb_context; path: cstring): cint
 
 
-proc xkb_context_include_path_clear*(context: ptr xkb_context)
+  proc xkb_context_include_path_append_default*(context: ptr xkb_context): cint
+
+  proc xkb_context_include_path_reset_defaults*(context: ptr xkb_context): cint
 
 
-proc xkb_context_num_include_paths*(context: ptr xkb_context): cuint
-
-proc xkb_context_include_path_get*(context: ptr xkb_context; index: cuint): cstring
+  proc xkb_context_include_path_clear*(context: ptr xkb_context)
 
 
-proc xkb_context_set_log_level*(context: ptr xkb_context; level: xkb_log_level)
+  proc xkb_context_num_include_paths*(context: ptr xkb_context): cuint
+
+  proc xkb_context_include_path_get*(context: ptr xkb_context; index: cuint): cstring
 
 
-proc xkb_context_get_log_level*(context: ptr xkb_context): xkb_log_level
+  proc xkb_context_set_log_level*(context: ptr xkb_context; level: xkb_log_level)
 
 
-proc xkb_context_set_log_verbosity*(context: ptr xkb_context; verbosity: cint)
+  proc xkb_context_get_log_level*(context: ptr xkb_context): xkb_log_level
 
 
-proc xkb_context_get_log_verbosity*(context: ptr xkb_context): cint
-
-proc xkb_context_set_log_fn*(context: ptr xkb_context; log_fn: proc (
-    context: ptr xkb_context; level: xkb_log_level; format: cstring;) {.varargs.})
-
-proc xkb_keymap_new_from_names*(context: ptr xkb_context; names: ptr xkb_rule_names;
-                               flags: xkb_keymap_compile_flags): ptr xkb_keymap
-
-proc xkb_keymap_new_from_file*(context: ptr xkb_context; file: ptr FILE;
-                              format: xkb_keymap_format;
-                              flags: xkb_keymap_compile_flags): ptr xkb_keymap
+  proc xkb_context_set_log_verbosity*(context: ptr xkb_context; verbosity: cint)
 
 
-proc xkb_keymap_new_from_string*(context: ptr xkb_context; string: cstring;
+  proc xkb_context_get_log_verbosity*(context: ptr xkb_context): cint
+
+  proc xkb_context_set_log_fn*(context: ptr xkb_context; log_fn: proc (
+      context: ptr xkb_context; level: xkb_log_level; format: cstring;) {.varargs.})
+
+  proc xkb_keymap_new_from_names*(context: ptr xkb_context; names: ptr xkb_rule_names;
+                                 flags: xkb_keymap_compile_flags): ptr xkb_keymap
+
+  proc xkb_keymap_new_from_file*(context: ptr xkb_context; file: ptr FILE;
                                 format: xkb_keymap_format;
                                 flags: xkb_keymap_compile_flags): ptr xkb_keymap
 
-proc xkb_keymap_new_from_buffer*(context: ptr xkb_context; buffer: cstring;
-                                length: csize_t; format: xkb_keymap_format;
-                                flags: xkb_keymap_compile_flags): ptr xkb_keymap
+
+  proc xkb_keymap_new_from_string*(context: ptr xkb_context; string: cstring;
+                                  format: xkb_keymap_format;
+                                  flags: xkb_keymap_compile_flags): ptr xkb_keymap
+
+  proc xkb_keymap_new_from_buffer*(context: ptr xkb_context; buffer: cstring;
+                                  length: csize_t; format: xkb_keymap_format;
+                                  flags: xkb_keymap_compile_flags): ptr xkb_keymap
 
 
-proc xkb_keymap_ref*(keymap: ptr xkb_keymap): ptr xkb_keymap
+  proc xkb_keymap_ref*(keymap: ptr xkb_keymap): ptr xkb_keymap
 
 
-proc xkb_keymap_unref*(keymap: ptr xkb_keymap)
+  proc xkb_keymap_unref*(keymap: ptr xkb_keymap)
 
 
-proc xkb_keymap_get_as_string*(keymap: ptr xkb_keymap; format: xkb_keymap_format): cstring
+  proc xkb_keymap_get_as_string*(keymap: ptr xkb_keymap; format: xkb_keymap_format): cstring
 
-proc xkb_keymap_min_keycode*(keymap: ptr xkb_keymap): xkb_keycode_t
-
-
-proc xkb_keymap_max_keycode*(keymap: ptr xkb_keymap): xkb_keycode_t
-
-proc xkb_keymap_key_for_each*(keymap: ptr xkb_keymap; iter: xkb_keymap_key_iter_t;
-                             data: pointer)
+  proc xkb_keymap_min_keycode*(keymap: ptr xkb_keymap): xkb_keycode_t
 
 
-proc xkb_keymap_key_get_name*(keymap: ptr xkb_keymap; key: xkb_keycode_t): cstring
+  proc xkb_keymap_max_keycode*(keymap: ptr xkb_keymap): xkb_keycode_t
 
-proc xkb_keymap_key_by_name*(keymap: ptr xkb_keymap; name: cstring): xkb_keycode_t
-
-proc xkb_keymap_num_mods*(keymap: ptr xkb_keymap): xkb_mod_index_t
-
-proc xkb_keymap_mod_get_name*(keymap: ptr xkb_keymap; idx: xkb_mod_index_t): cstring
+  proc xkb_keymap_key_for_each*(keymap: ptr xkb_keymap; iter: xkb_keymap_key_iter_t;
+                               data: pointer)
 
 
-proc xkb_keymap_mod_get_index*(keymap: ptr xkb_keymap; name: cstring): xkb_mod_index_t
+  proc xkb_keymap_key_get_name*(keymap: ptr xkb_keymap; key: xkb_keycode_t): cstring
 
-proc xkb_keymap_num_layouts*(keymap: ptr xkb_keymap): xkb_layout_index_t
+  proc xkb_keymap_key_by_name*(keymap: ptr xkb_keymap; name: cstring): xkb_keycode_t
 
-proc xkb_keymap_layout_get_name*(keymap: ptr xkb_keymap; idx: xkb_layout_index_t): cstring
+  proc xkb_keymap_num_mods*(keymap: ptr xkb_keymap): xkb_mod_index_t
 
-
-proc xkb_keymap_layout_get_index*(keymap: ptr xkb_keymap; name: cstring): xkb_layout_index_t
-
-
-proc xkb_keymap_num_leds*(keymap: ptr xkb_keymap): xkb_led_index_t
+  proc xkb_keymap_mod_get_name*(keymap: ptr xkb_keymap; idx: xkb_mod_index_t): cstring
 
 
-proc xkb_keymap_led_get_name*(keymap: ptr xkb_keymap; idx: xkb_led_index_t): cstring
+  proc xkb_keymap_mod_get_index*(keymap: ptr xkb_keymap; name: cstring): xkb_mod_index_t
 
-proc xkb_keymap_led_get_index*(keymap: ptr xkb_keymap; name: cstring): xkb_led_index_t
+  proc xkb_keymap_num_layouts*(keymap: ptr xkb_keymap): xkb_layout_index_t
 
-proc xkb_keymap_num_layouts_for_key*(keymap: ptr xkb_keymap; key: xkb_keycode_t): xkb_layout_index_t
-
-proc xkb_keymap_num_levels_for_key*(keymap: ptr xkb_keymap; key: xkb_keycode_t;
-                                   layout: xkb_layout_index_t): xkb_level_index_t
-
-proc xkb_keymap_key_get_mods_for_level*(keymap: ptr xkb_keymap; key: xkb_keycode_t;
-                                       layout: xkb_layout_index_t;
-                                       level: xkb_level_index_t;
-                                       masks_out: ptr xkb_mod_mask_t;
-                                       masks_size: csize_t): csize_t
-
-proc xkb_keymap_key_get_syms_by_level*(keymap: ptr xkb_keymap; key: xkb_keycode_t;
-                                      layout: xkb_layout_index_t;
-                                      level: xkb_level_index_t;
-                                      syms_out: ptr ptr xkb_keysym_t): cint
+  proc xkb_keymap_layout_get_name*(keymap: ptr xkb_keymap; idx: xkb_layout_index_t): cstring
 
 
-proc xkb_keymap_key_repeats*(keymap: ptr xkb_keymap; key: xkb_keycode_t): cint
-
-proc xkb_state_new*(keymap: ptr xkb_keymap): ptr xkb_state
+  proc xkb_keymap_layout_get_index*(keymap: ptr xkb_keymap; name: cstring): xkb_layout_index_t
 
 
-proc xkb_state_ref*(state: ptr xkb_state): ptr xkb_state
+  proc xkb_keymap_num_leds*(keymap: ptr xkb_keymap): xkb_led_index_t
 
 
-proc xkb_state_unref*(state: ptr xkb_state)
+  proc xkb_keymap_led_get_name*(keymap: ptr xkb_keymap; idx: xkb_led_index_t): cstring
 
-proc xkb_state_get_keymap*(state: ptr xkb_state): ptr xkb_keymap
+  proc xkb_keymap_led_get_index*(keymap: ptr xkb_keymap; name: cstring): xkb_led_index_t
 
-proc xkb_state_update_key*(state: ptr xkb_state; key: xkb_keycode_t;
-                          direction: xkb_key_direction): xkb_state_component
+  proc xkb_keymap_num_layouts_for_key*(keymap: ptr xkb_keymap; key: xkb_keycode_t): xkb_layout_index_t
 
-proc xkb_state_update_mask*(state: ptr xkb_state; depressed_mods: xkb_mod_mask_t;
-                           latched_mods: xkb_mod_mask_t;
-                           locked_mods: xkb_mod_mask_t;
-                           depressed_layout: xkb_layout_index_t;
-                           latched_layout: xkb_layout_index_t;
-                           locked_layout: xkb_layout_index_t): xkb_state_component
+  proc xkb_keymap_num_levels_for_key*(keymap: ptr xkb_keymap; key: xkb_keycode_t;
+                                     layout: xkb_layout_index_t): xkb_level_index_t
 
-proc xkb_state_key_get_syms*(state: ptr xkb_state; key: xkb_keycode_t;
-                            syms_out: ptr ptr xkb_keysym_t): cint
+  proc xkb_keymap_key_get_mods_for_level*(keymap: ptr xkb_keymap; key: xkb_keycode_t;
+                                         layout: xkb_layout_index_t;
+                                         level: xkb_level_index_t;
+                                         masks_out: ptr xkb_mod_mask_t;
+                                         masks_size: csize_t): csize_t
 
-proc xkb_state_key_get_utf8*(state: ptr xkb_state; key: xkb_keycode_t;
-                            buffer: cstring; size: csize_t): cint
-
-
-proc xkb_state_key_get_utf32*(state: ptr xkb_state; key: xkb_keycode_t): uint32
+  proc xkb_keymap_key_get_syms_by_level*(keymap: ptr xkb_keymap; key: xkb_keycode_t;
+                                        layout: xkb_layout_index_t;
+                                        level: xkb_level_index_t;
+                                        syms_out: ptr ptr xkb_keysym_t): cint
 
 
-proc xkb_state_key_get_one_sym*(state: ptr xkb_state; key: xkb_keycode_t): xkb_keysym_t
+  proc xkb_keymap_key_repeats*(keymap: ptr xkb_keymap; key: xkb_keycode_t): cint
 
-proc xkb_state_key_get_layout*(state: ptr xkb_state; key: xkb_keycode_t): xkb_layout_index_t
-
-proc xkb_state_key_get_level*(state: ptr xkb_state; key: xkb_keycode_t;
-                             layout: xkb_layout_index_t): xkb_level_index_t
+  proc xkb_state_new*(keymap: ptr xkb_keymap): ptr xkb_state
 
 
-proc xkb_state_serialize_mods*(state: ptr xkb_state; components: xkb_state_component): xkb_mod_mask_t
+  proc xkb_state_ref*(state: ptr xkb_state): ptr xkb_state
 
 
-proc xkb_state_serialize_layout*(state: ptr xkb_state;
-                                components: xkb_state_component): xkb_layout_index_t
+  proc xkb_state_unref*(state: ptr xkb_state)
 
-proc xkb_state_mod_name_is_active*(state: ptr xkb_state; name: cstring;
-                                  `type`: xkb_state_component): cint
+  proc xkb_state_get_keymap*(state: ptr xkb_state): ptr xkb_keymap
+
+  proc xkb_state_update_key*(state: ptr xkb_state; key: xkb_keycode_t;
+                            direction: xkb_key_direction): xkb_state_component
+
+  proc xkb_state_update_mask*(state: ptr xkb_state; depressed_mods: xkb_mod_mask_t;
+                             latched_mods: xkb_mod_mask_t;
+                             locked_mods: xkb_mod_mask_t;
+                             depressed_layout: xkb_layout_index_t;
+                             latched_layout: xkb_layout_index_t;
+                             locked_layout: xkb_layout_index_t): xkb_state_component
+
+  proc xkb_state_key_get_syms*(state: ptr xkb_state; key: xkb_keycode_t;
+                              syms_out: ptr ptr xkb_keysym_t): cint
+
+  proc xkb_state_key_get_utf8*(state: ptr xkb_state; key: xkb_keycode_t;
+                              buffer: cstring; size: csize_t): cint
 
 
-proc xkb_state_mod_names_are_active*(state: ptr xkb_state;
-                                    `type`: xkb_state_component;
-                                    match: xkb_state_match): cint {.varargs.}
-
-proc xkb_state_mod_index_is_active*(state: ptr xkb_state; idx: xkb_mod_index_t;
-                                   `type`: xkb_state_component): cint
+  proc xkb_state_key_get_utf32*(state: ptr xkb_state; key: xkb_keycode_t): uint32
 
 
-proc xkb_state_mod_indices_are_active*(state: ptr xkb_state;
+  proc xkb_state_key_get_one_sym*(state: ptr xkb_state; key: xkb_keycode_t): xkb_keysym_t
+
+  proc xkb_state_key_get_layout*(state: ptr xkb_state; key: xkb_keycode_t): xkb_layout_index_t
+
+  proc xkb_state_key_get_level*(state: ptr xkb_state; key: xkb_keycode_t;
+                               layout: xkb_layout_index_t): xkb_level_index_t
+
+
+  proc xkb_state_serialize_mods*(state: ptr xkb_state; components: xkb_state_component): xkb_mod_mask_t
+
+
+  proc xkb_state_serialize_layout*(state: ptr xkb_state;
+                                  components: xkb_state_component): xkb_layout_index_t
+
+  proc xkb_state_mod_name_is_active*(state: ptr xkb_state; name: cstring;
+                                    `type`: xkb_state_component): cint
+
+
+  proc xkb_state_mod_names_are_active*(state: ptr xkb_state;
                                       `type`: xkb_state_component;
                                       match: xkb_state_match): cint {.varargs.}
 
-proc xkb_state_key_get_consumed_mods2*(state: ptr xkb_state; key: xkb_keycode_t;
-                                      mode: xkb_consumed_mode): xkb_mod_mask_t
-
-proc xkb_state_key_get_consumed_mods*(state: ptr xkb_state; key: xkb_keycode_t): xkb_mod_mask_t
-
-
-proc xkb_state_mod_index_is_consumed2*(state: ptr xkb_state; key: xkb_keycode_t;
-                                      idx: xkb_mod_index_t;
-                                      mode: xkb_consumed_mode): cint
-
-proc xkb_state_mod_index_is_consumed*(state: ptr xkb_state; key: xkb_keycode_t;
-                                     idx: xkb_mod_index_t): cint
-
-
-proc xkb_state_mod_mask_remove_consumed*(state: ptr xkb_state; key: xkb_keycode_t;
-                                        mask: xkb_mod_mask_t): xkb_mod_mask_t
-
-proc xkb_state_layout_name_is_active*(state: ptr xkb_state; name: cstring;
+  proc xkb_state_mod_index_is_active*(state: ptr xkb_state; idx: xkb_mod_index_t;
                                      `type`: xkb_state_component): cint
 
 
-proc xkb_state_layout_index_is_active*(state: ptr xkb_state;
-                                      idx: xkb_layout_index_t;
-                                      `type`: xkb_state_component): cint
+  proc xkb_state_mod_indices_are_active*(state: ptr xkb_state;
+                                        `type`: xkb_state_component;
+                                        match: xkb_state_match): cint {.varargs.}
+
+  proc xkb_state_key_get_consumed_mods2*(state: ptr xkb_state; key: xkb_keycode_t;
+                                        mode: xkb_consumed_mode): xkb_mod_mask_t
+
+  proc xkb_state_key_get_consumed_mods*(state: ptr xkb_state; key: xkb_keycode_t): xkb_mod_mask_t
 
 
-proc xkb_state_led_name_is_active*(state: ptr xkb_state; name: cstring): cint
+  proc xkb_state_mod_index_is_consumed2*(state: ptr xkb_state; key: xkb_keycode_t;
+                                        idx: xkb_mod_index_t;
+                                        mode: xkb_consumed_mode): cint
+
+  proc xkb_state_mod_index_is_consumed*(state: ptr xkb_state; key: xkb_keycode_t;
+                                       idx: xkb_mod_index_t): cint
 
 
-proc xkb_state_led_index_is_active*(state: ptr xkb_state; idx: xkb_led_index_t): cint
+  proc xkb_state_mod_mask_remove_consumed*(state: ptr xkb_state; key: xkb_keycode_t;
+                                          mask: xkb_mod_mask_t): xkb_mod_mask_t
 
-{.pop.}
+  proc xkb_state_layout_name_is_active*(state: ptr xkb_state; name: cstring;
+                                       `type`: xkb_state_component): cint
 
+
+  proc xkb_state_layout_index_is_active*(state: ptr xkb_state;
+                                        idx: xkb_layout_index_t;
+                                        `type`: xkb_state_component): cint
+
+
+  proc xkb_state_led_name_is_active*(state: ptr xkb_state; name: cstring): cint
+
+
+  proc xkb_state_led_index_is_active*(state: ptr xkb_state; idx: xkb_led_index_t): cint
+
+proc xkbAvailable*(): bool =
+  libXkbcommonHandle != nil and xkb_context_new != nil and xkb_context_unref != nil and
+    xkb_keymap_new_from_string != nil and xkb_keymap_unref != nil and
+    xkb_state_new != nil and xkb_state_unref != nil and xkb_state_key_get_one_sym != nil and
+    xkb_state_key_get_utf8 != nil and xkb_state_mod_name_is_active != nil and
+    xkb_state_update_key != nil and xkb_state_update_mask != nil
 
 var
   initialized = false
@@ -920,10 +928,13 @@ var
 
 proc initXkb* =
   if initialized: return
-  initialized = true
-  
-  global_xkb_context = xkb_context_new(XKB_CONTEXT_NO_FLAGS)
+  if not xkbAvailable():
+    raise OSError.newException("xkbcommon library is not available")
 
+  global_xkb_context = xkb_context_new(XKB_CONTEXT_NO_FLAGS)
+  if global_xkb_context == nil:
+    raise OSError.newException("failed to initialize xkbcommon")
+  initialized = true
 
 proc updateKeymap*(fd: sink FileHandle, size: uint32) =
   initXkb()

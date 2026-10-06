@@ -1,4 +1,4 @@
-import std/[macros]
+import std/[macros, dynlib]
 
 const siwin_use_pure_enums* {.booldefine.} = off
 
@@ -40,12 +40,17 @@ macro siwin_destructor*(body) =
 
 
 macro siwin_loadDynlibIfExists*(handle, body) =
+  ## Resolve declarations by name, or by their explicit `importc` symbol.
   result = newStmtList()
 
   for body in body:
-    var pragma =
-      if body.pragma.kind == nnkEmpty: nnkPragma.newTree()
-      else: body.pragma
+    var pragma = nnkPragma.newTree()
+    var symbolName = newLit($body.name)
+    for item in body.pragma:
+      if item.kind == nnkExprColonExpr and item[0].eqIdent("importc"):
+        symbolName = item[1]
+      elif not item.eqIdent("importc"):
+        pragma.add(item)
     
     pragma.add(ident("cdecl"))
 
@@ -76,9 +81,9 @@ macro siwin_loadDynlibIfExists*(handle, body) =
                   pragma,
                 ),
                 nnkCall.newTree(
-                  ident("symAddr"),
+                  bindSym("symAddr"),
                   handle,
-                  newLit($body.name)
+                  symbolName
                 )
               )
             )

@@ -1,17 +1,13 @@
-when not (compiles do: import pkg/x11/xutil):
-  {.error: "x11 library not installed, required to cross compile to linux\n please run `nimble install x11`".}
-
 import std/[times, monotimes, importutils, strformat, sequtils, os, options, tables, uri, strutils, dynlib]
 from std/posix import
   TPollfd, Tnfds, POLLIN, POLLERR, POLLHUP, POLLNVAL, EINTR, errno, poll
 import pkg/[vmath, chroma]
-import pkg/x11/xlib except Screen
 import pkg/x11/x except Window, Cursor, Time
-import pkg/x11/[xutil, xatom, cursorfont, keysym]
+import pkg/x11/[xatom, cursorfont, keysym]
 import ../../[colorutils, siwindefs]
 import ../any/[window, clipboards]
 import ../any/[windowUtils]
-import ./[siwinGlobals]
+import ./[siwinGlobals, x11api]
 
 when defined(android):
   {.error: "x11 backend is not supported on android, do not import it".}
@@ -103,8 +99,8 @@ type
     width: int16
     height: int16
 
-  XineramaIsActiveProc = proc(dpy: PDisplay): XBool {.cdecl.}
-  XineramaQueryScreensProc = proc(dpy: PDisplay, number: Pcint): PXineramaScreenInfo {.cdecl.}
+  XineramaIsActiveProc = proc(dpy: PDisplay): XBool {.cdecl, raises: [].}
+  XineramaQueryScreensProc = proc(dpy: PDisplay, number: Pcint): PXineramaScreenInfo {.cdecl, raises: [].}
 
 var
   xineramaLib: LibHandle
@@ -135,34 +131,23 @@ proc xineramaAvailable(): bool =
   xineramaQueryScreensProc = cast[XineramaQueryScreensProc](symAddr(xineramaLib, "XineramaQueryScreens"))
   xineramaIsActiveProc != nil and xineramaQueryScreensProc != nil
 
-
 const libXExt* =
   when defined(macosx):
     "libXext.dylib"
   else:
     "libXext.so(|.6)"
 
-{.push, cdecl, dynlib: libXExt, importc.}
-
-proc XSyncQueryExtension(d: ptr Display, vEv, vEr: ptr cint): bool
-proc XSyncInitialize(d: ptr Display, verMaj, verMin: ptr cint)
-
-proc XSyncCreateCounter(d: ptr Display, v: XSyncValue): XSyncCounter
-proc XSyncDestroyCounter(d: ptr Display, c: XSyncCounter)
-
-proc XSyncSetCounter(d: ptr Display, c: XSyncCounter; v: XSyncValue)
-
-{.pop.}
-
-
 const libXCursor* = "libXcursor.so(|.1)"
 
-{.push, cdecl, dynlib: libXCursor, importc.}
+siwin_loadDynlibIfExists libXextHandle:
+  proc XSyncQueryExtension(d: ptr Display, vEv, vEr: ptr cint): XBool {.raises: [].}
+  proc XSyncInitialize(d: ptr Display, verMaj, verMin: ptr cint): cint {.raises: [].}
+  proc XSyncCreateCounter(d: ptr Display, v: XSyncValue): XSyncCounter {.raises: [].}
+  proc XSyncDestroyCounter(d: ptr Display, c: XSyncCounter): cint {.raises: [].}
+  proc XSyncSetCounter(d: ptr Display, c: XSyncCounter; v: XSyncValue): cint {.raises: [].}
 
-proc XcursorImageLoadCursor(d: ptr Display, image: ptr CursorImage): x.Cursor
-
-{.pop.}
-
+siwin_loadDynlibIfExists libXcursorHandle:
+  proc XcursorImageLoadCursor(d: ptr Display, image: ptr CursorImage): x.Cursor {.raises: [].}
 
 
 proc xkeyToKey(sym: KeySym): Key =
@@ -448,8 +433,8 @@ proc `=destroy`(window: WindowX11Obj) {.siwin_destructor.} =
   destroy window.handle:     discard window.globals.display.XDestroyWindow window.handle
   
   if window.xSyncCounter.int != 0:
-    window.globals.display.XSyncDestroyCounter(window.xSyncCounter)
-
+    if XSyncDestroyCounter != nil:
+      discard window.globals.display.XSyncDestroyCounter(window.xSyncCounter)
 
 proc `=trace`(x: var WindowX11SoftwareRenderingObj, env: pointer) =
   #? for some reason, without this, nim produces invalid C code for =trace implementation
@@ -513,9 +498,12 @@ proc setupWindow*(window: WindowX11, fullscreen, frameless: bool, class: string)
   # init sync counter
   block xsync:
     var vEv, vEr: cint
-    if window.globals.display.XSyncQueryExtension(vEv.addr, vEr.addr):
+    if XSyncQueryExtension != nil and XSyncInitialize != nil and
+        XSyncCreateCounter != nil and XSyncDestroyCounter != nil and
+        XSyncSetCounter != nil and
+        window.globals.display.XSyncQueryExtension(vEv.addr, vEr.addr) != 0:
       var vMaj, vMin: cint
-      window.globals.display.XSyncInitialize(vMaj.addr, vMin.addr)
+      discard window.globals.display.XSyncInitialize(vMaj.addr, vMin.addr)
       window.xSyncCounter = window.globals.display.XSyncCreateCounter(XSyncValue())
       discard window.globals.display.XChangeProperty(
         window.handle,
@@ -796,6 +784,11 @@ proc setX11Cursor(window: WindowX11, v: Cursor) =
       origin: v.image.origin,
       pixels: buffer.data
     )
+    if XcursorImageLoadCursor == nil:
+      convertPixelsInplace(
+        buffer.data, buffer.size, PixelBufferFormat.xrgb_32bit, sourceFormat
+      )
+      return
     window.xCursor = window.globals.display.XcursorImageLoadCursor(ci.addr)
     
     convertPixelsInplace(buffer.data, buffer.size, PixelBufferFormat.xrgb_32bit, sourceFormat)
@@ -1685,7 +1678,8 @@ method serviceWindow*(window: WindowX11) =
     window.beginSwapBuffers()
 
     if window.syncState == SyncState.syncAndConfigureRecieved:
-      window.globals.display.XSyncSetCounter(window.xSyncCounter, window.lastSync)
+      if XSyncSetCounter != nil:
+        discard window.globals.display.XSyncSetCounter(window.xSyncCounter, window.lastSync)
       window.syncState = SyncState.none
 
     window.endSwapBuffers()

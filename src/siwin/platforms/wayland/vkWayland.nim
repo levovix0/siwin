@@ -1,3 +1,5 @@
+import ../../siwindefs
+import std/dynlib
 
 const vkDLL =
   when defined(windows): "vulkan-1.dll"
@@ -35,15 +37,20 @@ type
     display*: pointer
     surface*: pointer
 
+let libVulkanHandle =
+  loadLibPattern(when defined(linux) or defined(bsd): "libvulkan.so(.1|)" else: vkDLL)
 
-{.push, cdecl, stdcall, dynlib: vkDLL, importc.}
+siwin_loadDynlibIfExists libVulkanHandle:
+  proc vkCreateWaylandSurfaceKHR*(
+    instance: pointer,
+    pCreateInfo: ptr VkWaylandSurfaceCreateInfoKHR,
+    pAllocator: pointer,
+    pSurface: ptr pointer
+  ): VkResult
 
-proc vkCreateWaylandSurfaceKHR*(
-  instance: pointer,
-  pCreateInfo: ptr VkWaylandSurfaceCreateInfoKHR,
-  pAllocator: pointer,
-  pSurface: ptr pointer): VkResult
+  proc vkDestroySurfaceKHR*(instance: pointer, surface: pointer, pAllocator: pointer)
 
-proc vkDestroySurfaceKHR*(instance: pointer, surface: pointer, pAllocator: pointer)
-
-{.pop.}
+proc requireVulkanWayland*() =
+  if libVulkanHandle == nil or vkCreateWaylandSurfaceKHR == nil:
+    raise
+      OSError.newException("Vulkan loader or Wayland surface support is not available")

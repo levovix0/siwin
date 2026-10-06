@@ -35,6 +35,7 @@ method release(window: WindowWaylandOpengl) =
     destroy window.eglContext
   except:
     discard
+  window.eglContext = OpenglContext()
 
   procCall window.WindowWayland.release()
 
@@ -44,6 +45,7 @@ proc initOpenglWindow(
   fullscreen, frameless, transparent: bool, class: string
 ) =
   initEgl(window.globals.display.raw)
+  requireWaylandEgl()
 
   window.basicInitWindow size, screen
   
@@ -97,10 +99,14 @@ proc newOpenglWindowWayland*(
   result.kind = kind
   result.namespace = namespace
   result.layer = layer
-  result.initOpenglWindow(size, screen, fullscreen, frameless, transparent, (if class == "": title else: class))
-  result.title = title
-  result.`vsync=`(vsync, silent=true)
-  if not resizable: result.resizable = false
+  try:
+    result.initOpenglWindow(size, screen, fullscreen, frameless, transparent, (if class == "": title else: class))
+    result.title = title
+    result.`vsync=`(vsync, silent=true)
+    if not resizable: result.resizable = false
+  except:
+    result.release()
+    raise
 
 proc newOpenglLayerSurfaceWindowWayland*(
   globals: SiwinGlobalsWayland,
@@ -121,13 +127,18 @@ proc newOpenglLayerSurfaceWindowWayland*(
   ## unavailable.
   new result
   result.globals = globals
-  initEgl(result.globals.display.raw)
-  result.initLayerSurfaceWindow(size, screen, config, transparent, title)
+  try:
+    initEgl(result.globals.display.raw)
+    requireWaylandEgl()
+    result.initLayerSurfaceWindow(size, screen, config, transparent, title)
 
-  let scaledSize = result.bufferSize(size)
-  result.eglContext = newOpenglContext(
-    result.surface.proxy.raw, scaledSize.x, scaledSize.y
-  )
-  makeCurrent result.eglContext
-  result.title = title
-  result.`vsync=`(vsync, silent = true)
+    let scaledSize = result.bufferSize(size)
+    result.eglContext = newOpenglContext(
+      result.surface.proxy.raw, scaledSize.x, scaledSize.y
+    )
+    makeCurrent result.eglContext
+    result.title = title
+    result.`vsync=`(vsync, silent = true)
+  except:
+    result.release()
+    raise

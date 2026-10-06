@@ -46,6 +46,7 @@ method vulkanSurface*(window: WindowWaylandVulkan): pointer =
 
 
 proc initVulkanSurface(window: WindowWaylandVulkan, vkInstance: pointer) =
+  requireVulkanWayland()
   window.vulkan_surface.instance = vkInstance
   var info = VkWaylandSurfaceCreateInfoKHR(
     sType: VK_STRUCTURE_TYPE_WAYLAND_SURFACE_CREATE_INFO_KHR,
@@ -64,6 +65,7 @@ proc initVulkanWindow(
   size: IVec2, screen: ScreenWayland,
   fullscreen, frameless, transparent: bool, class: string
 ) =
+  requireVulkanWayland()
   window.basicInitWindow size, screen
   window.setupWindow fullscreen, frameless, transparent, size, class
   window.configureSurface()
@@ -83,11 +85,16 @@ proc newVulkanWindowWayland*(
 
   class = "", # application ID; defaults to title
 ): WindowWaylandVulkan =
+  requireVulkanWayland()
   new result
   result.globals = globals
-  result.initVulkanWindow(vkInstance, size, screen, fullscreen, frameless, transparent, (if class == "": title else: class))
-  result.title = title
-  if not resizable: result.resizable = false
+  try:
+    result.initVulkanWindow(vkInstance, size, screen, fullscreen, frameless, transparent, (if class == "": title else: class))
+    result.title = title
+    if not resizable: result.resizable = false
+  except:
+    result.release()
+    raise
 
 proc newVulkanLayerSurfaceWindowWayland*(
   globals: SiwinGlobalsWayland,
@@ -106,9 +113,14 @@ proc newVulkanLayerSurfaceWindowWayland*(
   ##
   ## Raises `WaylandExtensionNotFound` when a required Wayland extension is
   ## unavailable.
+  requireVulkanWayland()
   new result
   result.globals = globals
-  result.initLayerSurfaceWindow(size, screen, config, transparent, title)
-  result.configureSurface()
-  result.initVulkanSurface(vkInstance)
-  result.title = title
+  try:
+    result.initLayerSurfaceWindow(size, screen, config, transparent, title)
+    result.configureSurface()
+    result.initVulkanSurface(vkInstance)
+    result.title = title
+  except:
+    result.release()
+    raise
