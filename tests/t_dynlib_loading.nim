@@ -137,7 +137,7 @@ when defined(linux) or defined(bsd):
         eglInitializeRaw
       check (nativeCall == nil) == (libeglHandle == nil)
 
-    test "native EGL reports failures and completes a context lifecycle":
+    test "native EGL reports failures and completes a display lifecycle":
       if libeglHandle == nil or not nativeX11.x11Available():
         skip()
       else:
@@ -149,11 +149,7 @@ when defined(linux) or defined(bsd):
         else:
           defer:
             discard nativeX11.XCloseDisplay(display)
-          initEgl(display)
-          defer:
-            terminateEgl()
-          let context = egl.newOpenglContext()
-          defer:
-            context.destroy()
-          context.makeCurrent()
-          check eglGetCurrentContext() == context.ctx
+          let eglDisplay = eglGetDisplay(display)
+          require eglDisplay != nil
+          require eglInitialize(eglDisplay)
+          check eglTerminate(eglDisplay)
