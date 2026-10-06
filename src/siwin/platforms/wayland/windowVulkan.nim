@@ -35,7 +35,7 @@ proc `=destroy`*(window: WindowWaylandVulkanObj) {.siwin_destructor.} =
 method release(window: WindowWaylandVulkan) =
   ## destroy wayland part of window
   if window.vulkan_surface.instance != nil and
-      cast[uint64](window.vulkan_surface.raw) != 0:
+      window.vulkan_surface.raw != 0:
     # vkDestroySurfaceKHR(surface.instance, surface.raw, nil)  #? causes crash
     discard
 
@@ -43,7 +43,7 @@ method release(window: WindowWaylandVulkan) =
 
 
 method vulkanSurface*(window: WindowWaylandVulkan): VulkanSurface =
-  cast[VulkanSurface](window.vulkan_surface.raw)
+  window.vulkan_surface.raw
 
 
 proc initVulkanSurface(window: WindowWaylandVulkan, vkInstance: pointer) =

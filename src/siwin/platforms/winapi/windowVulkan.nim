@@ -16,14 +16,14 @@ type
     surface: Surface
 
 proc `=destroy`*(surface: Surface) {.siwin_destructor.} =
-  if surface.instance != nil and cast[uint64](surface.raw) != 0:
+  if surface.instance != nil and surface.raw != 0:
     discard
     # let vkDestroySurfaceKHR = cast[VkDestroySurfaceKHR](surface.instance.vkGetInstanceProcAddr("vkDestroySurfaceKHR"))
     # vkDestroySurfaceKHR(surface.instance, surface.raw, nil)  #? causes crash
 
 
 method vulkanSurface*(window: WindowWinapiVulkan): anyWindow.VulkanSurface =
-  cast[anyWindow.VulkanSurface](window.surface.raw)
+  window.surface.raw
 
 
 proc initWindowWinapiVulkan(

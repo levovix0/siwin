@@ -1,10 +1,8 @@
 import ../../siwindefs
 import std/dynlib
 
-when sizeof(pointer) == 8:
-  type VkSurfaceHandle* = pointer
-else:
-  type VkSurfaceHandle* = uint64
+# Vulkan non-dispatchable handles are always 64 bits.
+type VkSurfaceHandle* = uint64
 
 const vkDLL =
   when defined(windows): "vulkan-1.dll"

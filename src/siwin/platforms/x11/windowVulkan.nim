@@ -19,7 +19,7 @@ type
 
 
 proc `=destroy`*(surface: Surface) {.siwin_destructor.} =
-  if surface.instance != nil and cast[uint64](surface.raw) != 0:
+  if surface.instance != nil and surface.raw != 0:
     # vkDestroySurfaceKHR(surface.instance, surface.raw, nil)  #? causes crash
     discard
 
@@ -36,7 +36,7 @@ when NimMajor < 2 or NimMinor < 2:
 
 
 method vulkanSurface*(window: WindowX11Vulkan): anyWindow.VulkanSurface =
-  cast[anyWindow.VulkanSurface](window.surface.raw)
+  window.surface.raw
 
 
 proc initVulkanWindow(

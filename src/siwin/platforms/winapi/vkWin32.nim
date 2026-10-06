@@ -5,10 +5,8 @@ const vkDLL =
   elif defined(macosx): "libMoltenVK.dylib"
   else: "libvulkan.so.1"
 
-when sizeof(pointer) == 8:
-  type VkSurfaceHandle* = pointer
-else:
-  type VkSurfaceHandle* = uint64
+# Vulkan non-dispatchable handles are always 64 bits.
+type VkSurfaceHandle* = uint64
 
 type
   VkStructureType* {.size: int32.sizeof.} = enum

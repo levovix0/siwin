@@ -11,11 +11,7 @@ typedef struct {} *Screen;
 typedef struct {} *Clipboard;
 typedef struct {} *SiwinEventLoopWaker;
 
-#if UINTPTR_MAX == UINT64_MAX
-typedef void* VulkanSurface;
-#else
 typedef uint64_t VulkanSurface;
-#endif
 
 
 typedef struct NimRtti {
