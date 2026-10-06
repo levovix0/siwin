@@ -11,7 +11,7 @@ privateAccess WindowWayland
 type
   Surface = object
     instance: pointer
-    raw: pointer
+    raw: VulkanSurface
 
   WindowWaylandVulkan* = ref WindowWaylandVulkanObj
   WindowWaylandVulkanObj* = object of WindowWayland
@@ -34,14 +34,15 @@ proc `=destroy`*(window: WindowWaylandVulkanObj) {.siwin_destructor.} =
 
 method release(window: WindowWaylandVulkan) =
   ## destroy wayland part of window
-  if window.vulkan_surface.instance != nil and window.vulkan_surface.raw != nil:
+  if window.vulkan_surface.instance != nil and
+      window.vulkan_surface.raw != 0:
     # vkDestroySurfaceKHR(surface.instance, surface.raw, nil)  #? causes crash
     discard
 
   procCall window.WindowWayland.release()
 
 
-method vulkanSurface*(window: WindowWaylandVulkan): pointer =
+method vulkanSurface*(window: WindowWaylandVulkan): VulkanSurface =
   window.vulkan_surface.raw
 
 

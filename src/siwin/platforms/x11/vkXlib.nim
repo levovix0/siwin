@@ -3,7 +3,10 @@ import ../../siwindefs
 import x11/x
 import ./x11api
 
-const vkDLL =
+# Vulkan non-dispatchable handles are always 64 bits.
+type VkSurfaceHandle = uint64
+
+const vkDLL {.used.} =
   when defined(windows): "vulkan-1.dll"
   elif defined(macosx): "libMoltenVK.dylib"
   else: "libvulkan.so.1"
@@ -47,10 +50,10 @@ siwin_loadDynlibIfExists libVulkanHandle:
     instance: pointer,
     pCreateInfo: ptr VkXlibSurfaceCreateInfoKHR,
     pAllocator: pointer,
-    pSurface: ptr pointer
+    pSurface: ptr VkSurfaceHandle
   ): VkResult
 
-  proc vkDestroySurfaceKHR*(instance: pointer, surface: pointer, pAllocator: pointer)
+  proc vkDestroySurfaceKHR*(instance: pointer, surface: VkSurfaceHandle, pAllocator: pointer)
 
 proc requireVulkanXlib*() =
   if libVulkanHandle == nil or vkCreateXlibSurfaceKHR == nil:

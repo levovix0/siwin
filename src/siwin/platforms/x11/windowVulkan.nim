@@ -11,7 +11,7 @@ privateAccess WindowX11
 type
   Surface = object
     instance: pointer
-    raw: pointer
+    raw: VulkanSurface
 
   WindowX11Vulkan* = ref WindowX11VulkanObj
   WindowX11VulkanObj* = object of WindowX11
@@ -19,7 +19,7 @@ type
 
 
 proc `=destroy`*(surface: Surface) {.siwin_destructor.} =
-  if surface.instance != nil and surface.raw != nil:
+  if surface.instance != nil and surface.raw != 0:
     # vkDestroySurfaceKHR(surface.instance, surface.raw, nil)  #? causes crash
     discard
 
@@ -35,7 +35,7 @@ when NimMajor < 2 or NimMinor < 2:
     `=destroy`(x.surface)
 
 
-method vulkanSurface*(window: WindowX11Vulkan): pointer =
+method vulkanSurface*(window: WindowX11Vulkan): anyWindow.VulkanSurface =
   window.surface.raw
 
 

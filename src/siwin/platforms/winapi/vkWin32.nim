@@ -5,6 +5,9 @@ const vkDLL =
   elif defined(macosx): "libMoltenVK.dylib"
   else: "libvulkan.so.1"
 
+# Vulkan non-dispatchable handles are always 64 bits.
+type VkSurfaceHandle = uint64
+
 type
   VkStructureType* {.size: int32.sizeof.} = enum
     VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR = 1000009000
@@ -40,12 +43,12 @@ type
     instance: pointer,
     pCreateInfo: ptr VkWin32SurfaceCreateInfoKHR,
     pAllocator: pointer,
-    pSurface: ptr pointer
+    pSurface: ptr VkSurfaceHandle
   ): VkResult {.cdecl, stdcall, raises: [].}
 
   VkDestroySurfaceKHR* = proc(
     instance: pointer,
-    surface: pointer,
+    surface: VkSurfaceHandle,
     pAllocator: pointer
   ) {.cdecl, stdcall, raises: [].}
 

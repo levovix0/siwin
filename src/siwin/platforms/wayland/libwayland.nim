@@ -84,32 +84,35 @@ if libwaylandclientHandle == nil:
   libwaylandclientHandle = loadLib("libwayland-client.so.0")
 
 
+# Use C pointers here: Wl_display/Wl_proxy are Nim structs, whose ABI can
+# differ from pointers on 32-bit platforms. For example, 32-bit Linux adds
+# a hidden result pointer for struct returns, breaking wl_display_connect.
 siwin_loadDynlibIfExists libwaylandclientHandle:
-  proc wl_display_disconnect*(this: Wl_display)
+  proc wl_display_disconnect*(this: pointer)
 
-  proc wl_display_connect*(name: cstring): Wl_display
-  proc wl_display_connect_to_fd*(fd: FileHandle): Wl_display
+  proc wl_display_connect*(name: cstring): pointer
+  proc wl_display_connect_to_fd*(fd: FileHandle): pointer
 
-  proc wl_display_get_fd*(this: Wl_display): FileHandle
+  proc wl_display_get_fd*(this: pointer): FileHandle
 
-  proc wl_display_flush*(this: Wl_display): int32
-  proc wl_display_prepare_read*(this: Wl_display): int32
-  proc wl_display_read_events*(this: Wl_display): int32
-  proc wl_display_cancel_read*(this: Wl_display)
-  proc wl_display_roundtrip*(this: Wl_display): int32
-  proc wl_display_dispatch_pending*(this: Wl_display): int32
+  proc wl_display_flush*(this: pointer): int32
+  proc wl_display_prepare_read*(this: pointer): int32
+  proc wl_display_read_events*(this: pointer): int32
+  proc wl_display_cancel_read*(this: pointer)
+  proc wl_display_roundtrip*(this: pointer): int32
+  proc wl_display_dispatch_pending*(this: pointer): int32
 
 
-  proc wl_proxy_set_user_data*(this: Wl_proxy, v: pointer)
-  proc wl_proxy_get_user_data*(this: Wl_proxy): pointer
+  proc wl_proxy_set_user_data*(this: pointer, v: pointer)
+  proc wl_proxy_get_user_data*(this: pointer): pointer
 
-  proc wl_proxy_set_tag*(this: Wl_proxy, v: ptr cstring)
-  proc wl_proxy_get_tag*(this: Wl_proxy): ptr cstring
+  proc wl_proxy_set_tag*(this: pointer, v: ptr cstring)
+  proc wl_proxy_get_tag*(this: pointer): ptr cstring
 
-  proc wl_proxy_destroy*(this: Wl_proxy)
+  proc wl_proxy_destroy*(this: pointer)
 
-  proc wl_proxy_get_version*(this: Wl_proxy): uint32
-  proc wl_proxy_get_id*(this: Wl_proxy): uint32
+  proc wl_proxy_get_version*(this: pointer): uint32
+  proc wl_proxy_get_id*(this: pointer): uint32
 
   proc wl_proxy_marshal_array_flags*(
     proxy: pointer, opcode: uint32, iface: ptr Wl_interface, version: uint32, flags: uint32, args: pointer
@@ -120,27 +123,27 @@ siwin_loadDynlibIfExists libwaylandclientHandle:
   ): pointer {.varargs.}
 
   proc wl_proxy_add_dispatcher*(
-    proxy: Wl_proxy, callback: Wl_dispatcher_proc, impl: pointer, proxyUserdata: pointer
+    proxy: pointer, callback: Wl_dispatcher_proc, impl: pointer, proxyUserdata: pointer
   ): int32
 
 
 proc `=destroy`*(this: Wl_display) {.siwin_destructor.} =
   if this.raw != nil and wl_display_disconnect != nil:
     try:
-      wl_display_disconnect this
+      wl_display_disconnect(this.raw)
     except:
       discard
 
 proc destroyCallbacks*(this: Wl_proxy) =
   if this.raw == nil: return
-  if this.wl_proxy_get_tag == proxyNimTag.addr:
+  if wl_proxy_get_tag(this.raw) == proxyNimTag.addr:
     cast[ptr tuple[a: pointer, f: proc(cb: pointer) {.cdecl, raises: [].}]](this.raw.impl)[].f(this.raw.impl)
-    this.wl_proxy_set_tag nil
+    wl_proxy_set_tag(this.raw, nil)
 
 proc destroy*(this: Wl_proxy) =
   if this.raw == nil: return
   destroyCallbacks this
-  wl_proxy_destroy this
+  wl_proxy_destroy(this.raw)
 
 # proc `=destroy`*(this: Wl_proxy) =
 #   destroy(this)
@@ -153,7 +156,7 @@ proc destroy*(this: Wl_proxy) =
 proc dispatchPending*(this: Wl_display): int32 =
   if wl_display_dispatch_pending == nil:
     raise OSError.newException("Wayland client library is not available")
-  result = wl_display_dispatch_pending(this)
+  result = wl_display_dispatch_pending(this.raw)
   if result == -1:
     raise WaylandProtocolError.newException("failed to dispatch events")
 
@@ -201,13 +204,13 @@ proc newWl_interface*(
 
 proc construct*(proxy: pointer, interfaces: pointer, t: type, dispatcher: Wl_dispatcher_proc, callbacksT: type): t =
   result.proxy.raw = cast[ptr Wl_object](proxy)
-  result.proxy.wl_proxy_set_tag(proxyNimTag.addr)
+  wl_proxy_set_tag(result.proxy.raw, proxyNimTag.addr)
   let callbacks = cast[ptr callbacksT](alloc0(callbacksT.sizeof))
   cast[ptr pointer](callbacks)[] = interfaces
   callbacks[].destroy = proc(cb: pointer) {.cdecl, raises: [].} =
     `=destroy`(cast[ptr callbacksT](cb)[])
     dealloc(cb)
-  discard result.proxy.wl_proxy_add_dispatcher(dispatcher, callbacks, nil)
+  discard wl_proxy_add_dispatcher(result.proxy.raw, dispatcher, callbacks, nil)
 
 
 proc iface*(display: type Wl_display): ptr Wl_interface =
