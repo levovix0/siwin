@@ -10,7 +10,7 @@ privateAccess WindowWinapi
 type
   Surface = object
     instance: pointer
-    raw: VkSurfaceHandle
+    raw: VulkanSurface
 
   WindowWinapiVulkan* = ref object of WindowWinapi
     surface: Surface

@@ -11,7 +11,7 @@ privateAccess WindowWayland
 type
   Surface = object
     instance: pointer
-    raw: VkSurfaceHandle
+    raw: VulkanSurface
 
   WindowWaylandVulkan* = ref WindowWaylandVulkanObj
   WindowWaylandVulkanObj* = object of WindowWayland

@@ -56,16 +56,12 @@ when defined(linux) or defined(bsd):
   import siwin/platforms/wayland/egl {.all.}
   import siwin/platforms/wayland/libwayland
   import siwin/platforms/any/window as anyWindow
-  import siwin/platforms/wayland/vkWayland
-  import siwin/platforms/x11/vkXlib
   import siwin/platforms/x11/x11api as nativeX11
   import vmath
 
   # Older projects can pass the original package types to Siwin's public API.
   static:
     doAssert anyWindow.VulkanSurface is uint64
-    doAssert vkWayland.VkSurfaceHandle is uint64
-    doAssert vkXlib.VkSurfaceHandle is uint64
     doAssert compiles(
       block:
         var globals: SiwinGlobalsX11

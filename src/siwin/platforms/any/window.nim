@@ -127,6 +127,9 @@ type
     pixels*: PixelBuffer
 
 
+  VulkanSurface* = uint64
+
+
   WindowTypeDefect* = object of Defect
     ## raised when trying to get pixel buffer from non-softwareRendering window
   
@@ -656,8 +659,6 @@ method makeCurrent*(window: Window) {.base.} = discard
 method `vsync=`*(window: Window, v: bool, silent = false) {.base.} = discard
   ## enable/disable vsync
 
-# Vulkan non-dispatchable handles are always 64 bits.
-type VulkanSurface* = uint64
 
 method vulkanSurface*(window: Window): VulkanSurface {.base.} = discard
   ## get a VkSurfaceKHR attached to window

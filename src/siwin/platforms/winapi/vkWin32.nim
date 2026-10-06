@@ -6,7 +6,7 @@ const vkDLL =
   else: "libvulkan.so.1"
 
 # Vulkan non-dispatchable handles are always 64 bits.
-type VkSurfaceHandle* = uint64
+type VkSurfaceHandle = uint64
 
 type
   VkStructureType* {.size: int32.sizeof.} = enum

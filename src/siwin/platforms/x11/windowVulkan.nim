@@ -11,7 +11,7 @@ privateAccess WindowX11
 type
   Surface = object
     instance: pointer
-    raw: VkSurfaceHandle
+    raw: VulkanSurface
 
   WindowX11Vulkan* = ref WindowX11VulkanObj
   WindowX11VulkanObj* = object of WindowX11

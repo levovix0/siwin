@@ -2,9 +2,9 @@ import ../../siwindefs
 import std/dynlib
 
 # Vulkan non-dispatchable handles are always 64 bits.
-type VkSurfaceHandle* = uint64
+type VkSurfaceHandle = uint64
 
-const vkDLL =
+const vkDLL {.used.} =
   when defined(windows): "vulkan-1.dll"
   elif defined(macosx): "libMoltenVK.dylib"
   else: "libvulkan.so.1"
