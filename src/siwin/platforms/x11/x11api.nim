@@ -33,6 +33,12 @@ siwin_loadDynlibIfExists libX11XcbHandle:
 proc x11XcbAvailable*(): bool =
   XGetXCBConnection != nil
 
+proc x11XcbConnection*(display: PDisplay): pointer =
+  ## Borrows the XCB connection for an Xlib display. Returns nil for a nil
+  ## display or when the optional Xlib/XCB bridge is unavailable.
+  if display != nil and x11XcbAvailable():
+    result = XGetXCBConnection(display)
+
 siwin_loadDynlibIfExists libX11Handle:
   proc XChangeProperty*(
     para1: PDisplay,
@@ -238,6 +244,30 @@ siwin_loadDynlibIfExists libX11Handle:
     para8: PXWMHints,
     para9: PXClassHint,
   ) {.raises: [].}
+
+proc getWindowVisualInfo*(display: PDisplay, window: Drawable): XVisualInfo =
+  ## Returns the visual info for an existing X11 window. The Xlib allocation
+  ## is freed internally; the returned visual pointer is borrowed from display.
+  ## Raises OSError when the entry points are unavailable or the query fails.
+  if XGetWindowAttributes == nil or XVisualIDFromVisual == nil or
+      XGetVisualInfo == nil or XFree == nil:
+    raise OSError.newException("X11 visual query entry points are unavailable")
+
+  var attributes: XWindowAttributes
+  if XGetWindowAttributes(display, window, attributes.addr) == 0:
+    raise OSError.newException("Failed to query X11 window attributes")
+
+  var
+    visual = XVisualInfo(visualid: XVisualIDFromVisual(attributes.visual))
+    count: cint
+  let visuals = XGetVisualInfo(display, VisualIDMask.clong, visual.addr, count.addr)
+  if visuals == nil:
+    raise OSError.newException("Failed to resolve X11 window visual")
+  defer:
+    discard XFree(visuals)
+  if count <= 0:
+    raise OSError.newException("Failed to resolve X11 window visual")
+  result = visuals[]
 
 proc x11Available*(): bool =
   libX11Handle != nil and XChangeProperty != nil and XCloseDisplay != nil and
