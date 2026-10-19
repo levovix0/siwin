@@ -1,4 +1,5 @@
 import pkg/x11/x except Window
+import pkg/[vmath]
 import ../../[siwindefs]
 import ../any/window
 import ./[glx, siwinGlobals, window]
@@ -31,6 +32,9 @@ proc newOpenglContextX11*(globals: SiwinGlobalsX11): InvisibleOpenglWindowX11 =
 
   result.ctx = globals.display.newGlxContext(vi.addr)
   globals.display.makeCurrent(result.handle, result.ctx)
+
+method `size=`*(window: InvisibleOpenglWindowX11, v: IVec2) =
+  window.m_size = v
 
 
 method makeCurrent*(window: InvisibleOpenglWindowX11) =

@@ -352,7 +352,7 @@ type
     m_popupParent: Window
     m_popupPlacement: PopupPlacement
     
-    m_size: IVec2
+    m_size*: IVec2
     m_pos: IVec2
     m_focused: bool
     m_fullscreen: bool
