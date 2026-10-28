@@ -28,7 +28,8 @@ type
   WindowWinapi* = ref WindowWinapiObj
   WindowWinapiObj* = object of Window
     globals: SiwinGlobalsWinapi
-    handle: HWnd
+    handle*: HWnd
+      ## Native Win32 window handle, owned by this window.
     wicon: HIcon
     hdc: Hdc
     wcursor: HCursor
@@ -36,6 +37,7 @@ type
 
   WindowWinapiSoftwareRendering* = ref object of WindowWinapi
     buffer: Buffer
+    softwarePresentEnabled*: bool
 
 
 var legacyGlobals: SiwinGlobalsWinapi
@@ -628,7 +630,8 @@ method `content=`*(clipboard: ClipboardWinapi, content: ClipboardConvertableCont
 method displayImpl(window: WindowWinapi) {.base.} =
   window.eventsHandler.pushEvent onRender, RenderEvent(window: window)
 
-  if window of WindowWinapiSoftwareRendering:
+  if window of WindowWinapiSoftwareRendering and
+      window.WindowWinapiSoftwareRendering.softwarePresentEnabled:
     BitBlt(
       window.hdc, 0, 0, window.m_size.x, window.m_size.y,
       window.WindowWinapiSoftwareRendering.buffer.hdc, 0, 0, SrcCopy
@@ -940,12 +943,16 @@ proc newSoftwareRenderingWindowWinapi*(
   globals: SiwinGlobalsWinapi = nil,
 ): WindowWinapiSoftwareRendering =
   new result
+  result.softwarePresentEnabled = true
   result.initWindow(
     size, screen, fullscreen, frameless, transparent,
     globals = globals,
   )
   result.title = title
   if not resizable: result.resizable = false
+
+proc setSoftwarePresentEnabled*(window: WindowWinapiSoftwareRendering, enabled: bool) =
+  window.softwarePresentEnabled = enabled
 
 proc newPopupWindowWinapi*(
     parent: WindowWinapi, placement: PopupPlacement, transparent = false, grab = true
