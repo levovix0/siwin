@@ -11,8 +11,12 @@ when defined(windows):
       let window = newSoftwareRenderingWindowWinapi(size = ivec2(64, 64))
       defer:
         window.close()
-      check window.nativeWindowHandle() != nil
-      check window.nativeInstanceHandle() != nil
+      let handle: HWnd = window.handle
+      let instance: HInstance = hInstance
+      check handle != 0
+      check IsWindow(handle) != 0
+      check instance != 0
+      check instance == GetModuleHandle(nil)
 
     test "software present can be disabled for external presenters":
       let window = newSoftwareRenderingWindowWinapi(size = ivec2(64, 64))
@@ -26,13 +30,13 @@ when defined(windows):
       let window = newSoftwareRenderingWindowWinapi(size = ivec2(64, 64))
       defer:
         window.close()
-      let handle = window.nativeWindowHandle()
+      let handle = window.handle
       block:
         let fallback = newWinapiOpenGlFallback(window)
         fallback.makeCurrent()
         let firstContext = wglGetCurrentContext()
         check firstContext != 0
-        check window.nativeWindowHandle() == handle
+        check window.handle == handle
         fallback.swapBuffers()
         block:
           let second = newWinapiOpenGlFallback(window)

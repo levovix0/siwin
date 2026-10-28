@@ -16,18 +16,18 @@ type
     window {.cursor.}: WindowWinapi
     hdc: Hdc
 
+
 proc newWinapiOpenGlFallback*(window: WindowWinapi): WinapiOpenGlFallback =
   ## Creates a context for an existing window after its other presenter is released.
   ## The window must remain open until the context is destroyed.
   if window == nil or window.m_closed or window.hdc == 0:
     raise newException(ValueError, "Win32 window is unavailable for OpenGL")
 
+  const requiredFlags = Pfd_draw_to_window or Pfd_support_opengl or Pfd_double_buffer
   var pfd = PixelFormatDescriptor(
     nSize: Word PixelFormatDescriptor.sizeof,
     nVersion: 1,
-    dwFlags:
-      Pfd_draw_to_window or Pfd_support_opengl or Pfd_double_buffer or
-      Pfd_support_composition,
+    dwFlags: requiredFlags or Pfd_support_composition,
     iPixelType: Pfd_type_rgba,
     cColorBits: 32,
     cDepthBits: 24,
@@ -41,15 +41,10 @@ proc newWinapiOpenGlFallback*(window: WindowWinapi): WinapiOpenGlFallback =
       raise newException(OSError, "Could not set the Win32 OpenGL pixel format")
   else:
     var existing: PixelFormatDescriptor
-    if DescribePixelFormat(
-      window.hdc, pixelFormat, UINT(sizeof(existing)), existing.addr
-    ) == 0 or existing.iPixelType != Pfd_type_rgba or
-        (
-          existing.dwFlags and
-          (Pfd_draw_to_window or Pfd_support_opengl or Pfd_double_buffer)
-        ) != (Pfd_draw_to_window or Pfd_support_opengl or Pfd_double_buffer):
-      raise
-        newException(OSError, "The existing Win32 pixel format does not support OpenGL")
+    if DescribePixelFormat(window.hdc, pixelFormat, UINT(sizeof(existing)), existing.addr) == 0 or
+        existing.iPixelType != Pfd_type_rgba or
+        (existing.dwFlags and requiredFlags) != requiredFlags:
+      raise newException(OSError, "The existing Win32 pixel format does not support OpenGL")
 
   new result
   result.window = window
@@ -71,21 +66,20 @@ proc swapBuffers*(fallback: WinapiOpenGlFallback) =
     raise newException(OSError, "Could not swap the Win32 OpenGL buffers")
 
 proc initWindowWinapiOpengl(
-    window: WindowWinapiOpengl,
-    size: IVec2,
-    screen: ScreenWinapi,
-    fullscreen, frameless, transparent: bool,
-    globals: SiwinGlobalsWinapi,
+  window: WindowWinapiOpengl,
+  size: IVec2,
+  screen: ScreenWinapi,
+  fullscreen, frameless, transparent: bool,
+  globals: SiwinGlobalsWinapi,
 ) =
   window.initWindow(
-    size, screen, fullscreen, frameless, transparent, woClassName, globals
+    size, screen, fullscreen, frameless, transparent, woClassName, globals,
   )
 
   var pfd = PixelFormatDescriptor(
     nSize: Word PixelFormatDescriptor.sizeof,
     nVersion: 1,
-    dwFlags:
-      Pfd_draw_to_window or Pfd_support_opengl or Pfd_double_buffer or
+    dwFlags: Pfd_draw_to_window or Pfd_support_opengl or Pfd_double_buffer or
       Pfd_support_composition,
     iPixelType: Pfd_type_rgba,
     cColorBits: 32,
@@ -98,39 +92,38 @@ proc initWindowWinapiOpengl(
   window.ctx = WglContext(raw: wglCreateContext(window.hdc))
   discard window.hdc.wglMakeCurrent(window.ctx.raw)
 
+
 method makeCurrent*(window: WindowWinapiOpengl) =
   discard window.hdc.wglMakeCurrent(window.ctx.raw)
 
 method `vsync=`*(window: WindowWinapiOpengl, v: bool, silent = false) =
   if wglSwapIntervalExt == nil:
-    wglSwapIntervalExt =
-      cast[typeof wglSwapIntervalExt](wglGetProcAddress("wglSwapIntervalEXT"))
+    wglSwapIntervalExt = cast[typeof wglSwapIntervalExt](wglGetProcAddress("wglSwapIntervalEXT"))
   if wglSwapIntervalExt == nil or wglSwapIntervalExt(if v: 1 else: 0) == 0:
     if not silent:
-      raise
-        OSError.newException("failed to " & (if v: "enable" else: "disable") & " vsync")
+      raise OSError.newException("failed to " & (if v: "enable" else: "disable") & " vsync")
 
 method displayImpl(window: WindowWinapiOpengl) =
   window.makeCurrent()
   window.eventsHandler.pushEvent onRender, RenderEvent(window: window)
   window.hdc.SwapBuffers
 
+
 proc newOpenglWindowWinapi*(
-    size = ivec2(1280, 720),
-    title = "",
-    screen = defaultScreenWinapi(),
-    resizable = true,
-    fullscreen = false,
-    frameless = false,
-    transparent = false,
-    vsync = true,
-    globals: SiwinGlobalsWinapi = nil,
+  size = ivec2(1280, 720),
+  title = "",
+  screen = defaultScreenWinapi(),
+  resizable = true,
+  fullscreen = false,
+  frameless = false,
+  transparent = false,
+  vsync = true,
+  globals: SiwinGlobalsWinapi = nil,
 ): WindowWinapiOpengl =
   new result
   result.initWindowWinapiOpengl(
-    size, screen, fullscreen, frameless, transparent, globals
+    size, screen, fullscreen, frameless, transparent, globals,
   )
   result.title = title
-  result.`vsync=`(vsync, silent = true)
-  if not resizable:
-    result.resizable = false
+  result.`vsync=`(vsync, silent=true)
+  if not resizable: result.resizable = false

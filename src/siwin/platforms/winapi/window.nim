@@ -28,7 +28,8 @@ type
   WindowWinapi* = ref WindowWinapiObj
   WindowWinapiObj* = object of Window
     globals: SiwinGlobalsWinapi
-    handle: HWnd
+    handle*: HWnd
+      ## Native Win32 window handle, owned by this window.
     wicon: HIcon
     hdc: Hdc
     wcursor: HCursor
@@ -193,13 +194,6 @@ proc wkeyToKey(key: WParam, flags: LParam): Key =
   of Vk_control:
     if (flags and 0x1000000) != 0: Key.rcontrol else: Key.lcontrol
   else: wkeyToKey(key)
-
-
-proc nativeInstanceHandle*(window: WindowWinapi): pointer =
-  cast[pointer](hInstance)
-
-proc nativeWindowHandle*(window: WindowWinapi): pointer =
-  cast[pointer](window.handle)
 
 
 # todo: multiscreen support
