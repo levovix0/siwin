@@ -469,8 +469,3 @@ If you want to support this project, here is some tasks to do:
 
 Just fork levovix0/siwin to your account, make changes and submit a pull request.  
 *Or if it requires new repository to be created, create it and add an "change dependency" issue.*
-
-For automated development sessions, `SIWIN_NO_ACTIVATE=1` suppresses explicit
-application activation and key-window ordering on Cocoa and uses a nonactivating
-show on Windows. Windows remain eligible for normal user interaction. Other
-platforms retain their window-manager policy. Set this before creating windows.

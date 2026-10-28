@@ -533,7 +533,7 @@ method `minimized=`*(window: WindowWinapi, v: bool) =
 
 method `visible=`*(window: WindowWinapi, v: bool) =
   window.m_visible = v
-  discard ShowWindow(window.handle, if v: (if getEnv("SIWIN_NO_ACTIVATE") == "1": SwShowNoActivate else: SwShow) else: SwHide)
+  discard ShowWindow(window.handle, if v: SwShow else: SwHide)
 
 
 method `resizable=`*(window: WindowWinapi, v: bool) =

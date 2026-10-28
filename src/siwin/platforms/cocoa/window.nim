@@ -1077,7 +1077,7 @@ method `visible=`*(window: WindowCocoa, v: bool) =
   window.m_visible = v
   autoreleasepool:
     if v:
-      if window.canBecomeKeyWindow and getEnv("SIWIN_NO_ACTIVATE") != "1":
+      if window.canBecomeKeyWindow:
         window.handle.makeKeyAndOrderFront(cast[ID](nil))
       else:
         window.handle.orderFront(cast[ID](nil))
@@ -1631,8 +1631,7 @@ proc init =
       addMethod "applicationDidFinishLaunching:", proc(self: Id, cmd: Sel, notification: NsNotification): Id {.cdecl.} =
         NSApp.setPresentationOptions(NSApplicationPresentationDefault)
         NSApp.setActivationPolicy(NSApplicationActivationPolicyRegular)
-        if getEnv("SIWIN_NO_ACTIVATE") != "1":
-          NSApp.activateIgnoringOtherApps(true)
+        NSApp.activateIgnoringOtherApps(true)
 
 
     addClass "SiwinWindow", "NSWindow", windowClass:
@@ -2147,7 +2146,7 @@ method firstStep*(window: WindowCocoa, makeVisible = true) =
     for w in windows:
       if w != nil and w.handle != nil and w.m_visible:
         w.handle.orderFront(cast[ID](nil))
-    if window.canBecomeKeyWindow and getEnv("SIWIN_NO_ACTIVATE") != "1":
+    if window.canBecomeKeyWindow:
       window.handle.makeKeyAndOrderFront(cast[ID](nil))
   window.lastTickTime = getMonoTime()
 
