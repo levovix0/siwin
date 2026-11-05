@@ -84,6 +84,9 @@ type
     useLibdecor: bool
       # not replaceable with `libdecorFrame != nil` because libdecorFrame
       # is set to nil in release(), after which the window state is undefined
+    closeRequested: bool
+      # libdecor asked to close from inside its pointer handler, and commits the
+      # frame after that: the window is released at the next service tick
 
     layer: Layer
     namespace: string
@@ -745,8 +748,7 @@ proc createLibdecorFrameIface(): LibdecorFrameInterface =
       redraw win
     ,
     close: proc(frame: LibdecorFrame, userData: pointer) {.cdecl.} =
-      let win = cast[WindowWayland](userData)
-      win.close()
+      cast[WindowWayland](userData).closeRequested = true
     ,
     commit: proc(frame: LibdecorFrame, userData: pointer) {.cdecl.} =
       let win = cast[WindowWayland](userData)
@@ -2218,6 +2220,9 @@ method serviceWindow*(window: WindowWayland) =
   ## Run one nonblocking per-window tick and presentation pass.
 
   template closeIfNeeded =
+    if window.closeRequested:
+      window.close()
+      return
     if window.m_closed:
       window.pushCloseEvent()
       release window
