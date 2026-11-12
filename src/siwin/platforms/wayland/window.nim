@@ -1889,7 +1889,8 @@ proc setupWindow*(window: WindowWayland, fullscreen, frameless, transparent: boo
         window.toplevelSetAppId(class)
 
       window.xdgToplevel.onClose:
-        window.close()
+        if window.closeRequestAccepted():
+          window.close()
 
       window.xdgToplevel.onConfigure:
         window.resize(ivec2(width, height))
@@ -2316,8 +2317,14 @@ method serviceWindow*(window: WindowWayland) =
 
   template closeIfNeeded =
     if window.closeRequested:
-      window.close()
-      return
+      # The close request was deferred from libdecor's callback; review it now,
+      # outside the compositor's frame commit. A veto keeps the window open and
+      # clears the request so later service ticks continue normally.
+      if not window.closeRequestAccepted():
+        window.closeRequested = false
+      else:
+        window.close()
+        return
     if window.m_closed:
       window.pushCloseEvent()
       release window
