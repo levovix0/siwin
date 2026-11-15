@@ -1865,6 +1865,13 @@ proc init =
           getWindow(self)
           let key = event.keyCode.keycodeToKey
           let modifiers = window.updateModifiers(event)
+          # While an input method owns marked text it must see navigation,
+          # cancellation and commit keys before the application edits the field.
+          if window.markedText != nil and
+              (modifiers * {ModifierKey.control, ModifierKey.system}).len == 0:
+            let inputContext = cast[NSView](self).inputContext
+            if inputContext != nil and inputContext.handleEvent(event).bool:
+              return nil
           if key != Key.unknown:
             window.keyboard.pressed.incl key
             window.eventsHandler.pushEvent onKey, KeyEvent(
@@ -1944,6 +1951,12 @@ proc init =
         
         addMethod "markedRange", proc(self: Id, cmd: Sel): NsRange {.cdecl.} =
           getWindow(self)
+          if window.eventsHandler.onTextInputState != nil:
+            let state = window.eventsHandler.onTextInputState(AnyWindowEvent(window: window))
+            if state.valid:
+              if state.markedStart < 0:
+                return NSRangeEmpty
+              return NSMakeRange(state.markedStart.uint, state.markedLength.uint)
           if window.markedText != nil:
             NSMakeRange(0, window.markedText.length)
           else:
@@ -1951,6 +1964,10 @@ proc init =
   
         addMethod "selectedRange", proc(self: Id, cmd: Sel): NsRange {.cdecl.} =
           getWindow(self)
+          if window.eventsHandler.onTextInputState != nil:
+            let state = window.eventsHandler.onTextInputState(AnyWindowEvent(window: window))
+            if state.valid:
+              return NSMakeRange(state.selectedStart.uint, state.selectedLength.uint)
           NSMakeRange(0, 0)
   
         addMethod "setMarkedText:selectedRange:replacementRange:", proc(
@@ -1967,17 +1984,56 @@ proc init =
             window.markedText.release()
   
           window.markedText = NSString.stringWithString(characters).retain()
+          window.eventsHandler.pushEvent onTextInput, TextInputEvent(
+            window: window,
+            text: $characters,
+            kind: textInputComposition,
+            selectedStart:
+              if selectedRange.location == NSNotFound.uint: 0
+              else: int(selectedRange.location),
+            selectedLength:
+              if selectedRange.location == NSNotFound.uint: 0
+              else: int(selectedRange.length),
+            replacementStart:
+              if replacementRange.location == NSNotFound.uint: -1
+              else: int(replacementRange.location),
+            replacementLength:
+              if replacementRange.location == NSNotFound.uint: 0
+              else: int(replacementRange.length),
+          )
+          if characters.length == 0:
+            window.markedText.release()
+            window.markedText = nil
+            window.eventsHandler.pushEvent onTextInput, TextInputEvent(
+              window: window, kind: textInputUnmark
+            )
   
         addMethod "unmarkText", proc(self: Id, cmd: Sel): Id {.cdecl.} =
-          discard
+          getWindow(self)
+          if window.markedText != nil:
+            window.markedText.release()
+            window.markedText = nil
+            window.eventsHandler.pushEvent onTextInput, TextInputEvent(
+              window: window, kind: textInputUnmark
+            )
   
         addMethod "validAttributesForMarkedText", proc(self: Id, cmd: Sel): NSArrayAbstract {.cdecl.} =
           cast[NSArrayAbstract](nil)
   
         addMethod "attributedSubstringForProposedRange:actualRange:", proc(
           self: Id, cmd: Sel, range: NsRange, actualRange: NsRangePointer
-        ): ID =
-          discard
+        ): ID {.cdecl.} =
+          getWindow(self)
+          if window.eventsHandler.onTextInputState != nil:
+            let state = window.eventsHandler.onTextInputState(AnyWindowEvent(window: window))
+            if state.valid:
+              let full = NSAttributedString.attributedStringWithString(state.text.toNSString())
+              let start = min(range.location, full.length)
+              let length = min(range.length, full.length - start)
+              let clipped = NSMakeRange(start, length)
+              if actualRange != nil:
+                actualRange[] = clipped
+              return cast[ID](full.attributedSubstringFromRange(clipped))
         
         addMethod "insertText:replacementRange:", proc(
           self: Id, cmd: Sel, obj: Id, replacementRange: NsRange
@@ -2019,6 +2075,17 @@ proc init =
         ): NsRect {.cdecl.} =
           getWindow(self)
           let contentRect = window.handle.contentRectForFrameRect(window.handle.frame)
+          if window.eventsHandler.onTextInputState != nil:
+            let state = window.eventsHandler.onTextInputState(AnyWindowEvent(window: window))
+            if state.valid:
+              if actualRange != nil:
+                actualRange[] = NSMakeRange(state.selectedStart.uint, 0)
+              return NSMakeRect(
+                contentRect.origin.x + state.caretX,
+                contentRect.origin.y + contentRect.size.height - state.caretY - state.caretHeight,
+                state.caretWidth,
+                state.caretHeight,
+              )
           NSMakeRect(
             contentRect.origin.x + 0,
             contentRect.origin.y + contentRect.size.height - 1 - 0,
