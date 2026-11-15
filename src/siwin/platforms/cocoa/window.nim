@@ -87,6 +87,7 @@ type
     trackingArea: NSTrackingArea
     updatingTrackingAreas: bool
     markedText: NSString
+    inputContextIssuedCommand: bool
     lastClickTime: array[MouseButton, MonoTime]
     lastDragStatus: DragStatus
     m_canBecomeKeyWindow: bool
@@ -1516,6 +1517,25 @@ proc setContentViewLayer*(window: WindowCocoa, layerPtr: pointer) =
   renderingView.setLayer(cast[CALayer](layerPtr))
 
 
+proc discardMarkedText(self: NSTextInputContext) {.objc: "discardMarkedText".}
+
+proc applicationHasMarkedText(window: WindowCocoa): bool =
+  ## Prefer the application's composition state; fall back to the cached copy.
+  if window.eventsHandler.onTextInputState != nil:
+    let state = window.eventsHandler.onTextInputState(AnyWindowEvent(window: window))
+    if state.valid:
+      return state.markedStart >= 0
+  window.markedText != nil
+
+proc clearMarkedText(window: WindowCocoa, view: NSView) =
+  if window.markedText == nil:
+    return
+  window.markedText.release()
+  window.markedText = nil
+  let inputContext = view.inputContext
+  if inputContext != nil:
+    inputContext.discardMarkedText()
+
 proc init =
   if initialized: return
   defer: initialized = true
@@ -1867,11 +1887,22 @@ proc init =
           let modifiers = window.updateModifiers(event)
           # While an input method owns marked text it must see navigation,
           # cancellation and commit keys before the application edits the field.
+          var routedToInputContext = false
+          if window.markedText != nil and not window.applicationHasMarkedText():
+            # The application ended composition itself (focus change, selection
+            # reset); a stale copy here would swallow every editing key.
+            window.clearMarkedText(cast[NSView](self))
           if window.markedText != nil and
               (modifiers * {ModifierKey.control, ModifierKey.system}).len == 0:
             let inputContext = cast[NSView](self).inputContext
-            if inputContext != nil and inputContext.handleEvent(event).bool:
-              return nil
+            if inputContext != nil:
+              routedToInputContext = true
+              window.inputContextIssuedCommand = false
+              # AppKit reports a handled event even when the input method
+              # declines the key and forwards it through doCommandBySelector:.
+              if inputContext.handleEvent(event).bool and
+                  not window.inputContextIssuedCommand:
+                return nil
           if key != Key.unknown:
             window.keyboard.pressed.incl key
             window.eventsHandler.pushEvent onKey, KeyEvent(
@@ -1902,7 +1933,7 @@ proc init =
           let hasCommandModifier =
             (modifiers * {ModifierKey.control, ModifierKey.system}).len > 0
           if window.eventsHandler.onTextInput != nil and shouldRouteToInputContext and
-              not hasCommandModifier:
+              not hasCommandModifier and not routedToInputContext:
             var handledByInputContext = false
             let inputContext = cast[NSView](self).inputContext
             if inputContext != nil:
@@ -1947,7 +1978,7 @@ proc init =
   
         addMethod "hasMarkedText", proc(self: Id, cmd: Sel): bool {.cdecl.} =
           getWindow(self)
-          window.markedText != nil
+          window.markedText != nil and window.applicationHasMarkedText()
         
         addMethod "markedRange", proc(self: Id, cmd: Sel): NsRange {.cdecl.} =
           getWindow(self)
@@ -2094,7 +2125,8 @@ proc init =
           )
   
         addMethod "doCommandBySelector:", proc(self: Id, cmd: Sel, selector: Sel): Id {.cdecl.} =
-          discard
+          getWindow(self)
+          window.inputContextIssuedCommand = true
         
         addMethod "resetCursorRects", proc(self: Id, cmd: Sel): Id {.cdecl.} =
           getWindow(self)
