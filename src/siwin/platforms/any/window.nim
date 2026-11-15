@@ -263,9 +263,22 @@ type
     generated*: bool  ## generated, for example, by releaseAllKeys when alt-tab. Means user don't actually do this action
     modifiers*: set[ModifierKey]
   
+  TextInputKind* = enum
+    textInputCommit, textInputComposition, textInputUnmark
+
   TextInputEvent* = object of AnyWindowEvent
     text*: string
     repeated*: bool
+    kind*: TextInputKind
+    selectedStart*, selectedLength*: int ## UTF-16 units relative to composition.
+    replacementStart*, replacementLength*: int ## UTF-16 units; -1 means unspecified.
+
+  TextInputState* = object
+    valid*: bool
+    text*: string
+    selectedStart*, selectedLength*: int ## UTF-16 units in the document.
+    markedStart*, markedLength*: int ## UTF-16 units; -1 means no marked text.
+    caretX*, caretY*, caretWidth*, caretHeight*: float32 ## Window coordinates.
   
   TouchEvent* = object of AnyWindowEvent
     touch*: Touch
@@ -312,6 +325,7 @@ type
 
     onKey*:          proc(e: KeyEvent)  ## a key on a keyboard become pressed or released
     onTextInput*:    proc(e: TextInputEvent)  ## a (input method managed) unicode characters was inputed
+    onTextInputState*: proc(e: AnyWindowEvent): TextInputState ## Synchronous query.
 
     onTouch*:        proc(e: TouchEvent)  ## a touch either become pressed or released
     onTouchMove*:    proc(e: TouchMoveEvent)  ## a touch changed it's position (can be either pressed or released)

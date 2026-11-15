@@ -21,7 +21,7 @@ jobs:
           - '2.2.8'
         os:
           - ubuntu-24.04
-          - macos-14
+          - macos-15
           - windows-2022
     steps:
     - uses: actions/checkout@v1
