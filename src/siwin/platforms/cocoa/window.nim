@@ -1525,10 +1525,10 @@ proc applicationHasMarkedText(window: WindowCocoa): bool =
     let state = window.eventsHandler.onTextInputState(AnyWindowEvent(window: window))
     if state.valid:
       return state.markedStart >= 0
-  not window.markedText.isNil
+  not window.markedText.isNil # Do not use ==; NSString overloads it.
 
 proc clearMarkedText(window: WindowCocoa, view: NSView) =
-  if window.markedText.isNil:
+  if window.markedText.isNil: # Do not use ==; NSString overloads it.
     return
   window.markedText.release()
   window.markedText = nil
@@ -1888,11 +1888,11 @@ proc init =
           # While an input method owns marked text it must see navigation,
           # cancellation and commit keys before the application edits the field.
           var routedToInputContext = false
-          if not window.markedText.isNil and not window.applicationHasMarkedText():
+          if not window.markedText.isNil and not window.applicationHasMarkedText(): # Do not use ==; NSString overloads it.
             # The application ended composition itself (focus change, selection
             # reset); a stale copy here would swallow every editing key.
             window.clearMarkedText(cast[NSView](self))
-          if not window.markedText.isNil and
+          if not window.markedText.isNil and # Do not use ==; NSString overloads it.
               (modifiers * {ModifierKey.control, ModifierKey.system}).len == 0:
             let inputContext = cast[NSView](self).inputContext
             if inputContext != nil:
@@ -1978,7 +1978,7 @@ proc init =
   
         addMethod "hasMarkedText", proc(self: Id, cmd: Sel): bool {.cdecl.} =
           getWindow(self)
-          not window.markedText.isNil and window.applicationHasMarkedText()
+          not window.markedText.isNil and window.applicationHasMarkedText() # Do not use ==; NSString overloads it.
         
         addMethod "markedRange", proc(self: Id, cmd: Sel): NsRange {.cdecl.} =
           getWindow(self)
@@ -1988,7 +1988,7 @@ proc init =
               if state.markedStart < 0:
                 return NSRangeEmpty
               return NSMakeRange(state.markedStart.uint, state.markedLength.uint)
-          if not window.markedText.isNil:
+          if not window.markedText.isNil: # Do not use ==; NSString overloads it.
             NSMakeRange(0, window.markedText.length)
           else:
             NSRangeEmpty
@@ -2011,7 +2011,7 @@ proc init =
           else:
             characters = cast[NSString](obj)
   
-          if not window.markedText.isNil:
+          if not window.markedText.isNil: # Do not use ==; NSString overloads it.
             window.markedText.release()
   
           window.markedText = NSString.stringWithString(characters).retain()
@@ -2041,7 +2041,7 @@ proc init =
   
         addMethod "unmarkText", proc(self: Id, cmd: Sel): Id {.cdecl.} =
           getWindow(self)
-          if not window.markedText.isNil:
+          if not window.markedText.isNil: # Do not use ==; NSString overloads it.
             window.markedText.release()
             window.markedText = nil
             window.eventsHandler.pushEvent onTextInput, TextInputEvent(
@@ -2094,7 +2094,7 @@ proc init =
               continue
             window.eventsHandler.pushEvent onTextInput, TextInputEvent(window: window, text: $Rune(codepoint))
   
-          if not window.markedText.isNil:
+          if not window.markedText.isNil: # Do not use ==; NSString overloads it.
             window.markedText.release()
             window.markedText = nil
   
