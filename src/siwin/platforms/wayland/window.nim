@@ -105,6 +105,10 @@ type
     lastPressedKeyTime: MonoTime
     lastKeyRepeatedTime: MonoTime
     initialConfigureReceived: bool
+    initialResizeEventSent: bool
+      ## resizes happening before `firstStep` (initial configure, scale changes)
+      ## only update the window silently, so the first delivered ResizeEvent
+      ## always has `initial = true`, matching X11/WinAPI behavior
     bufferScaleFactor: int32
     fractionalScaleFactor: float32
     popupRepositionToken: uint32
@@ -848,15 +852,18 @@ proc resize(window: WindowWayland, size: IVec2) =
       window.toplevelSetMinSize(window.m_size.x, window.m_size.y)
       window.toplevelSetMaxSize(window.m_size.x, window.m_size.y)
 
-    window.eventsHandler.onResize.pushEvent ResizeEvent(window: window, size: window.size)
+    if window.initialResizeEventSent:
+      window.eventsHandler.onResize.pushEvent ResizeEvent(window: window, size: window.size)
   of WindowWaylandKind.PopupSurface:
     if window.xdgSurface != nil:
       window.xdgSurface.set_window_geometry(0, 0, window.m_size.x, window.m_size.y)
-    window.eventsHandler.onResize.pushEvent ResizeEvent(window: window, size: window.size)
+    if window.initialResizeEventSent:
+      window.eventsHandler.onResize.pushEvent ResizeEvent(window: window, size: window.size)
 
   of WindowWaylandKind.LayerSurface:
     window.layerShellSurface.set_size(window.m_size.x.uint32, window.m_size.y.uint32)
-    window.eventsHandler.onResize.pushEvent ResizeEvent(window: window, size: window.size)
+    if window.initialResizeEventSent:
+      window.eventsHandler.onResize.pushEvent ResizeEvent(window: window, size: window.size)
     window.redraw()
 
 
@@ -1701,7 +1708,7 @@ proc setupWindow*(window: WindowWayland, fullscreen, frameless, transparent: boo
     window.surface.set_buffer_scale(window.bufferScale())
     if window.m_size.x > 0 and window.m_size.y > 0:
       window.doResize(window.m_size)
-      if window.opened:
+      if window.opened and window.initialResizeEventSent:
         window.eventsHandler.onResize.pushEvent ResizeEvent(window: window, size: window.size)
       window.redraw()
 
@@ -2211,6 +2218,9 @@ method firstStep*(window: WindowWayland, makeVisible = true) =
 
   window.configureSurface()
 
+  # resizes dispatched by the initial configure above were applied silently
+  # (initialResizeEventSent was false), so report the resulting size once here
+  window.initialResizeEventSent = true
   if window.opened: window.eventsHandler.onResize.pushEvent ResizeEvent(window: window, size: window.size, initial: true)
   window.lastTickTime = getMonoTime()
   redraw window
