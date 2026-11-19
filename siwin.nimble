@@ -1,4 +1,4 @@
-version       = "1.1.2"
+version       = "1.1.3"
 author        = "levovix0"
 description   = "Cross-platform window creation and event handling library"
 license       = "MIT"
