@@ -1,5 +1,5 @@
 <h2 align="center">Siwin</h2>
-<img alt="siwin" width="100%" src="http://levovix.ru:8000/docs/siwin/banner.png">
+<img width="1280" height="640" alt="banner" src="https://github.com/user-attachments/assets/2b5851c2-0e2c-410b-a1a4-b6e7859b8009" />
 <p align="center">
   Cross-platform window creation and event handling library.
 </p>
