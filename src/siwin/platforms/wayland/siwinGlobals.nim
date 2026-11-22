@@ -42,6 +42,13 @@ type
     layerShell*: Zwlr_layer_shell_v1
     idleInhibitManager*: Zwp_idle_inhibit_manager_v1
     cursorShapeManager*: Wp_cursor_shape_manager_v1
+    cursorShapeDevice*: Wp_cursor_shape_device_v1
+      # shape device for the seat pointer, lazily created when
+      # compositor supports wp_cursor_shape_manager_v1
+    pointerEnterSerial*: uint32
+      # serial of the latest wl_pointer.enter event:
+      # wp_cursor_shape_device_v1.set_shape and wl_pointer.set_cursor
+      # only work with the serial of the latest pointer enter event
     
     shmFormats*: seq[`WlShm / Format`]
     seatCapabilities*: Bitfield[`WlSeat / Capability`]
@@ -86,6 +93,7 @@ type
     wake: ptr WaylandWakeFd
     repeatWakeDeadline*: MonoTime
     repeatWakeWindow*: Window
+
 
 proc `=destroy`*(globals: SiwinGlobalsWaylandObj) {.siwin_destructor.} =
   cast[SiwinGlobals](globals.addr).shutdownEventLoopWakeState()
@@ -234,7 +242,7 @@ proc initRegistryCallbacks(globals: SiwinGlobalsWayland) =
     globals.tabletManager = binded
 
   addRegistry Wp_cursor_shape_manager_v1:
-    globals.cursorShapeManager = binded 
+    globals.cursorShapeManager = binded
 
   addRegistry Wl_output:
     globals.outputs.add WaylandOutput(registryName: name, output: binded)

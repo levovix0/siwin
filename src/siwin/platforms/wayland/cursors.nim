@@ -118,5 +118,6 @@ proc loadBuiltinCursor*(globals: SiwinGlobalsWayland, kind: BuiltinCursor): Curs
     else:
       buffer = create(globals, globals.shm, cursors[0].size, argb8888)
       copyMem(buffer.dataAddr, cursors[0].pixels[0].addr, cursors[0].size.x * cursors[0].size.y * 4)
+      result.hotspot = cursors[0].hotspot
     result.surface.attach(buffer.buffer, 0, 0)
     commit result.surface

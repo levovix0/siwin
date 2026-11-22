@@ -118,6 +118,14 @@ type
     fractionalScaleObj: Wp_fractional_scale_v1
     toplevelIcon: Xdg_toplevel_icon_v1
     toplevelIconBuffers: seq[SharedBuffer]
+
+    imageCursorBuffer: SharedBuffer
+    imageCursorBufferSize: IVec2
+    imageCursorSurface: Wl_surface
+      # cursor surface to show ImageCursor through wl_pointer.set_cursor
+    themeCursor: CursorWayland
+      # default cursor loaded from the system XCursor theme,
+      # used when compositor doesn't support wp_cursor_shape_manager_v1
   
   ClipboardWayland* = ref object of Clipboard
     globals: SiwinGlobalsWayland
@@ -390,6 +398,11 @@ method release(window: WindowWayland) {.base, raises: [].} =
     destroy window.viewport, destroy
     destroy window.plasmaSurface, destroy
     destroy window.serverDecoration, destroy
+    destroy window.imageCursorSurface, destroy
+    window.imageCursorBuffer = nil
+    if window.themeCursor != nil:
+      destroy window.themeCursor.surface, destroy
+      window.themeCursor = nil
     if window.useLibdecor:
       if window.libdecorFrame != nil:
         libdecor_frame_unref(window.libdecorFrame)
@@ -950,9 +963,90 @@ method `pos=`*(window: WindowWayland, v: IVec2) =
   if window.opened: window.eventsHandler.onWindowMove.pushEvent WindowMoveEvent(window: window, pos: v)
 
 
+proc cursorShape(kind: BuiltinCursor): `Wp_cursor_shape_device_v1 / Shape` =
+  ## maps builtin cursor to wp_cursor_shape_device_v1 shape
+  case kind
+  of BuiltinCursor.wait:            `Wp_cursor_shape_device_v1 / Shape`.wait
+  of BuiltinCursor.arrowWait:       `Wp_cursor_shape_device_v1 / Shape`.progress
+  of BuiltinCursor.pointingHand:    `Wp_cursor_shape_device_v1 / Shape`.pointer
+  of BuiltinCursor.grab:            `Wp_cursor_shape_device_v1 / Shape`.grab
+  of BuiltinCursor.text:            `Wp_cursor_shape_device_v1 / Shape`.text
+  of BuiltinCursor.cross:           `Wp_cursor_shape_device_v1 / Shape`.crosshair
+  of BuiltinCursor.sizeAll:         `Wp_cursor_shape_device_v1 / Shape`.move
+  of BuiltinCursor.sizeHorizontal:  `Wp_cursor_shape_device_v1 / Shape`.ew_resize
+  of BuiltinCursor.sizeVertical:    `Wp_cursor_shape_device_v1 / Shape`.ns_resize
+  of BuiltinCursor.sizeTopLeft:     `Wp_cursor_shape_device_v1 / Shape`.nw_resize
+  of BuiltinCursor.sizeTopRight:    `Wp_cursor_shape_device_v1 / Shape`.ne_resize
+  of BuiltinCursor.sizeBottomLeft:  `Wp_cursor_shape_device_v1 / Shape`.sw_resize
+  of BuiltinCursor.sizeBottomRight: `Wp_cursor_shape_device_v1 / Shape`.se_resize
+  else: `Wp_cursor_shape_device_v1 / Shape`.default  # arrow, arrowUp, arrowRight and hided have no corresponding shapes
+
+
+proc hidePointerCursor(globals: SiwinGlobalsWayland) =
+  # setting a nil surface as pointer cursor hides the pointer image
+  var hiddenSurface: Wl_surface
+  globals.seat_pointer.set_cursor(globals.pointerEnterSerial, hiddenSurface, 0, 0)
+
+
+proc applyImageCursor(window: WindowWayland, image: ImageCursor) =
+  let globals = window.globals
+  if globals.shm == nil: return
+
+  if image.pixels.size.x * image.pixels.size.y == 0:
+    hidePointerCursor(globals)
+    return
+
+  # shared memory requires premultiplied pixels in argb8888 (bgra_32bit byte order)
+  let sourceFormat = image.pixels.format
+  var pixels = image.pixels
+
+  if window.imageCursorBuffer == nil or window.imageCursorBufferSize != pixels.size:
+    window.imageCursorBuffer = globals.create(globals.shm, pixels.size, `WlShm / Format`.argb8888, bufferCount = 1)
+    window.imageCursorBufferSize = pixels.size
+  copyMem(window.imageCursorBuffer.dataAddr, pixels.data, pixels.size.x * pixels.size.y * 4)
+  convertPixelsInplace(window.imageCursorBuffer.dataAddr, pixels.size, sourceFormat, PixelBufferFormat.bgra_32bit)
+
+  if window.imageCursorSurface == nil:
+    window.imageCursorSurface = globals.compositor.create_surface()
+  window.imageCursorSurface.attach(window.imageCursorBuffer.buffer, 0, 0)
+  commit window.imageCursorSurface
+
+  globals.seat_pointer.set_cursor(globals.pointerEnterSerial, window.imageCursorSurface, image.origin.x.int32, image.origin.y.int32)
+
+
+proc applyCursor(window: WindowWayland) =
+  ## shows window.m_cursor as the pointer cursor,
+  ## called on pointer enter and from `cursor=` while pointer is over the window
+  let globals = window.globals
+  if window.m_cursor.kind == builtin:
+    if window.m_cursor.builtin == BuiltinCursor.hided:
+      hidePointerCursor(globals)
+
+    elif globals.cursorShapeManager != nil:
+      # load all cursors from wp_cursor_shape_device_v1
+      if globals.cursorShapeDevice == nil:
+        globals.cursorShapeDevice = globals.cursorShapeManager.get_pointer(globals.seat_pointer)
+      globals.cursorShapeDevice.set_shape(globals.pointerEnterSerial, cursorShape(window.m_cursor.builtin))
+
+    else:
+      # compositor doesn't support cursor-shape-v1:
+      # show the default cursor loaded from the system XCursor theme
+      if window.themeCursor == nil:
+        window.themeCursor = globals.loadBuiltinCursor(BuiltinCursor.arrow)
+      globals.seat_pointer.set_cursor(globals.pointerEnterSerial, window.themeCursor.surface, window.themeCursor.hotspot.x, window.themeCursor.hotspot.y)
+
+  else:
+    applyImageCursor(window, window.m_cursor.image)
+
+
 method `cursor=`*(window: WindowWayland, v: Cursor) =
   if v.kind == builtin and window.m_cursor.kind == builtin and v.builtin == window.m_cursor.builtin: return
-  ## todo
+  window.m_cursor = v
+
+  # cursor can be applied only when pointer is over this window,
+  # otherwise it will be applied on next pointer enter event
+  if window.globals.seat_pointer == nil or window != window.globals.seat_pointer_currentWindow.WindowWayland: return
+  applyCursor(window)
 
 method reposition*(window: WindowWayland, v: PopupPlacement) =
   procCall window.Window.reposition(v)
@@ -1213,9 +1307,6 @@ method `visible=`*(window: WindowWayland, v: bool) =
   window.m_visible = v
   ## todo
 
-var cursor: Wp_cursor_shape_device_v1
-var cursor_surface: CursorWayland
-
 proc initSeatEvents*(globals: SiwinGlobalsWayland) =
   if not globals.seatEventsInitialized:
     globals.seatEventsInitialized = true
@@ -1228,25 +1319,19 @@ proc initSeatEvents*(globals: SiwinGlobalsWayland) =
       globals.seat_pointer == nil:
     globals.seat_pointer = globals.seat.get_pointer
 
-    cursor_surface = globals.loadBuiltinCursor(arrow)
-
     globals.seat_pointer.onEnter:
       if surface == nil: return
       let window = globals.associatedWindows.getOrDefault(surface.proxy.raw.id, nil).WindowWayland
       if window == nil: return
       globals.seat_pointer_currentWindow = window
-      
+
       window.clicking = {}
       window.enterSerial = serial
+      globals.pointerEnterSerial = serial
       globals.lastSeatEventSerial = serial
       window.mouse.pos = window.reportedPointerPos(surface_x, surface_y)
 
-      if globals.cursorShapeManager != nil:
-        if cursor == nil:
-          cursor = globals.cursorShapeManager.get_pointer(globals.seat_pointer)
-        cursor.set_shape(serial, default)
-      else:
-        globals.seat_pointer.set_cursor(globals.lastSeatEventSerial, cursor_surface.surface, cursor_surface.hotspot.x, cursor_surface.hotspot.y)
+      applyCursor(window)
 
       replicateWindowTitleAndBorderBehaviour(window, window.mouse.pos)
 
