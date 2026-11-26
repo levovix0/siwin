@@ -1302,10 +1302,27 @@ proc replicateWindowTitleAndBorderBehaviour(window: WindowWayland, prevMousePos:
   else: discard
 
 
+proc configureSurface*(window: WindowWayland)
+
 method `visible=`*(window: WindowWayland, v: bool) =
   if v == window.m_visible: return
   window.m_visible = v
-  ## todo
+  # Wayland has no hide request: a surface is unmapped by committing a null
+  # buffer, and is mapped again by starting over -- an initial commit
+  # without a buffer, then the configure acknowledged before the next
+  # buffer is attached (xdg-shell). Only the plain xdg_toplevel path does
+  # this; libdecor frames and popups keep the previous behaviour.
+  if window.surface.proxy.raw == nil or window.libdecorFrame != nil or
+      window.xdgToplevel.proxy.raw == nil:
+    return
+  if not v:
+    window.surface.attach(Wl_buffer(), 0, 0)
+    window.surface.commit()
+    window.initialConfigureReceived = false
+    discard wl_display_flush(window.globals.display.raw)
+  elif not window.initialConfigureReceived:
+    window.configureSurface()
+    window.redrawRequested = true
 
 proc initSeatEvents*(globals: SiwinGlobalsWayland) =
   if not globals.seatEventsInitialized:
