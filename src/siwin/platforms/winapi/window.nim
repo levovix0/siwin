@@ -377,7 +377,9 @@ method `title=`*(window: WindowWinapi, title: string) =
   window.handle.SetWindowText(title)
 
 method close*(window: WindowWinapi) =
-  if not window.m_closed: window.handle.SendMessage(WmClose, 0, 0)
+  # Destroy directly: a programmatic close must not consult the close-request
+  # handler, which reviews user-initiated closes only.
+  if not window.m_closed: discard window.handle.DestroyWindow()
 
 
 method `pos=`*(window: WindowWinapi, v: IVec2) =
@@ -797,6 +799,12 @@ proc poolEvent(window: WindowWinapi, message: Uint, wParam: WParam, lParam: LPar
     if hasPaintDamage:
       window.redrawRequested = true
 
+
+  of WmClose:
+    # The close button and Alt+F4 arrive here. DefWindowProc would destroy the
+    # window; a vetoed request keeps it open instead.
+    if window.m_closed or window.closeRequestAccepted():
+      discard window.handle.DestroyWindow()
 
   of WmDestroy:
     window.m_closed = true

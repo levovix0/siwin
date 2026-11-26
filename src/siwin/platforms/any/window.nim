@@ -218,7 +218,9 @@ type
 
   AnyWindowEvent* = object of RootObj
     window*: Window
-  
+   
+  CloseRequestEvent* = object of AnyWindowEvent
+    ## the user asked to close this window (window-manager close button, alt+f4)
   CloseEvent* = object of AnyWindowEvent
   RenderEvent* = object of AnyWindowEvent
 
@@ -312,6 +314,10 @@ type
 
 
   WindowEventsHandler* = object
+    onCloseRequest*: proc(e: CloseRequestEvent): bool
+      ## the user asked to close this window (window-manager close button, alt+f4).
+      ## Return true to close the window, false to keep it open.
+      ## Without a handler the window closes.
     onClose*:        proc(e: CloseEvent)  ## this window was closed (by pressing window close button, alt+f4, or by code)
     onRender*:       proc(e: RenderEvent)  ## this window is beeng redrawn, a full frame should be drawn on window until this callback finishes
     onTick*:         proc(e: TickEvent)  ## some time has passed and all pending events was handled
@@ -442,6 +448,16 @@ func popupSize*(placement: PopupPlacement): IVec2 =
 
 proc closed*(window: Window): bool = window.m_closed
 proc opened*(window: Window): bool = not window.closed
+
+proc closeRequestAccepted*(window: Window): bool =
+  ## Consult the close-request handler for a user-initiated close attempt.
+  ## Without a handler, or when it returns true, the window closes; a handler
+  ## returning false keeps the window open. Call this before destroying the
+  ## native window: once destroyed, a close can no longer be cancelled.
+  let handler = window.eventsHandler.onCloseRequest
+  if handler != nil:
+    return handler(CloseRequestEvent(window: window))
+  true
 
 method close*(window: Window) {.base.} =
   ## request window close

@@ -1697,6 +1697,8 @@ proc init =
 
       addMethod "windowShouldClose:", proc(self: Id, cmd: Sel, notification: NsNotification): bool {.cdecl.} =
         getWindow(self)
+        if not window.closeRequestAccepted():
+          return false
         window.eventsHandler.pushEvent onClose, CloseEvent(window: window)
         destruct window
         true

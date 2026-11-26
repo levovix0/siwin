@@ -1358,7 +1358,8 @@ proc dispatchWindowEvent(
         )
       
       elif ev.xclient.data.l[0] == window.globals.atoms.wmDeleteWindow.clong:
-        close window
+        if window.closeRequestAccepted():
+          close window
 
       elif ev.xclient.data.l[0] == window.globals.atoms.netWmSyncRequest.clong:
         window.lastSync = XSyncValue(
